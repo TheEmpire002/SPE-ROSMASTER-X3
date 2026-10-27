@@ -303,16 +303,84 @@ function applyLimits() {
 // --- Kamera ----------------------------------------------------------------
 
 /*
- * Den Stream neu anstoßen. Der Zeitstempel in der URL ist nötig, weil der
- * Browser sonst die abgebrochene Antwort aus dem Cache nimmt und das Bild
- * schwarz bleibt.
+ * Zwei Wege zum Bild:
+ *
+ *   MJPEG     Ein Dauerstrom in einem <img>. Sparsam, aber nicht jeder
+ *             Browser kann multipart/x-mixed-replace -- Safari auf
+ *             iPhone und iPad zeigt dann einfach nichts an.
+ *   Einzelbilder  Immer wieder /camera/snapshot laden. Funktioniert
+ *             überall, kostet etwas mehr Overhead.
+ *
+ * Erst wird MJPEG versucht. Hat der Browser nach PRUEFZEIT_MS nichts
+ * dekodiert, wird automatisch auf Einzelbilder umgeschaltet.
+ */
+const PRUEFZEIT_MS = 4000;
+const EINZELBILD_FPS = 10;
+
+let camModus = "mjpeg";
+let camTimer = null;
+let camPruefung = null;
+
+function stopCamera() {
+  if (camTimer !== null) {
+    clearTimeout(camTimer);
+    camTimer = null;
+  }
+  if (camPruefung !== null) {
+    clearTimeout(camPruefung);
+    camPruefung = null;
+  }
+}
+
+/*
+ * Der Zeitstempel in der URL ist nötig, weil der Browser sonst die
+ * abgebrochene Antwort aus dem Cache nimmt und das Bild schwarz bleibt.
  */
 function startCamera() {
+  stopCamera();
   ui.camError.hidden = true;
+  camModus = "mjpeg";
+  // Die Handler aus dem Einzelbildmodus abräumen, sonst löst jedes
+  // geladene Bild dort die nächste Anfrage aus.
+  ui.cam.onload = null;
+  ui.cam.onerror = null;
   ui.cam.src = `/camera/stream?t=${Date.now()}`;
+
+  // naturalWidth > 0 heißt: mindestens ein Bild wurde dekodiert. Das
+  // load-Ereignis taugt hier nicht -- bei einem Dauerstrom feuert es
+  // je nach Browser nie.
+  camPruefung = setTimeout(() => {
+    if (camModus === "mjpeg" && ui.cam.naturalWidth === 0) {
+      logLine("Dauerstrom zeigt nichts — wechsle auf Einzelbilder", "warning");
+      starteEinzelbilder();
+    }
+  }, PRUEFZEIT_MS);
+}
+
+function starteEinzelbilder() {
+  stopCamera();
+  ui.camError.hidden = true;
+  camModus = "einzelbild";
+
+  // Das nächste Bild erst anfordern, wenn das vorige da ist. Ein fester
+  // Takt würde bei langsamer Verbindung Anfragen auftürmen.
+  const naechstes = () => {
+    if (camModus !== "einzelbild") return;
+    camTimer = setTimeout(() => {
+      ui.cam.src = `/camera/snapshot?t=${Date.now()}`;
+    }, 1000 / EINZELBILD_FPS);
+  };
+
+  ui.cam.onload = naechstes;
+  ui.cam.onerror = () => {
+    ui.camError.hidden = false;
+    naechstes();
+  };
+  ui.cam.src = `/camera/snapshot?t=${Date.now()}`;
 }
 
 ui.cam.addEventListener("error", () => {
+  if (camModus !== "mjpeg") return; // Einzelbildmodus hat eigene Behandlung
   ui.camError.hidden = false;
   logLine("Kamerabild abgerissen", "warning");
 });
