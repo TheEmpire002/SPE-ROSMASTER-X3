@@ -38,10 +38,24 @@ def check_serial() -> None:
     if ports:
         for p in ports:
             print(f"  {p}")
-        print("\n-> Den Port des Expansion Boards in config.py bei SERIAL_PORT eintragen.")
     else:
         print("  keine gefunden")
-        print("\n-> USB-Kabel zum Expansion Board prüfen, Roboter eingeschaltet?")
+        print("\n-> USB-Kabel prüfen, Roboter eingeschaltet?")
+        return
+
+    # Expansion Board und RPLIDAR hängen beide an /dev/ttyUSB*. Deren
+    # Nummerierung kann sich beim Neustart vertauschen -- die by-id-Pfade
+    # nicht. Deshalb immer die hier verwenden.
+    stable = sorted(glob.glob("/dev/serial/by-id/*"))
+    if stable:
+        print("\nStabile Pfade (diese in config.py eintragen):")
+        for p in stable:
+            print(f"  {p}")
+        if len(ports) > 1:
+            print("\n-> Mehrere Geräte! Welches welches ist, findest du heraus,")
+            print("   indem du eines absteckst und das Skript erneut ausführst.")
+    else:
+        print("\n-> /dev/serial/by-id/ ist leer -- nur unter Linux verfügbar.")
 
 
 def check_module(name: str, hint: str) -> None:

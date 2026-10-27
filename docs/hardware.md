@@ -7,7 +7,7 @@
 | Rechner         | Raspberry Pi 5 + AI HAT+ | —             | vorhanden   |
 | Fahrgestell     | Yahboom ROSMASTER X3  | USB-Serial       | vorhanden   |
 | Expansion Board | Yahboom (STM32)       | USB-Serial       | vorhanden   |
-| Lidar           | *(Modell eintragen)*  | USB              | vorhanden, nicht eingebunden |
+| Lidar           | Slamtec RPLIDAR A1    | USB-Seriell      | vorhanden, nicht eingebunden |
 | Kamera          | *(Modell eintragen)*  | USB / CSI        | vorhanden, nicht eingebunden |
 | ESP32           | *(Modell eintragen)*  | WLAN             | geplant     |
 | Pulssensor      | *(Modell eintragen)*  | ESP32            | geplant     |
@@ -56,6 +56,41 @@ zeigt `python scripts/check_hardware.py`. Eintragen in `config.py` unter
 ```bash
 sudo usermod -aG dialout $USER   # danach neu anmelden
 ```
+
+## Lidar: Slamtec RPLIDAR A1
+
+360°-Laserscanner, Reichweite ca. 12 m, rund 8000 Messpunkte pro Sekunde bei
+5,5 Umdrehungen/s. Liefert pro Messpunkt Winkel, Entfernung und Signalqualität
+— mehr nicht. Daraus eine Karte zu bauen ist Aufgabe der Software.
+
+**Anschluss.** Der A1 hängt über einen USB-Seriell-Adapter (CP2102) am Pi und
+meldet sich als `/dev/ttyUSB*` mit **115200 Baud**. Der Motor wird über die
+DTR-Leitung gesteuert; dreht sich der Scanner nicht, liegt es meist daran.
+
+**⚠ Portverwechslung — wichtig.** Das X3-Expansion-Board nutzt *ebenfalls*
+einen USB-Seriell-Port. Bei zwei Geräten vergibt Linux `/dev/ttyUSB0` und
+`/dev/ttyUSB1` in der Reihenfolge, in der sie erkannt werden — und die kann
+sich bei jedem Neustart ändern. Dann bekommt der Antrieb plötzlich
+Lidar-Befehle.
+
+Deshalb feste Namen über die Geräte-ID verwenden statt `ttyUSB0`:
+
+```bash
+ls -l /dev/serial/by-id/
+# -> /dev/serial/by-id/usb-Silicon_Labs_CP2102_...-if00-port0
+```
+
+Dieser Pfad bleibt gleich, egal in welcher Reihenfolge gebootet wird. Den
+Pfad des Expansion Boards in `config.py` bei `SERIAL_PORT` eintragen, den des
+Lidars später entsprechend beim Lidar-Treiber.
+
+**Stromversorgung.** Der A1 zieht beim Anlaufen des Motors kurz spürbar
+Strom. Hängt er über einen unversorgten USB-Hub am Pi, kann es zu Aussetzern
+kommen — im Zweifel direkt an den Pi.
+
+**Bibliothek.** Für reines Python kommt `rplidar-roboticia` in Frage (Fork des
+nicht mehr gepflegten `rplidar`). Noch nicht ausgewählt — siehe offene Punkte
+in `robot/src/rosmaster_assist/sensors/__init__.py`.
 
 ## AI HAT+
 

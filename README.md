@@ -55,6 +55,18 @@ python -m rosmaster_assist.main          # ohne --mock = echte Hardware
 Die App ist dann aus dem WLAN erreichbar unter `http://<IP-des-Pi>:8000`.
 Die IP findest du mit `hostname -I`.
 
+## Funktioniert alles noch?
+
+Bei laufendem Server in einem zweiten Terminal:
+
+```bash
+pip install websockets
+python scripts/smoke_test.py          # --port 8099 falls nötig
+```
+
+Prüft HTTP, WebSocket, Tempobegrenzung und Watchdog von außen — also genau
+den Weg, den die App auch nimmt. Nach Änderungen am Server kurz laufen lassen.
+
 ## Was ist installiert?
 
 Wenn unklar ist, welche Treiber auf dem Pi vorhanden sind:
