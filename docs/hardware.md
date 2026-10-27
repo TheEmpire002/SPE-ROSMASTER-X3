@@ -60,6 +60,37 @@ Ob das Board erreichbar ist, beantwortet `python scripts/check_hardware.py`
 unter „Expansion Board" — das versucht tatsächlich, es zu öffnen, statt nur
 nach Gerätedateien zu suchen.
 
+**Nur ein Programm pro Port.** Der serielle Port lässt sich technisch
+mehrfach öffnen, aber nicht sinnvoll teilen: zwei Leser bekommen jeweils
+Bruchstücke. Typische Meldung:
+
+```
+SerialException: device reports readiness to read but returned no data
+(device disconnected or multiple access on port?)
+```
+
+Wer noch mitliest, zeigt:
+
+```bash
+ps aux | grep -i python | grep -v grep
+sudo fuser -v /dev/ttyUSB* /dev/ttyAMA* /dev/myserial 2>&1
+```
+
+Die üblichen Verdächtigen:
+
+- **Yahboom-App** (`app.py` mit Flask, MakerControl). Startet auf
+  Yahboom-Images beim Booten. `sudo systemctl stop <name>`, bei Bedarf
+  zusätzlich `disable`.
+- **Serielle Konsole** auf der GPIO-UART. Abschalten über
+  `sudo raspi-config` → *Interface Options* → *Serial Port* → Login-Shell
+  **nein**, Hardware **ja**.
+- **ModemManager**, der neue USB-Seriell-Geräte automatisch abklopft:
+  `sudo systemctl disable --now ModemManager`
+
+Als Übergangslösung lässt sich in `config.py` `TELEMETRY_ENABLED = False`
+setzen. Dann liest unsere Software gar nicht mehr und der Konflikt
+verschwindet — Fahren funktioniert weiter, Akku- und IMU-Werte fehlen.
+
 **Rechte.** Wenn der Zugriff an „Permission denied" scheitert:
 
 ```bash

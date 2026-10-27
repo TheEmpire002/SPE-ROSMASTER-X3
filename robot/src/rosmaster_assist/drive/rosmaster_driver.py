@@ -38,8 +38,14 @@ class RosmasterDriver(DriveBase):
 
         # Startet den Hintergrund-Thread, der Rückmeldungen (IMU, Akku,
         # Encoder) vom Board einliest. Ohne diesen Aufruf bleiben alle
-        # Lesefunktionen der Bibliothek leer.
-        self._bot.create_receive_threading()
+        # Lesefunktionen der Bibliothek leer -- Fahren geht trotzdem.
+        if config.TELEMETRY_ENABLED:
+            self._bot.create_receive_threading()
+        else:
+            log.warning(
+                "Rückkanal abgeschaltet (TELEMETRY_ENABLED=False) -- "
+                "keine Akku- und IMU-Werte"
+            )
 
         log.info("ROSMASTER verbunden (Port: %s)", self._port or "automatisch")
 

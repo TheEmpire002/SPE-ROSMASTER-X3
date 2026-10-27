@@ -10,6 +10,18 @@ verstreut im Code. Wer am Fahrverhalten schraubt, muss nur diese Datei öffnen.
 # `python scripts/check_hardware.py`. None = Rosmaster_Lib sucht selbst.
 SERIAL_PORT: str | None = None
 
+# Rückkanal vom Expansion Board (Akkuspannung, IMU, Encoder).
+#
+# Dafür startet Rosmaster_Lib einen Thread, der dauerhaft vom seriellen Port
+# liest. Liest ein zweites Programm am selben Port mit, stirbt dieser Thread
+# mit "device reports readiness to read but returned no data". Fahren
+# funktioniert weiterhin -- nur die Messwerte fehlen.
+#
+# Wer den Konflikt nicht sofort beseitigen kann, schaltet das hier ab: aktuell
+# nutzen wir die Daten noch nirgends. Die richtige Lösung bleibt, das zweite
+# Programm zu beenden (siehe docs/hardware.md).
+TELEMETRY_ENABLED = True
+
 # --- Fahren ------------------------------------------------------------------
 
 # Obergrenzen. Der Watchdog begrenzt jeden eingehenden Befehl darauf, egal was
