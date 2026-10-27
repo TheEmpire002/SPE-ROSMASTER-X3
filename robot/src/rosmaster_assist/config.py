@@ -58,7 +58,9 @@ STATUS_INTERVAL_S = 0.5
 
 CAMERA_ENABLED = True
 
-# Welches Gerät bei mehreren Kameras (nur für USB-Kameras relevant).
+# Welcher /dev/videoN-Index bei einer USB-Kamera zuerst probiert wird.
+# Scheitert er, werden alle vorhandenen Geräte durchprobiert -- auf dem Pi
+# ist /dev/video0 oft ein Encoder und nicht die Kamera.
 CAMERA_INDEX = 0
 
 CAMERA_WIDTH = 640

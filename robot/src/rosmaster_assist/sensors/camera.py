@@ -177,17 +177,56 @@ class OpenCVCamera(CameraBase):
         self._index = config.CAMERA_INDEX if index is None else index
         self._cap = None
 
+    def _kandidaten(self) -> list[int]:
+        """Welche Geräte-Indizes probiert werden.
+
+        Auf dem Raspberry Pi ist ``/dev/video0`` häufig gar keine Kamera,
+        sondern ein Hardware-Encoder. Die echte Kamera liegt dann auf einem
+        höheren Index. Deshalb wird nicht auf 0 beharrt, sondern alles
+        durchprobiert, was das System anbietet.
+        """
+        import glob
+        import re
+
+        indizes = [self._index] if self._index is not None else []
+        for pfad in sorted(glob.glob("/dev/video*")):
+            treffer = re.search(r"(\d+)$", pfad)
+            if treffer:
+                idx = int(treffer.group(1))
+                if idx not in indizes:
+                    indizes.append(idx)
+        return indizes or [0]
+
     def _open(self) -> None:
         import cv2
 
-        self._cap = cv2.VideoCapture(self._index)
-        if not self._cap.isOpened():
-            self._cap = None
-            raise RuntimeError(f"USB-Kamera {self._index} lässt sich nicht öffnen")
+        versucht = []
+        for idx in self._kandidaten():
+            cap = cv2.VideoCapture(idx)
+            if not cap.isOpened():
+                cap.release()
+                versucht.append(f"{idx}: öffnet nicht")
+                continue
 
-        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAMERA_WIDTH)
-        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAMERA_HEIGHT)
-        log.info("Kamera (USB, Index %d) bereit", self._index)
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAMERA_WIDTH)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAMERA_HEIGHT)
+
+            # Öffnen allein genügt nicht: Encoder-Geräte lassen sich
+            # problemlos öffnen und liefern dann nie ein Bild.
+            ok, _ = cap.read()
+            if not ok:
+                cap.release()
+                versucht.append(f"{idx}: kein Bild")
+                continue
+
+            self._cap = cap
+            self._index = idx
+            log.info("Kamera (USB, /dev/video%d) bereit", idx)
+            return
+
+        if not versucht:
+            raise RuntimeError("keine /dev/video*-Geräte vorhanden")
+        raise RuntimeError("keine brauchbare Kamera unter " + ", ".join(versucht))
 
     def _close(self) -> None:
         if self._cap is not None:
