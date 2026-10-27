@@ -137,6 +137,20 @@ class RosmasterDriver(DriveBase):
             "ROSMASTER verbunden (Port: %s)",
             getattr(getattr(bot, "ser", None), "port", None) or self._port or "automatisch",
         )
+        # Schon beim Verbinden nachsehen: ein zweites Programm am Port fällt
+        # sonst erst auf, wenn der Lese-Thread Minuten später stirbt.
+        self._andere_melden()
+
+    def _andere_melden(self) -> bool:
+        """Loggt andere Prozesse am Board-Port. True, wenn welche da sind."""
+        pfad = self._port or "/dev/myserial"
+        andere = _wer_haelt(pfad)
+        if andere:
+            log.error("Ein anderes Programm hat den Board-Port %s offen:", pfad)
+            for zeile in andere:
+                log.error("    %s", zeile)
+            log.error("Das stört den Empfang -- beenden mit: kill <PID>")
+        return bool(andere)
 
     def _verloren(self, grund: str) -> None:
         """Verbindung als tot markieren; ``ueberwachen()`` baut sie neu auf."""
@@ -146,6 +160,7 @@ class RosmasterDriver(DriveBase):
         if bot is None:
             return  # schon gemeldet
         log.error("Verbindung zum Board verloren (%s) -- verbinde neu", grund)
+        self._andere_melden()
         # Den alten Port schließen, sonst bleibt er belegt -- und kommt das
         # Board unter derselben Nummer wieder, ließe er sich nicht öffnen.
         try:
@@ -202,6 +217,7 @@ class RosmasterDriver(DriveBase):
                 exc,
                 self._wartezeit,
             )
+            self._andere_melden()
             self._naechster_versuch = time.monotonic() + self._wartezeit
             self._wartezeit = min(self._wartezeit * 2, config.RECONNECT_MAX_S)
 
@@ -282,6 +298,42 @@ class RosmasterDriver(DriveBase):
     @property
     def connected(self) -> bool:
         return self._bot is not None
+
+
+def _wer_haelt(pfad: str) -> list[str]:
+    """Andere Prozesse, die das Gerät gerade offen haben.
+
+    Für die Fehlermeldung: "Device or resource busy" und ein sterbender
+    Lese-Thread heißen fast immer, dass ein zweites Programm am Board hängt
+    -- eine vergessene zweite Instanz, ein Jupyter-Notebook, ein Yahboom-
+    Dienst. Wer das ist, soll im Log stehen, statt dass man es suchen muss.
+
+    Liest /proc direkt, damit kein lsof nötig ist. Prozesse anderer Benutzer
+    (root) bleiben dabei unsichtbar, die eigenen genügen in aller Regel.
+    """
+    import glob
+
+    try:
+        ziel = os.path.realpath(pfad)
+    except OSError:
+        return []
+    eigene = str(os.getpid())
+    treffer = []
+    for fd_ordner in glob.glob("/proc/[0-9]*/fd"):
+        pid = fd_ordner.split("/")[2]
+        if pid == eigene:
+            continue
+        try:
+            if not any(
+                os.readlink(f"{fd_ordner}/{fd}") == ziel for fd in os.listdir(fd_ordner)
+            ):
+                continue
+            with open(f"/proc/{pid}/cmdline", "rb") as f:
+                befehl = f.read().replace(b"\0", b" ").decode(errors="replace").strip()
+        except OSError:
+            continue  # Prozess inzwischen beendet oder fremder Benutzer
+        treffer.append(f"PID {pid}: {befehl[:150]}")
+    return treffer
 
 
 def _geraet_von(bot) -> int | None:
