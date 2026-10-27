@@ -42,6 +42,8 @@ class CameraBase(ABC):
     """
 
     name: str = "base"
+    #: Klartextname für Logmeldungen.
+    label: str = "Kamera"
 
     def __init__(self) -> None:
         self._opened = False
@@ -101,6 +103,8 @@ class _JpegSink(io.BufferedIOBase):
 
 class Picamera2Camera(CameraBase):
     name = "picamera2"
+    #: Taucht in Logmeldungen auf -- deutsch, damit man danach suchen kann.
+    label = "CSI-Kamera"
 
     def __init__(self) -> None:
         super().__init__()
@@ -166,6 +170,7 @@ class Picamera2Camera(CameraBase):
 
 class OpenCVCamera(CameraBase):
     name = "usb"
+    label = "USB-Kamera"
 
     def __init__(self, index: int | None = None) -> None:
         super().__init__()
@@ -242,6 +247,7 @@ class MockCamera(CameraBase):
     """
 
     name = "mock"
+    label = "Testbild"
 
     WIDTH = 320
     HEIGHT = 240
@@ -302,7 +308,7 @@ def create_camera(use_mock: bool = False) -> CameraBase:
             kamera.open()
             return kamera
         except Exception as exc:
-            log.info("%s nicht nutzbar: %s", kandidat.__name__, exc)
+            log.warning("Kamera: %s nicht nutzbar -- %s", kamera.label, exc)
             # Auch nach einem Fehlschlag aufräumen: ein halb geöffnetes
             # Gerät würde den nächsten Kandidaten blockieren.
             try:
