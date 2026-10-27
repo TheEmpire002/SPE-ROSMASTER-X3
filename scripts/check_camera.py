@@ -22,6 +22,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 # Die Filterliste nicht doppelt pflegen: sie kommt aus dem Paket selbst.
@@ -173,34 +174,66 @@ def pruefe_opencv() -> object | None:
 # --- 5. Tatsächlich öffnen --------------------------------------------------------
 
 
+VARIANTEN = [
+    ("MJPG", 640, 480),
+    (None, 640, 480),
+    ("YUYV", 640, 480),
+    (None, 320, 240),
+]
+
+
+def warmlaufen(cap, sekunden: float = 1.5):
+    """Wiederholt lesen, bis ein Bild kommt. Kameras brauchen Anlauf."""
+    frist = time.monotonic() + sekunden
+    versuche = 0
+    while time.monotonic() < frist:
+        versuche += 1
+        ok, frame = cap.read()
+        if ok and frame is not None and getattr(frame, "size", 0) > 0:
+            return frame, versuche
+        time.sleep(0.05)
+    return None, versuche
+
+
 def pruefe_oeffnen(cv2, kandidaten: list[int]) -> bool:
     headline("5. Öffnen und ein Bild holen")
+    print("  (bis zu 1,5 s pro Variante -- Kameras brauchen Anlaufzeit)")
     erfolg = False
 
     for idx in kandidaten:
-        for name, api in (("V4L2", cv2.CAP_V4L2), ("Standard", cv2.CAP_ANY)):
+        for api_name, api in (("V4L2", cv2.CAP_V4L2), ("Standard", cv2.CAP_ANY)):
             cap = cv2.VideoCapture(idx, api)
             if not cap.isOpened():
-                print(f"  video{idx} über {name:<8}: öffnet nicht")
+                print(f"  video{idx} / {api_name:<8}: öffnet nicht")
                 cap.release()
                 continue
 
-            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-            ok, frame = cap.read()
-            if ok and frame is not None:
-                h, w = frame.shape[:2]
-                print(f"  video{idx} über {name:<8}: OK -- Bild {w}x{h}")
-                erfolg = True
-            else:
-                print(f"  video{idx} über {name:<8}: geöffnet, aber kein Bild")
+            for fourcc, w, h in VARIANTEN:
+                if fourcc:
+                    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*fourcc))
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
+
+                frame, versuche = warmlaufen(cap)
+                bezeichnung = f"{fourcc or 'Standard':<8} {w}x{h}"
+                if frame is not None:
+                    ist_h, ist_w = frame.shape[:2]
+                    print(f"  video{idx} / {api_name:<8} / {bezeichnung}: "
+                          f"OK -- {ist_w}x{ist_h} nach {versuche} Versuch(en)")
+                    erfolg = True
+                    break
+                print(f"  video{idx} / {api_name:<8} / {bezeichnung}: "
+                      f"kein Bild ({versuche} Versuche)")
             cap.release()
+            if erfolg:
+                break
+        if erfolg:
+            break
 
     if not erfolg and kandidaten:
-        befunde.append("Kein Kandidat liefert ein Bild. Wenn oben niemand die "
-                       "Kamera hält und die Rechte stimmen, hilft ein Blick auf "
-                       "die unterstützten Formate (Abschnitt 6).")
+        befunde.append("Keine Kombination aus Schnittstelle, Format und Auflösung "
+                       "liefert ein Bild. Abschnitt 6 zeigt, was die Kamera "
+                       "tatsächlich unterstützt.")
     return erfolg
 
 

@@ -221,49 +221,97 @@ class OpenCVCamera(CameraBase):
     def _open(self) -> None:
         import cv2
 
-        versucht = []
+        versucht: list[str] = []
         for idx in self._kandidaten():
-            # V4L2 ausdrücklich verlangen. Ohne Angabe sucht sich OpenCV auf
-            # dem Pi gern einen GStreamer-Pfad, der an einer schlichten
-            # USB-Kamera scheitert -- und zwar wortlos mit isOpened()=False.
-            cap = cv2.VideoCapture(idx, cv2.CAP_V4L2)
-            if not cap.isOpened():
-                cap.release()
-                cap = cv2.VideoCapture(idx)  # zweiter Versuch, Standardweg
-            if not cap.isOpened():
-                cap.release()
+            cap, api = self._oeffnen(cv2, idx)
+            if cap is None:
                 name = _geraetename(idx)
                 versucht.append(f"video{idx}{f' ({name})' if name else ''}: öffnet nicht")
                 continue
 
-            # MJPG vor der Auflösung setzen. Viele UVC-Kameras -- darunter
-            # der RGB-Kanal der Orbbec -- liefern im Standardformat (YUYV)
-            # bei 640x480 nichts oder nur wenige Bilder pro Sekunde, weil
-            # die USB-Bandbreite nicht reicht.
-            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAMERA_WIDTH)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAMERA_HEIGHT)
-
-            # Öffnen allein genügt nicht: Encoder-Geräte lassen sich
-            # problemlos öffnen und liefern dann nie ein Bild.
-            ok, _ = cap.read()
-            if not ok:
+            gewaehlt = self._einstellung_finden(cv2, cap, idx, versucht)
+            if gewaehlt is None:
                 cap.release()
-                versucht.append(f"video{idx}: kein Bild")
                 continue
 
             self._cap = cap
             self._index = idx
             log.info(
-                "Kamera (USB, /dev/video%d%s) bereit",
+                "Kamera (USB, /dev/video%d%s) bereit -- %s, %s",
                 idx,
                 f", {_geraetename(idx)}" if _geraetename(idx) else "",
+                api,
+                gewaehlt,
             )
             return
 
         if not versucht:
             raise RuntimeError("keine /dev/video*-Geräte vorhanden")
-        raise RuntimeError("keine brauchbare Kamera unter " + ", ".join(versucht))
+        raise RuntimeError("keine brauchbare Kamera unter " + "; ".join(versucht))
+
+    @staticmethod
+    def _oeffnen(cv2, idx: int):
+        """Öffnet das Gerät, bevorzugt über V4L2.
+
+        Ohne ausdrückliche Angabe sucht sich OpenCV auf dem Pi gern einen
+        GStreamer-Pfad, der an einer schlichten USB-Kamera scheitert -- und
+        zwar wortlos mit ``isOpened() == False``.
+        """
+        for name, api in (("V4L2", cv2.CAP_V4L2), ("Standard", cv2.CAP_ANY)):
+            cap = cv2.VideoCapture(idx, api)
+            if cap.isOpened():
+                return cap, name
+            cap.release()
+        return None, ""
+
+    def _einstellung_finden(self, cv2, cap, idx: int, versucht: list[str]) -> str | None:
+        """Probiert Format und Auflösung durch, bis ein Bild kommt.
+
+        Es gibt keine Einstellung, die alle Kameras mögen: MJPG rettet die
+        einen (sonst reicht die USB-Bandbreite nicht) und bricht die anderen,
+        die es gar nicht können. Deshalb der Reihe nach von der besten zur
+        anspruchslosesten Variante.
+        """
+        w, h = config.CAMERA_WIDTH, config.CAMERA_HEIGHT
+        varianten = [
+            ("MJPG", w, h),
+            (None, w, h),       # Format unangetastet lassen
+            ("YUYV", w, h),
+            (None, 640, 480),
+            (None, 320, 240),
+        ]
+
+        for fourcc, breite, hoehe in varianten:
+            if fourcc:
+                cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*fourcc))
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, breite)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, hoehe)
+
+            frame = self._warmlaufen(cap)
+            if frame is not None:
+                ist_h, ist_w = frame.shape[:2]
+                return f"{fourcc or 'Standardformat'} {ist_w}x{ist_h}"
+
+            versucht.append(f"video{idx} {fourcc or 'Standardformat'} {breite}x{hoehe}: kein Bild")
+
+        return None
+
+    @staticmethod
+    def _warmlaufen(cap, sekunden: float = 1.5):
+        """Liest wiederholt, bis ein Bild kommt oder die Zeit abläuft.
+
+        Ein einzelner Leseversuch genügt nicht: viele USB-Kameras liefern
+        direkt nach dem Öffnen noch nichts und brauchen ein paar hundert
+        Millisekunden. Ein sofortiges Aufgeben sieht dann aus, als wäre die
+        Kamera defekt.
+        """
+        frist = time.monotonic() + sekunden
+        while time.monotonic() < frist:
+            ok, frame = cap.read()
+            if ok and frame is not None and getattr(frame, "size", 0) > 0:
+                return frame
+            time.sleep(0.05)
+        return None
 
     def _close(self) -> None:
         if self._cap is not None:
