@@ -21,6 +21,7 @@ import time
 from .base import DriveBase
 from .. import config
 from ..protocol import DriveCommand
+from ..serial_ports import wer_haelt
 
 log = logging.getLogger(__name__)
 
@@ -144,7 +145,7 @@ class RosmasterDriver(DriveBase):
     def _andere_melden(self) -> bool:
         """Loggt andere Prozesse am Board-Port. True, wenn welche da sind."""
         pfad = self._port or "/dev/myserial"
-        andere = _wer_haelt(pfad)
+        andere = wer_haelt(pfad)
         if andere:
             log.error("Ein anderes Programm hat den Board-Port %s offen:", pfad)
             for zeile in andere:
@@ -298,42 +299,6 @@ class RosmasterDriver(DriveBase):
     @property
     def connected(self) -> bool:
         return self._bot is not None
-
-
-def _wer_haelt(pfad: str) -> list[str]:
-    """Andere Prozesse, die das Gerät gerade offen haben.
-
-    Für die Fehlermeldung: "Device or resource busy" und ein sterbender
-    Lese-Thread heißen fast immer, dass ein zweites Programm am Board hängt
-    -- eine vergessene zweite Instanz, ein Jupyter-Notebook, ein Yahboom-
-    Dienst. Wer das ist, soll im Log stehen, statt dass man es suchen muss.
-
-    Liest /proc direkt, damit kein lsof nötig ist. Prozesse anderer Benutzer
-    (root) bleiben dabei unsichtbar, die eigenen genügen in aller Regel.
-    """
-    import glob
-
-    try:
-        ziel = os.path.realpath(pfad)
-    except OSError:
-        return []
-    eigene = str(os.getpid())
-    treffer = []
-    for fd_ordner in glob.glob("/proc/[0-9]*/fd"):
-        pid = fd_ordner.split("/")[2]
-        if pid == eigene:
-            continue
-        try:
-            if not any(
-                os.readlink(f"{fd_ordner}/{fd}") == ziel for fd in os.listdir(fd_ordner)
-            ):
-                continue
-            with open(f"/proc/{pid}/cmdline", "rb") as f:
-                befehl = f.read().replace(b"\0", b" ").decode(errors="replace").strip()
-        except OSError:
-            continue  # Prozess inzwischen beendet oder fremder Benutzer
-        treffer.append(f"PID {pid}: {befehl[:150]}")
-    return treffer
 
 
 def _geraet_von(bot) -> int | None:

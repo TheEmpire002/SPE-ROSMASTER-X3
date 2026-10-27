@@ -17,4 +17,4 @@ numpy
 
 # RPLIDAR A1. Paketname beim Installieren: rplidar-roboticia (gepflegter
 # Fork), importiert wird es als `rplidar`.
-# rplidar-roboticia
+rplidar-roboticia

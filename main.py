@@ -111,7 +111,11 @@ def has_module(py: Path, module: str) -> bool:
 
 def ensure_dependencies(py: Path) -> None:
     """Installiert das Paket, falls es noch nicht eingerichtet ist."""
-    if has_module(py, "rosmaster_assist") and has_module(py, "fastapi"):
+    # Jedes Paket einzeln prüfen, nicht nur das erste: kommt eine neue
+    # Abhängigkeit dazu (zuletzt rplidar), muss ein bestehendes Setup sie
+    # beim nächsten Start nachinstallieren -- sonst fehlt sie stillschweigend.
+    module = ("rosmaster_assist", "fastapi", "numpy", "rplidar")
+    if all(has_module(py, m) for m in module):
         info("Abhängigkeiten vorhanden")
         return
 

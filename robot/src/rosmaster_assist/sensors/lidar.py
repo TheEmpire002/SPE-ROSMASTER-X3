@@ -122,13 +122,56 @@ class RPLidar(LidarBase):
         self._scans = None
 
     def _open(self) -> None:
-        # Eigenes Paket, nicht Teil der Standardinstallation.
-        from rplidar import RPLidar as Treiber
+        try:
+            from rplidar import RPLidar as Treiber
+        except ImportError as exc:
+            raise RuntimeError(
+                "Paket fehlt -- robot/.venv/bin/pip install rplidar-roboticia"
+            ) from exc
+
+        import os
+
+        if not os.path.exists(self._port):
+            raise RuntimeError(f"{self._port} existiert nicht -- Lidar eingesteckt?")
+
+        from ..serial_ports import wer_haelt
+
+        andere = wer_haelt(self._port)
+        if andere:
+            # Zwei Leser am selben Lidar bekommen beide nur Bruchstücke --
+            # das sieht dann aus wie ein defektes Gerät.
+            log.error("Ein anderes Programm hat den Lidar %s offen:", self._port)
+            for zeile in andere:
+                log.error("    %s", zeile)
+            log.error("Beenden mit: kill <PID>  (ROS2: sudo pkill -f sllidar_node)")
 
         self._lidar = Treiber(self._port, baudrate=config.LIDAR_BAUDRATE, timeout=3)
 
-        info = self._lidar.get_info()
-        zustand = self._lidar.get_health()
+        # Lief der Lidar noch vom letzten Programm (abgestürzt, ROS2, ein
+        # früherer Lauf), sendet er ungefragt weiter Messdaten. Dann liest
+        # get_info() mitten in diesem Strom und scheitert mit "Incorrect
+        # descriptor starting bytes". Also erst anhalten und den Puffer
+        # leeren -- und ein paar Versuche zugestehen.
+        letzter_fehler: Exception | None = None
+        for _ in range(3):
+            try:
+                self._lidar.stop()
+                time.sleep(0.2)
+                # Heißt je nach Paketversion unterschiedlich.
+                leeren = getattr(self._lidar, "clean_input", None) or getattr(
+                    self._lidar, "clear_input", None
+                )
+                if leeren is not None:
+                    leeren()
+                info = self._lidar.get_info()
+                zustand = self._lidar.get_health()
+                break
+            except Exception as exc:
+                letzter_fehler = exc
+                time.sleep(0.5)
+        else:
+            raise RuntimeError(f"Lidar antwortet nicht sauber: {letzter_fehler}")
+
         log.info("RPLIDAR verbunden: %s, Zustand %s", info, zustand[0])
         if zustand[0] == "Error":
             raise RuntimeError(f"Lidar meldet Fehler: {zustand}")
@@ -263,23 +306,30 @@ class MockLidar(LidarBase):
 
 
 def create_lidar(use_mock: bool = False, pose_quelle=None) -> LidarBase:
-    """Nimmt den echten Lidar, sonst die Simulation."""
-    if not use_mock:
-        lidar = RPLidar()
-        try:
-            lidar.open()
-            return lidar
-        except Exception as exc:
-            log.warning("Lidar: %s nicht nutzbar -- %s", lidar.label, exc)
-            try:
-                lidar.close()
-            except Exception:
-                pass
-        log.warning("Kein Lidar -- Ortung läuft ohne, Hindernisse bleiben unerkannt")
+    """Auf dem Roboter immer den echten Lidar, im Mock-Modus die Simulation.
 
-    ersatz = MockLidar(pose_quelle)
-    ersatz.open()
-    return ersatz
+    Bewusst kein Ausweichen auf die Simulation, wenn der echte Lidar beim
+    Start nicht aufgeht: ein erfundener Raum wäre schlimmer als gar keiner.
+    Die App zeigte Wände, die es nicht gibt, und die Ortung gliche gegen sie
+    ab. Stattdessen probiert ``LidarService`` im Hintergrund weiter, bis der
+    echte Lidar antwortet.
+    """
+    if use_mock:
+        ersatz = MockLidar(pose_quelle)
+        ersatz.open()
+        return ersatz
+
+    lidar = RPLidar()
+    try:
+        lidar.open()
+    except Exception as exc:
+        log.error("Lidar: %s nicht nutzbar -- %s", lidar.label, exc)
+        log.error("Versuche es im Hintergrund weiter. Zustand: /lidar/status")
+        try:
+            lidar.close()
+        except Exception:
+            pass
+    return lidar
 
 
 class LidarService:
@@ -329,9 +379,11 @@ class LidarService:
         try:
             self._lidar.open()
         except Exception as exc:
-            log.exception("Lidar lässt sich nicht öffnen")
-            self._letzter_fehler = str(exc)
-            return
+            # Kein Abbruch: der Lese-Thread startet trotzdem und probiert
+            # weiter. Sonst bliebe der Lidar bis zum Neustart des Servers
+            # tot, nur weil er beim Hochfahren einen Moment nicht wollte.
+            log.error("Lidar lässt sich noch nicht öffnen -- %s", exc)
+            self._letzter_fehler = f"{type(exc).__name__}: {exc}"
         self._stop.clear()
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
@@ -347,6 +399,9 @@ class LidarService:
     def _loop(self) -> None:
         fehler = 0
         while not self._stop.is_set():
+            if not self._lidar.opened:
+                self._neu_oeffnen()
+                continue
             try:
                 scan = self._lidar.read()
                 if scan is not None:

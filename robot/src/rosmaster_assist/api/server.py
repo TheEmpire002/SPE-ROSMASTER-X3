@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -117,7 +118,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             # einmessen. Ohne Referenz gäbe es bis zum ersten "set_home"
             # keine Korrektur -- und den Knopf drückt erfahrungsgemäß
             # niemand, bevor etwas schiefgeht.
-            asyncio.create_task(_referenz_nachholen(localizer))
+            asyncio.create_task(_referenz_nachholen(localizer, odometry))
 
         status_task = asyncio.create_task(
             _status_loop(hub, watchdog, driver, odometry, homing, localizer, guard)
@@ -252,8 +253,14 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         if lidar is None:
             return {"punkte": [], "hinweis": "kein Lidar"}
         scan = lidar.latest()
-        if scan is None:
-            return {"punkte": []}
+        if scan is None or time.monotonic() - scan.zeit > 3.0:
+            # Der App sagen, warum nichts kommt -- "keine Daten" allein
+            # lässt einen raten, ob der Lidar, die App oder das WLAN hakt.
+            st = lidar.status()
+            grund = st["letzter_fehler"] or (
+                "wartet auf erste Umdrehung" if st["geoeffnet"] else "nicht geöffnet"
+            )
+            return {"punkte": [], "hinweis": f"Lidar: {grund}"}
         # Gerundet übertragen: zwei Nachkommastellen bei Metern sind ein
         # Zentimeter, feiner braucht es die Anzeige nicht -- und es
         # halbiert die Datenmenge.
@@ -384,15 +391,28 @@ async def _handle(
     return error_message(f"Unbekannter Nachrichtentyp: {kind!r}")
 
 
-async def _referenz_nachholen(localizer: Localizer, versuche: int = 10) -> None:
-    """Nimmt die Referenzaufnahme, sobald der Lidar die erste Runde hat."""
+async def _referenz_nachholen(
+    localizer: Localizer, odometry: Odometry, versuche: int = 120
+) -> None:
+    """Nimmt die Referenzaufnahme, sobald der Lidar die erste Runde hat.
+
+    Großzügige Frist: der Lidar kann beim Hochfahren etwas brauchen, bis er
+    sauber antwortet. Eingemessen wird aber nur, solange der Roboter noch am
+    Startpunkt steht -- eine Aufnahme von woanders als "Startpunkt" zu
+    speichern, würde jede spätere Heimfahrt an die falsche Stelle führen.
+    """
     for _ in range(versuche):
         await asyncio.sleep(1.0)
+        if localizer.hat_referenz:
+            return  # inzwischen per "set_home" gesetzt
+        x, y, _winkel = odometry.pose()
+        if math.hypot(x, y) > 0.05:
+            break
         if localizer.referenz_aufnehmen():
             return
     log.warning(
-        "Startpunkt konnte nicht eingemessen werden -- die Ortung läuft "
-        "ohne Lidar-Korrektur weiter"
+        "Startpunkt konnte nicht eingemessen werden -- Ortung ohne "
+        "Lidar-Korrektur, bis \"Startpunkt hier setzen\" gedrückt wird"
     )
 
 
