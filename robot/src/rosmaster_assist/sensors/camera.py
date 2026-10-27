@@ -15,6 +15,7 @@ als WebRTC, und für ein Kamerabild im eigenen WLAN völlig ausreichend.
 
 from __future__ import annotations
 
+import io
 import logging
 import math
 import struct
@@ -75,15 +76,42 @@ class CameraBase(ABC):
 # --- Kamera am CSI-Anschluss ------------------------------------------------------
 
 
+class _JpegSink(io.BufferedIOBase):
+    """Nimmt die fertig kodierten Bilder von picamera2 entgegen.
+
+    Der Encoder ruft ``write()`` für jedes Bild auf. Gespeichert wird immer
+    nur das neueste -- wer zu langsam abholt, überspringt Bilder, statt dass
+    sich ein Rückstau bildet.
+    """
+
+    def __init__(self) -> None:
+        self.frame: bytes | None = None
+        self._lock = threading.Lock()
+
+    def write(self, buf) -> int:  # type: ignore[override]
+        data = bytes(buf)
+        with self._lock:
+            self.frame = data
+        return len(data)
+
+    def latest(self) -> bytes | None:
+        with self._lock:
+            return self.frame
+
+
 class Picamera2Camera(CameraBase):
     name = "picamera2"
 
     def __init__(self) -> None:
         super().__init__()
         self._cam = None
+        self._sink: _JpegSink | None = None
 
     def _open(self) -> None:
-        from picamera2 import Picamera2  # nur auf dem Pi vorhanden
+        # Alles nur auf dem Pi vorhanden.
+        from picamera2 import Picamera2
+        from picamera2.encoders import JpegEncoder
+        from picamera2.outputs import FileOutput
 
         self._cam = Picamera2()
         self._cam.configure(
@@ -91,34 +119,46 @@ class Picamera2Camera(CameraBase):
                 main={"size": (config.CAMERA_WIDTH, config.CAMERA_HEIGHT)}
             )
         )
-        self._cam.start()
-        # Der Sensor braucht einen Moment für Belichtung und Weißabgleich,
-        # sonst sind die ersten Bilder schwarz.
-        time.sleep(1.0)
+
+        # Bilder werden laufend kodiert und hereingereicht, statt dass wir
+        # jedes einzeln anfordern. Einzelabrufe (capture_file) sind für einen
+        # Dauerstrom zu langsam und bleiben dabei gern stehen.
+        self._sink = _JpegSink()
+        self._cam.start_recording(
+            JpegEncoder(q=config.CAMERA_QUALITY), FileOutput(self._sink)
+        )
+
+        # Auf das erste Bild warten: der Sensor braucht einen Moment für
+        # Belichtung und Weißabgleich. Ohne das wäre das erste Bild schwarz
+        # -- und ein Fehlschlag hier fiele erst später auf.
+        frist = time.monotonic() + 5.0
+        while self._sink.latest() is None:
+            if time.monotonic() > frist:
+                raise RuntimeError("Kamera liefert kein Bild (5 s gewartet)")
+            time.sleep(0.1)
+
         log.info("Kamera (CSI) bereit")
 
     def _close(self) -> None:
         if self._cam is None:
             return
         try:
-            self._cam.stop()
-            # stop() beendet nur den Bildstrom -- die Kamera bleibt dem
-            # Prozess zugeteilt. Ohne close() scheitert jedes spätere
+            self._cam.stop_recording()
+            # stop_recording() beendet nur den Bildstrom -- die Kamera bleibt
+            # dem Prozess zugeteilt. Ohne close() scheitert jedes spätere
             # Öffnen mit "Device or resource busy".
             self._cam.close()
         except Exception:
             log.exception("Kamera ließ sich nicht sauber schließen")
         finally:
             self._cam = None
+            self._sink = None
 
     def read(self) -> Frame | None:
-        if self._cam is None:
+        if self._sink is None:
             return None
-        import io
-
-        buf = io.BytesIO()
-        self._cam.capture_file(buf, format="jpeg")
-        return buf.getvalue(), "image/jpeg"
+        data = self._sink.latest()
+        return (data, "image/jpeg") if data else None
 
 
 # --- USB-Kamera -------------------------------------------------------------------
@@ -325,6 +365,8 @@ class CameraService:
     def _loop(self) -> None:
         interval = 1.0 / max(1, config.CAMERA_FPS)
         fehler = 0
+        letzte_aenderung = time.monotonic()
+        eingefroren_gemeldet = False
 
         while not self._stop.is_set():
             begin = time.monotonic()
@@ -332,14 +374,34 @@ class CameraService:
                 frame = self._camera.read()
                 if frame is not None:
                     with self._lock:
-                        self._latest = frame
+                        neu = frame != self._latest
+                        # Nur bei echter Änderung ersetzen: der Stream
+                        # erkennt am Objekt, ob er ein Bild schon
+                        # verschickt hat. Blindes Zuweisen würde jedes
+                        # Standbild erneut durchs WLAN schicken.
+                        if neu:
+                            self._latest = frame
                     fehler = 0
+                    if neu:
+                        letzte_aenderung = begin
+                        if eingefroren_gemeldet:
+                            log.info("Kamera liefert wieder Bilder")
+                            eingefroren_gemeldet = False
             except Exception:
                 fehler += 1
-                # Einzelne Aussetzer sind normal; erst bei einer Serie
-                # lohnt eine Meldung, sonst flutet es das Log.
-                if fehler in (1, 50):
+                # Einzelne Aussetzer sind normal. Die ersten paar trotzdem
+                # melden -- sonst sucht man bei einem stehenden Bild lange.
+                if fehler <= 3 or fehler % 100 == 0:
                     log.exception("Kamera liefert kein Bild (%d. Versuch)", fehler)
+
+            # Ein stehendes Bild sieht im Browser aus wie ein laufender
+            # Stream. Ohne diese Meldung merkt man den Stillstand nicht.
+            if not eingefroren_gemeldet and begin - letzte_aenderung > 5.0:
+                log.warning(
+                    "Kamera seit %.0f s ohne neues Bild -- Stream steht",
+                    begin - letzte_aenderung,
+                )
+                eingefroren_gemeldet = True
 
             rest = interval - (time.monotonic() - begin)
             if rest > 0:
