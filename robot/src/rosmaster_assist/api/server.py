@@ -24,6 +24,7 @@ from ..protocol import (
     ProtocolError,
     alert_message,
     error_message,
+    limits_message,
     state_message,
     vitals_message,
 )
@@ -102,6 +103,11 @@ def create_app(driver: DriveBase) -> FastAPI:
     async def websocket_endpoint(ws: WebSocket) -> None:
         await ws.accept()
         await hub.add(ws)
+        # Zuerst die Grenzwerte: die App rechnet ihre Reglerstellung darauf
+        # um und muss sie deshalb kennen, bevor der erste Befehl rausgeht.
+        await ws.send_json(
+            limits_message(config.MAX_SPEED_X, config.MAX_SPEED_Y, config.MAX_SPEED_OMEGA)
+        )
         try:
             while True:
                 msg = await ws.receive_json()

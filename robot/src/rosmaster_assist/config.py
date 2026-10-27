@@ -13,10 +13,14 @@ SERIAL_PORT: str | None = None
 # --- Fahren ------------------------------------------------------------------
 
 # Obergrenzen. Der Watchdog begrenzt jeden eingehenden Befehl darauf, egal was
-# die App schickt. Zum Testen in Innenräumen bewusst niedrig gehalten.
-MAX_SPEED_X = 0.4      # m/s  vorwärts / rückwärts
-MAX_SPEED_Y = 0.4      # m/s  seitwärts (Mecanum)
-MAX_SPEED_OMEGA = 1.5  # rad/s  drehen
+# die App schickt. Die App holt sich diese Werte beim Verbinden ab -- sie sind
+# also nur hier einzustellen, nicht zusätzlich im Browser.
+#
+# Der X3 schafft rund 1 m/s. Wer langsamer üben will, dreht lieber den
+# Tempo-Regler in der App herunter, statt diese Werte zu senken.
+MAX_SPEED_X = 1.0      # m/s  vorwärts / rückwärts
+MAX_SPEED_Y = 1.0      # m/s  seitwärts (Mecanum)
+MAX_SPEED_OMEGA = 3.0  # rad/s  drehen
 
 # --- Sicherheit ---------------------------------------------------------------
 

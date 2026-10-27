@@ -11,12 +11,15 @@
 
 const SEND_HZ = 10;
 
-// Obergrenzen -- müssen zu config.py auf dem Roboter passen.
-const MAX_VX = 0.4;     // m/s
-const MAX_VY = 0.4;     // m/s
-const MAX_OMEGA = 1.5;  // rad/s
-
 const RECONNECT_MS = 1500;
+
+/*
+ * Obergrenzen. Der Server schickt sie direkt nach dem Verbinden und
+ * überschreibt diese Werte -- sie sind nur das, womit wir in der ersten
+ * Sekunde rechnen. Einzustellen sind die Grenzen in config.py auf dem
+ * Roboter, nicht hier.
+ */
+const limits = { vx: 0.4, vy: 0.4, omega: 1.5 };
 
 // --- Zustand -----------------------------------------------------------------
 
@@ -86,6 +89,16 @@ function connect() {
 
 function handleMessage(msg) {
   switch (msg.type) {
+    case "limits":
+      limits.vx = msg.max_vx;
+      limits.vy = msg.max_vy;
+      limits.omega = msg.max_omega;
+      logLine(
+        `Tempolimit: ${limits.vx} m/s, Drehen ${limits.omega} rad/s`
+      );
+      updateSpeedLabel();
+      break;
+
     case "state":
       ui.vx.textContent = `${msg.vx.toFixed(2)} m/s`;
       ui.vy.textContent = `${msg.vy.toFixed(2)} m/s`;
@@ -126,9 +139,9 @@ function send(message) {
 function sendDrive() {
   send({
     type: "drive",
-    vx: dir.x * MAX_VX * speed,
-    vy: dir.y * MAX_VY * speed,
-    omega: dir.rot * MAX_OMEGA * speed,
+    vx: dir.x * limits.vx * speed,
+    vy: dir.y * limits.vy * speed,
+    omega: dir.rot * limits.omega * speed,
   });
 }
 
@@ -223,10 +236,17 @@ document.addEventListener("visibilitychange", () => {
 
 ui.speed.addEventListener("input", () => {
   speed = Number(ui.speed.value) / 100;
-  ui.speedOut.textContent = `${ui.speed.value} %`;
+  updateSpeedLabel();
 });
+
+// Prozent allein sagt wenig -- deshalb die tatsächliche Geschwindigkeit dazu.
+function updateSpeedLabel() {
+  ui.speedOut.textContent =
+    `${ui.speed.value} % · ${(limits.vx * speed).toFixed(2)} m/s`;
+}
 
 // --- Start --------------------------------------------------------------------------
 
+updateSpeedLabel();
 sendTimer = setInterval(sendDrive, 1000 / SEND_HZ);
 connect();

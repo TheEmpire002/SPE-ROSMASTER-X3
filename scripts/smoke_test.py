@@ -32,9 +32,9 @@ try:
 except ImportError:
     sys.exit("Fehlt: pip install websockets")
 
-# Muss zu config.py passen. Weicht einer der Werte ab, schlägt der
-# Begrenzungstest fehl -- was richtig so ist: dann stimmt etwas nicht überein.
-MAX_SPEED_X = 0.4
+# Das Tempolimit holt sich der Test beim Server ab, statt es hier zu
+# wiederholen -- sonst müsste man es bei jeder Änderung an zwei Stellen
+# nachziehen und merkt das Vergessen erst am rot gewordenen Test.
 COMMAND_TIMEOUT_S = 0.5
 
 _passed = 0
@@ -74,7 +74,7 @@ def test_http(base: str) -> None:
             check(f"GET {path}", False, str(exc))
 
 
-async def _test_motion(ws, driver: str | None) -> None:
+async def _test_motion(ws, driver: str | None, max_vx: float) -> None:
     """Fahrtests. Bewegt bei echtem Antrieb tatsächlich den Roboter."""
     if driver != "mock":
         print(f"  [!] Antrieb '{driver}' -- der Roboter fährt jetzt kurz an.")
@@ -83,8 +83,8 @@ async def _test_motion(ws, driver: str | None) -> None:
     await ws.send(json.dumps({"type": "drive", "vx": 99.0, "vy": 0.0, "omega": 0.0}))
     state = await next_of(ws, "state")
     check(
-        f"vx=99.0 wird auf {MAX_SPEED_X} begrenzt",
-        state is not None and abs(state["vx"] - MAX_SPEED_X) < 1e-6,
+        f"vx=99.0 wird auf {max_vx} begrenzt",
+        state is not None and abs(state["vx"] - max_vx) < 1e-6,
         f"bekommen: {state}",
     )
 
@@ -105,6 +105,11 @@ async def _test_motion(ws, driver: str | None) -> None:
 async def test_websocket(ws_url: str, allow_motion: bool) -> None:
     print("\nWebSocket")
     async with websockets.connect(ws_url) as ws:
+        # Die Grenzwerte kommen unaufgefordert direkt nach dem Verbinden.
+        lim = await next_of(ws, "limits")
+        check("Server nennt seine Grenzwerte", lim is not None, f"bekommen: {lim}")
+        max_vx = lim["max_vx"] if lim else 0.0
+
         await ws.send(json.dumps({"type": "ping"}))
         check("ping -> pong", await next_of(ws, "pong") is not None)
 
@@ -114,7 +119,7 @@ async def test_websocket(ws_url: str, allow_motion: bool) -> None:
         check("Server meldet seinen Antrieb", driver is not None, f"bekommen: {state}")
 
         if driver == "mock" or allow_motion:
-            await _test_motion(ws, driver)
+            await _test_motion(ws, driver, max_vx)
         else:
             print(f"  [übersprungen] Fahrtests -- echter Antrieb '{driver}' erkannt")
             print("                 Der Roboter würde sich bewegen.")

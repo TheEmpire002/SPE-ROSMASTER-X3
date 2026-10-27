@@ -17,6 +17,7 @@ Von der App / vom ESP an den Roboter
 
 Vom Roboter an die App
 ----------------------
+{"type": "limits", "max_vx":…, "max_vy":…, "max_omega":…}  einmalig beim Verbinden
 {"type": "state",  "vx":…, "vy":…, "omega":…, "driver":…, "connected":…}
 {"type": "vitals", "bpm":…, "motion":…}                   weitergereichte ESP-Daten
 {"type": "alert",  "level": "info"|"warning"|"emergency", "text": "…"}
@@ -67,6 +68,20 @@ STOP = DriveCommand()
 
 # --- Nachrichten an die App bauen ---------------------------------------------
 # Kleine Hilfsfunktionen, damit die Feldnamen nur an einer Stelle stehen.
+
+
+def limits_message(max_vx: float, max_vy: float, max_omega: float) -> dict[str, Any]:
+    """Die geltenden Obergrenzen, direkt nach dem Verbinden.
+
+    Damit muss die App sie nicht kennen: es gibt genau eine Quelle
+    (``config.py``), und niemand kann vergessen, den Browser nachzuziehen.
+    """
+    return {
+        "type": "limits",
+        "max_vx": max_vx,
+        "max_vy": max_vy,
+        "max_omega": max_omega,
+    }
 
 
 def state_message(cmd: DriveCommand, driver: str, connected: bool) -> dict[str, Any]:
