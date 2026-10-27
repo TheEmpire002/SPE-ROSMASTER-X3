@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .. import config
@@ -29,6 +29,7 @@ from ..protocol import (
     vitals_message,
 )
 from ..safety import SafetyWatchdog
+from ..sensors.camera import CameraService, create_camera
 
 log = logging.getLogger(__name__)
 
@@ -73,11 +74,14 @@ class ConnectionHub:
         return len(self._clients)
 
 
-def create_app(driver: DriveBase) -> FastAPI:
+def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     """Baut die Server-Anwendung um einen Antrieb herum."""
 
     watchdog = SafetyWatchdog(driver)
     hub = ConnectionHub()
+    camera = (
+        CameraService(create_camera(use_mock_camera)) if config.CAMERA_ENABLED else None
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -87,6 +91,8 @@ def create_app(driver: DriveBase) -> FastAPI:
         else:
             log.warning("Antrieb: %s — der Roboter kann sich bewegen", driver.name)
         watchdog.start()
+        if camera is not None:
+            camera.start()
         status_task = asyncio.create_task(_status_loop(hub, watchdog, driver))
         try:
             yield
@@ -95,6 +101,8 @@ def create_app(driver: DriveBase) -> FastAPI:
             # Watchdog (der hält an), dann die Hardware trennen.
             status_task.cancel()
             await watchdog.shutdown()
+            if camera is not None:
+                camera.stop()
             driver.disconnect()
 
     app = FastAPI(title="ROSMASTER X3 Hilfsroboter", lifespan=lifespan)
@@ -124,6 +132,56 @@ def create_app(driver: DriveBase) -> FastAPI:
             if hub.count == 0:
                 log.warning("Kein Client mehr verbunden -- halte an")
                 watchdog.stop()
+
+    # --- Kamera ---
+    #
+    # MJPEG: eine nie endende HTTP-Antwort aus aneinandergehängten Bildern.
+    # Der Browser zeigt das direkt in einem <img> an -- ohne JavaScript und
+    # ohne zusätzliche Bibliothek.
+
+    GRENZE = "frame"
+
+    @app.get("/camera/stream")
+    async def camera_stream():
+        if camera is None:
+            return Response("Kamera abgeschaltet", status_code=503)
+
+        async def bilder():
+            interval = 1.0 / max(1, config.CAMERA_FPS)
+            zuletzt = None
+            while True:
+                frame = camera.latest()
+                # Dasselbe Bild nicht doppelt schicken: spart bei einer
+                # langsamen Kamera spürbar Bandbreite.
+                if frame is not None and frame is not zuletzt:
+                    data, mime = frame
+                    zuletzt = frame
+                    yield (
+                        f"--{GRENZE}\r\nContent-Type: {mime}\r\n"
+                        f"Content-Length: {len(data)}\r\n\r\n".encode()
+                        + data
+                        + b"\r\n"
+                    )
+                await asyncio.sleep(interval)
+
+        return StreamingResponse(
+            bilder(),
+            media_type=f"multipart/x-mixed-replace; boundary={GRENZE}",
+            # Ohne das puffern manche Proxys den Stream, bis nichts mehr
+            # ankommt -- das Bild bliebe dann einfach schwarz.
+            headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+        )
+
+    @app.get("/camera/snapshot")
+    async def camera_snapshot():
+        """Ein einzelnes Bild -- nützlich zum Testen per curl."""
+        if camera is None:
+            return Response("Kamera abgeschaltet", status_code=503)
+        frame = camera.latest()
+        if frame is None:
+            return Response("Noch kein Bild", status_code=503)
+        data, mime = frame
+        return Response(data, media_type=mime, headers={"Cache-Control": "no-store"})
 
     # Die Web-App direkt mitausliefern, damit eine Adresse genügt.
     if WEBAPP_DIR.is_dir():

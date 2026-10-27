@@ -8,7 +8,7 @@
 | Fahrgestell     | Yahboom ROSMASTER X3  | USB-Serial       | vorhanden   |
 | Expansion Board | Yahboom (STM32)       | USB-Serial       | vorhanden   |
 | Lidar           | Slamtec RPLIDAR A1    | USB-Seriell      | vorhanden, nicht eingebunden |
-| Kamera          | *(Modell eintragen)*  | USB / CSI        | vorhanden, nicht eingebunden |
+| Kamera          | *(Modell eintragen)*  | USB / CSI        | eingebunden (CSI, USB oder Testbild) |
 | ESP32           | *(Modell eintragen)*  | WLAN             | geplant     |
 | Pulssensor      | *(Modell eintragen)*  | ESP32            | geplant     |
 | Box-Motor       | *(Modell eintragen)*  | Servo am X3      | geplant     |
@@ -100,6 +100,41 @@ kommen — im Zweifel direkt an den Pi.
 **Bibliothek.** Für reines Python kommt `rplidar-roboticia` in Frage (Fork des
 nicht mehr gepflegten `rplidar`). Noch nicht ausgewählt — siehe offene Punkte
 in `robot/src/rosmaster_assist/sensors/__init__.py`.
+
+## Kamera
+
+Die Software probiert beim Start drei Wege in dieser Reihenfolge durch und
+nimmt den ersten, der funktioniert:
+
+| Reihenfolge | Variante | Voraussetzung |
+|---|---|---|
+| 1 | CSI-Kamera am Flachbandkabel | `picamera2` (bei Raspberry Pi OS dabei) |
+| 2 | USB-Kamera | `pip install opencv-python` |
+| 3 | Testbild | nichts — läuft überall |
+
+Es ist also nichts zu konfigurieren, solange eine Kamera erkannt wird. Welche
+genommen wurde, steht beim Start im Log („Kamera (CSI) bereit" bzw. „Kamera
+(USB, Index 0) bereit"). Steht dort „Testbild", wurde keine gefunden.
+
+Auflösung, Bildrate und JPEG-Qualität stehen in
+`robot/src/rosmaster_assist/config.py`. Bei ruckelndem Bild über WLAN zuerst
+`CAMERA_FPS` senken, erst danach die Auflösung.
+
+**USB-Kamera prüfen:**
+
+```bash
+ls /dev/video*          # taucht hier nichts auf, wird sie nicht erkannt
+pip install opencv-python
+```
+
+**CSI-Kamera prüfen:**
+
+```bash
+rpicam-hello --list-cameras
+```
+
+Der Stream liegt unter `/camera/stream` (MJPEG) und ein Einzelbild unter
+`/camera/snapshot` — beides direkt im Browser aufrufbar, auch ohne die App.
 
 ## AI HAT+
 

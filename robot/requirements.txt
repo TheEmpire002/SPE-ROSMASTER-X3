@@ -7,3 +7,7 @@ uvicorn[standard]==0.34.0
 # Yahboom-Repository installieren -- siehe docs/hardware.md.
 # Auf dem Entwicklungsrechner NICHT nötig: dort mit --mock starten.
 # Rosmaster-Lib
+
+# Nur für USB-Kameras nötig. Eine CSI-Kamera läuft über picamera2, das bei
+# Raspberry Pi OS schon dabei ist; ohne beides zeigt die App ein Testbild.
+# opencv-python

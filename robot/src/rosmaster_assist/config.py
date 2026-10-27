@@ -16,11 +16,12 @@ SERIAL_PORT: str | None = None
 # die App schickt. Die App holt sich diese Werte beim Verbinden ab -- sie sind
 # also nur hier einzustellen, nicht zusätzlich im Browser.
 #
-# Der X3 schafft rund 1 m/s. Wer langsamer üben will, dreht lieber den
-# Tempo-Regler in der App herunter, statt diese Werte zu senken.
-MAX_SPEED_X = 1.0      # m/s  vorwärts / rückwärts
-MAX_SPEED_Y = 1.0      # m/s  seitwärts (Mecanum)
-MAX_SPEED_OMEGA = 3.0  # rad/s  drehen
+# ACHTUNG: Das Fahrgestell schafft rund 1 m/s, und das Expansion Board kappt
+# intern auf seinen eigenen Bereich. Werte darüber ändern am tatsächlichen
+# Tempo nichts -- die App zeigt dann mehr an, als der Roboter fährt.
+MAX_SPEED_X = 5.0      # m/s  vorwärts / rückwärts
+MAX_SPEED_Y = 5.0      # m/s  seitwärts (Mecanum)
+MAX_SPEED_OMEGA = 5.0  # rad/s  drehen
 
 # --- Sicherheit ---------------------------------------------------------------
 
@@ -40,3 +41,20 @@ PORT = 8000
 
 # Takt, in dem der Roboter von sich aus Statusmeldungen an die App schickt.
 STATUS_INTERVAL_S = 0.5
+
+# --- Kamera ---------------------------------------------------------------------
+
+CAMERA_ENABLED = True
+
+# Welches Gerät bei mehreren Kameras (nur für USB-Kameras relevant).
+CAMERA_INDEX = 0
+
+CAMERA_WIDTH = 640
+CAMERA_HEIGHT = 480
+
+# Bilder pro Sekunde im Stream. Höher kostet WLAN-Bandbreite und CPU; bei
+# ruckelndem Bild über WLAN eher hier heruntergehen als die Auflösung senken.
+CAMERA_FPS = 15
+
+# JPEG-Qualität 1..100. Darunter wird das Bild matschig, darüber groß.
+CAMERA_QUALITY = 70

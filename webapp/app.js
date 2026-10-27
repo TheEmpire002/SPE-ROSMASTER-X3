@@ -52,6 +52,9 @@ const ui = {
   speedOut: el("speed-out"),
   maxSpeed: el("maxspeed"),
   maxSpeedOut: el("maxspeed-out"),
+  cam: el("cam"),
+  camError: el("cam-error"),
+  camRetry: el("cam-retry"),
   log: el("log"),
   vx: el("val-vx"),
   vy: el("val-vy"),
@@ -73,6 +76,7 @@ function logLine(text, level = "info") {
 function setConnected(connected) {
   ui.status.className = `status ${connected ? "online" : "offline"}`;
   ui.statusText.textContent = connected ? "verbunden" : "getrennt";
+  onConnectionChange(connected);
 }
 
 // --- Verbindung ---------------------------------------------------------------
@@ -296,8 +300,40 @@ function applyLimits() {
   updateLabels();
 }
 
+// --- Kamera ----------------------------------------------------------------
+
+/*
+ * Den Stream neu anstoßen. Der Zeitstempel in der URL ist nötig, weil der
+ * Browser sonst die abgebrochene Antwort aus dem Cache nimmt und das Bild
+ * schwarz bleibt.
+ */
+function startCamera() {
+  ui.camError.hidden = true;
+  ui.cam.src = `/camera/stream?t=${Date.now()}`;
+}
+
+ui.cam.addEventListener("error", () => {
+  ui.camError.hidden = false;
+  logLine("Kamerabild abgerissen", "warning");
+});
+
+ui.camRetry.addEventListener("click", startCamera);
+
+// Der Stream reißt ab, wenn der Roboter neu startet oder das WLAN kurz
+// weg war. Sobald die Steuerverbindung wieder steht, lohnt ein neuer
+// Versuch -- sonst müsste man die Seite von Hand neu laden.
+// Startet als true, weil der Stream beim Laden der Seite schon angestoßen
+// wird -- sonst liefe er direkt zweimal los.
+let camWasConnected = true;
+
+function onConnectionChange(connected) {
+  if (connected && !camWasConnected) startCamera();
+  camWasConnected = connected;
+}
+
 // --- Start ----------------------------------------------------------------
 
+startCamera();
 applyLimits();
 sendTimer = setInterval(sendDrive, 1000 / SEND_HZ);
 connect();

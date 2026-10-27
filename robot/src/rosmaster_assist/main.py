@@ -49,7 +49,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.mock:
         log.warning("MOCK-MODUS -- es bewegt sich nichts")
 
-    app = create_app(driver)
+    # Ohne Hardware auch kein Kamerabild erwarten: dann das Testbild.
+    app = create_app(driver, use_mock_camera=args.mock)
 
     log.info("Web-App: http://%s:%d", "localhost" if args.host == "0.0.0.0" else args.host, args.port)
 

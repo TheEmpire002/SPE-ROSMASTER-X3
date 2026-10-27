@@ -64,6 +64,23 @@ pip install -e .
 python -m rosmaster_assist.main --mock
 ```
 
+## Kamera
+
+Das Bild erscheint oben in der Web-App, ohne Zutun. Die Software sucht sich
+die Kamera selbst: zuerst eine CSI-Kamera, dann eine USB-Kamera, sonst ein
+bewegtes Testbild. Welche es wurde, steht beim Start im Log.
+
+Für eine **USB-Kamera** wird OpenCV gebraucht:
+
+```bash
+robot/.venv/bin/pip install opencv-python
+```
+
+Direkt aufrufbar, auch ohne App: `http://<IP-des-Pi>:8000/camera/stream`
+
+Einstellungen (Auflösung, Bildrate, Qualität): `config.py`, Abschnitt Kamera.
+Details in [`docs/hardware.md`](docs/hardware.md#kamera).
+
 ## Tempo einstellen
 
 In der Web-App gibt es zwei Regler:

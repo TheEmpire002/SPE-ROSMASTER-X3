@@ -53,6 +53,48 @@ main {
          border-radius: 10px; padding: 1rem; }
 .wide-panel { grid-column: 1 / -1; }
 
+/* --- Kamera --- */
+
+.cam-wrap { position: relative; }
+
+.cam {
+  display: block;
+  width: 100%;
+  /* Platz reservieren, damit das Layout beim Eintreffen des ersten
+     Bildes nicht springt. */
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+  background: #0d0f13;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.cam-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+  background: #0d0f13;
+  border-radius: 8px;
+}
+
+.cam-error button {
+  font: inherit;
+  color: var(--text);
+  background: #272b34;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.35rem 0.8rem;
+  cursor: pointer;
+}
+.cam-error button:hover { background: #30353f; }
+
 /* --- Steuerkreuz --- */
 
 .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }

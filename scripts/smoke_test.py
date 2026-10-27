@@ -24,6 +24,7 @@ import argparse
 import asyncio
 import json
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -72,6 +73,34 @@ def test_http(base: str) -> None:
                 check(f"GET {path}", r.status == 200 and len(r.read()) > 0)
         except urllib.error.URLError as exc:
             check(f"GET {path}", False, str(exc))
+
+
+def test_camera(base: str) -> None:
+    print("\nKamera")
+    try:
+        with urllib.request.urlopen(base + "/camera/snapshot", timeout=10) as r:
+            data = r.read()
+            typ = r.headers.get("Content-Type", "")
+    except urllib.error.HTTPError as exc:
+        # 503 heißt: Kamera abgeschaltet oder noch kein Bild. Das ist kein
+        # Fehler im Sinne dieses Tests -- nur eine Information.
+        print(f"  [--]     kein Bild ({exc.code}) -- Kamera aus oder noch nicht bereit")
+        return
+    except urllib.error.URLError as exc:
+        check("Einzelbild abrufbar", False, str(exc))
+        return
+
+    check(
+        f"Einzelbild abrufbar ({typ}, {len(data)} Bytes)",
+        len(data) > 100 and typ.startswith("image/"),
+    )
+
+    # Ein stehendes Bild sieht im Browser aus wie ein laufender Stream.
+    # Deshalb zwei Aufnahmen vergleichen.
+    time.sleep(1.0)
+    with urllib.request.urlopen(base + "/camera/snapshot", timeout=10) as r:
+        zweites = r.read()
+    check("Bild aktualisiert sich", zweites != data, "zweimal dasselbe Bild")
 
 
 async def drive_until(ws, cmd: dict, treffer, seconds: float = 3.0) -> dict | None:
@@ -198,6 +227,7 @@ async def main_async(host: str, port: int, allow_motion: bool) -> int:
     print(f"Teste {base}")
 
     test_http(base)
+    test_camera(base)
     try:
         await test_websocket(f"ws://{host}:{port}/ws", allow_motion)
     except (OSError, asyncio.TimeoutError) as exc:

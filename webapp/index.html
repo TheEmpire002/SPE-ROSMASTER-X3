@@ -18,6 +18,17 @@
 <main>
 
   <section class="panel">
+    <h2>Kamera</h2>
+    <div class="cam-wrap">
+      <!-- MJPEG: der Browser zeigt den Stream direkt an, ohne JavaScript. -->
+      <img id="cam" class="cam" alt="Kamerabild">
+      <p id="cam-error" class="cam-error" hidden>
+        Kein Bild. <button type="button" id="cam-retry">Erneut versuchen</button>
+      </p>
+    </div>
+  </section>
+
+  <section class="panel">
     <h2>Steuerung</h2>
 
     <!-- Mecanum-Räder: die mittlere Reihe fährt seitwärts, nicht drehen. -->
