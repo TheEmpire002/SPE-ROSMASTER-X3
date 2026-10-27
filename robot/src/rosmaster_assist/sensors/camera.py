@@ -473,6 +473,33 @@ class CameraService:
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
+        # Für /camera/status -- damit sich "es kommt kein Bild" beantworten
+        # lässt, ohne im Log zu suchen.
+        self._bilder = 0
+        self._letztes_bild = 0.0
+        self._letzter_fehler: str | None = None
+
+    def status(self) -> dict:
+        """Kurzbericht, warum ein Bild kommt oder eben nicht."""
+        with self._lock:
+            frame = self._latest
+            bilder = self._bilder
+            letztes = self._letztes_bild
+            fehler = self._letzter_fehler
+
+        laeuft = self._thread is not None and self._thread.is_alive()
+        return {
+            "kamera": self._camera.label,
+            "geoeffnet": self._camera.opened,
+            "thread_laeuft": laeuft,
+            "bilder_gesamt": bilder,
+            "letztes_bild_vor_s": (
+                round(time.monotonic() - letztes, 1) if letztes else None
+            ),
+            "bildgroesse_bytes": len(frame[0]) if frame else None,
+            "format": frame[1] if frame else None,
+            "letzter_fehler": fehler,
+        }
 
     @property
     def name(self) -> str:
@@ -485,8 +512,10 @@ class CameraService:
             # Normalerweise schon offen (create_camera lässt sie offen);
             # open() ist absichtlich wiederholbar und tut dann nichts.
             self._camera.open()
-        except Exception:
+        except Exception as exc:
             log.exception("Kamera lässt sich nicht öffnen -- kein Bild")
+            with self._lock:
+                self._letzter_fehler = f"Öffnen fehlgeschlagen: {exc}"
             return
 
         self._stop.clear()
@@ -514,7 +543,11 @@ class CameraService:
             begin = time.monotonic()
             try:
                 frame = self._camera.read()
-                if frame is not None:
+                if frame is None:
+                    with self._lock:
+                        if self._bilder == 0:
+                            self._letzter_fehler = "Kamera liefert None (kein Bild)"
+                else:
                     with self._lock:
                         neu = frame != self._latest
                         # Nur bei echter Änderung ersetzen: der Stream
@@ -523,14 +556,19 @@ class CameraService:
                         # Standbild erneut durchs WLAN schicken.
                         if neu:
                             self._latest = frame
+                            self._bilder += 1
+                            self._letztes_bild = begin
+                            self._letzter_fehler = None
                     fehler = 0
                     if neu:
                         letzte_aenderung = begin
                         if eingefroren_gemeldet:
                             log.info("Kamera liefert wieder Bilder")
                             eingefroren_gemeldet = False
-            except Exception:
+            except Exception as exc:
                 fehler += 1
+                with self._lock:
+                    self._letzter_fehler = f"{type(exc).__name__}: {exc}"
                 # Einzelne Aussetzer sind normal. Die ersten paar trotzdem
                 # melden -- sonst sucht man bei einem stehenden Bild lange.
                 if fehler <= 3 or fehler % 100 == 0:

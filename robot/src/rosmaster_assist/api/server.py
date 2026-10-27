@@ -172,6 +172,17 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
         )
 
+    @app.get("/camera/status")
+    async def camera_status():
+        """Warum kommt ein Bild -- oder warum nicht.
+
+        Im Browser aufrufbar, damit die Frage beantwortbar ist, ohne auf
+        dem Roboter im Log zu suchen.
+        """
+        if camera is None:
+            return {"kamera": None, "hinweis": "CAMERA_ENABLED ist False"}
+        return camera.status()
+
     @app.get("/camera/snapshot")
     async def camera_snapshot():
         """Ein einzelnes Bild -- nützlich zum Testen per curl."""
