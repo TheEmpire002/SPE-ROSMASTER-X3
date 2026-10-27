@@ -393,6 +393,7 @@ def create_camera(use_mock: bool = False) -> CameraBase:
                 pass
 
     log.warning("Keine Kamera gefunden -- es wird ein Testbild angezeigt")
+    log.warning("Ursache finden: python scripts/check_camera.py")
     ersatz = MockCamera()
     ersatz.open()
     return ersatz

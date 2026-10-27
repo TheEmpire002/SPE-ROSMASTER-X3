@@ -78,6 +78,15 @@ robot/.venv/bin/pip install opencv-python
 
 Direkt aufrufbar, auch ohne App: `http://<IP-des-Pi>:8000/camera/stream`
 
+**Kein Bild?** Server beenden, dann:
+
+```bash
+robot/.venv/bin/python scripts/check_camera.py
+```
+
+Prüft Geräte, Rechte, konkurrierende Prozesse, OpenCV und das tatsächliche
+Öffnen — und nennt am Ende die Ursache.
+
 Einstellungen (Auflösung, Bildrate, Qualität): `config.py`, Abschnitt Kamera.
 Details in [`docs/hardware.md`](docs/hardware.md#kamera).
 
