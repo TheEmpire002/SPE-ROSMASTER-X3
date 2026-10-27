@@ -31,6 +31,41 @@ Python. Kein ROS.
 
 ---
 
+## E1a — Korrektur: ROS2 ist vorhanden
+
+**Datum:** 2026-10-27
+**Status:** aktiv, ergänzt E1
+
+**Was sich geändert hat.** Die Annahme in E1, für den Pi 5 gebe es kein
+nutzbares ROS2, war falsch. Auf dem Roboter liegt **ROS2 Foxy** unter
+`/opt/ros/foxy`, dazu ein eingerichteter Yahboom-Workspace
+(`/root/yahboomcar_ros2_ws`) mit:
+
+- `yahboomcar_bringup` — Antriebsknoten, spricht dieselbe `Rosmaster_Lib`
+- `sllidar_ros2` — laufender Treiber für den RPLIDAR unter `/dev/rplidar`
+- `yahboomcar_ctrl` — Joystick-Steuerung
+
+**Folge für das Grundgerüst: keine.** Die Entscheidung aus E1 bleibt für
+App-Steuerung, Kamera und ESP richtig — die laufen ohne ROS, sind fertig und
+funktionieren.
+
+**Folge für das autonome Fahren: erheblich.** Lidar und Odometrie sind dort
+bereits gelöst. Eine eigene Navigation in Python dagegen neu zu schreiben,
+wäre deutlich mehr Arbeit bei schlechterem Ergebnis.
+
+**Wichtig:** `yahboomcar_bringup` und unser Server können **nicht
+gleichzeitig** laufen. Beide öffnen denselben seriellen Port, und zwei Leser
+bekommen jeweils nur Bruchstücke. Vor dem Start unseres Servers muss der
+ROS2-Stack beendet sein — und umgekehrt.
+
+**Offene Frage.** Beim autonomen Fahren entweder unser Server spricht über
+eine Brücke mit ROS2 (dann besitzt ROS2 den Port), oder wir lesen den Lidar
+selbst aus. Zu entscheiden, wenn es soweit ist. Foxy ist seit 2023 ohne
+Unterstützung, was für ein Schulprojekt verkraftbar ist, aber ein Argument
+gegen zu viel Aufbau darauf bleibt.
+
+---
+
 ## E2 — WebSocket-Protokoll statt REST
 
 **Datum:** 2026-10-27

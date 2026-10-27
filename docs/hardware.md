@@ -78,6 +78,16 @@ sudo fuser -v /dev/ttyUSB* /dev/ttyAMA* /dev/myserial 2>&1
 
 Die üblichen Verdächtigen:
 
+- **Der ROS2-Stack.** `yahboomcar_bringup` öffnet dasselbe Board über
+  dieselbe Bibliothek. Häufigste Ursache bei uns:
+
+  ```bash
+  sudo pkill -f yahboomcar_bringup
+  sudo pkill -f x3_explorer       # fährt sonst nebenher selbst
+  sudo pkill -f sllidar_node      # belegt /dev/rplidar
+  ```
+
+  Entweder ROS2 **oder** unser Server — niemals beide.
 - **Yahboom-App** (`app.py` mit Flask, MakerControl). Startet auf
   Yahboom-Images beim Booten. `sudo systemctl stop <name>`, bei Bedarf
   zusätzlich `disable`.
@@ -104,8 +114,14 @@ sudo usermod -aG dialout $USER   # danach neu anmelden
 — mehr nicht. Daraus eine Karte zu bauen ist Aufgabe der Software.
 
 **Anschluss.** Der A1 hängt über einen USB-Seriell-Adapter (CP2102) am Pi und
-meldet sich als `/dev/ttyUSB*` mit **115200 Baud**. Der Motor wird über die
-DTR-Leitung gesteuert; dreht sich der Scanner nicht, liegt es meist daran.
+läuft mit **115200 Baud**. Auf diesem Pi existiert bereits der feste Pfad
+**`/dev/rplidar`** (udev-Regel aus dem Yahboom-Setup) — den verwenden, nicht
+`/dev/ttyUSB0`. Der Motor wird über die DTR-Leitung gesteuert; dreht sich der
+Scanner nicht, liegt es meist daran.
+
+**Es gibt schon einen Treiber.** Unter ROS2 Foxy läuft `sllidar_ros2` auf
+diesem Pi bereits. Bevor jemand einen eigenen Python-Treiber schreibt, lohnt
+der Blick dorthin — siehe E1a in [`entscheidungen.md`](entscheidungen.md).
 
 **⚠ Portverwechslung — wichtig.** Das X3-Expansion-Board nutzt *ebenfalls*
 einen USB-Seriell-Port. Bei zwei Geräten vergibt Linux `/dev/ttyUSB0` und
