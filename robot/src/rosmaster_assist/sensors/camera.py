@@ -168,6 +168,21 @@ class Picamera2Camera(CameraBase):
 # --- USB-Kamera -------------------------------------------------------------------
 
 
+#: Geräte, die unter /dev/video* auftauchen, aber keine Kameras sind.
+#: Auf dem Pi 5 sind das die Bildverarbeitungs- und Codec-Einheiten --
+#: sie lassen sich öffnen und blockieren dann beim Lesen.
+KEINE_KAMERA = ("pispbe", "hevc", "codec", "isp", "cfe", "rpivid")
+
+
+def _geraetename(idx: int) -> str:
+    """Was der Kernel zu /dev/videoN sagt, z.B. 'USB 2.0 Camera'."""
+    try:
+        with open(f"/sys/class/video4linux/video{idx}/name") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
 class OpenCVCamera(CameraBase):
     name = "usb"
     label = "USB-Kamera"
@@ -180,10 +195,11 @@ class OpenCVCamera(CameraBase):
     def _kandidaten(self) -> list[int]:
         """Welche Geräte-Indizes probiert werden.
 
-        Auf dem Raspberry Pi ist ``/dev/video0`` häufig gar keine Kamera,
-        sondern ein Hardware-Encoder. Die echte Kamera liegt dann auf einem
-        höheren Index. Deshalb wird nicht auf 0 beharrt, sondern alles
-        durchprobiert, was das System anbietet.
+        Auf dem Raspberry Pi ist ``/dev/video0`` nicht zwangsläufig die
+        Kamera, deshalb wird nicht darauf beharrt. Umgekehrt dürfen auch
+        nicht blind alle Geräte probiert werden: ein Pi 5 bringt rund zwanzig
+        ``/dev/video*`` mit, von denen die meisten Codec- und
+        Bildverarbeitungs-Einheiten sind.
         """
         import glob
         import re
@@ -191,10 +207,15 @@ class OpenCVCamera(CameraBase):
         indizes = [self._index] if self._index is not None else []
         for pfad in sorted(glob.glob("/dev/video*")):
             treffer = re.search(r"(\d+)$", pfad)
-            if treffer:
-                idx = int(treffer.group(1))
-                if idx not in indizes:
-                    indizes.append(idx)
+            if not treffer:
+                continue
+            idx = int(treffer.group(1))
+            if idx in indizes:
+                continue
+            bezeichnung = _geraetename(idx).lower()
+            if any(wort in bezeichnung for wort in KEINE_KAMERA):
+                continue
+            indizes.append(idx)
         return indizes or [0]
 
     def _open(self) -> None:
@@ -202,10 +223,17 @@ class OpenCVCamera(CameraBase):
 
         versucht = []
         for idx in self._kandidaten():
-            cap = cv2.VideoCapture(idx)
+            # V4L2 ausdrücklich verlangen. Ohne Angabe sucht sich OpenCV auf
+            # dem Pi gern einen GStreamer-Pfad, der an einer schlichten
+            # USB-Kamera scheitert -- und zwar wortlos mit isOpened()=False.
+            cap = cv2.VideoCapture(idx, cv2.CAP_V4L2)
             if not cap.isOpened():
                 cap.release()
-                versucht.append(f"{idx}: öffnet nicht")
+                cap = cv2.VideoCapture(idx)  # zweiter Versuch, Standardweg
+            if not cap.isOpened():
+                cap.release()
+                name = _geraetename(idx)
+                versucht.append(f"video{idx}{f' ({name})' if name else ''}: öffnet nicht")
                 continue
 
             cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAMERA_WIDTH)
@@ -216,12 +244,16 @@ class OpenCVCamera(CameraBase):
             ok, _ = cap.read()
             if not ok:
                 cap.release()
-                versucht.append(f"{idx}: kein Bild")
+                versucht.append(f"video{idx}: kein Bild")
                 continue
 
             self._cap = cap
             self._index = idx
-            log.info("Kamera (USB, /dev/video%d) bereit", idx)
+            log.info(
+                "Kamera (USB, /dev/video%d%s) bereit",
+                idx,
+                f", {_geraetename(idx)}" if _geraetename(idx) else "",
+            )
             return
 
         if not versucht:
