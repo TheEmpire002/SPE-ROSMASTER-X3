@@ -1,0 +1,294 @@
+#!/usr/bin/env python3
+"""Startet den Hilfsroboter mit einem einzigen Befehl.
+
+    python main.py
+
+Das Skript nimmt einem die Einrichtung ab:
+
+1. legt bei Bedarf die virtuelle Umgebung unter ``robot/.venv`` an
+2. installiert fehlende Abhängigkeiten
+3. erkennt, ob echte Hardware angeschlossen ist, und wählt den Antrieb
+4. startet den Server und öffnet die Web-App im Browser
+
+Es läuft mit der *system-weiten* Python-Installation und wechselt für den
+eigentlichen Server in die virtuelle Umgebung. Deshalb darf es selbst keine
+Pakete importieren, die erst dort installiert werden.
+
+Nützliche Optionen:
+
+    python main.py --mock          Hardware erzwungen simulieren
+    python main.py --real          Hardware erzwingen (Fehler wenn sie fehlt)
+    python main.py --no-browser    Browser nicht öffnen
+    python main.py --setup-only    nur einrichten, nicht starten
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import platform
+import subprocess
+import sys
+import threading
+import time
+import webbrowser
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+ROBOT_DIR = ROOT / "robot"
+VENV_DIR = ROBOT_DIR / ".venv"
+
+MIN_PYTHON = (3, 11)
+
+
+# --- Ausgabe -------------------------------------------------------------------
+
+def enable_utf8_output() -> None:
+    """Sorgt dafür, dass Umlaute auf der Windows-Konsole lesbar bleiben.
+
+    Die deutsche Windows-Konsole nutzt standardmäßig cp1252 und wirft bei
+    Zeichen außerhalb davon einen UnicodeEncodeError -- das Programm würde
+    an einer Textausgabe sterben.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, OSError):
+            pass  # Umgeleitete Ausgabe o.Ä. -- dann eben nicht.
+
+
+def step(text: str) -> None:
+    print(f"\n  {text}")
+
+
+def info(text: str) -> None:
+    print(f"    {text}")
+
+
+def fail(text: str) -> None:
+    # stdout zuerst leeren, sonst erscheint die Fehlermeldung auf der
+    # Konsole vor den Zeilen, die eigentlich davor kommen.
+    sys.stdout.flush()
+    print(f"\n  Fehler: {text}", file=sys.stderr)
+    sys.stderr.flush()
+
+
+# --- Virtuelle Umgebung ---------------------------------------------------------
+
+def venv_python() -> Path:
+    """Pfad zum Python in der virtuellen Umgebung."""
+    if platform.system() == "Windows":
+        return VENV_DIR / "Scripts" / "python.exe"
+    return VENV_DIR / "bin" / "python"
+
+
+def ensure_venv() -> Path:
+    """Legt die virtuelle Umgebung an, falls sie fehlt."""
+    py = venv_python()
+    if py.exists():
+        return py
+
+    step("Lege virtuelle Umgebung an …")
+    # --system-site-packages ist auf dem Roboter wichtig: Yahboons
+    # Rosmaster_Lib ist dort system-weit installiert und wäre in einer
+    # abgeschotteten Umgebung nicht sichtbar.
+    subprocess.run(
+        [sys.executable, "-m", "venv", "--system-site-packages", str(VENV_DIR)],
+        check=True,
+    )
+    info(f"angelegt unter {VENV_DIR}")
+    return py
+
+
+def has_module(py: Path, module: str) -> bool:
+    """Prüft, ob ein Modul in der virtuellen Umgebung importierbar ist."""
+    result = subprocess.run(
+        [str(py), "-c", f"import {module}"],
+        capture_output=True,
+    )
+    return result.returncode == 0
+
+
+def ensure_dependencies(py: Path) -> None:
+    """Installiert das Paket, falls es noch nicht eingerichtet ist."""
+    if has_module(py, "rosmaster_assist") and has_module(py, "fastapi"):
+        info("Abhängigkeiten vorhanden")
+        return
+
+    step("Installiere Abhängigkeiten (dauert beim ersten Mal etwas) …")
+    subprocess.run(
+        [str(py), "-m", "pip", "install", "--quiet", "--editable", str(ROBOT_DIR)],
+        check=True,
+    )
+    info("fertig")
+
+
+# --- Hardware-Erkennung -----------------------------------------------------------
+
+def serial_ports() -> list[str]:
+    """Serielle Geräte, die zum Expansion Board passen könnten."""
+    import glob
+
+    # Die by-id-Pfade zuerst: sie bleiben über Neustarts hinweg gleich.
+    # Siehe docs/hardware.md -- Lidar und Board teilen sich /dev/ttyUSB*.
+    found = sorted(glob.glob("/dev/serial/by-id/*"))
+    if found:
+        return found
+    patterns = ("/dev/ttyUSB*", "/dev/ttyACM*", "/dev/myserial")
+    return sorted({p for pat in patterns for p in glob.glob(pat)})
+
+
+def detect_hardware(py: Path) -> tuple[bool, str]:
+    """Entscheidet, ob echte Hardware verwendet werden kann.
+
+    Gibt (hardware_verfügbar, Begründung) zurück.
+    """
+    if platform.system() == "Windows":
+        return False, "Windows — der Roboter läuft unter Linux"
+
+    if not has_module(py, "Rosmaster_Lib"):
+        return False, "Rosmaster_Lib nicht gefunden"
+
+    ports = serial_ports()
+    if not ports:
+        return False, "keine serielle Schnittstelle gefunden"
+
+    return True, f"{len(ports)} serielles Gerät(e) gefunden"
+
+
+# --- Browser ------------------------------------------------------------------------
+
+def open_browser_later(url: str, delay: float = 2.0) -> None:
+    """Öffnet den Browser, sobald der Server vermutlich bereit ist."""
+
+    def run() -> None:
+        time.sleep(delay)
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass  # Kein Browser vorhanden (z.B. über SSH) -- nicht schlimm.
+
+    threading.Thread(target=run, daemon=True).start()
+
+
+def port_in_use(port: int) -> bool:
+    """Ob auf dem Port schon etwas lauscht.
+
+    Ohne diese Prüfung scheitert uvicorn mit einer schwer lesbaren
+    Socket-Fehlermeldung -- typischerweise, weil noch ein alter Server läuft.
+    """
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+def has_display() -> bool:
+    """Ob überhaupt eine grafische Oberfläche da ist."""
+    if platform.system() == "Windows":
+        return True
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
+
+# --- Hauptablauf ----------------------------------------------------------------------
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Startet den ROSMASTER-X3-Hilfsroboter",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--mock", action="store_true", help="Hardware simulieren")
+    mode.add_argument("--real", action="store_true", help="Hardware erzwingen")
+    p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--host", default="0.0.0.0")
+    p.add_argument("--no-browser", action="store_true", help="Browser nicht öffnen")
+    p.add_argument("--setup-only", action="store_true", help="nur einrichten")
+    p.add_argument("--debug", action="store_true", help="ausführliche Logausgabe")
+    return p.parse_args()
+
+
+def main() -> int:
+    enable_utf8_output()
+    args = parse_args()
+
+    print("\n  ROSMASTER X3 — Hilfsroboter")
+    print("  " + "─" * 40)
+
+    if sys.version_info < MIN_PYTHON:
+        fail(
+            f"Python {MIN_PYTHON[0]}.{MIN_PYTHON[1]} oder neuer nötig, "
+            f"gefunden: {platform.python_version()}"
+        )
+        return 1
+
+    if not ROBOT_DIR.is_dir():
+        fail(f"Ordner 'robot' nicht gefunden neben {Path(__file__).name}")
+        return 1
+
+    try:
+        py = ensure_venv()
+        ensure_dependencies(py)
+    except subprocess.CalledProcessError as exc:
+        fail(f"Einrichtung fehlgeschlagen ({exc})")
+        return 1
+
+    # --- Antrieb wählen ---
+    available, reason = detect_hardware(py)
+
+    if args.real and not available:
+        fail(f"Hardware angefordert, aber nicht verfügbar: {reason}")
+        info("Zur Diagnose: python scripts/check_hardware.py")
+        return 1
+
+    use_mock = args.mock or (not available and not args.real)
+
+    step("Antrieb")
+    if use_mock:
+        info("Simulation " + ("(erzwungen mit --mock)" if args.mock else f"({reason})"))
+        info("Es bewegt sich nichts.")
+    else:
+        info(f"Echte Hardware ({reason})")
+        info("Der Roboter kann sich bewegen. Freie Fläche sicherstellen!")
+
+    if args.setup_only:
+        step("Einrichtung abgeschlossen (--setup-only)")
+        return 0
+
+    # --- Server starten ---
+    if port_in_use(args.port):
+        fail(f"Auf Port {args.port} läuft bereits etwas.")
+        info("Vermutlich ein älterer Server. Entweder dort Strg+C drücken,")
+        info(f"oder hier einen anderen Port wählen:  --port {args.port + 1}")
+        return 1
+
+    url = f"http://localhost:{args.port}"
+    step(f"Starte Server auf {url}")
+    info("Beenden mit Strg+C")
+    print()
+
+    if not args.no_browser and has_display():
+        open_browser_later(url)
+
+    cmd = [str(py), "-m", "rosmaster_assist.main",
+           "--host", args.host, "--port", str(args.port)]
+    if use_mock:
+        cmd.append("--mock")
+    if args.debug:
+        cmd.append("--debug")
+
+    # Auch der Server soll seine Umlaute lesbar ausgeben.
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+
+    try:
+        return subprocess.run(cmd, env=env).returncode
+    except KeyboardInterrupt:
+        # Der Serverprozess bekommt dasselbe Strg+C und fährt selbst sauber
+        # herunter -- inklusive Anhalten der Motoren.
+        print("\n  Beendet.\n")
+        return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

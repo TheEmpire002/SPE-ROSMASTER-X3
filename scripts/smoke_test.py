@@ -12,6 +12,10 @@ Benötigt zusätzlich das Paket `websockets`:
 
 Getestet wird bewusst von außen über echtes HTTP und echtes WebSocket --
 also genau der Weg, den die App auch nimmt.
+
+Auf dem Roboter: Das Skript erkennt am gemeldeten Antrieb, ob echte Hardware
+dranhängt, und überspringt die Fahrtests dann. Wer sie trotzdem will, bockt
+die Räder auf und hängt `--allow-motion` an.
 """
 
 from __future__ import annotations
@@ -70,30 +74,51 @@ def test_http(base: str) -> None:
             check(f"GET {path}", False, str(exc))
 
 
-async def test_websocket(ws_url: str) -> None:
+async def _test_motion(ws, driver: str | None) -> None:
+    """Fahrtests. Bewegt bei echtem Antrieb tatsächlich den Roboter."""
+    if driver != "mock":
+        print(f"  [!] Antrieb '{driver}' -- der Roboter fährt jetzt kurz an.")
+
+    # Überhöhter Fahrbefehl muss auf das Tempolimit gekappt werden.
+    await ws.send(json.dumps({"type": "drive", "vx": 99.0, "vy": 0.0, "omega": 0.0}))
+    state = await next_of(ws, "state")
+    check(
+        f"vx=99.0 wird auf {MAX_SPEED_X} begrenzt",
+        state is not None and abs(state["vx"] - MAX_SPEED_X) < 1e-6,
+        f"bekommen: {state}",
+    )
+
+    # Keine weiteren Befehle -> der Watchdog muss von selbst anhalten.
+    await asyncio.sleep(COMMAND_TIMEOUT_S * 3)
+    await ws.send(json.dumps({"type": "ping"}))
+    state = await next_of(ws, "state")
+    check(
+        "Watchdog hält ohne Befehle an",
+        state is not None and state["vx"] == 0.0 and state["omega"] == 0.0,
+        f"bekommen: {state}",
+    )
+
+    # Sicherheitshalber explizit stoppen, falls oben etwas schiefging.
+    await ws.send(json.dumps({"type": "stop"}))
+
+
+async def test_websocket(ws_url: str, allow_motion: bool) -> None:
     print("\nWebSocket")
     async with websockets.connect(ws_url) as ws:
         await ws.send(json.dumps({"type": "ping"}))
         check("ping -> pong", await next_of(ws, "pong") is not None)
 
-        # Überhöhter Fahrbefehl muss auf das Tempolimit gekappt werden.
-        await ws.send(json.dumps({"type": "drive", "vx": 99.0, "vy": 0.0, "omega": 0.0}))
+        # Welcher Antrieb läuft dort drüben? Entscheidet, ob wir fahren dürfen.
         state = await next_of(ws, "state")
-        check(
-            f"vx=99.0 wird auf {MAX_SPEED_X} begrenzt",
-            state is not None and abs(state["vx"] - MAX_SPEED_X) < 1e-6,
-            f"bekommen: {state}",
-        )
+        driver = state.get("driver") if state else None
+        check("Server meldet seinen Antrieb", driver is not None, f"bekommen: {state}")
 
-        # Keine weiteren Befehle -> der Watchdog muss von selbst anhalten.
-        await asyncio.sleep(COMMAND_TIMEOUT_S * 3)
-        await ws.send(json.dumps({"type": "ping"}))
-        state = await next_of(ws, "state")
-        check(
-            "Watchdog hält ohne Befehle an",
-            state is not None and state["vx"] == 0.0 and state["omega"] == 0.0,
-            f"bekommen: {state}",
-        )
+        if driver == "mock" or allow_motion:
+            await _test_motion(ws, driver)
+        else:
+            print(f"  [übersprungen] Fahrtests -- echter Antrieb '{driver}' erkannt")
+            print("                 Der Roboter würde sich bewegen.")
+            print("                 Räder aufbocken, dann: --allow-motion")
 
         # ESP-Daten müssen unverändert an alle Clients zurückkommen.
         await ws.send(json.dumps({"type": "vitals", "bpm": 72, "motion": True}))
@@ -110,13 +135,13 @@ async def test_websocket(ws_url: str) -> None:
         check("Unbekannter Typ liefert Fehlermeldung", err is not None)
 
 
-async def main_async(host: str, port: int) -> int:
+async def main_async(host: str, port: int, allow_motion: bool) -> int:
     base = f"http://{host}:{port}"
     print(f"Teste {base}")
 
     test_http(base)
     try:
-        await test_websocket(f"ws://{host}:{port}/ws")
+        await test_websocket(f"ws://{host}:{port}/ws", allow_motion)
     except (OSError, asyncio.TimeoutError) as exc:
         check("WebSocket-Verbindung", False, f"{exc} -- läuft der Server?")
 
@@ -128,8 +153,13 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--host", default="localhost")
     p.add_argument("--port", type=int, default=8000)
+    p.add_argument(
+        "--allow-motion",
+        action="store_true",
+        help="Fahrtests auch mit echter Hardware. NUR mit aufgebockten Rädern!",
+    )
     args = p.parse_args()
-    return asyncio.run(main_async(args.host, args.port))
+    return asyncio.run(main_async(args.host, args.port, args.allow_motion))
 
 
 if __name__ == "__main__":

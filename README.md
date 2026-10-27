@@ -23,37 +23,46 @@ ausliefern.
 
 Details: [`docs/architektur.md`](docs/architektur.md)
 
-## Schnellstart (ohne Roboter, zum Entwickeln)
+## Schnellstart
 
-Du brauchst keinen Roboter, um an der App zu arbeiten. Der Mock-Treiber
-simuliert die Hardware und gibt alle Fahrbefehle auf der Konsole aus.
+Ein Befehl, überall — auf dem Laptop wie auf dem Roboter:
+
+```bash
+python main.py
+```
+
+Das Skript richtet beim ersten Mal alles selbst ein (virtuelle Umgebung,
+Abhängigkeiten), erkennt dann, ob echte Hardware angeschlossen ist, startet
+den Server und öffnet die Web-App im Browser.
+
+- **Auf dem Laptop** findet es keine Hardware und schaltet automatisch in die
+  Simulation. Fahrbefehle landen nur auf der Konsole — du kannst also die
+  komplette App entwickeln, ohne den Roboter zu belegen.
+- **Auf dem Raspberry Pi** erkennt es Treiber und serielle Schnittstelle und
+  fährt mit echter Hardware hoch. Die App ist dann im WLAN erreichbar unter
+  `http://<IP-des-Pi>:8000` (IP: `hostname -I`).
+
+Optionen:
+
+| Option          | Wirkung                                        |
+|-----------------|------------------------------------------------|
+| `--mock`        | Simulation erzwingen, auch auf dem Roboter     |
+| `--real`        | Hardware erzwingen, Abbruch wenn sie fehlt     |
+| `--port 8001`   | anderer Port                                   |
+| `--no-browser`  | Browser nicht öffnen (z.B. über SSH)           |
+| `--setup-only`  | nur einrichten, nicht starten                  |
+| `--debug`       | ausführliche Logausgabe                        |
+
+### Ohne Automatik
+
+Wenn du den Server direkt starten willst:
 
 ```bash
 cd robot
-python -m venv .venv
-
-# Windows:
-.venv\Scripts\activate
-# Linux / Raspberry Pi:
-source .venv/bin/activate
-
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -e .
 python -m rosmaster_assist.main --mock
 ```
-
-Danach im Browser öffnen: <http://localhost:8000>
-
-## Start auf dem Roboter
-
-```bash
-cd robot
-source .venv/bin/activate
-pip install -e .
-python -m rosmaster_assist.main          # ohne --mock = echte Hardware
-```
-
-Die App ist dann aus dem WLAN erreichbar unter `http://<IP-des-Pi>:8000`.
-Die IP findest du mit `hostname -I`.
 
 ## Funktioniert alles noch?
 
@@ -66,6 +75,28 @@ python scripts/smoke_test.py          # --port 8099 falls nötig
 
 Prüft HTTP, WebSocket, Tempobegrenzung und Watchdog von außen — also genau
 den Weg, den die App auch nimmt. Nach Änderungen am Server kurz laufen lassen.
+
+### Auf dem Roboter
+
+```bash
+ssh pi@<IP-des-Pi>
+cd ~/SPE-ROSMASTER-X3 && git pull
+
+# Terminal 1 — Server mit echter Hardware
+cd robot && source .venv/bin/activate
+python -m rosmaster_assist.main
+
+# Terminal 2 — Test
+cd ~/SPE-ROSMASTER-X3
+robot/.venv/bin/python scripts/smoke_test.py
+```
+
+Die Fahrtests werden dabei **übersprungen**: das Skript erkennt am gemeldeten
+Antrieb, dass echte Hardware dranhängt, und bewegt den Roboter nicht von
+selbst. Wer sie trotzdem braucht, **bockt die Räder auf** und hängt
+`--allow-motion` an.
+
+Vom Laptop aus geht es auch: `--host <IP-des-Pi>`.
 
 ## Was ist installiert?
 
