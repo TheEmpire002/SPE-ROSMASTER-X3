@@ -46,6 +46,14 @@ class DriveBase(ABC):
     def beep(self, ms: int = 100) -> None:
         """Signalton. Optional -- Standard ist: passiert nichts."""
 
+    def ueberwachen(self) -> None:
+        """Verbindung prüfen und nach einem Abriss neu aufbauen.
+
+        Wird regelmäßig aus einem Hintergrund-Thread aufgerufen und darf
+        dabei kurz blockieren. Ob die Verbindung steht, meldet danach
+        ``connected``. Standard: nichts zu tun.
+        """
+
     def read_motion(self) -> tuple[float, float, float] | None:
         """Tatsächlich gefahrene Geschwindigkeit (vx, vy, omega), falls messbar.
 

@@ -22,6 +22,28 @@ SERIAL_PORT: str | None = None
 # Programm zu beenden (siehe docs/hardware.md).
 TELEMETRY_ENABLED = True
 
+# --- Wiederverbinden nach USB-Aussetzern ------------------------------------
+
+# Bricht die 5-V-Versorgung am USB-Hub kurz ein (schwacher Akku, Motoren und
+# Kamera ziehen gleichzeitig an), melden sich Board, Lidar und Kamera ab und
+# kurz darauf unter neuen Nummern wieder an. Der Server bemerkt das und
+# verbindet neu -- der Roboter steht so lange.
+
+# Wie oft nachgesehen wird, ob die Verbindung zum Board noch steht.
+RECONNECT_CHECK_S = 1.0
+
+# Abstand der Neuversuche: beginnt kurz und verdoppelt sich bis zum
+# Höchstwert, solange das Gerät nicht wieder auftaucht.
+RECONNECT_MIN_S = 1.0
+RECONNECT_MAX_S = 30.0
+
+# Kommt so lange kein neues Kamerabild, wird die Kamera neu geöffnet.
+# Die Wartezeit dazwischen wächst bei jedem Fehlschlag: ist das Anlaufen der
+# Kamera selbst der Auslöser des Spannungseinbruchs, würde ein schnelles
+# Wiederholen den ganzen Hub im Takt neu starten.
+CAMERA_REOPEN_S = 5.0
+CAMERA_REOPEN_MAX_S = 120.0
+
 # --- Fahren ------------------------------------------------------------------
 
 # Obergrenzen. Der Watchdog begrenzt jeden eingehenden Befehl darauf, egal was

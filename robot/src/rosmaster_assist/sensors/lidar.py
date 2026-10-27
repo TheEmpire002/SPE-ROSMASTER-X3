@@ -89,8 +89,13 @@ class LidarBase(ABC):
     def close(self) -> None:
         if not self._opened:
             return
-        self._close()
-        self._opened = False
+        try:
+            self._close()
+        finally:
+            # Auch wenn das Schließen scheitert (Gerät schon weg): sonst
+            # hielte open() den Lidar für offen und täte beim Neuversuch
+            # nichts.
+            self._opened = False
 
     @abstractmethod
     def _open(self) -> None: ...
@@ -288,6 +293,7 @@ class LidarService:
         self._stop = threading.Event()
         self._runden = 0
         self._letzter_fehler: str | None = None
+        self._neuverbindungen = 0
 
     @property
     def label(self) -> str:
@@ -314,6 +320,7 @@ class LidarService:
             "punkte_letzte_runde": len(scan) if scan else 0,
             "letzte_runde_vor_s": round(time.monotonic() - scan.zeit, 1) if scan else None,
             "letzter_fehler": fehler,
+            "neu_verbunden": self._neuverbindungen,
         }
 
     def start(self) -> None:
@@ -352,8 +359,41 @@ class LidarService:
                 fehler += 1
                 with self._lock:
                     self._letzter_fehler = f"{type(exc).__name__}: {exc}"
-                if fehler <= 3 or fehler % 100 == 0:
+                if fehler <= 3:
                     log.exception("Lidar liefert nichts (%d. Versuch)", fehler)
                 # Kurz warten, sonst dreht die Schleife bei dauerhaftem
                 # Fehler mit voller Last.
                 self._stop.wait(0.5)
+                # Weiter am selben Gerät zu lesen ist danach zwecklos: der
+                # Datenstrom des Treibers ist nach der ersten Ausnahme
+                # erschöpft, und nach einem USB-Aussetzer gibt es das
+                # geöffnete Gerät gar nicht mehr.
+                if fehler >= 3:
+                    self._neu_oeffnen()
+                    fehler = 0
+
+    def _neu_oeffnen(self) -> None:
+        """Schließen und erneut öffnen, bis es klappt oder beendet wird."""
+        log.warning("Lidar antwortet nicht mehr -- öffne ihn neu")
+        try:
+            self._lidar.close()
+        except Exception:
+            log.debug("Lidar schließen misslungen", exc_info=True)
+
+        wartezeit = config.RECONNECT_MIN_S
+        while not self._stop.wait(wartezeit):
+            try:
+                self._lidar.open()
+            except Exception as exc:
+                with self._lock:
+                    self._letzter_fehler = f"Neu öffnen: {type(exc).__name__}: {exc}"
+                log.warning(
+                    "Lidar noch nicht erreichbar (%s) -- nächster Versuch in %.0f s",
+                    exc,
+                    min(wartezeit * 2, config.RECONNECT_MAX_S),
+                )
+                wartezeit = min(wartezeit * 2, config.RECONNECT_MAX_S)
+                continue
+            self._neuverbindungen += 1
+            log.warning("Lidar wieder verbunden")
+            return

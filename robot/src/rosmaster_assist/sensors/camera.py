@@ -72,8 +72,13 @@ class CameraBase(ABC):
     def close(self) -> None:
         if not self._opened:
             return
-        self._close()
-        self._opened = False
+        try:
+            self._close()
+        finally:
+            # Auch wenn das Schließen scheitert (Gerät schon weg): sonst
+            # hielte open() die Kamera für offen und täte beim Neuversuch
+            # nichts.
+            self._opened = False
 
     @abstractmethod
     def _open(self) -> None: ...
@@ -478,6 +483,7 @@ class CameraService:
         self._bilder = 0
         self._letztes_bild = 0.0
         self._letzter_fehler: str | None = None
+        self._neu_geoeffnet = 0
 
     def status(self) -> dict:
         """Kurzbericht, warum ein Bild kommt oder eben nicht."""
@@ -499,6 +505,7 @@ class CameraService:
             "bildgroesse_bytes": len(frame[0]) if frame else None,
             "format": frame[1] if frame else None,
             "letzter_fehler": fehler,
+            "neu_geoeffnet": self._neu_geoeffnet,
         }
 
     @property
@@ -533,11 +540,28 @@ class CameraService:
         with self._lock:
             return self._latest
 
+    def _neu_oeffnen(self) -> None:
+        log.warning("Kamera liefert nichts mehr -- öffne sie neu")
+        try:
+            self._camera.close()
+        except Exception:
+            log.debug("Kamera schließen misslungen", exc_info=True)
+        try:
+            self._camera.open()
+        except Exception as exc:
+            with self._lock:
+                self._letzter_fehler = f"Neu öffnen: {type(exc).__name__}: {exc}"
+            log.warning("Kamera lässt sich noch nicht wieder öffnen -- %s", exc)
+            return
+        self._neu_geoeffnet += 1
+        log.warning("Kamera wieder geöffnet")
+
     def _loop(self) -> None:
         interval = 1.0 / max(1, config.CAMERA_FPS)
         fehler = 0
         letzte_aenderung = time.monotonic()
         eingefroren_gemeldet = False
+        reopen_wartezeit = config.CAMERA_REOPEN_S
 
         while not self._stop.is_set():
             begin = time.monotonic()
@@ -562,6 +586,7 @@ class CameraService:
                     fehler = 0
                     if neu:
                         letzte_aenderung = begin
+                        reopen_wartezeit = config.CAMERA_REOPEN_S
                         if eingefroren_gemeldet:
                             log.info("Kamera liefert wieder Bilder")
                             eingefroren_gemeldet = False
@@ -582,6 +607,14 @@ class CameraService:
                     begin - letzte_aenderung,
                 )
                 eingefroren_gemeldet = True
+
+            # Steht der Strom länger, ist das Gerät meist weg -- etwa nach
+            # einem Aussetzer am USB-Hub. Dann hilft nur neu öffnen; am
+            # alten Gerät zu lesen liefert nie wieder etwas.
+            if begin - letzte_aenderung > reopen_wartezeit:
+                self._neu_oeffnen()
+                letzte_aenderung = time.monotonic()
+                reopen_wartezeit = min(reopen_wartezeit * 2, config.CAMERA_REOPEN_MAX_S)
 
             rest = interval - (time.monotonic() - begin)
             if rest > 0:

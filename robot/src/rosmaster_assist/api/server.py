@@ -124,6 +124,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         )
         odo_task = asyncio.create_task(_odometry_loop(watchdog, odometry))
         match_task = asyncio.create_task(_match_loop(localizer))
+        hw_task = asyncio.create_task(_hardware_loop(hub, watchdog, driver, homing))
         try:
             yield
         finally:
@@ -132,6 +133,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             status_task.cancel()
             odo_task.cancel()
             match_task.cancel()
+            hw_task.cancel()
             homing.abbrechen("Server wird beendet")
             await watchdog.shutdown()
             if camera is not None:
@@ -410,6 +412,47 @@ async def _match_loop(localizer: Localizer) -> None:
         raise
     except Exception:
         log.exception("Lidar-Abgleich abgestürzt -- Ortung nur noch per Odometrie")
+
+
+async def _hardware_loop(
+    hub: ConnectionHub,
+    watchdog: SafetyWatchdog,
+    driver: DriveBase,
+    homing: Homing,
+) -> None:
+    """Hält die Verbindung zum Antrieb am Leben.
+
+    Nach einem USB-Aussetzer baut der Treiber sie selbst neu auf; hier wird
+    dafür gesorgt, dass bis dahin nichts weiterfährt und die App es erfährt.
+    """
+    verbunden = driver.connected
+    try:
+        while True:
+            await asyncio.sleep(config.RECONNECT_CHECK_S)
+            # Neu verbinden kann eine Weile dauern -- nicht in der
+            # Ereignisschleife, sonst stockt die Steuerung.
+            await asyncio.to_thread(driver.ueberwachen)
+
+            jetzt = driver.connected
+            if jetzt == verbunden:
+                continue
+            verbunden = jetzt
+            if not jetzt:
+                homing.abbrechen("Verbindung zum Antrieb verloren")
+                watchdog.stop()
+                await hub.broadcast(
+                    alert_message(
+                        "warning",
+                        "Verbindung zum Antrieb verloren -- verbinde neu. "
+                        "Häufigste Ursache: Akku schwach.",
+                    )
+                )
+            else:
+                await hub.broadcast(alert_message("info", "Antrieb wieder verbunden"))
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        log.exception("Verbindungsüberwachung abgestürzt -- kein Neuverbinden mehr")
 
 
 async def _odometry_loop(watchdog: SafetyWatchdog, odometry: Odometry) -> None:
