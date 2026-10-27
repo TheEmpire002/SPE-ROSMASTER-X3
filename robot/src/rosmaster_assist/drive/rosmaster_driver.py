@@ -23,7 +23,33 @@ class RosmasterDriver(DriveBase):
         self._bot = None
         self._last: DriveCommand | None = None
 
+    def _warnen_bei_mehreren_ports(self) -> None:
+        """Meldet, wenn mehr als ein USB-Seriell-Gerät angeschlossen ist.
+
+        Am ROSMASTER hängen typischerweise zwei: das Expansion Board (CH340)
+        und der RPLIDAR (CP210x). Sucht sich Rosmaster_Lib die Schnittstelle
+        selbst, kann es den Lidar erwischen -- und dann bewegt sich nichts,
+        ohne dass irgendwo ein Fehler erscheint.
+        """
+        import glob
+
+        geraete = sorted(glob.glob("/dev/serial/by-id/*"))
+        if len(geraete) <= 1:
+            return
+
+        log.warning(
+            "%d serielle Geräte gefunden, SERIAL_PORT ist nicht gesetzt -- "
+            "Rosmaster_Lib sucht sich eines aus:",
+            len(geraete),
+        )
+        for g in geraete:
+            log.warning("    %s", g)
+        log.warning("Bei Problemen das richtige in config.py bei SERIAL_PORT eintragen.")
+
     def connect(self) -> None:
+        if self._port is None:
+            self._warnen_bei_mehreren_ports()
+
         try:
             from Rosmaster_Lib import Rosmaster
         except ImportError as exc:

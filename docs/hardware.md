@@ -16,6 +16,36 @@
 > Bitte beim Einbauen die Modellbezeichnungen hier eintragen — ohne die lässt
 > sich später nicht nachvollziehen, welcher Treiber gebraucht wird.
 
+## Was am USB hängt
+
+Ausgabe von `lsusb` auf diesem Roboter, übersetzt:
+
+| USB-ID | Gerät | Wofür |
+|---|---|---|
+| `1a86:7523` | QinHeng CH340 | **Expansion Board** — Antrieb |
+| `10c4:ea60` | Silicon Labs CP210x | **RPLIDAR A1** |
+| `2bc5:050f` | Orbbec „USB 2.0 Camera" | RGB-Bild → `/dev/video0` |
+| `2bc5:060f` | Orbbec Depth Sensor | Tiefenkanal derselben Kamera |
+
+**Daraus folgt das Wichtigste:** Es gibt **zwei** USB-Seriell-Adapter. Board
+und Lidar erscheinen beide als `/dev/ttyUSB*`, und welcher welche Nummer
+bekommt, hängt von der Einschaltreihenfolge ab. Überlässt man
+`Rosmaster_Lib` die Suche, kann sie den Lidar erwischen — dann bewegt sich
+nichts, ohne dass eine Fehlermeldung erscheint.
+
+Deshalb den Port fest eintragen:
+
+```bash
+ls -l /dev/serial/by-id/
+```
+
+Den Eintrag mit `1a86` bzw. `CH340` in `config.py` bei `SERIAL_PORT`
+hinterlegen. Der Lidar hat mit `/dev/rplidar` bereits einen festen Namen.
+
+Die Kamera ist eine **Orbbec-Tiefenkamera**. Genutzt wird aktuell nur ihr
+RGB-Kanal als gewöhnliche USB-Kamera. Der Tiefenkanal wäre für die
+Hinderniserkennung interessant, braucht aber das Orbbec-SDK.
+
 ## Antrieb
 
 Der X3 hat **Mecanum-Räder**. Er kann dadurch seitwärts fahren, ohne sich zu

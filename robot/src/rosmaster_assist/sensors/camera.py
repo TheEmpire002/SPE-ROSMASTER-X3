@@ -236,6 +236,11 @@ class OpenCVCamera(CameraBase):
                 versucht.append(f"video{idx}{f' ({name})' if name else ''}: öffnet nicht")
                 continue
 
+            # MJPG vor der Auflösung setzen. Viele UVC-Kameras -- darunter
+            # der RGB-Kanal der Orbbec -- liefern im Standardformat (YUYV)
+            # bei 640x480 nichts oder nur wenige Bilder pro Sekunde, weil
+            # die USB-Bandbreite nicht reicht.
+            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
             cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAMERA_WIDTH)
             cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAMERA_HEIGHT)
 
