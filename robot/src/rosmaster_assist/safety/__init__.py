@@ -1,5 +1,7 @@
-"""Sicherheitsschicht: begrenzt Fahrbefehle und stoppt bei Funkabriss."""
+"""Sicherheitsschicht: begrenzt Fahrbefehle, stoppt bei Funkabriss,
+hält auf Wunsch vor Hindernissen an."""
 
+from .collision import CollisionGuard
 from .watchdog import SafetyWatchdog
 
-__all__ = ["SafetyWatchdog"]
+__all__ = ["CollisionGuard", "SafetyWatchdog"]

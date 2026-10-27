@@ -172,7 +172,9 @@ class Localizer:
 
     # --- Hindernisse ---------------------------------------------------------------
 
-    def hindernis_voraus(self, richtung_grad: float) -> float | None:
+    def hindernis_voraus(
+        self, richtung_grad: float, oeffnung_grad: float | None = None
+    ) -> float | None:
         """Abstand zum nächsten Hindernis in einer Richtung, falls messbar.
 
         ``richtung_grad`` im Roboterkoordinatensystem: 0 ist vorn. Für die
@@ -185,7 +187,9 @@ class Localizer:
         if scan is None or time.monotonic() - scan.zeit > 2.0:
             return None
 
-        abstand = scan.min_abstand(richtung_grad, config.HOME_CONE_DEG)
+        if oeffnung_grad is None:
+            oeffnung_grad = config.HOME_CONE_DEG
+        abstand = scan.min_abstand(richtung_grad, oeffnung_grad)
         return None if abstand == float("inf") else abstand
 
 

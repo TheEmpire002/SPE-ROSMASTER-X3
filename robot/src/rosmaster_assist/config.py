@@ -87,6 +87,25 @@ MATCH_TRUST = 0.55
 # rund fünfmal pro Sekunde.
 MATCH_HZ = 4.0
 
+# --- Kollisionsvermeidung bei manueller Steuerung -------------------------------
+
+# Standardmäßig aus: wer von Hand steuert, sieht den Roboter meistens und
+# will nicht bevormundet werden. In der App zuschaltbar.
+COLLISION_ENABLED = False
+
+# Mindestabstand in Fahrtrichtung. In der App per Regler verstellbar.
+COLLISION_DISTANCE_M = 0.35
+
+# Grenzen des Reglers. Unter 15 cm sieht der Lidar nichts Verlässliches
+# mehr, über 1,5 m wäre in einem Zimmer fast immer etwas im Weg.
+COLLISION_MIN_M = 0.15
+COLLISION_MAX_M = 1.5
+
+# Halber Öffnungswinkel des überwachten Bereichs in Grad. Siehe
+# HOME_CONE_DEG -- dieselbe Abwägung zwischen "übersieht Tischbeine" und
+# "hält vor jeder Wand an, an der man vorbeifahren will".
+COLLISION_CONE_DEG = 35.0
+
 # --- Heimfahrt ---------------------------------------------------------------------
 
 # Takt, in dem die Position fortgeschrieben wird. Höher = genauer, aber die

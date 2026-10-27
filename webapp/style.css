@@ -141,6 +141,30 @@ main {
 kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
       padding: 1px 5px; font-size: 0.72rem; margin: 0 1px; }
 
+/* --- Schalter --- */
+
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 1rem;
+  font-size: 0.88rem;
+  cursor: pointer;
+  user-select: none;
+}
+.switch input { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
+.switch span { flex: 1; }
+
+.switch-state { font-size: 0.78rem; color: var(--muted); }
+.switch-state.an { color: var(--ok); }
+/* Greift gerade ein: das muss auffallen, sonst sucht man den Fehler
+   beim Antrieb, während in Wahrheit die Sperre hält. */
+.switch-state.blockiert { color: var(--warn); }
+
+/* Attributregel vor der display-Angabe -- sonst bliebe das Element
+   trotz hidden sichtbar (siehe .cam-error). */
+.slider[hidden] { display: none; }
+
 /* --- Lidar --- */
 
 .lidar {

@@ -60,6 +60,11 @@ const ui = {
   winkel: el("val-winkel"),
   btnHome: el("btn-home"),
   btnSetHome: el("btn-sethome"),
+  collision: el("collision"),
+  collisionRow: el("collision-row"),
+  collisionDist: el("collision-dist"),
+  collisionOut: el("collision-out"),
+  collisionState: el("collision-state"),
   log: el("log"),
   vx: el("val-vx"),
   vy: el("val-vy"),
@@ -126,6 +131,11 @@ function handleMessage(msg) {
       ui.driver.textContent = msg.driver + (msg.connected ? "" : " (getrennt)");
       zeigePose(msg.pose);
       setzeHomeKnopf(msg.homing === true);
+      zeigeKollision(msg.collision);
+      break;
+
+    case "collision":
+      zeigeKollision(msg);
       break;
 
     case "vitals":
@@ -305,6 +315,54 @@ function applyLimits() {
   userMax = Math.min(wunsch, limits.vx);
   ui.maxSpeed.value = String(userMax);
   updateLabels();
+}
+
+// --- Kollisionsvermeidung ----------------------------------------------------------
+
+/*
+ * Die Einstellung gehört dem Server, nicht dem Browser: sie greift in die
+ * Sicherheit ein, und bei mehreren offenen Tabs muss klar sein, was gilt.
+ * Die Bedienelemente schicken also nur Wünsche und zeigen danach an, was
+ * der Server zurückmeldet.
+ */
+function sendeKollision() {
+  send({
+    type: "collision",
+    enabled: ui.collision.checked,
+    distance: Number(ui.collisionDist.value),
+  });
+}
+
+ui.collision.addEventListener("change", sendeKollision);
+ui.collisionDist.addEventListener("change", sendeKollision);
+ui.collisionDist.addEventListener("input", () => {
+  ui.collisionOut.textContent = `${Number(ui.collisionDist.value).toFixed(2)} m`;
+});
+
+function zeigeKollision(z) {
+  if (!z) return;
+  ui.collision.checked = z.enabled === true;
+  ui.collisionRow.hidden = !z.enabled;
+  if (typeof z.distance === "number") {
+    ui.collisionDist.value = String(z.distance);
+    ui.collisionOut.textContent = `${z.distance.toFixed(2)} m`;
+  }
+
+  let text = "aus";
+  let klasse = "switch-state";
+  if (z.enabled && z.verfuegbar === false) {
+    // Eingeschaltet ohne Sensor wäre trügerisch -- das muss man sehen.
+    text = "kein Lidar!";
+    klasse += " blockiert";
+  } else if (z.blockiert) {
+    text = "hält";
+    klasse += " blockiert";
+  } else if (z.enabled) {
+    text = "an";
+    klasse += " an";
+  }
+  ui.collisionState.textContent = text;
+  ui.collisionState.className = klasse;
 }
 
 // --- Lidar-Anzeige ---------------------------------------------------------------

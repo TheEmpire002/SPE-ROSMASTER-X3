@@ -24,13 +24,14 @@ from ..protocol import (
     DriveCommand,
     ProtocolError,
     alert_message,
+    collision_message,
     error_message,
     limits_message,
     state_message,
     vitals_message,
 )
 from ..navigation import Homing, Localizer, Odometry
-from ..safety import SafetyWatchdog
+from ..safety import CollisionGuard, SafetyWatchdog
 from ..sensors.camera import CameraService, create_camera
 from ..sensors.lidar import LidarService, create_lidar
 
@@ -98,6 +99,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     )
     localizer = Localizer(odometry, lidar)
     homing = Homing(watchdog, odometry, localizer)
+    guard = CollisionGuard(localizer)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -118,7 +120,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             asyncio.create_task(_referenz_nachholen(localizer))
 
         status_task = asyncio.create_task(
-            _status_loop(hub, watchdog, driver, odometry, homing, localizer)
+            _status_loop(hub, watchdog, driver, odometry, homing, localizer, guard)
         )
         odo_task = asyncio.create_task(_odometry_loop(watchdog, odometry))
         match_task = asyncio.create_task(_match_loop(localizer))
@@ -149,11 +151,14 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         await ws.send_json(
             limits_message(config.MAX_SPEED_X, config.MAX_SPEED_Y, config.MAX_SPEED_OMEGA)
         )
+        # Der Server hält die Einstellung, nicht der Browser: sonst hätte
+        # jeder Tab seine eigene Vorstellung davon, was gerade gilt.
+        await ws.send_json(collision_message(guard.zustand()))
         try:
             while True:
                 msg = await ws.receive_json()
                 reply = await _handle(
-                    msg, watchdog, driver, hub, odometry, homing, localizer
+                    msg, watchdog, driver, hub, odometry, homing, localizer, guard
                 )
                 if reply is not None:
                     await ws.send_json(reply)
@@ -278,6 +283,7 @@ async def _handle(
     odometry: Odometry,
     homing: Homing,
     localizer: Localizer,
+    guard: CollisionGuard,
 ) -> dict[str, Any] | None:
     """Eine eingehende Nachricht verarbeiten.
 
@@ -300,8 +306,20 @@ async def _handle(
         elif homing.aktiv:
             return None  # Leerlauf-Nachrichten ignorieren, Heimfahrt steuert
 
-        watchdog.submit(cmd)
+        erlaubt, hindernis = guard.pruefen(cmd)
+        if hindernis is not None and guard.melden():
+            await hub.broadcast(
+                alert_message(
+                    "warning", f"Hindernis in {hindernis:.2f} m -- Fahrt gesperrt"
+                )
+            )
+        watchdog.submit(erlaubt)
         return None  # Status geht ohnehin im Takt raus
+
+    if kind == "collision":
+        guard.einstellen(msg.get("enabled"), msg.get("distance"))
+        await hub.broadcast(collision_message(guard.zustand()))
+        return None
 
     if kind == "stop":
         homing.abbrechen("Not-Stopp")
@@ -418,6 +436,7 @@ async def _status_loop(
     odometry: Odometry,
     homing: Homing,
     localizer: Localizer,
+    guard: CollisionGuard,
 ) -> None:
     """Schickt regelmäßig den Zustand an alle Clients."""
     zuletzt_aktiv = False
@@ -442,6 +461,7 @@ async def _status_loop(
                         pose=odometry.pose(),
                         homing=homing.aktiv,
                         pose_gemessen=odometry.misst_tatsaechlich,
+                        collision=guard.zustand(),
                     )
                 )
     except asyncio.CancelledError:

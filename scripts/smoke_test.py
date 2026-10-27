@@ -183,7 +183,68 @@ async def _test_motion(ws, driver: str | None, max_vx: float) -> None:
     # Sicherheitshalber explizit stoppen, falls oben etwas schiefging.
     await ws.send(json.dumps({"type": "stop"}))
 
+    await _test_collision(ws)
     await _test_homing(ws)
+
+
+async def _test_collision(ws) -> None:
+    """Kollisionsvermeidung: sperrt zum Hindernis, lässt den Rest zu.
+
+    Beginnt mit ``set_home``: Der Tempolimit-Test davor fährt mehrere Meter
+    weit, und in der Simulation stünde der Roboter danach außerhalb des
+    gedachten Raums -- dort sieht der Lidar nichts, was er sperren könnte.
+    """
+    await ws.send(json.dumps({"type": "set_home"}))
+    await asyncio.sleep(1.0)
+
+    async def fahren(vx, vy, omega, sek=1.2):
+        loop = asyncio.get_running_loop()
+        ende = loop.time() + sek
+        letzter = None
+        while loop.time() < ende:
+            await ws.send(json.dumps({"type": "drive", "vx": vx, "vy": vy, "omega": omega}))
+            try:
+                msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=0.15))
+                if msg.get("type") == "state":
+                    letzter = msg
+            except asyncio.TimeoutError:
+                pass
+        await ws.send(json.dumps({"type": "stop"}))
+        return letzter or {}
+
+    await ws.send(json.dumps({"type": "collision", "enabled": True, "distance": 1.5}))
+    await next_of(ws, "collision")
+
+    # Auf ein Hindernis zufahren, bis gesperrt wird. Nicht einfach einmal
+    # Gas geben und messen: am Startpunkt kann die freie Strecke größer
+    # sein als der eingestellte Mindestabstand -- dann wäre "fährt" das
+    # richtige Verhalten und der Test prüfte nichts.
+    gesperrt = False
+    for _ in range(6):
+        zustand = await fahren(0.4, 0.25, 0.0, 0.8)
+        if abs(zustand.get("vx", 1.0)) < 1e-6 and abs(zustand.get("vy", 1.0)) < 1e-6:
+            gesperrt = True
+            break
+    check("hält vor einem Hindernis an", gesperrt, "fuhr ungebremst weiter")
+
+    # Drehen darf nie gesperrt werden -- sonst kommt man nicht mehr frei.
+    gedreht = await fahren(0.0, 0.0, 0.5, 1.0)
+    check(
+        "Drehen bleibt trotzdem erlaubt",
+        abs(gedreht.get("omega", 0.0)) > 0.1,
+        f"omega={gedreht.get('omega')}",
+    )
+
+    await ws.send(json.dumps({"type": "collision", "enabled": False}))
+    z = await next_of(ws, "collision")
+    check("Abschalten wird übernommen", bool(z) and z.get("enabled") is False)
+
+    frei = await fahren(0.5, 0.0, 0.0)
+    check(
+        "ausgeschaltet fährt er wieder",
+        abs(frei.get("vx", 0.0)) > 0.1,
+        f"vx={frei.get('vx')}",
+    )
 
 
 async def _test_homing(ws) -> None:

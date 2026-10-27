@@ -16,6 +16,7 @@ Von der App / vom ESP an den Roboter
 {"type": "home"}                                          zum Startpunkt zurückfahren
 {"type": "home_cancel"}                                   Heimfahrt abbrechen
 {"type": "set_home"}                                      hier ist der neue Startpunkt
+{"type": "collision", "enabled": true, "distance": 0.35}  Kollisionsvermeidung
 {"type": "ping"}                                          Verbindung am Leben halten
 
 Vom Roboter an die App
@@ -25,6 +26,7 @@ Vom Roboter an die App
 {"type": "vitals", "bpm":…, "motion":…}                   weitergereichte ESP-Daten
 {"type": "alert",  "level": "info"|"warning"|"emergency", "text": "…"}
 {"type": "error",  "text": "…"}                           ungültige Nachricht o.Ä.
+{"type": "collision", "enabled":…, "distance":…, "verfuegbar":…, "blockiert":…}
 {"type": "pong"}
 """
 
@@ -94,6 +96,7 @@ def state_message(
     pose: tuple[float, float, float] | None = None,
     homing: bool = False,
     pose_gemessen: bool = False,
+    collision: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     msg: dict[str, Any] = {
         "type": "state",
@@ -102,6 +105,8 @@ def state_message(
         "homing": homing,
         **asdict(cmd),
     }
+    if collision is not None:
+        msg["collision"] = collision
     if pose is not None:
         x, y, winkel = pose
         msg["pose"] = {
@@ -113,6 +118,11 @@ def state_message(
             "gemessen": pose_gemessen,
         }
     return msg
+
+
+def collision_message(zustand: dict[str, Any]) -> dict[str, Any]:
+    """Aktuelle Einstellung der Kollisionsvermeidung."""
+    return {"type": "collision", **zustand}
 
 
 def vitals_message(bpm: float | None, motion: bool | None) -> dict[str, Any]:
