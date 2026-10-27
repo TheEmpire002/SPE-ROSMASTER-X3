@@ -41,9 +41,19 @@
     </div>
 
     <label class="slider">
-      Tempo <output id="speed-out">40&nbsp;%</output>
+      Max-Tempo <output id="maxspeed-out">—</output>
+      <input type="range" id="maxspeed" min="0.1" max="1" step="0.05" value="1">
+    </label>
+
+    <label class="slider">
+      Tempo <output id="speed-out">—</output>
       <input type="range" id="speed" min="10" max="100" step="5" value="40">
     </label>
+
+    <p class="hint">
+      Max-Tempo begrenzt, was der Regler darunter ausreizen kann.
+      Die Obergrenze gibt der Roboter vor.
+    </p>
 
     <p class="hint">
       Tastatur: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> fahren ·

@@ -64,6 +64,22 @@ pip install -e .
 python -m rosmaster_assist.main --mock
 ```
 
+## Tempo einstellen
+
+In der Web-App gibt es zwei Regler:
+
+- **Max-Tempo** — das Maximum in m/s, das du dir gibst. Drinnen zum Üben
+  z.B. 0.3, draußen Vollgas. Die Einstellung bleibt im Browser gespeichert.
+- **Tempo** — wie viel Prozent davon die Tasten ausreizen.
+
+Seitwärtsfahrt und Drehen werden im selben Verhältnis gedrosselt, damit der
+Roboter bei zahmem Max-Tempo nicht trotzdem hektisch rotiert.
+
+Die **harte Obergrenze** steht auf dem Roboter in
+`robot/src/rosmaster_assist/config.py` (`MAX_SPEED_X` und Co.) und lässt sich
+aus der App nicht überschreiten. Der Server schickt sie beim Verbinden mit;
+der Max-Tempo-Regler geht nie darüber hinaus.
+
 ## Funktioniert alles noch?
 
 Bei laufendem Server in einem zweiten Terminal:

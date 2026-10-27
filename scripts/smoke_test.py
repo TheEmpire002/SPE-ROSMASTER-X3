@@ -74,14 +74,67 @@ def test_http(base: str) -> None:
             check(f"GET {path}", False, str(exc))
 
 
+async def drive_until(ws, cmd: dict, treffer, seconds: float = 3.0) -> dict | None:
+    """Schickt einen Fahrbefehl im Takt und wartet auf den passenden Status.
+
+    Ein einzelner Befehl reicht nicht: der Watchdog hält nach einer halben
+    Sekunde an, und Statusmeldungen kommen ebenfalls nur alle halbe Sekunde.
+    Ein Einzelbefehl kann also längst gestoppt sein, bevor der erste Status
+    ihn zeigt. Die App sendet dauerhaft -- der Test macht es genauso.
+    """
+    loop = asyncio.get_running_loop()
+    ende = loop.time() + seconds
+    letzter = None
+
+    while loop.time() < ende:
+        await ws.send(json.dumps(cmd))
+        try:
+            msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=0.1))
+        except asyncio.TimeoutError:
+            continue
+        if msg.get("type") == "state":
+            letzter = msg
+            if treffer(msg):
+                return msg
+
+    return letzter
+
+
+async def wait_for_state(ws, treffer, seconds: float = 3.0) -> dict | None:
+    """Wartet auf einen Zustand, der ``treffer`` erfüllt -- ohne zu senden.
+
+    Nötig, weil nach einer Fahrphase noch ältere Statusmeldungen im Puffer
+    liegen. Die nächstbeste zu nehmen würde den Zustand von vor ein paar
+    hundert Millisekunden prüfen.
+    """
+    loop = asyncio.get_running_loop()
+    ende = loop.time() + seconds
+    letzter = None
+
+    while loop.time() < ende:
+        try:
+            msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=0.2))
+        except asyncio.TimeoutError:
+            continue
+        if msg.get("type") == "state":
+            letzter = msg
+            if treffer(msg):
+                return msg
+
+    return letzter
+
+
 async def _test_motion(ws, driver: str | None, max_vx: float) -> None:
     """Fahrtests. Bewegt bei echtem Antrieb tatsächlich den Roboter."""
     if driver != "mock":
         print(f"  [!] Antrieb '{driver}' -- der Roboter fährt jetzt kurz an.")
 
     # Überhöhter Fahrbefehl muss auf das Tempolimit gekappt werden.
-    await ws.send(json.dumps({"type": "drive", "vx": 99.0, "vy": 0.0, "omega": 0.0}))
-    state = await next_of(ws, "state")
+    state = await drive_until(
+        ws,
+        {"type": "drive", "vx": 99.0, "vy": 0.0, "omega": 0.0},
+        lambda m: abs(m["vx"] - max_vx) < 1e-6,
+    )
     check(
         f"vx=99.0 wird auf {max_vx} begrenzt",
         state is not None and abs(state["vx"] - max_vx) < 1e-6,
@@ -89,9 +142,9 @@ async def _test_motion(ws, driver: str | None, max_vx: float) -> None:
     )
 
     # Keine weiteren Befehle -> der Watchdog muss von selbst anhalten.
-    await asyncio.sleep(COMMAND_TIMEOUT_S * 3)
-    await ws.send(json.dumps({"type": "ping"}))
-    state = await next_of(ws, "state")
+    # Dabei liegen noch Statusmeldungen aus der Fahrphase im Puffer; es wird
+    # also auf den Stillstand gewartet, statt die nächstbeste zu nehmen.
+    state = await wait_for_state(ws, lambda m: m["vx"] == 0.0 and m["omega"] == 0.0)
     check(
         "Watchdog hält ohne Befehle an",
         state is not None and state["vx"] == 0.0 and state["omega"] == 0.0,

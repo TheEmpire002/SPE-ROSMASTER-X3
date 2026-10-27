@@ -21,6 +21,17 @@ const RECONNECT_MS = 1500;
  */
 const limits = { vx: 0.4, vy: 0.4, omega: 1.5 };
 
+/*
+ * Selbst gewähltes Maximum in m/s. Immer <= limits.vx -- der Roboter kappt
+ * ohnehin auf sein eigenes Limit, aber die App soll gar nicht erst mehr
+ * anfordern, sonst stimmt die Anzeige nicht mehr mit der Fahrt überein.
+ *
+ * Wird im Browser gespeichert, damit die Einstellung einen Neuladen
+ * übersteht -- sonst steht man nach jedem Reload wieder auf Vollgas.
+ */
+const STORAGE_KEY = "rosmaster.maxSpeed";
+let userMax = 0.4;
+
 // --- Zustand -----------------------------------------------------------------
 
 /** Richtung als -1/0/1 je Achse; wird mit dem Tempo multipliziert. */
@@ -39,6 +50,8 @@ const ui = {
   statusText: el("status-text"),
   speed: el("speed"),
   speedOut: el("speed-out"),
+  maxSpeed: el("maxspeed"),
+  maxSpeedOut: el("maxspeed-out"),
   log: el("log"),
   vx: el("val-vx"),
   vy: el("val-vy"),
@@ -93,10 +106,8 @@ function handleMessage(msg) {
       limits.vx = msg.max_vx;
       limits.vy = msg.max_vy;
       limits.omega = msg.max_omega;
-      logLine(
-        `Tempolimit: ${limits.vx} m/s, Drehen ${limits.omega} rad/s`
-      );
-      updateSpeedLabel();
+      logLine(`Roboter erlaubt bis ${limits.vx} m/s`);
+      applyLimits();
       break;
 
     case "state":
@@ -137,11 +148,16 @@ function send(message) {
 // --- Fahrbefehle --------------------------------------------------------------
 
 function sendDrive() {
+  // Seitwärts und Drehen werden im gleichen Verhältnis gedrosselt wie
+  // vorwärts. Sonst würde ein zahmes Max-Tempo trotzdem zu einem
+  // Roboter führen, der sich hektisch um die eigene Achse dreht.
+  const factor = limits.vx > 0 ? userMax / limits.vx : 0;
+
   send({
     type: "drive",
-    vx: dir.x * limits.vx * speed,
-    vy: dir.y * limits.vy * speed,
-    omega: dir.rot * limits.omega * speed,
+    vx: dir.x * userMax * speed,
+    vy: dir.y * limits.vy * factor * speed,
+    omega: dir.rot * limits.omega * factor * speed,
   });
 }
 
@@ -236,17 +252,52 @@ document.addEventListener("visibilitychange", () => {
 
 ui.speed.addEventListener("input", () => {
   speed = Number(ui.speed.value) / 100;
-  updateSpeedLabel();
+  updateLabels();
 });
 
-// Prozent allein sagt wenig -- deshalb die tatsächliche Geschwindigkeit dazu.
-function updateSpeedLabel() {
+ui.maxSpeed.addEventListener("input", () => {
+  userMax = Number(ui.maxSpeed.value);
+  try {
+    localStorage.setItem(STORAGE_KEY, String(userMax));
+  } catch {
+    // Privater Modus o.Ä. -- dann gilt die Einstellung nur diese Sitzung.
+  }
+  updateLabels();
+});
+
+function updateLabels() {
+  ui.maxSpeedOut.textContent = `${userMax.toFixed(2)} m/s`;
+  // Prozent allein sagt wenig, deshalb die resultierende Geschwindigkeit dazu.
   ui.speedOut.textContent =
-    `${ui.speed.value} % · ${(limits.vx * speed).toFixed(2)} m/s`;
+    `${ui.speed.value} % · ${(userMax * speed).toFixed(2)} m/s`;
 }
 
-// --- Start --------------------------------------------------------------------------
+/**
+ * Uebernimmt die Grenzwerte des Roboters in den Max-Tempo-Regler.
+ *
+ * Laeuft erst, wenn der Server seine Limits gemeldet hat -- vorher weiss die
+ * App nicht, wie weit der Regler ueberhaupt gehen darf.
+ */
+function applyLimits() {
+  ui.maxSpeed.max = String(limits.vx);
 
-updateSpeedLabel();
+  let wunsch = limits.vx;
+  try {
+    const gespeichert = Number(localStorage.getItem(STORAGE_KEY));
+    if (gespeichert > 0) wunsch = gespeichert;
+  } catch {
+    // kein localStorage -- dann gilt das Roboterlimit
+  }
+
+  // Nie ueber das, was der Roboter erlaubt: ein gespeicherter Wert kann aus
+  // einer Konfiguration mit hoeherem Limit stammen.
+  userMax = Math.min(wunsch, limits.vx);
+  ui.maxSpeed.value = String(userMax);
+  updateLabels();
+}
+
+// --- Start ----------------------------------------------------------------
+
+applyLimits();
 sendTimer = setInterval(sendDrive, 1000 / SEND_HZ);
 connect();
