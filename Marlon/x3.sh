@@ -128,7 +128,9 @@ if ! running; then
     # Nur einhaengen, wenn es die Datei gibt - sonst legt Docker einen Ordner an
     [ -f "$HOME/ros_bashrc" ] && MOUNTS+=(-v "$HOME/ros_bashrc:/root/.bashrc")
     xhost + >/dev/null 2>&1
-    if ! $DOCKER run -d --rm --name "$NAME" \
+    # --init: "sleep infinity" als PID 1 raeumt beendete Prozesse nicht ab. Die
+    # Zombies (sllidar_node, Mcnamu_driver_X) findet pgrep sonst noch als "laufend".
+    if ! $DOCKER run -d --rm --init --name "$NAME" \
             -m 4g --memory-swap 4g \
             --net=host --ipc=host --privileged \
             --env="DISPLAY" --env="QT_X11_NO_MITSHM=1" \

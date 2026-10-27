@@ -80,7 +80,7 @@ Jeder Lauf schreibt nach `Marlon/protokoll/` (der vorige Lauf wird überschriebe
 |-------|--------|
 | `start.txt` | komplette Ausgabe von Start und Explorer |
 | `bringup.txt` | Treiber (`yahboomcar_bringup`) |
-| `treiber.txt` | einzeln neu gestarteter Treiberknoten (nur nach USB-Aussetzer beim Start) |
+| `treiber.txt` | einzeln neu gestarteter Treiberknoten (nur nach USB-Aussetzer; Meldungen des Treiber-Wächters stehen in `start.txt`) |
 | `lidar.txt` | Lidar (`sllidar_node`) |
 | `diagnose.txt` | Geräte, Prozesse, Topics bei Start und bei Fehlern |
 

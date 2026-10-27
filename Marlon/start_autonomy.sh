@@ -43,6 +43,9 @@ DIAG_LOG="$LOGDIR/diagnose.txt"
 exec > >(trap '' INT TERM HUP; exec tee "$START_LOG") 2>&1
 echo "[start] $(date '+%Y-%m-%d %H:%M:%S')  Argumente: $*"
 export PYTHONDONTWRITEBYTECODE=1       # kein root-eigenes __pycache__ im Repo
+# Treiber-Fehler sofort ins Log schreiben (sonst erst beim Beenden), damit der
+# Treiber-Waechter einen haengenden Treiberknoten bemerkt
+export PYTHONUNBUFFERED=1
 
 # ---- ROS-Umgebung -----------------------------------------------------------
 if [ -z "${ROS_DISTRO:-}" ]; then
@@ -99,7 +102,10 @@ EXPLORER=""
 LIDAR_OWN=""
 DRIVER_OWN=""
 STOPFILE="/tmp/x3_stop.$$"
-rm -f "$STOPFILE"
+# Vom Treiber-Waechter (Hintergrund-Subshell) gesetzt, wenn er den Treiberknoten
+# uebernommen hat - eine Variable kaeme in cleanup() nicht an.
+DRIVER_OWN_FILE="/tmp/x3_driver_own.$$"
+rm -f "$STOPFILE" "$DRIVER_OWN_FILE"
 
 # Momentaufnahme fuer die Fehlersuche (wird mit hochgeladen)
 diagnose() {
@@ -142,10 +148,10 @@ cleanup() {
         pkill -INT -f sllidar_node 2>/dev/null; sleep 1; pkill -KILL -f sllidar_node 2>/dev/null
     fi
     # dasselbe fuer den einzeln gestarteten Treiberknoten
-    if [ -n "$DRIVER_OWN" ]; then
+    if [ -n "$DRIVER_OWN" ] || [ -e "$DRIVER_OWN_FILE" ]; then
         pkill -INT -f Mcnamu_driver_X3 2>/dev/null; sleep 1; pkill -KILL -f Mcnamu_driver_X3 2>/dev/null
     fi
-    rm -f "$STOPFILE" "$PIDFILE"
+    rm -f "$STOPFILE" "$PIDFILE" "$DRIVER_OWN_FILE"
     echo "[start] beendet (Code $rc). Protokolle: $LOGDIR"
     fix_owner
     exit "$rc"
@@ -229,6 +235,16 @@ driver_loop() {
 if wait_topic /cmd_vel 5 && driver_running; then
     echo "[start] Treiber laeuft schon - wird benutzt"
 else
+    # Ein bringup vom abgebrochenen letzten Lauf, dessen Treiberknoten tot ist:
+    # beenden, sonst laufen base_node, ekf und joy danach doppelt.
+    old_launch=$(pgrep -f "launch $BRINGUP_LAUNCH")
+    if [ -n "$old_launch" ]; then
+        echo "[start] beende alten bringup ohne Treiber (PID $(echo $old_launch))"
+        for p in $old_launch; do pkill -INT -P "$p"; kill -INT "$p"; done 2>/dev/null
+        sleep 3
+        for p in $old_launch; do pkill -KILL -P "$p"; kill -KILL "$p"; done 2>/dev/null
+        pkill -KILL -f Mcnamu_driver_X3 2>/dev/null
+    fi
     echo "[start] starte Treiber: $LAUNCH $BRINGUP_LAUNCH  (Log: $BRINGUP_LOG)"
     $LAUNCH $BRINGUP_LAUNCH >"$BRINGUP_LOG" 2>&1 &
     PIDS="$PIDS $!"
@@ -325,13 +341,46 @@ watchdog() {
         sleep 2
     done
 }
-rm -f /tmp/x3_scan_ok
+# Treiber-Waechter: Nach einem USB-Aussetzer waehrend der Fahrt laeuft der
+# Treiberknoten weiter, schreibt aber an den toten Port ("set_car_motion error!")
+# - der Roboter reagiert dann auf nichts mehr, auch nicht auf Stopp. Wachsen die
+# Fehler, den Knoten beenden; driver_loop startet ihn neu, sobald /dev/myserial
+# wieder stabil da ist. Lief der Treiber aus dem bringup, wird driver_loop hier
+# erst gestartet (launch startet ihn nicht neu).
+driver_watchdog() {
+    log="$BRINGUP_LOG"
+    [ -n "$DRIVER_OWN" ] && log="$DRIVER_LOG"
+    last=$(grep -c "set_car_motion error" "$log" 2>/dev/null)
+    while [ ! -e "$STOPFILE" ]; do
+        sleep 2
+        n=$(grep -c "set_car_motion error" "$log" 2>/dev/null)
+        if [ "${n:-0}" -ge $(( ${last:-0} + 5 )) ]; then
+            echo "[treiber-waechter] Treiber schreibt ins Leere (USB-Aussetzer?) -> neu starten"
+            pkill -INT -f Mcnamu_driver_X3; sleep 1; pkill -KILL -f Mcnamu_driver_X3
+            if [ "$log" != "$DRIVER_LOG" ]; then
+                touch "$DRIVER_OWN_FILE"
+                driver_loop >>"$DRIVER_LOG" 2>&1 &
+                log="$DRIVER_LOG"
+            fi
+            sleep 15           # Neustart abwarten (3 s stabiler Port + Init)
+        fi
+        last=$(grep -c "set_car_motion error" "$log" 2>/dev/null)
+    done
+}
+
+# Startzeitpunkt als "letzter Scan": vor dem ersten Scan zaehlt die Wartezeit ab
+# hier, nicht ab 1970
+touch /tmp/x3_scan_ok
 echo "[start] Autonomie startet in 3 s - Abstand halten!"
 sleep 3
 python3 -u "$HERE/x3_explorer.py" "$@" &
 EXPLORER=$!
 if [ -n "$LIDAR_OWN" ] && [ "$ROS_VERSION" = "2" ]; then
     watchdog &
+    PIDS="$PIDS $!"
+fi
+if [ "$ROS_VERSION" = "2" ]; then
+    driver_watchdog &
     PIDS="$PIDS $!"
 fi
 wait "$EXPLORER"
