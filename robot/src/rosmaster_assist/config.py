@@ -85,6 +85,13 @@ LIDAR_ENABLED = True
 LIDAR_PORT = "/dev/rplidar"
 LIDAR_BAUDRATE = 115200
 
+# Einbaulage: um wie viel Grad die 0°-Richtung des Lidars von "vorn" (Kamera)
+# abweicht. Am X3 ist er um 90° gedreht montiert -- ohne Korrektur lag in der
+# App vorn links, und Hindernisstopp wie Ortung schauten in die falsche
+# Richtung. Prüfen: Hand vor die Kamera halten, sie muss in der App oben
+# erscheinen. Liegt sie stattdessen unten, 180 addieren.
+LIDAR_ANGLE_OFFSET_DEG = -90.0
+
 # Messpunkte außerhalb dieser Grenzen werden verworfen. Zu nah sind meist
 # Teile des Roboters selbst, zu weit ist Rauschen.
 LIDAR_MIN_M = 0.15

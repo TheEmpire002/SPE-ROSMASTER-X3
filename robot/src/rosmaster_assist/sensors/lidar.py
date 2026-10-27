@@ -205,8 +205,9 @@ class RPLidar(LidarBase):
             if not (config.LIDAR_MIN_M <= meter <= config.LIDAR_MAX_M):
                 continue
             # Der Treiber zählt im Uhrzeigersinn, unser Antrieb dagegen.
-            # Ohne diese Drehung wäre die ganze Karte gespiegelt.
-            winkel.append((-grad) % 360.0)
+            # Ohne diese Drehung wäre die ganze Karte gespiegelt. Dazu die
+            # Einbaulage, damit 0° wirklich vorn ist.
+            winkel.append((-grad + config.LIDAR_ANGLE_OFFSET_DEG) % 360.0)
             entfernungen.append(meter)
 
         return Scan(winkel, entfernungen) if winkel else None
