@@ -90,6 +90,32 @@ Prüft Geräte, Rechte, konkurrierende Prozesse, OpenCV und das tatsächliche
 Einstellungen (Auflösung, Bildrate, Qualität): `config.py`, Abschnitt Kamera.
 Details in [`docs/hardware.md`](docs/hardware.md#kamera).
 
+## Nach Hause fahren
+
+In der App gibt es unter „Startpunkt" zwei Knöpfe:
+
+- **Startpunkt hier setzen** — die aktuelle Stelle wird der Nullpunkt
+- **Nach Hause** — der Roboter fährt selbsttätig dorthin zurück
+
+Dazwischen zeigt die App laufend Entfernung, Position und Blickrichtung.
+Während der Fahrt wird derselbe Knopf zum Abbrechen.
+
+**Zwei Einschränkungen, die man kennen muss:**
+
+Die Position wird *mitgerechnet*, nicht gemessen — aus Geschwindigkeit und
+Drehrate aufsummiert. Jeder Radschlupf geht dauerhaft in die Summe ein und
+wird nie korrigiert. Mecanum-Räder rutschen viel, besonders beim Drehen und
+auf glattem Boden. In einem Zimmer sind einige Dezimeter Abweichung normal;
+nach vielen Drehungen auch mehr. Wer es genauer braucht, kommt um Lidar und
+SLAM nicht herum (siehe [`docs/entscheidungen.md`](docs/entscheidungen.md)).
+
+Der Roboter **weicht keinen Hindernissen aus**. Er fährt stur die direkte
+Linie zum Startpunkt. Deshalb das gemächliche Tempo (`HOME_SPEED` in
+`config.py`) und die Zeitbegrenzung.
+
+Abgebrochen wird die Heimfahrt durch jede Fahreingabe, die Leertaste, den
+Abbrechen-Knopf oder eine verlorene Verbindung.
+
 ## Tempo einstellen
 
 In der Web-App gibt es zwei Regler:
@@ -152,8 +178,9 @@ python scripts/check_hardware.py
 
 - [x] Grundgerüst, Treiber-Abstraktion, Protokoll
 - [x] Manuelle Steuerung per Web-App
+- [x] Kamerabild in der App
+- [x] Rückfahrt zum Startpunkt (Koppelnavigation)
 - [ ] Lidar einbinden
-- [ ] Kamera-Stream
 - [ ] ESP-Anbindung (Bewegung, Puls)
 - [ ] Autonomes Fahren / SLAM
 - [ ] Box-Mechanik

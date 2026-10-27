@@ -46,6 +46,24 @@ class DriveBase(ABC):
     def beep(self, ms: int = 100) -> None:
         """Signalton. Optional -- Standard ist: passiert nichts."""
 
+    def read_motion(self) -> tuple[float, float, float] | None:
+        """Tatsächlich gefahrene Geschwindigkeit (vx, vy, omega), falls messbar.
+
+        Für die Positionsverfolgung deutlich besser als der befohlene Wert:
+        rutschende Räder, Steigungen und Anfahrverzögerung schlagen sich hier
+        nieder. ``None`` bedeutet "nicht messbar" -- dann wird ersatzweise mit
+        dem Befehl gerechnet.
+        """
+        return None
+
+    def read_heading(self) -> float | None:
+        """Blickrichtung in Grad aus der IMU, falls vorhanden.
+
+        Ein gemessener Winkel ist der aufsummierten Drehrate weit überlegen:
+        beim Aufsummieren wächst der Fehler mit jeder Drehung, hier nicht.
+        """
+        return None
+
     @property
     @abstractmethod
     def connected(self) -> bool:

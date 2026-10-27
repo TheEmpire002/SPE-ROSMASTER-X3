@@ -54,6 +54,27 @@ PORT = 8000
 # Takt, in dem der Roboter von sich aus Statusmeldungen an die App schickt.
 STATUS_INTERVAL_S = 0.5
 
+# --- Heimfahrt ---------------------------------------------------------------------
+
+# Takt, in dem die Position fortgeschrieben wird. Höher = genauer, aber die
+# Ungenauigkeit kommt ohnehin vom Radschlupf, nicht von diesem Takt.
+ODOMETRY_HZ = 20
+
+# Tempo der automatischen Heimfahrt. Bewusst gemächlich: der Roboter fährt
+# hier ohne Hinderniserkennung, da will man nicht überrascht werden.
+HOME_SPEED = 0.25        # m/s
+
+# Ab dieser Entfernung zum Startpunkt gilt die Fahrt als beendet. Kleiner
+# zu werden lohnt nicht -- die Koppelnavigation ist ungenauer als das.
+HOME_TOLERANCE_M = 0.12
+
+# Auf den letzten Zentimetern langsamer werden, sonst schießt er übers Ziel.
+HOME_SLOWDOWN_M = 0.4
+
+# Notbremse: nach dieser Zeit bricht die Heimfahrt ab. Schützt davor, dass
+# der Roboter bei abgedrifteter Position endlos umherfährt.
+HOME_TIMEOUT_S = 60.0
+
 # --- Kamera ---------------------------------------------------------------------
 
 CAMERA_ENABLED = True

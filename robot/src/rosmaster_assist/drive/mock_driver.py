@@ -48,6 +48,14 @@ class MockDriver(DriveBase):
     def beep(self, ms: int = 100) -> None:
         log.info("SIM piep (%d ms)", ms)
 
+    def read_motion(self) -> tuple[float, float, float] | None:
+        """Der Mock fährt exakt das, was befohlen wurde -- kein Schlupf.
+
+        Dadurch lässt sich die Heimfahrt am Schreibtisch testen: die
+        Positionsverfolgung bekommt echte Werte, nur eben fehlerfreie.
+        """
+        return (self._last.vx, self._last.vy, self._last.omega)
+
     @property
     def connected(self) -> bool:
         return self._connected

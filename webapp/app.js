@@ -55,6 +55,11 @@ const ui = {
   cam: el("cam"),
   camError: el("cam-error"),
   camRetry: el("cam-retry"),
+  dist: el("val-dist"),
+  pos: el("val-pos"),
+  winkel: el("val-winkel"),
+  btnHome: el("btn-home"),
+  btnSetHome: el("btn-sethome"),
   log: el("log"),
   vx: el("val-vx"),
   vy: el("val-vy"),
@@ -119,6 +124,8 @@ function handleMessage(msg) {
       ui.vy.textContent = `${msg.vy.toFixed(2)} m/s`;
       ui.omega.textContent = `${msg.omega.toFixed(2)} rad/s`;
       ui.driver.textContent = msg.driver + (msg.connected ? "" : " (getrennt)");
+      zeigePose(msg.pose);
+      setzeHomeKnopf(msg.homing === true);
       break;
 
     case "vitals":
@@ -299,6 +306,48 @@ function applyLimits() {
   ui.maxSpeed.value = String(userMax);
   updateLabels();
 }
+
+// --- Heimfahrt ----------------------------------------------------------------
+
+let faehrtHeim = false;
+
+function zeigePose(pose) {
+  if (!pose) {
+    ui.dist.textContent = ui.pos.textContent = ui.winkel.textContent = "—";
+    return;
+  }
+  const entfernung = Math.hypot(pose.x, pose.y);
+  ui.dist.textContent = `${entfernung.toFixed(2)} m`;
+  ui.pos.textContent = `${pose.x.toFixed(2)} / ${pose.y.toFixed(2)} m`;
+  ui.winkel.textContent = `${pose.winkel.toFixed(0)}°`;
+}
+
+/*
+ * Derselbe Knopf startet und bricht ab. Zwei getrennte Knöpfe wären ein
+ * Risiko: wer den Roboter stoppen will, soll nicht erst den richtigen
+ * suchen müssen.
+ */
+function setzeHomeKnopf(aktiv) {
+  if (aktiv === faehrtHeim) return;
+  faehrtHeim = aktiv;
+  ui.btnHome.textContent = aktiv ? "Heimfahrt abbrechen" : "Nach Hause";
+  ui.btnHome.classList.toggle("aktiv", aktiv);
+}
+
+ui.btnHome.addEventListener("click", () => {
+  if (faehrtHeim) {
+    send({ type: "home_cancel" });
+  } else {
+    send({ type: "home" });
+  }
+  // Nicht auf die Antwort warten: der Knopf soll sofort reagieren. Die
+  // nächste Statusmeldung rückt die Anzeige gerade, falls es schiefging.
+  setzeHomeKnopf(!faehrtHeim);
+});
+
+ui.btnSetHome.addEventListener("click", () => {
+  send({ type: "set_home" });
+});
 
 // --- Kamera ----------------------------------------------------------------
 

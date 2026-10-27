@@ -183,6 +183,45 @@ async def _test_motion(ws, driver: str | None, max_vx: float) -> None:
     # Sicherheitshalber explizit stoppen, falls oben etwas schiefging.
     await ws.send(json.dumps({"type": "stop"}))
 
+    await _test_homing(ws)
+
+
+async def _test_homing(ws) -> None:
+    """Wegfahren, Home drücken, zurückkommen.
+
+    Prüft die Positionsverfolgung und die Heimfahrt zusammen -- einzeln
+    sagen sie wenig aus.
+    """
+    await ws.send(json.dumps({"type": "set_home"}))
+    await asyncio.sleep(0.3)
+
+    # Diagonal wegfahren: so wird auch die Seitwärtsfahrt mitgeprüft.
+    loop = asyncio.get_running_loop()
+    ende = loop.time() + 2.0
+    while loop.time() < ende:
+        await ws.send(json.dumps({"type": "drive", "vx": 0.5, "vy": 0.3, "omega": 0.0}))
+        await asyncio.sleep(0.1)
+    await ws.send(json.dumps({"type": "stop"}))
+
+    weg = await wait_for_state(ws, lambda m: _abstand(m) > 0.5, seconds=5)
+    entfernung = _abstand(weg) if weg else 0.0
+    check(f"Position wird mitgeführt ({entfernung:.2f} m entfernt)", entfernung > 0.5)
+
+    await ws.send(json.dumps({"type": "home"}))
+    gestartet = await wait_for_state(ws, lambda m: m.get("homing") is True, seconds=5)
+    check("Heimfahrt startet", bool(gestartet and gestartet.get("homing")))
+
+    fertig = await wait_for_state(ws, lambda m: m.get("homing") is False, seconds=40)
+    rest = _abstand(fertig) if fertig else 99.0
+    check(f"kommt zum Startpunkt zurück (Restabweichung {rest:.2f} m)", rest < 0.25)
+
+
+def _abstand(state: dict | None) -> float:
+    if not state or not state.get("pose"):
+        return 0.0
+    p = state["pose"]
+    return (p["x"] ** 2 + p["y"] ** 2) ** 0.5
+
 
 async def test_websocket(ws_url: str, allow_motion: bool) -> None:
     print("\nWebSocket")

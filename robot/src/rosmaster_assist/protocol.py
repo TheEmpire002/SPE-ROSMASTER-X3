@@ -13,6 +13,9 @@ Von der App / vom ESP an den Roboter
 {"type": "beep",   "ms": 100}                             Buzzer
 {"type": "box",    "action": "open" | "close"}            Transportbox
 {"type": "vitals", "bpm": 72, "motion": true}             Messwerte vom ESP
+{"type": "home"}                                          zum Startpunkt zurückfahren
+{"type": "home_cancel"}                                   Heimfahrt abbrechen
+{"type": "set_home"}                                      hier ist der neue Startpunkt
 {"type": "ping"}                                          Verbindung am Leben halten
 
 Vom Roboter an die App
@@ -84,8 +87,24 @@ def limits_message(max_vx: float, max_vy: float, max_omega: float) -> dict[str, 
     }
 
 
-def state_message(cmd: DriveCommand, driver: str, connected: bool) -> dict[str, Any]:
-    return {"type": "state", "driver": driver, "connected": connected, **asdict(cmd)}
+def state_message(
+    cmd: DriveCommand,
+    driver: str,
+    connected: bool,
+    pose: tuple[float, float, float] | None = None,
+    homing: bool = False,
+) -> dict[str, Any]:
+    msg: dict[str, Any] = {
+        "type": "state",
+        "driver": driver,
+        "connected": connected,
+        "homing": homing,
+        **asdict(cmd),
+    }
+    if pose is not None:
+        x, y, winkel = pose
+        msg["pose"] = {"x": round(x, 3), "y": round(y, 3), "winkel": round(winkel, 1)}
+    return msg
 
 
 def vitals_message(bpm: float | None, motion: bool | None) -> dict[str, Any]:

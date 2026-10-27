@@ -73,6 +73,32 @@
   </section>
 
   <section class="panel">
+    <h2>Startpunkt</h2>
+
+    <dl class="readout">
+      <dt>Entfernung</dt> <dd id="val-dist">—</dd>
+      <dt>Position</dt>   <dd id="val-pos">—</dd>
+      <dt>Blickrichtung</dt> <dd id="val-winkel">—</dd>
+    </dl>
+
+    <div class="home-buttons">
+      <button type="button" id="btn-home" class="btn btn-primary">
+        Nach Hause
+      </button>
+      <button type="button" id="btn-sethome" class="btn">
+        Startpunkt hier setzen
+      </button>
+    </div>
+
+    <p class="hint">
+      Die Position wird aus der Fahrbewegung mitgerechnet, nicht gemessen —
+      sie wird mit der Zeit ungenauer. Der Roboter weicht unterwegs
+      <strong>keinen Hindernissen aus</strong>. Jede Eingabe bricht die
+      Heimfahrt ab.
+    </p>
+  </section>
+
+  <section class="panel">
     <h2>Zustand</h2>
     <dl class="readout">
       <dt>vorwärts</dt>   <dd id="val-vx">0.00 m/s</dd>

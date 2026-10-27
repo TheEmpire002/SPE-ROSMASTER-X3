@@ -116,6 +116,26 @@ class RosmasterDriver(DriveBase):
         except Exception:
             log.exception("Buzzer fehlgeschlagen")
 
+    def read_motion(self) -> tuple[float, float, float] | None:
+        # Braucht den Empfangs-Thread; ohne ihn liefert die Bibliothek Nullen,
+        # was schlimmer wäre als keine Messung (die Position bliebe stehen).
+        if self._bot is None or not config.TELEMETRY_ENABLED:
+            return None
+        try:
+            vx, vy, omega = self._bot.get_motion_data()
+            return float(vx), float(vy), float(omega)
+        except Exception:
+            return None
+
+    def read_heading(self) -> float | None:
+        if self._bot is None or not config.TELEMETRY_ENABLED:
+            return None
+        try:
+            _roll, _pitch, yaw = self._bot.get_imu_attitude_data()
+            return float(yaw)
+        except Exception:
+            return None
+
     @property
     def connected(self) -> bool:
         return self._bot is not None

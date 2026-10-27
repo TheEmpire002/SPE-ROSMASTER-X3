@@ -28,6 +28,7 @@ from ..protocol import (
     state_message,
     vitals_message,
 )
+from ..navigation import Homing, Odometry
 from ..safety import SafetyWatchdog
 from ..sensors.camera import CameraService, create_camera
 
@@ -78,6 +79,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     """Baut die Server-Anwendung um einen Antrieb herum."""
 
     watchdog = SafetyWatchdog(driver)
+    odometry = Odometry(driver)
+    homing = Homing(watchdog, odometry)
     hub = ConnectionHub()
     camera = (
         CameraService(create_camera(use_mock_camera)) if config.CAMERA_ENABLED else None
@@ -93,13 +96,18 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         watchdog.start()
         if camera is not None:
             camera.start()
-        status_task = asyncio.create_task(_status_loop(hub, watchdog, driver))
+        status_task = asyncio.create_task(
+            _status_loop(hub, watchdog, driver, odometry, homing)
+        )
+        odo_task = asyncio.create_task(_odometry_loop(watchdog, odometry))
         try:
             yield
         finally:
             # Reihenfolge ist wichtig: erst Statusmeldungen beenden, dann
             # Watchdog (der hält an), dann die Hardware trennen.
             status_task.cancel()
+            odo_task.cancel()
+            homing.abbrechen("Server wird beendet")
             await watchdog.shutdown()
             if camera is not None:
                 camera.stop()
@@ -119,7 +127,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         try:
             while True:
                 msg = await ws.receive_json()
-                reply = await _handle(msg, watchdog, driver, hub)
+                reply = await _handle(msg, watchdog, driver, hub, odometry, homing)
                 if reply is not None:
                     await ws.send_json(reply)
         except WebSocketDisconnect:
@@ -131,6 +139,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             # Letzter Client weg? Dann hat niemand mehr die Kontrolle.
             if hub.count == 0:
                 log.warning("Kein Client mehr verbunden -- halte an")
+                homing.abbrechen("Verbindung verloren")
                 watchdog.stop()
 
     # --- Kamera ---
@@ -212,6 +221,8 @@ async def _handle(
     watchdog: SafetyWatchdog,
     driver: DriveBase,
     hub: ConnectionHub,
+    odometry: Odometry,
+    homing: Homing,
 ) -> dict[str, Any] | None:
     """Eine eingehende Nachricht verarbeiten.
 
@@ -221,13 +232,47 @@ async def _handle(
 
     if kind == "drive":
         try:
-            watchdog.submit(DriveCommand.from_message(msg))
+            cmd = DriveCommand.from_message(msg)
         except ProtocolError as exc:
             return error_message(str(exc))
+
+        # Der Mensch hat Vorrang. Die App sendet auch im Stillstand weiter,
+        # deshalb bricht nur eine tatsächliche Eingabe ab -- sonst wäre die
+        # Heimfahrt sofort wieder beendet.
+        if homing.aktiv and not cmd.is_stop():
+            homing.abbrechen("von Hand übersteuert")
+            await hub.broadcast(alert_message("info", "Heimfahrt abgebrochen"))
+        elif homing.aktiv:
+            return None  # Leerlauf-Nachrichten ignorieren, Heimfahrt steuert
+
+        watchdog.submit(cmd)
         return None  # Status geht ohnehin im Takt raus
 
     if kind == "stop":
+        homing.abbrechen("Not-Stopp")
         watchdog.stop()
+        return None
+
+    if kind == "home":
+        if not odometry.misst_tatsaechlich:
+            log.warning("Heimfahrt ohne Bewegungsmessung -- Position ist geschätzt")
+        abstand = odometry.distanz_zum_start()
+        if homing.start():
+            await hub.broadcast(
+                alert_message("info", f"Heimfahrt gestartet ({abstand:.2f} m)")
+            )
+        return None
+
+    if kind == "home_cancel":
+        homing.abbrechen("vom Nutzer abgebrochen")
+        watchdog.stop()
+        await hub.broadcast(alert_message("info", "Heimfahrt abgebrochen"))
+        return None
+
+    if kind == "set_home":
+        homing.abbrechen("Startpunkt wurde verschoben")
+        odometry.reset()
+        await hub.broadcast(alert_message("info", "Startpunkt ist jetzt hier"))
         return None
 
     if kind == "ping":
@@ -250,16 +295,53 @@ async def _handle(
     return error_message(f"Unbekannter Nachrichtentyp: {kind!r}")
 
 
+async def _odometry_loop(watchdog: SafetyWatchdog, odometry: Odometry) -> None:
+    """Schreibt die Position fort.
+
+    Muss dauerhaft laufen, nicht nur während der Heimfahrt: sonst wüsste der
+    Roboter beim Druck auf den Home-Knopf nicht, wo er inzwischen steht.
+    """
+    takt = 1.0 / max(1, config.ODOMETRY_HZ)
+    try:
+        while True:
+            await asyncio.sleep(takt)
+            odometry.update(watchdog.current_command)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        log.exception("Positionsverfolgung abgestürzt -- Heimfahrt unbrauchbar")
+
+
 async def _status_loop(
-    hub: ConnectionHub, watchdog: SafetyWatchdog, driver: DriveBase
+    hub: ConnectionHub,
+    watchdog: SafetyWatchdog,
+    driver: DriveBase,
+    odometry: Odometry,
+    homing: Homing,
 ) -> None:
     """Schickt regelmäßig den Zustand an alle Clients."""
+    zuletzt_aktiv = False
     try:
         while True:
             await asyncio.sleep(config.STATUS_INTERVAL_S)
+
+            # Das Ende der Heimfahrt melden -- sie beendet sich selbst,
+            # ohne dass jemand danach fragt.
+            if zuletzt_aktiv and not homing.aktiv and homing.letzter_grund:
+                await hub.broadcast(
+                    alert_message("info", f"Heimfahrt: {homing.letzter_grund}")
+                )
+            zuletzt_aktiv = homing.aktiv
+
             if hub.count:
                 await hub.broadcast(
-                    state_message(watchdog.current_command, driver.name, driver.connected)
+                    state_message(
+                        watchdog.current_command,
+                        driver.name,
+                        driver.connected,
+                        pose=odometry.pose(),
+                        homing=homing.aktiv,
+                    )
                 )
     except asyncio.CancelledError:
         raise

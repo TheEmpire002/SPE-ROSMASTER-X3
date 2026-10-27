@@ -141,6 +141,34 @@ main {
 kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
       padding: 1px 5px; font-size: 0.72rem; margin: 0 1px; }
 
+/* --- Heimfahrt --- */
+
+.home-buttons { display: grid; gap: 0.5rem; margin-top: 0.3rem; }
+
+.btn {
+  font: inherit;
+  color: var(--text);
+  background: #272b34;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.btn:hover { background: #30353f; }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.btn-primary { background: #1d3a5c; border-color: #2d5a8c; color: #cfe4ff; }
+.btn-primary:hover { background: #244970; }
+
+/* Läuft die Heimfahrt, wird der Knopf zum Abbrechen. */
+.btn-primary.aktiv {
+  background: #5c2b1d;
+  border-color: #8c472d;
+  color: #ffd9cf;
+}
+.btn-primary.aktiv:hover { background: #70351f; }
+
 /* --- Anzeigen --- */
 
 .readout { display: grid; grid-template-columns: auto 1fr;
