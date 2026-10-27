@@ -151,5 +151,5 @@ TTY=""
 $DOCKER exec -i $TTY "$NAME" bash "$HERE/start_autonomy.sh" "$@"
 rc=$?
 echo
-echo "[x3] Protokolle: $HERE/protokoll   Hochladen:  bash Marlon/x3.sh hochladen"
+echo "[x3] Protokolle: $HERE/protokoll"
 exit "$rc"

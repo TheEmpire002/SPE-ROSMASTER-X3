@@ -9,7 +9,9 @@
 # Stoppen: Ctrl+C  (Roboter wird angehalten, alle Prozesse beendet)
 #
 # Ablauf wie beim Kalibrieren (da lief der Treiber schon, der Lidar kam danach):
-#   1. Treiber starten (nur falls noch keiner laeuft), 8 s warten
+#   1. Treiber starten (nur falls noch keiner laeuft), 8 s warten. Stirbt der
+#      Treiberknoten beim Start (USB-Hub meldet sich neu an, /dev/myserial fehlt
+#      kurz), wird er einzeln neu gestartet - und danach bei jedem Absturz wieder.
 #   2. Lidar per "ros2 run sllidar_ros2 sllidar_node" an /dev/rplidar starten
 #   3. x3_explorer.py starten
 # Liefert der Lidar waehrend der Fahrt nichts mehr, wird er automatisch neu gestartet
@@ -32,8 +34,9 @@ mkdir -p "$LOGDIR"
 START_LOG="$LOGDIR/start.txt"
 BRINGUP_LOG="$LOGDIR/bringup.txt"
 LIDAR_LOG="$LOGDIR/lidar.txt"
+DRIVER_LOG="$LOGDIR/treiber.txt"
 DIAG_LOG="$LOGDIR/diagnose.txt"
-: > "$BRINGUP_LOG"; : > "$LIDAR_LOG"; : > "$DIAG_LOG"
+: > "$BRINGUP_LOG"; : > "$LIDAR_LOG"; : > "$DRIVER_LOG"; : > "$DIAG_LOG"
 
 # Alle Ausgaben zusaetzlich nach start.txt. tee ignoriert Ctrl+C, sonst bricht
 # die Ausgabe (und mit ihr das Skript) mitten im Anhalten ab.
@@ -69,6 +72,8 @@ if [ "$ROS_VERSION" = "2" ]; then
     BRINGUP_LAUNCH="${BRINGUP_LAUNCH:-yahboomcar_bringup yahboomcar_bringup_X3_launch.py}"
     # derselbe Befehl, mit dem das Kalibrieren funktioniert hat
     LIDAR_CMD="${LIDAR_CMD:-ros2 run sllidar_ros2 sllidar_node --ros-args -p serial_port:=/dev/rplidar -p serial_baudrate:=115200 -p frame_id:=laser -p angle_compensate:=true}"
+    # nur der Motor-Knoten aus dem bringup, fuer den Neustart nach USB-Aussetzern
+    DRIVER_CMD="${DRIVER_CMD:-ros2 run yahboomcar_bringup Mcnamu_driver_X3}"
     LAUNCH="ros2 launch"
     topics() { timeout 10 ros2 topic list 2>/dev/null; }
     # ein paar Sekunden lang Stopp senden statt einmal - eine einzelne Nachricht geht beim
@@ -92,6 +97,7 @@ fi
 PIDS="${PIDS:-}"
 EXPLORER=""
 LIDAR_OWN=""
+DRIVER_OWN=""
 STOPFILE="/tmp/x3_stop.$$"
 rm -f "$STOPFILE"
 
@@ -134,6 +140,10 @@ cleanup() {
     # Waise am Port haengen und der naechste Start bekommt TIMEOUT.
     if [ -n "$LIDAR_OWN" ]; then
         pkill -INT -f sllidar_node 2>/dev/null; sleep 1; pkill -KILL -f sllidar_node 2>/dev/null
+    fi
+    # dasselbe fuer den einzeln gestarteten Treiberknoten
+    if [ -n "$DRIVER_OWN" ]; then
+        pkill -INT -f Mcnamu_driver_X3 2>/dev/null; sleep 1; pkill -KILL -f Mcnamu_driver_X3 2>/dev/null
     fi
     rm -f "$STOPFILE" "$PIDFILE"
     echo "[start] beendet (Code $rc). Protokolle: $LOGDIR"
@@ -195,6 +205,25 @@ driver_running() {
     else topics | grep -qx "/RGBLight"; fi
 }
 
+# Startet den Treiberknoten immer wieder neu, solange nicht gestoppt wird.
+# Vorher muss /dev/myserial 3 s am Stueck da sein: beim Hub-Reset verschwindet
+# das Board mehrmals kurz hintereinander, ein Start mittendrin scheitert sofort.
+driver_loop() {
+    try=1
+    while [ ! -e "$STOPFILE" ]; do
+        stable=0
+        while [ "$stable" -lt 3 ] && [ ! -e "$STOPFILE" ]; do
+            if [ -e /dev/myserial ]; then stable=$((stable + 1)); else stable=0; fi
+            sleep 1
+        done
+        [ -e "$STOPFILE" ] && break
+        echo "[treiber] Start $try  $(date '+%H:%M:%S')"
+        $DRIVER_CMD
+        try=$((try + 1))
+        sleep 2
+    done
+}
+
 # ---- 1. Treiber: nur starten, wenn wirklich keiner laeuft -------------------
 # Zwei Treiber an derselben Motorplatine stoeren sich gegenseitig.
 if wait_topic /cmd_vel 5 && driver_running; then
@@ -204,13 +233,23 @@ else
     $LAUNCH $BRINGUP_LAUNCH >"$BRINGUP_LOG" 2>&1 &
     PIDS="$PIDS $!"
     ok=""
-    for i in $(seq 1 30); do
+    for i in $(seq 1 45); do
         driver_running && { ok=1; break; }
+        # Beim bringup-Start meldet sich der USB-Hub neu an; findet der Treiberknoten
+        # /dev/myserial in dem Moment nicht, beendet er sich und launch startet ihn
+        # nicht neu. Dann selbst uebernehmen.
+        if [ "$ROS_VERSION" = "2" ] && [ -z "$DRIVER_OWN" ] && [ "$i" -ge 8 ] &&            ! pgrep -f Mcnamu_driver_X3 >/dev/null; then
+            echo "[start] Treiberknoten beendet (USB-Neuanmeldung?) - starte ihn einzeln neu  (Log: $DRIVER_LOG)"
+            driver_loop >"$DRIVER_LOG" 2>&1 &
+            PIDS="$PIDS $!"
+            DRIVER_OWN=1
+        fi
         sleep 1
     done
     if [ -z "$ok" ]; then
         echo "FEHLER: Treiber startet nicht. Siehe $BRINGUP_LOG" >&2
         tail -n 15 "$BRINGUP_LOG" >&2
+        [ -n "$DRIVER_OWN" ] && tail -n 15 "$DRIVER_LOG" >&2
         cleanup 1
     fi
     # Beim Treiberstart meldet sich der USB-Hub kurz neu an (auch der Lidar).

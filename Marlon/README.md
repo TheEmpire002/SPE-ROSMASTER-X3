@@ -21,7 +21,7 @@ Beschleunigungen sind begrenzt, deshalb wirkt die Bewegung „überlegt“ statt
 Auf dem Pi (User `pi`, **nicht** im Docker-Container), im Repo-Ordner:
 
 ```bash
-cd ~/SPE-ROSMASTER-X3          # bzw. wo das Repo liegt
+cd ~/gitpipeline/SPE-ROSMASTER-X3   # bzw. wo das Repo liegt
 git pull
 bash Marlon/x3.sh              # Container + Treiber + Lidar + losfahren
 ```
@@ -80,13 +80,12 @@ Jeder Lauf schreibt nach `Marlon/protokoll/` (der vorige Lauf wird überschriebe
 |-------|--------|
 | `start.txt` | komplette Ausgabe von Start und Explorer |
 | `bringup.txt` | Treiber (`yahboomcar_bringup`) |
+| `treiber.txt` | einzeln neu gestarteter Treiberknoten (nur nach USB-Aussetzer beim Start) |
 | `lidar.txt` | Lidar (`sllidar_node`) |
 | `diagnose.txt` | Geräte, Prozesse, Topics bei Start und bei Fehlern |
 
-Hochladen, damit man sie am PC lesen kann:
-```bash
-bash Marlon/x3.sh hochladen
-```
+Gepusht wird nur vom Laptop. Die Protokolle direkt am Pi lesen (z. B. per SSH).
+`bash Marlon/x3.sh hochladen` gibt es noch, ist dafür aber nicht nötig.
 
 ## Wenn etwas nicht startet
 
