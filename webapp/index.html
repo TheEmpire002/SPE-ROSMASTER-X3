@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>ROSMASTER X3 — Steuerung</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header>
+  <h1>ROSMASTER X3</h1>
+  <div id="status" class="status offline">
+    <span class="dot"></span><span id="status-text">getrennt</span>
+  </div>
+</header>
+
+<main>
+
+  <section class="panel">
+    <h2>Steuerung</h2>
+
+    <!-- Mecanum-Räder: die mittlere Reihe fährt seitwärts, nicht drehen. -->
+    <div class="pad">
+      <button class="pad-btn" data-vx="1"  data-vy="1"  title="vorwärts links">↖</button>
+      <button class="pad-btn" data-vx="1"  data-vy="0"  title="vorwärts">↑</button>
+      <button class="pad-btn" data-vx="1"  data-vy="-1" title="vorwärts rechts">↗</button>
+
+      <button class="pad-btn" data-vx="0"  data-vy="1"  title="seitwärts links">←</button>
+      <button class="pad-btn stop" id="stop" title="Not-Stopp">■</button>
+      <button class="pad-btn" data-vx="0"  data-vy="-1" title="seitwärts rechts">→</button>
+
+      <button class="pad-btn" data-vx="-1" data-vy="1"  title="rückwärts links">↙</button>
+      <button class="pad-btn" data-vx="-1" data-vy="0"  title="rückwärts">↓</button>
+      <button class="pad-btn" data-vx="-1" data-vy="-1" title="rückwärts rechts">↘</button>
+    </div>
+
+    <div class="pad-row">
+      <button class="pad-btn wide" data-omega="1"  title="links drehen">⟲</button>
+      <button class="pad-btn wide" data-omega="-1" title="rechts drehen">⟳</button>
+    </div>
+
+    <label class="slider">
+      Tempo <output id="speed-out">40&nbsp;%</output>
+      <input type="range" id="speed" min="10" max="100" step="5" value="40">
+    </label>
+
+    <p class="hint">
+      Tastatur: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> fahren ·
+      <kbd>Q</kbd><kbd>E</kbd> drehen · <kbd>Leertaste</kbd> Stopp
+    </p>
+  </section>
+
+  <section class="panel">
+    <h2>Zustand</h2>
+    <dl class="readout">
+      <dt>vorwärts</dt>   <dd id="val-vx">0.00 m/s</dd>
+      <dt>seitwärts</dt>  <dd id="val-vy">0.00 m/s</dd>
+      <dt>drehen</dt>     <dd id="val-omega">0.00 rad/s</dd>
+      <dt>Antrieb</dt>    <dd id="val-driver">—</dd>
+    </dl>
+
+    <h2>Person</h2>
+    <dl class="readout">
+      <dt>Puls</dt>      <dd id="val-bpm">—</dd>
+      <dt>Bewegung</dt>  <dd id="val-motion">—</dd>
+    </dl>
+    <p class="hint">Prototyp, kein Medizinprodukt.</p>
+  </section>
+
+  <section class="panel wide-panel">
+    <h2>Meldungen</h2>
+    <ul id="log" class="log"></ul>
+  </section>
+
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

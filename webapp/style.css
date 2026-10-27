@@ -1,0 +1,106 @@
+:root {
+  --bg: #15171c;
+  --panel: #1e2128;
+  --line: #2e323c;
+  --text: #e6e8ec;
+  --muted: #9aa1ad;
+  --accent: #4da3ff;
+  --ok: #3ecf8e;
+  --warn: #f5a524;
+  --danger: #f05d5d;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  /* Verhindert, dass Wischen beim Steuern die Seite scrollt. */
+  overscroll-behavior: none;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1.2rem;
+  border-bottom: 1px solid var(--line);
+}
+
+h1 { font-size: 1.05rem; margin: 0; letter-spacing: 0.02em; }
+h2 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em;
+     color: var(--muted); margin: 0 0 0.7rem; font-weight: 600; }
+
+.status { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
+.status .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--danger); }
+.status.online .dot { background: var(--ok); }
+.status.online { color: var(--ok); }
+.status.offline { color: var(--danger); }
+
+main {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 1rem;
+  padding: 1rem 1.2rem 2rem;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.panel { background: var(--panel); border: 1px solid var(--line);
+         border-radius: 10px; padding: 1rem; }
+.wide-panel { grid-column: 1 / -1; }
+
+/* --- Steuerkreuz --- */
+
+.pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+.pad-row { display: grid; grid-template-columns: repeat(2, 1fr);
+           gap: 0.5rem; margin-top: 0.5rem; }
+
+.pad-btn {
+  aspect-ratio: 1;
+  font-size: 1.5rem;
+  color: var(--text);
+  background: #272b34;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+  transition: background 0.08s, transform 0.08s;
+}
+.pad-btn:hover { background: #30353f; }
+.pad-btn.active { background: var(--accent); color: #0b1117; transform: scale(0.95); }
+.pad-btn.wide { aspect-ratio: 2.6; }
+.pad-btn.stop { background: #3a2126; color: var(--danger); font-size: 1.1rem; }
+.pad-btn.stop:hover { background: var(--danger); color: #fff; }
+.pad-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* --- Tempo --- */
+
+.slider { display: block; margin-top: 1rem; font-size: 0.85rem; color: var(--muted); }
+.slider output { color: var(--text); font-variant-numeric: tabular-nums; }
+.slider input { width: 100%; margin-top: 0.45rem; accent-color: var(--accent); }
+
+.hint { font-size: 0.75rem; color: var(--muted); margin: 0.9rem 0 0; line-height: 1.6; }
+kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
+      padding: 1px 5px; font-size: 0.72rem; margin: 0 1px; }
+
+/* --- Anzeigen --- */
+
+.readout { display: grid; grid-template-columns: auto 1fr;
+           gap: 0.35rem 1rem; margin: 0 0 1.2rem; font-size: 0.88rem; }
+.readout dt { color: var(--muted); }
+.readout dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* --- Meldungen --- */
+
+.log { list-style: none; margin: 0; padding: 0; max-height: 170px;
+       overflow-y: auto; font-size: 0.8rem; font-family: ui-monospace, monospace; }
+.log li { padding: 0.3rem 0; border-bottom: 1px solid var(--line); color: var(--muted); }
+.log li:last-child { border-bottom: none; }
+.log .warning { color: var(--warn); }
+.log .emergency, .log .error { color: var(--danger); }

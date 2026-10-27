@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+
+# Betriebssystem
+.DS_Store
+Thumbs.db
+
+# Laufzeit-Artefakte
+logs/
+*.log
+maps/*.pgm
+maps/*.yaml
+
+# Lokale Konfiguration (Geheimnisse, WLAN, Broker-Adressen)
+robot/.env

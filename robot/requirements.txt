@@ -1,0 +1,9 @@
+# Web-/WebSocket-Server
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# Hardware-Treiber des ROSMASTER X3.
+# Wird vom Yahboom-Image mitgeliefert. Falls nicht vorhanden, aus dem
+# Yahboom-Repository installieren -- siehe docs/hardware.md.
+# Auf dem Entwicklungsrechner NICHT nötig: dort mit --mock starten.
+# Rosmaster-Lib
