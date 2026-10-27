@@ -125,17 +125,24 @@ def ensure_dependencies(py: Path) -> None:
 
 # --- Hardware-Erkennung -----------------------------------------------------------
 
-def serial_ports() -> list[str]:
-    """Serielle Geräte, die zum Expansion Board passen könnten."""
-    import glob
-
-    # Die by-id-Pfade zuerst: sie bleiben über Neustarts hinweg gleich.
-    # Siehe docs/hardware.md -- Lidar und Board teilen sich /dev/ttyUSB*.
-    found = sorted(glob.glob("/dev/serial/by-id/*"))
-    if found:
-        return found
-    patterns = ("/dev/ttyUSB*", "/dev/ttyACM*", "/dev/myserial")
-    return sorted({p for pat in patterns for p in glob.glob(pat)})
+# Fragt die Bibliothek selbst, statt nach Gerätedateien zu suchen.
+#
+# Ein Suchen nach /dev/ttyUSB* & Co. ist hier der falsche Weg: je nach Image
+# und Anschlussart heißt das Gerät anders, und Rosmaster_Lib findet es ohne
+# Zutun. Wenn ``Rosmaster()`` sich öffnen lässt, ist die Hardware da -- das
+# ist die einzige Auskunft, auf die man sich verlassen kann.
+HARDWARE_PROBE = """
+import sys
+try:
+    from Rosmaster_Lib import Rosmaster
+except ImportError:
+    print("RESULT:no-lib"); sys.exit(0)
+try:
+    Rosmaster()
+except Exception as exc:
+    print("RESULT:no-port:" + str(exc).replace("\\n", " ")[:100]); sys.exit(0)
+print("RESULT:ok")
+"""
 
 
 def detect_hardware(py: Path) -> tuple[bool, str]:
@@ -146,14 +153,31 @@ def detect_hardware(py: Path) -> tuple[bool, str]:
     if platform.system() == "Windows":
         return False, "Windows — der Roboter läuft unter Linux"
 
-    if not has_module(py, "Rosmaster_Lib"):
-        return False, "Rosmaster_Lib nicht gefunden"
+    try:
+        proc = subprocess.run(
+            [str(py), "-c", HARDWARE_PROBE],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except subprocess.TimeoutExpired:
+        return False, "Hardware-Prüfung hängt — Expansion Board reagiert nicht"
 
-    ports = serial_ports()
-    if not ports:
-        return False, "keine serielle Schnittstelle gefunden"
+    # Die Bibliothek gibt beim Start selbst etwas aus, deshalb die
+    # Ergebniszeile gezielt heraussuchen statt die Ausgabe zu nehmen.
+    result = ""
+    for line in proc.stdout.splitlines():
+        if line.startswith("RESULT:"):
+            result = line[len("RESULT:"):]
 
-    return True, f"{len(ports)} serielles Gerät(e) gefunden"
+    if result == "ok":
+        return True, "Rosmaster_Lib hat das Board gefunden"
+    if result == "no-lib":
+        return False, "Rosmaster_Lib nicht installiert"
+    if result.startswith("no-port:"):
+        return False, f"Board nicht erreichbar ({result[len('no-port:'):].strip()})"
+
+    return False, "Hardware-Prüfung ohne verwertbare Antwort"
 
 
 # --- Browser ------------------------------------------------------------------------

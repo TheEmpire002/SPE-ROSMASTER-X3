@@ -75,6 +75,30 @@ def check_python_packages() -> None:
     check_module("cv2", "optional, für die Kamera: pip install opencv-python")
 
 
+def check_board() -> None:
+    """Der eigentliche Test: lässt sich das Expansion Board öffnen?
+
+    Aussagekräftiger als jede Suche nach Gerätedateien -- Rosmaster_Lib
+    findet die richtige Schnittstelle selbst, und je nach Image und
+    Anschlussart heißt sie anders.
+    """
+    headline("Expansion Board")
+    try:
+        from Rosmaster_Lib import Rosmaster
+    except ImportError:
+        print("  [fehlt]  Rosmaster_Lib -- ohne die geht gar nichts")
+        return
+
+    try:
+        Rosmaster()
+    except Exception as exc:
+        print(f"  [FEHLER] Board nicht erreichbar: {exc}")
+        print("\n-> Roboter eingeschaltet? Kabel? Rechte (Gruppe 'dialout')?")
+        return
+
+    print("  [ok]     Board antwortet -- echte Hardware ist nutzbar")
+
+
 def check_usb() -> None:
     headline("USB-Geräte (Lidar, Kamera)")
     if shutil.which("lsusb") is None:
@@ -97,6 +121,7 @@ def main() -> int:
     check_system()
     check_serial()
     check_python_packages()
+    check_board()
     check_cameras()
     check_usb()
     print()

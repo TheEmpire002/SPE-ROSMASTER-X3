@@ -47,9 +47,18 @@ Falls die Bibliothek fehlt, liegt sie im Yahboom-Lieferumfang bzw. im
 offiziellen Yahboom-GitHub-Repository zum ROSMASTER.
 
 **Serielle Schnittstelle.** Der Gerätename unterscheidet sich je nach Image
-(`/dev/myserial`, `/dev/ttyUSB0`, `/dev/ttyAMA0`). Welcher bei euch stimmt,
-zeigt `python scripts/check_hardware.py`. Eintragen in `config.py` unter
-`SERIAL_PORT`.
+und Anschlussart (`/dev/myserial`, `/dev/ttyUSB0`, `/dev/ttyAMA0`, …). Das ist
+aber meist egal: **`Rosmaster()` ohne Argument findet das Board selbst.**
+Deshalb steht `SERIAL_PORT` in `config.py` auf `None` und sollte dort auch
+bleiben, solange nichts dagegen spricht.
+
+Ein fester Port ist nur nötig, wenn die Automatik das falsche Gerät erwischt —
+realistisch dann, wenn der RPLIDAR am selben Bus hängt. In dem Fall den
+`by-id`-Pfad eintragen, nicht `/dev/ttyUSB0` (siehe Lidar-Abschnitt unten).
+
+Ob das Board erreichbar ist, beantwortet `python scripts/check_hardware.py`
+unter „Expansion Board" — das versucht tatsächlich, es zu öffnen, statt nur
+nach Gerätedateien zu suchen.
 
 **Rechte.** Wenn der Zugriff an „Permission denied" scheitert:
 
