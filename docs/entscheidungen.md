@@ -102,7 +102,8 @@ Nachricht, Signalton. Das ist beim Design der Alarmierung einzuplanen.
 ## E4 — Lidar direkt auslesen, Ortung per Aufnahmeabgleich
 
 **Datum:** 2026-10-27
-**Status:** aktiv, schließt die offene Frage aus E1a
+**Status:** aktiv, schließt die offene Frage aus E1a. Die Ortung gegen nur
+*eine* Referenzaufnahme ist durch E5 erweitert.
 
 **Kontext.** Die Rückfahrt zum Startpunkt lief über Koppelnavigation und
 driftete entsprechend: in der Simulation rund 30 cm auf zweieinhalb Metern,
@@ -151,3 +152,48 @@ entspricht auf vier Meter Entfernung sieben Zentimetern.
 
 **Neu bewerten, wenn:** der Roboter zwischen Räumen wechseln soll. Dann
 führt an einer Karte kein Weg vorbei.
+
+---
+
+## E5 — Karte aus Schlüsselbildern, Rückweg, Marker zum Andocken
+
+**Datum:** 2026-10-27
+**Status:** aktiv, erweitert E4 (Branch `feature/return_home`)
+
+**Kontext.** Am Roboter kam die Heimfahrt bei Fahrten über 4–5 m oder mit
+Drehungen weit daneben heraus. Ursachen im Code: Jenseits von
+`MATCH_RADIUS_M` (4 m) gab es keinen Abgleich mehr; Aufnahmen während
+schneller Drehungen sind verzerrt, wurden bei der großzügigen Toleranz von
+18 cm aber übernommen; und die Luftlinie zum Start führte durch Wände.
+
+**Entscheidung.**
+- **Karte aus Schlüsselbildern** statt einer Einzelaufnahme: alle 0,6 m eine
+  Aufnahme samt Position, aber nur aus sehr guten Abgleichen. Abgeglichen
+  wird gegen die nächstgelegenen drei. Kein Ausgleich der Karte im
+  Nachhinein (kein vollständiges SLAM).
+- **Strengere Übernahme:** Restabstand ≤ 10 cm, mindestens die Hälfte der
+  Punkte mit Partner, kein Abgleich bei schneller Drehung, keine weiten
+  Sprünge. Nach verlorener Spur wird mit mehreren Startwinkeln neu gesucht.
+- **IMU-Drehsinn** wird beim ersten Drehen gegen die Befehle geprüft.
+- **Rückweg** entlang der aufgezeichneten Strecke, Schleifen gestrichen,
+  Abkürzung bei freier Lidar-Sicht.
+- **Feinausrichtung im Stand** und Wiederherstellen der Blickrichtung.
+- **ArUco-Marker** (umschaltbar) für das letzte Stück: Die Kamera merkt sich
+  beim Setzen, wie der Marker liegt, und regelt am Ende auf genau diese
+  Ansicht. Keine Kalibrierung nötig, weil Referenz und Messung denselben
+  Fehler teilen.
+
+**Warum der Marker auf der CPU läuft und nicht auf dem KI-Modul.** Die
+Erkennung braucht wenige Millisekunden je Bild. Das KI-Modul bleibt für
+Aufgaben frei, die ein neuronales Netz brauchen (Personenerkennung).
+
+**Konsequenzen.**
+- *Gut:* Keine Reichweitengrenze mehr; Türen und Ecken auf dem Hinweg sind
+  auch auf dem Rückweg passierbar; mit Marker zentimetergenau.
+- *Schlecht:* Fehler, die sich auf dem Hinweg in die Karte einschleichen,
+  bleiben dort. Die Karte lebt nur im Speicher und beginnt bei jedem
+  Serverstart bzw. „Startpunkt setzen“ neu.
+
+**Neu bewerten, wenn:** die Karte über Neustarts hinweg halten oder
+mehrere Räume dauerhaft abdecken soll. Dann lohnt echtes SLAM mit
+Schleifenschluss.

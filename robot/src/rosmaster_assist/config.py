@@ -22,6 +22,12 @@ SERIAL_PORT: str | None = None
 # Programm zu beenden (siehe docs/hardware.md).
 TELEMETRY_ENABLED = True
 
+# Drehsinn der IMU. Die Software rechnet gegen den Uhrzeigersinn positiv;
+# zählt die IMU andersherum, dreht sich jede Positionsschätzung nach einer
+# Kurve in die falsche Richtung. 0 = automatisch erkennen (Vergleich mit den
+# Radencodern während des Drehens), 1 oder -1 = fest vorgeben.
+IMU_YAW_SIGN = 0
+
 # --- Wiederverbinden nach USB-Aussetzern ------------------------------------
 
 # Bricht die 5-V-Versorgung am USB-Hub kurz ein (schwacher Akku, Motoren und
@@ -97,16 +103,57 @@ LIDAR_ANGLE_OFFSET_DEG = -90.0
 LIDAR_MIN_M = 0.15
 LIDAR_MAX_M = 8.0
 
+# Wo der Lidar relativ zum Drehpunkt des Roboters sitzt (Meter, x vorn,
+# y links). Ein Versatz lässt den Lidar beim Drehen auf einem Kreis wandern
+# -- bei 10 cm und 30° Drehung sind das 5 cm Fehler in der Ortung. Messen:
+# Abstand Mitte Lidar-Kopf zur Mitte zwischen den vier Rädern.
+LIDAR_MOUNT_X_M = 0.0
+LIDAR_MOUNT_Y_M = 0.0
+
 # --- Lidar-gestützte Ortung -----------------------------------------------------
 
-# Nur in dieser Entfernung zum Startpunkt wird mit der Referenzaufnahme
-# verglichen. Weiter weg überlappt zu wenig, und ein Fehlabgleich wäre
-# schlimmer als gar keine Korrektur.
-MATCH_RADIUS_M = 4.0
+# Unterwegs legt der Roboter eine Karte aus Aufnahmen an ("Schlüsselbilder"),
+# jede mit der Position, an der sie entstand. Auf dem Rückweg wird gegen die
+# nächstgelegenen abgeglichen -- so gibt es keine Reichweitengrenze mehr wie
+# bei einer einzelnen Aufnahme vom Startpunkt.
+
+# Neues Schlüsselbild, sobald der Roboter so weit vom nächsten entfernt ist.
+KEYFRAME_ABSTAND_M = 0.6
+
+# Ein Schlüsselbild wird nur aus einem sehr guten Abgleich übernommen --
+# sonst wanderte der Fehler einer schlechten Schätzung fest in die Karte.
+KEYFRAME_MAX_RESIDUAL_M = 0.06
+
+# Obergrenze, damit der Speicher bei langen Fahrten nicht vollläuft.
+KEYFRAME_MAX = 300
+
+# Gegen Schlüsselbilder in diesem Umkreis um die geschätzte Position wird
+# abgeglichen (die nächsten drei davon).
+KEYFRAME_SUCHRADIUS_M = 3.0
 
 # Mittlerer Restabstand nach dem Abgleich, bis zu dem das Ergebnis
-# übernommen wird. Darüber gilt der Abgleich als misslungen.
-MATCH_MAX_RESIDUAL_M = 0.18
+# übernommen wird. Darüber gilt der Abgleich als misslungen. Lieber streng:
+# ein falsch übernommener Abgleich verdreht alles, was danach kommt.
+MATCH_MAX_RESIDUAL_M = 0.10
+
+# Anteil der Messpunkte, die im Abgleich einen Partner finden müssen.
+# Darunter passt die Aufnahme nicht wirklich zur Karte (anderer Raum,
+# Menschen davor, falsches lokales Minimum).
+MATCH_MIN_ANTEIL = 0.5
+
+# Während schneller Drehungen nicht abgleichen: der Lidar braucht 0,18 s für
+# eine Umdrehung, bei 1 rad/s ist die Aufnahme dabei um 10° verzerrt. In
+# dieser Zeit trägt die IMU allein.
+MATCH_MAX_OMEGA = 0.35  # rad/s
+
+# Springt die Korrektur weiter als das, wird sie verworfen -- außer der
+# Roboter hat die Spur verloren und sucht neu.
+MATCH_MAX_SPRUNG_M = 0.8
+
+# So lange ohne gelungenen Abgleich gilt die Spur als verloren. Dann wird
+# mit mehreren Startwinkeln gesucht, weil die Odometrie inzwischen zu weit
+# danebenliegen kann, als dass ein einzelner Versuch noch trifft.
+MATCH_VERLOREN_S = 3.0
 
 # Wie stark eine Korrektur je Durchgang einfließt (0..1). Niedrig, damit
 # ein einzelner Fehlabgleich die Position nicht verreißt.
@@ -164,6 +211,69 @@ HOME_STOP_DISTANCE_M = 0.45
 # übersieht Tischbeine seitlich der Fahrlinie, zu breit hält wegen
 # Wänden an, an denen man problemlos vorbeifährt.
 HOME_CONE_DEG = 35.0
+
+# Steht etwas im Weg, so lange warten, ob es verschwindet (Mensch läuft
+# vorbei), bevor die Heimfahrt aufgibt.
+HOME_HINDERNIS_WARTEN_S = 5.0
+
+# --- Rückweg entlang der gefahrenen Strecke ---
+
+# Abstand der Wegpunkte, die unterwegs aufgezeichnet werden.
+RUECKWEG_PUNKTABSTAND_M = 0.25
+
+# Kommt der Roboter auf der Hinfahrt wieder so nah an einen früheren
+# Wegpunkt, wird die Schleife dazwischen gestrichen -- zurück geht es nicht
+# alle Umwege noch einmal.
+RUECKWEG_SCHLEIFE_M = 0.35
+
+# Ein Wegpunkt gilt als erreicht in diesem Abstand.
+RUECKWEG_ERREICHT_M = 0.2
+
+# Abkürzen: ein näher am Start liegender Wegpunkt wird direkt angefahren,
+# wenn er höchstens so weit weg ist und der Lidar freie Sicht meldet.
+RUECKWEG_ABKUERZUNG_M = 3.0
+# Halber Öffnungswinkel für die Sichtprüfung. Schmaler als HOME_CONE_DEG:
+# hier geht es um "ist der Weg frei", nicht um "bremsen".
+RUECKWEG_SICHT_DEG = 12.0
+
+# --- Feinausrichtung am Ziel ---
+
+# Nach Erreichen von HOME_TOLERANCE_M wird im Stand nachjustiert: anhalten,
+# dem Lidar Zeit für ein paar ruhige Abgleiche geben, dann mit Schritttempo
+# die Restabweichung wegfahren.
+HOME_FEIN_TOLERANZ_M = 0.04
+HOME_FEIN_TEMPO = 0.08       # m/s
+HOME_FEIN_RUNDEN = 4
+
+# Am Ende auf die Blickrichtung vom Startpunkt drehen. Ohne das steht er
+# zwar richtig, schaut aber irgendwohin -- und die Kamera sieht den Marker
+# nicht.
+HOME_AUSRICHTEN = True
+HOME_WINKEL_TOLERANZ_DEG = 2.0
+HOME_DREH_TEMPO = 0.5        # rad/s, Höchstwert
+
+# --- Andocken per Kamera-Marker (ArUco) ---
+
+# Umschaltbar in der App. Aus = nur Lidar.
+MARKER_ENABLED = False
+
+# Marker aus dem Wörterbuch DICT_4X4_50. Druckvorlage: /marker/image
+MARKER_ID = 0
+
+# Gedruckte Kantenlänge des schwarzen Quadrats. Bestimmt nur den Maßstab:
+# eine falsche Angabe macht das Andocken langsamer, nicht ungenauer, weil
+# Referenz und aktuelle Messung mit demselben Wert rechnen.
+MARKER_SIZE_M = 0.15
+
+# Horizontaler Bildwinkel der Kamera, für die Umrechnung von Pixeln in
+# Richtungen. Wie MARKER_SIZE_M: Referenz und Messung teilen den Fehler.
+CAMERA_HFOV_DEG = 66.0
+
+# Fertig, wenn Position und Winkel so nah an der Referenz sind.
+MARKER_TOLERANZ_M = 0.02
+MARKER_WINKEL_TOLERANZ_DEG = 1.5
+MARKER_TEMPO = 0.08          # m/s, Höchstwert beim Andocken
+MARKER_TIMEOUT_S = 25.0
 
 # --- Kamera ---------------------------------------------------------------------
 

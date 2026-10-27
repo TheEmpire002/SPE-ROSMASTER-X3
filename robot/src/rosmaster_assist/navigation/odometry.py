@@ -24,6 +24,7 @@ import threading
 import time
 from collections import deque
 
+from .. import config
 from ..drive.base import DriveBase
 from ..protocol import DriveCommand
 
@@ -46,6 +47,13 @@ class Odometry:
         # weil die IMU ihren eigenen Nullpunkt hat.
         self._imu_referenz: float | None = None
         self._imu_versatz = 0.0
+        # Drehsinn der IMU, siehe config.IMU_YAW_SIGN. Bis er feststeht,
+        # wird mit der Drehrate gerechnet statt mit einem womöglich
+        # spiegelverkehrten Winkel.
+        self._imu_vorzeichen = config.IMU_YAW_SIGN or 1
+        self._imu_entschieden = config.IMU_YAW_SIGN != 0
+        self._imu_beleg = 0.0
+        self._imu_letzt: float | None = None
         self._gemessen = False
         # Kurzer Rückblick für den Lidar-Abgleich: (Zeit, x, y, Winkel).
         # Zwei Sekunden reichen -- eine Lidar-Umdrehung dauert 0,2 s.
@@ -178,7 +186,7 @@ class Odometry:
         )
 
         with self._lock:
-            neuer_winkel = self._winkel_bestimmen(omega, dt)
+            neuer_winkel = self._winkel_bestimmen(omega, dt, befohlen.omega)
 
             # In der Mitte des Zeitschritts auswerten: bei gleichzeitigem
             # Fahren und Drehen ist das deutlich genauer, als Anfangs- oder
@@ -229,12 +237,19 @@ class Odometry:
 
         return gemessen
 
-    def _winkel_bestimmen(self, omega: float, dt: float) -> float:
+    def _winkel_bestimmen(self, omega: float, dt: float, befohlen_omega: float = 0.0) -> float:
         """Blickrichtung aus der IMU, ersatzweise aus der Drehrate."""
         imu = self._driver.read_heading()
-        if imu is None:
+        if imu is not None:
+            # Fürs Vorzeichen zählt der Befehl, wenn es einen gibt: der
+            # ist sicher richtig herum, die Encoder melden beim Drehen
+            # mitunter fast nichts.
+            vergleich = befohlen_omega if abs(befohlen_omega) > 0.2 else omega
+            self._imu_drehsinn_pruefen(imu, vergleich, dt)
+        if imu is None or not self._imu_entschieden:
             # Aufsummieren: der Fehler wächst mit jeder Drehung.
             return _normalisieren(self.theta + omega * dt)
+        imu *= self._imu_vorzeichen
 
         if self._imu_referenz is None:
             # Neuer Bezugspunkt. Der aktuelle Winkel wird als Versatz
@@ -250,6 +265,43 @@ class Odometry:
         # halbe Umdrehung.
         seit_bezug = _normalisieren(math.radians(imu - self._imu_referenz))
         return _normalisieren(self._imu_versatz + seit_bezug)
+
+    #: So viel Drehung (rad) muss übereinstimmend gemessen sein, bevor der
+    #: Drehsinn als geklärt gilt. Rund 45°: genug, um Rauschen und Schlupf
+    #: auszumitteln, wenig genug, dass es bei der ersten Kurve passiert.
+    IMU_BELEG_GRENZE = 0.8
+
+    def _imu_drehsinn_pruefen(self, imu: float, omega: float, dt: float) -> None:
+        """Vergleicht die IMU-Drehung mit der Drehrate von Encodern/Befehl.
+
+        Zählt die IMU andersherum als die Software, wäre jede Positions-
+        schätzung nach einer Kurve gespiegelt -- genau das Fehlerbild "nach
+        dem Drehen kommt er weit daneben raus". Die Encoder sind beim Drehen
+        ungenau (Mecanum rutscht), haben aber verlässlich das richtige
+        Vorzeichen.
+        """
+        letzt, self._imu_letzt = self._imu_letzt, imu
+        if self._imu_entschieden or letzt is None or abs(omega) < 0.2:
+            return
+        d_imu = math.radians((imu - letzt + 180.0) % 360.0 - 180.0)
+        if abs(d_imu) < 1e-3:
+            return
+        d_soll = abs(omega * dt)
+        self._imu_beleg += d_soll if (d_imu > 0) == (omega > 0) else -d_soll
+
+        if abs(self._imu_beleg) < self.IMU_BELEG_GRENZE:
+            return
+        self._imu_entschieden = True
+        self._imu_referenz = None  # neu ansetzen, ab jetzt mit IMU
+        if self._imu_beleg > 0:
+            self._imu_vorzeichen = 1
+            log.info("IMU-Drehsinn passt (IMU_YAW_SIGN = 1)")
+        else:
+            self._imu_vorzeichen = -1
+            log.warning(
+                "IMU zählt im Uhrzeigersinn -- wird umgerechnet. Fest "
+                "eintragen in config.py: IMU_YAW_SIGN = -1"
+            )
 
 
 def _normalisieren(winkel: float) -> float:

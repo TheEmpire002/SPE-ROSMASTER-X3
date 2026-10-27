@@ -17,6 +17,7 @@ Von der App / vom ESP an den Roboter
 {"type": "home_cancel"}                                   Heimfahrt abbrechen
 {"type": "set_home"}                                      hier ist der neue Startpunkt
 {"type": "collision", "enabled": true, "distance": 0.35}  Kollisionsvermeidung
+{"type": "home_marker", "enabled": true}                  Andocken per Kamera-Marker
 {"type": "ping"}                                          Verbindung am Leben halten
 
 Vom Roboter an die App
@@ -27,6 +28,7 @@ Vom Roboter an die App
 {"type": "alert",  "level": "info"|"warning"|"emergency", "text": "…"}
 {"type": "error",  "text": "…"}                           ungültige Nachricht o.Ä.
 {"type": "collision", "enabled":…, "distance":…, "verfuegbar":…, "blockiert":…}
+{"type": "home_marker", "enabled":…, "verfuegbar":…, "referenz":…, "fehler":…}
 {"type": "pong"}
 """
 
@@ -97,14 +99,22 @@ def state_message(
     homing: bool = False,
     pose_gemessen: bool = False,
     collision: dict[str, Any] | None = None,
+    homing_phase: str | None = None,
+    spur: str | None = None,
 ) -> dict[str, Any]:
     msg: dict[str, Any] = {
         "type": "state",
         "driver": driver,
         "connected": connected,
         "homing": homing,
+        # Was die Heimfahrt gerade tut ("Rückweg", "Feinausrichtung", …).
+        "homing_phase": homing_phase,
         **asdict(cmd),
     }
+    if spur is not None:
+        # "ok", "verloren" oder "keine Karte" -- ob der Lidar die Position
+        # gerade bestätigt.
+        msg["spur"] = spur
     if collision is not None:
         msg["collision"] = collision
     if pose is not None:
@@ -118,6 +128,11 @@ def state_message(
             "gemessen": pose_gemessen,
         }
     return msg
+
+
+def marker_message(zustand: dict[str, Any]) -> dict[str, Any]:
+    """Einstellung und Zustand des Andockens per Kamera-Marker."""
+    return {"type": "home_marker", **zustand}
 
 
 def collision_message(zustand: dict[str, Any]) -> dict[str, Any]:

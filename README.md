@@ -135,13 +135,21 @@ Startbereich). Gemessen im Simulationslauf über 2,3 m: **30 cm Abweichung
 ohne Lidar, 7 cm mit**. Steht in der App „geschätzt" hinter der Entfernung,
 fehlt der Lidar oder die Bewegungsmessung — dann gilt der schlechtere Wert.
 
-Jenseits von `MATCH_RADIUS_M` (4 m) erkennt der Lidar den Startbereich nicht
-wieder und korrigiert nicht. Die Odometrie bringt den Roboter dorthin
-zurück, der Lidar weist ihn dann genau ein.
+Unterwegs legt der Lidar eine Karte entlang der gefahrenen Strecke an.
+Zurück geht es auf dem Weg der Hinfahrt, mit Abkürzungen, wo der Lidar freie
+Sicht meldet. Am Ziel richtet sich der Roboter im Stand genau aus und dreht
+sich in die ursprüngliche Blickrichtung. Steht in der App „Lidar-Spur:
+verloren", bestätigt der Lidar die Position gerade nicht.
 
-Der Roboter **weicht Hindernissen nicht aus** — er hält davor an und meldet
-es. Ausweichen ohne Karte endet leicht in einer Ecke. Deshalb auch das
-gemächliche Tempo (`HOME_SPEED`) und die Zeitbegrenzung.
+**Noch genauer mit Kamera-Marker:** Druckvorlage unter
+`http://<IP-des-Pi>:8000/marker/image` mit 15 cm Kantenlänge ausdrucken, in
+Sichtweite der Kamera am Startpunkt anbringen, in der App „Andocken per
+Kamera-Marker" einschalten und „Startpunkt hier setzen" drücken. Am Ende
+der Heimfahrt fährt er dann nach, bis er den Marker wieder genauso sieht.
+
+Der Roboter **weicht Hindernissen nicht aus** — er wartet kurz und gibt
+dann auf. Ausweichen ohne Karte endet leicht in einer Ecke. Deshalb auch
+das gemächliche Tempo (`HOME_SPEED`) und die Zeitbegrenzung.
 
 Abgebrochen wird die Heimfahrt durch jede Fahreingabe, die Leertaste, den
 Abbrechen-Knopf oder eine verlorene Verbindung.

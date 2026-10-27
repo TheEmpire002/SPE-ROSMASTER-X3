@@ -96,6 +96,8 @@
       <dt>Entfernung</dt> <dd id="val-dist">—</dd>
       <dt>Position</dt>   <dd id="val-pos">—</dd>
       <dt>Blickrichtung</dt> <dd id="val-winkel">—</dd>
+      <dt>Lidar-Spur</dt> <dd id="val-spur">—</dd>
+      <dt>Heimfahrt</dt> <dd id="val-phase">—</dd>
     </dl>
 
     <div class="home-buttons">
@@ -107,11 +109,20 @@
       </button>
     </div>
 
+    <label class="switch">
+      <input type="checkbox" id="home-marker">
+      <span>Andocken per Kamera-Marker</span>
+      <output id="home-marker-state" class="switch-state">aus</output>
+    </label>
+
     <p class="hint">
-      Die Position wird aus der Fahrbewegung mitgerechnet, nicht gemessen —
-      sie wird mit der Zeit ungenauer. Der Roboter weicht unterwegs
-      <strong>keinen Hindernissen aus</strong>. Jede Eingabe bricht die
-      Heimfahrt ab.
+      Zurück geht es auf dem Weg der Hinfahrt, mit Abkürzungen, wo der Lidar
+      freie Sicht meldet. Am Ziel richtet er sich im Stand genau aus. Hindernissen
+      <strong>weicht er nicht aus</strong>, er wartet kurz und gibt dann auf.
+      Jede Eingabe bricht die Heimfahrt ab.
+      Marker: <a href="/marker/image" target="_blank">Druckvorlage</a>
+      (15 cm Kantenlänge), in Sichtweite der Kamera anbringen, dann
+      „Startpunkt hier setzen“.
     </p>
   </section>
 

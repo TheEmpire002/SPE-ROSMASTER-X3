@@ -142,7 +142,9 @@ Reihenfolge:
 
 1. `limits`
 2. `collision` (aktuelle Einstellung)
-3. danach alle 0,5 s `state`, dazu bei Bedarf `alert`, `vitals` und `collision`
+3. `home_marker` (aktuelle Einstellung)
+4. danach alle 0,5 s `state`, dazu bei Bedarf `alert`, `vitals`, `collision`
+   und `home_marker`
 
 ### An den Roboter
 
@@ -152,7 +154,8 @@ Reihenfolge:
 | `stop` | – | Sofort anhalten, Heimfahrt abbrechen. | keine |
 | `home` | – | Selbstständig zum Startpunkt zurückfahren (siehe unten). | `alert` an alle |
 | `home_cancel` | – | Heimfahrt abbrechen und anhalten. | `alert` an alle |
-| `set_home` | – | Aktuelle Stelle wird neuer Startpunkt (0, 0, 0°), Lidar-Referenz wird neu aufgenommen. | `alert` an alle |
+| `set_home` | – | Aktuelle Stelle wird neuer Startpunkt (0, 0, 0°). Lidar-Karte und Rückweg beginnen neu, ein sichtbarer Marker wird als Referenz gemerkt. | `alert` und `home_marker` an alle |
+| `home_marker` | `enabled` (bool) | Andocken per Kamera-Marker am Ende der Heimfahrt ein/aus. | `home_marker` an alle |
 | `collision` | `enabled` (bool, optional), `distance` (m, optional) | Kollisionsvermeidung ein/aus, Mindestabstand. `distance` wird auf 0,15–1,5 m begrenzt. | `collision` an alle |
 | `beep` | `ms` (int, Standard 100) | Buzzer. | keine |
 | `vitals` | `bpm` (Zahl/null), `motion` (bool/null) | Messwerte vom ESP32, werden an alle weitergereicht. | `vitals` an alle |
@@ -177,6 +180,8 @@ Ein unbekannter `type` liefert `{"type": "error", "text": "Unbekannter Nachricht
   "driver": "rosmaster",
   "connected": true,
   "homing": false,
+  "homing_phase": null,
+  "spur": "ok",
   "vx": 0.2, "vy": 0.0, "omega": 0.0,
   "pose": {"x": 1.234, "y": -0.05, "winkel": 12.5, "gemessen": true},
   "collision": {"enabled": false, "distance": 0.35, "verfuegbar": true, "blockiert": false}
@@ -188,6 +193,8 @@ Ein unbekannter `type` liefert `{"type": "error", "text": "Unbekannter Nachricht
 | `driver` | `"rosmaster"` = echte Motoren, `"mock"` = Simulation |
 | `connected` | Verbindung zum Motorboard steht. `false` nach einem USB-Aussetzer; der Server verbindet selbst neu. |
 | `homing` | Heimfahrt läuft |
+| `homing_phase` | was die Heimfahrt gerade tut: `"Rückweg"`, `"Anfahrt"`, `"Feinausrichtung"`, `"Ausrichten"`, `"Marker"`; sonst `null` |
+| `spur` | `"ok"` = Lidar bestätigt die Position gerade, `"verloren"` = seit über 3 s nicht, `"keine Karte"` = Startpunkt nicht eingemessen. Fehlt, wenn kein Lidar konfiguriert ist. |
 | `vx`, `vy`, `omega` | was der Roboter **gerade ausführt**, nach Begrenzung und Kollisionsvermeidung |
 | `pose` | geschätzte Position, siehe Konventionen. `gemessen: false` heißt: nur aus den Befehlen gerechnet, deutlich ungenauer. |
 | `collision.verfuegbar` | ob ein Lidar da ist, der Hindernisse sehen kann |
@@ -195,6 +202,19 @@ Ein unbekannter `type` liefert `{"type": "error", "text": "Unbekannter Nachricht
 
 **`collision`**: beim Verbinden und nach jeder Änderung, Felder wie
 `state.collision`.
+
+**`home_marker`**: beim Verbinden und nach jeder Änderung.
+
+```json
+{"type": "home_marker", "enabled": true, "verfuegbar": true, "referenz": true, "fehler": null}
+```
+
+| Feld | Bedeutung |
+|---|---|
+| `enabled` | Andocken per Marker eingeschaltet |
+| `verfuegbar` | Kamera da und OpenCV mit ArUco installiert |
+| `referenz` | beim Setzen des Startpunkts war der Marker im Bild. Ohne Referenz wird nicht angedockt. |
+| `fehler` | letzter Grund, warum der Marker nicht erkannt wurde, sonst `null` |
 
 **`alert`**: Meldungen für den Menschen.
 
@@ -216,15 +236,29 @@ will, liest besser die Felder in `state` (etwa `homing` wechselt auf
 
 ### Heimfahrt im Detail
 
-`home` fährt auf direktem Weg zum Startpunkt. Dank Mecanum-Rädern muss sich
-der Roboter dafür nicht drehen. Die Werte stehen in `config.py`:
+`home` läuft in Phasen ab (`state.homing_phase`). Dank Mecanum-Rädern muss
+sich der Roboter unterwegs nicht drehen. Die Werte stehen in `config.py`:
 
-- Tempo `HOME_SPEED` (0,25 m/s), langsamer ab 0,4 m vor dem Ziel
-- angekommen bei weniger als `HOME_TOLERANCE_M` (0,12 m) Abstand
-- bricht nach `HOME_TIMEOUT_S` (60 s) ab
-- **weicht nicht aus**: steht etwas näher als 0,45 m in Fahrtrichtung, hält
-  er an und meldet das
-- endet mit einem `alert` „Heimfahrt: …“ und `state.homing = false`
+1. **Rückweg:** die Strecke der Hinfahrt rückwärts, Schleifen gestrichen.
+   Liegt ein Wegpunkt näher am Start in freier Lidar-Sicht (bis 3 m), wird
+   direkt dorthin abgekürzt. Tempo `HOME_SPEED` (0,25 m/s).
+2. **Anfahrt:** direkt auf den Startpunkt zu, langsamer ab 0,4 m, bis
+   `HOME_TOLERANCE_M` (0,12 m).
+3. **Feinausrichtung** (nur mit Lidar): im Stand messen lassen, dann im
+   Schritttempo bis `HOME_FEIN_TOLERANZ_M` (4 cm).
+4. **Ausrichten:** auf die Blickrichtung beim Setzen des Startpunkts drehen
+   (`HOME_AUSRICHTEN`).
+5. **Marker** (wenn `home_marker` an und eine Referenz da ist): nachfahren,
+   bis der Marker auf 2 cm und 1,5° so liegt wie beim Setzen. Danach wird
+   die Position auf (0, 0, 0°) gesetzt.
+
+Weiter gilt:
+- die Zeitgrenze wächst mit der Länge des Rückwegs, mindestens
+  `HOME_TIMEOUT_S` (60 s)
+- **weicht nicht aus**: steht etwas näher als 0,45 m in Fahrtrichtung (und
+  vor dem Ziel), wartet er bis zu 5 s und gibt dann auf
+- endet mit einem `alert` „Heimfahrt: angekommen (…)“ bzw. dem Grund des
+  Abbruchs, und `state.homing = false`
 
 ---
 
@@ -290,8 +324,48 @@ xy = [(m * math.cos(math.radians(g)), m * math.sin(math.radians(g))) for g, m in
 }
 ```
 
-`letztes_residuum_m` sagt, wie gut die aktuelle Aufnahme auf die Referenz
-vom Startpunkt passt. Unter 0,05 ist gut.
+`letztes_residuum_m` sagt, wie gut die aktuelle Aufnahme auf die Karte
+passt. Unter 0,05 ist gut. Zusätzlich in `ortung`:
+`schluesselbilder` (Größe der Karte), `spur` (wie in `state`),
+`letzter_abgleich_vor_s`, `letzter_anteil` (Anteil der Punkte mit Partner)
+und `neusuchen` (wie oft die Spur wiedergefunden wurde).
+
+### Navigation und Marker
+
+**`GET /navigation/status`**: alles zur Heimfahrt auf einen Blick.
+
+```json
+{
+  "pose": {"x": 2.41, "y": -0.8, "winkel": 87.0},
+  "heimfahrt": {"aktiv": false, "phase": null, "letzter_grund": "angekommen (0.03 m, 1.2° Abweichung, Lidar)"},
+  "rueckweg": {"punkte": [[0.0, 0.0], [0.25, 0.02], [0.5, 0.05]], "laenge_m": 0.5},
+  "ortung": {"schluesselbilder": 7, "spur": "ok", "...": "wie in /lidar/status"},
+  "marker": {"enabled": true, "verfuegbar": true, "referenz": true, "fehler": null}
+}
+```
+
+`rueckweg.punkte` sind die Wegpunkte in Startpunkt-Koordinaten (Meter), vom
+Startpunkt bis zur aktuellen Position.
+
+**`GET /marker/image`**: Druckvorlage des Markers als PNG (ArUco
+`DICT_4X4_50`, ID `MARKER_ID`). So drucken, dass das schwarze Quadrat
+`MARKER_SIZE_M` (15 cm) Kantenlänge hat; der weiße Rand muss bleiben.
+
+**`GET /marker/status`**: wertet ein frisches Kamerabild aus.
+
+```json
+{
+  "enabled": true, "verfuegbar": true, "referenz": true, "fehler": null,
+  "marker_id": 0, "marker_groesse_m": 0.15,
+  "sichtbar": true, "entfernung_m": 1.23,
+  "abweichung": {"x_m": 0.012, "y_m": -0.004, "winkel_grad": 0.8}
+}
+```
+
+`abweichung` ist die Lage des Roboters relativ zur Marker-Referenz in
+Startpunkt-Koordinaten. Gut zum Prüfen vor Ort: Roboter von Hand
+verschieben, und die Werte müssen in die passende Richtung laufen (vor =
+`x` positiv, links = `y` positiv, nach links gedreht = Winkel positiv).
 
 ### Sonstiges
 
@@ -355,8 +429,10 @@ Vorbild ist `navigation/homing.py`.
 | `safety/watchdog.py` | Begrenzung und Totmannschaltung |
 | `safety/collision.py` | Kollisionsvermeidung bei manueller Fahrt |
 | `navigation/odometry.py` | Positionsschätzung |
-| `navigation/localizer.py` | Lidar-Abgleich gegen die Startpunkt-Aufnahme |
-| `navigation/homing.py` | Heimfahrt |
+| `navigation/localizer.py` | Lidar-Karte aus Schlüsselbildern, Abgleich |
+| `navigation/homing.py` | Heimfahrt (Phasen) |
+| `navigation/rueckweg.py` | Aufzeichnung der gefahrenen Strecke |
+| `navigation/marker.py` | ArUco-Marker erkennen, Abweichung zur Referenz |
 | `sensors/lidar.py` | Lidar auslesen (echt und simuliert) |
 | `sensors/camera.py` | Kamera (CSI, USB, Testbild) |
 | `drive/` | Motortreiber (echt und simuliert) |

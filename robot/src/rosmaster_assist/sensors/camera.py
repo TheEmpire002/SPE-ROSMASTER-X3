@@ -540,6 +540,16 @@ class CameraService:
         with self._lock:
             return self._latest
 
+    def latest_mit_zeit(self) -> tuple[Frame | None, float]:
+        """Letztes Bild samt Aufnahmezeit (time.monotonic).
+
+        Für Regelungen, die auf ein Bild reagieren: ein veraltetes Bild
+        zweimal auszuwerten hieße, zweimal auf dieselbe Abweichung zu
+        reagieren -- der Roboter schösse übers Ziel.
+        """
+        with self._lock:
+            return self._latest, self._letztes_bild
+
     def _neu_oeffnen(self) -> None:
         log.warning("Kamera liefert nichts mehr -- öffne sie neu")
         try:

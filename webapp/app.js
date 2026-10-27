@@ -60,6 +60,10 @@ const ui = {
   winkel: el("val-winkel"),
   btnHome: el("btn-home"),
   btnSetHome: el("btn-sethome"),
+  spur: el("val-spur"),
+  phase: el("val-phase"),
+  homeMarker: el("home-marker"),
+  homeMarkerState: el("home-marker-state"),
   collision: el("collision"),
   collisionRow: el("collision-row"),
   collisionDist: el("collision-dist"),
@@ -131,7 +135,14 @@ function handleMessage(msg) {
       ui.driver.textContent = msg.driver + (msg.connected ? "" : " (getrennt)");
       zeigePose(msg.pose);
       setzeHomeKnopf(msg.homing === true);
+      ui.phase.textContent = msg.homing ? (msg.homing_phase || "läuft") : "—";
+      ui.spur.textContent = msg.spur || "—";
+      ui.spur.className = msg.spur === "verloren" ? "warn" : "";
       zeigeKollision(msg.collision);
+      break;
+
+    case "home_marker":
+      zeigeMarker(msg);
       break;
 
     case "collision":
@@ -475,6 +486,35 @@ ui.btnHome.addEventListener("click", () => {
 ui.btnSetHome.addEventListener("click", () => {
   send({ type: "set_home" });
 });
+
+// Wie bei der Kollisionsvermeidung: der Server hält die Einstellung, der
+// Schalter schickt nur den Wunsch und zeigt an, was zurückkommt.
+ui.homeMarker.addEventListener("change", () => {
+  send({ type: "home_marker", enabled: ui.homeMarker.checked });
+});
+
+function zeigeMarker(z) {
+  ui.homeMarker.checked = z.enabled === true;
+  let text = "aus";
+  let klasse = "switch-state";
+  if (z.enabled && !z.verfuegbar) {
+    text = "nicht verfügbar";
+    klasse += " blockiert";
+  } else if (z.enabled && !z.referenz) {
+    // Ohne gemerkten Marker kann er nicht andocken -- das soll man sehen,
+    // bevor man sich auf die Heimfahrt verlässt.
+    text = "Startpunkt neu setzen";
+    klasse += " blockiert";
+  } else if (z.enabled) {
+    text = "bereit";
+    klasse += " an";
+  } else if (z.referenz) {
+    text = "aus (Marker gemerkt)";
+  }
+  ui.homeMarkerState.textContent = text;
+  ui.homeMarkerState.className = klasse;
+  ui.homeMarkerState.title = z.fehler || "";
+}
 
 // --- Kamera ----------------------------------------------------------------
 

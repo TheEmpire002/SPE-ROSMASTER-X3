@@ -29,10 +29,11 @@ from ..protocol import (
     collision_message,
     error_message,
     limits_message,
+    marker_message,
     state_message,
     vitals_message,
 )
-from ..navigation import Homing, Localizer, Odometry
+from ..navigation import Homing, Localizer, MarkerAndocken, Odometry, Rueckweg
 from ..safety import CollisionGuard, SafetyWatchdog
 from ..sensors.camera import CameraService, create_camera
 from ..sensors.lidar import LidarService, create_lidar
@@ -100,7 +101,9 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         else None
     )
     localizer = Localizer(odometry, lidar)
-    homing = Homing(watchdog, odometry, localizer)
+    rueckweg = Rueckweg()
+    marker = MarkerAndocken(camera)
+    homing = Homing(watchdog, odometry, localizer, rueckweg, marker)
     guard = CollisionGuard(localizer)
 
     @asynccontextmanager
@@ -119,13 +122,15 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             # einmessen. Ohne Referenz gäbe es bis zum ersten "set_home"
             # keine Korrektur -- und den Knopf drückt erfahrungsgemäß
             # niemand, bevor etwas schiefgeht.
-            asyncio.create_task(_referenz_nachholen(localizer, odometry))
+            asyncio.create_task(_referenz_nachholen(localizer, odometry, marker))
 
         status_task = asyncio.create_task(
-            _status_loop(hub, watchdog, driver, odometry, homing, localizer, guard)
+            _status_loop(hub, watchdog, driver, odometry, homing, localizer, guard, marker)
         )
-        odo_task = asyncio.create_task(_odometry_loop(watchdog, odometry))
-        match_task = asyncio.create_task(_match_loop(localizer))
+        odo_task = asyncio.create_task(
+            _odometry_loop(watchdog, odometry, homing, rueckweg)
+        )
+        match_task = asyncio.create_task(_match_loop(localizer, watchdog))
         hw_task = asyncio.create_task(_hardware_loop(hub, watchdog, driver, homing))
         try:
             yield
@@ -163,11 +168,13 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         # Der Server hält die Einstellung, nicht der Browser: sonst hätte
         # jeder Tab seine eigene Vorstellung davon, was gerade gilt.
         await ws.send_json(collision_message(guard.zustand()))
+        await ws.send_json(marker_message(marker.zustand()))
         try:
             while True:
                 msg = await ws.receive_json()
                 reply = await _handle(
-                    msg, watchdog, driver, hub, odometry, homing, localizer, guard
+                    msg, watchdog, driver, hub, odometry, homing, localizer, guard,
+                    rueckweg, marker,
                 )
                 if reply is not None:
                     await ws.send_json(reply)
@@ -277,6 +284,41 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             "alter_s": round(time.monotonic() - scan.zeit, 2),
         }
 
+    # --- Marker und Navigation ---
+
+    @app.get("/marker/image")
+    async def marker_image():
+        """Druckvorlage des Markers als PNG."""
+        try:
+            png = MarkerAndocken.druckvorlage_png()
+        except Exception as exc:
+            return Response(f"Marker nicht erzeugbar: {exc}", status_code=503)
+        return Response(png, media_type="image/png")
+
+    @app.get("/marker/status")
+    async def marker_status():
+        """Sieht die Kamera den Marker, und wie weit weicht er ab?"""
+        return await asyncio.to_thread(marker.status)
+
+    @app.get("/navigation/status")
+    async def navigation_status():
+        """Position, Heimfahrt, Rückweg, Karte -- alles zur Heimfahrt."""
+        x, y, winkel = odometry.pose()
+        return {
+            "pose": {"x": round(x, 3), "y": round(y, 3), "winkel": round(winkel, 1)},
+            "heimfahrt": {
+                "aktiv": homing.aktiv,
+                "phase": homing.phase,
+                "letzter_grund": homing.letzter_grund,
+            },
+            "rueckweg": {
+                "punkte": [[round(px, 2), round(py, 2)] for px, py in rueckweg.punkte()],
+                "laenge_m": round(rueckweg.laenge_m(), 2),
+            },
+            "ortung": localizer.status(),
+            "marker": marker.zustand(),
+        }
+
     # Die Web-App direkt mitausliefern, damit eine Adresse genügt.
     if WEBAPP_DIR.is_dir():
         app.mount("/static", StaticFiles(directory=WEBAPP_DIR), name="static")
@@ -299,6 +341,8 @@ async def _handle(
     homing: Homing,
     localizer: Localizer,
     guard: CollisionGuard,
+    rueckweg: Rueckweg,
+    marker: MarkerAndocken,
 ) -> dict[str, Any] | None:
     """Eine eingehende Nachricht verarbeiten.
 
@@ -369,12 +413,24 @@ async def _handle(
         # Die alte Referenzaufnahme gehört zum alten Startpunkt und würde
         # die Position sonst dorthin zurückziehen.
         eingemessen = localizer.referenz_aufnehmen()
+        rueckweg.zuruecksetzen()
+        marker_gesehen = await asyncio.to_thread(marker.referenz_aufnehmen)
         text = (
             "Startpunkt gesetzt und per Lidar eingemessen"
             if eingemessen
             else "Startpunkt gesetzt (ohne Lidar -- Position wird nur geschätzt)"
         )
+        if marker_gesehen:
+            text += ", Marker gemerkt"
+        elif marker.enabled:
+            text += " -- Marker nicht im Bild, Andocken per Kamera nicht möglich"
         await hub.broadcast(alert_message("info", text))
+        await hub.broadcast(marker_message(marker.zustand()))
+        return None
+
+    if kind == "home_marker":
+        marker.einstellen(msg.get("enabled"))
+        await hub.broadcast(marker_message(marker.zustand()))
         return None
 
     if kind == "ping":
@@ -398,7 +454,10 @@ async def _handle(
 
 
 async def _referenz_nachholen(
-    localizer: Localizer, odometry: Odometry, versuche: int = 120
+    localizer: Localizer,
+    odometry: Odometry,
+    marker: MarkerAndocken | None = None,
+    versuche: int = 120,
 ) -> None:
     """Nimmt die Referenzaufnahme, sobald der Lidar die erste Runde hat.
 
@@ -415,6 +474,8 @@ async def _referenz_nachholen(
         if math.hypot(x, y) > 0.05:
             break
         if localizer.referenz_aufnehmen():
+            if marker is not None:
+                await asyncio.to_thread(marker.referenz_aufnehmen)
             return
     log.warning(
         "Startpunkt konnte nicht eingemessen werden -- Ortung ohne "
@@ -422,7 +483,7 @@ async def _referenz_nachholen(
     )
 
 
-async def _match_loop(localizer: Localizer) -> None:
+async def _match_loop(localizer: Localizer, watchdog: SafetyWatchdog) -> None:
     """Gleicht die Position regelmäßig mit der Referenzaufnahme ab."""
     if not localizer.verfuegbar:
         return
@@ -433,7 +494,7 @@ async def _match_loop(localizer: Localizer) -> None:
             # Der Abgleich rechnet mit einigen hundert Punkten und würde
             # die Ereignisschleife sonst kurz blockieren -- das macht sich
             # in ruckelnder Steuerung bemerkbar.
-            await asyncio.to_thread(localizer.abgleichen)
+            await asyncio.to_thread(localizer.abgleichen, watchdog.current_command)
     except asyncio.CancelledError:
         raise
     except Exception:
@@ -481,7 +542,12 @@ async def _hardware_loop(
         log.exception("Verbindungsüberwachung abgestürzt -- kein Neuverbinden mehr")
 
 
-async def _odometry_loop(watchdog: SafetyWatchdog, odometry: Odometry) -> None:
+async def _odometry_loop(
+    watchdog: SafetyWatchdog,
+    odometry: Odometry,
+    homing: Homing | None = None,
+    rueckweg: Rueckweg | None = None,
+) -> None:
     """Schreibt die Position fort.
 
     Muss dauerhaft laufen, nicht nur während der Heimfahrt: sonst wüsste der
@@ -492,6 +558,11 @@ async def _odometry_loop(watchdog: SafetyWatchdog, odometry: Odometry) -> None:
         while True:
             await asyncio.sleep(takt)
             odometry.update(watchdog.current_command)
+            # Den Weg nur auf der Hinfahrt aufzeichnen -- während der
+            # Heimfahrt wird er abgefahren und gekürzt.
+            if rueckweg is not None and not (homing is not None and homing.aktiv):
+                x, y, _winkel = odometry.pose()
+                rueckweg.aufzeichnen(x, y)
     except asyncio.CancelledError:
         raise
     except Exception:
@@ -506,6 +577,7 @@ async def _status_loop(
     homing: Homing,
     localizer: Localizer,
     guard: CollisionGuard,
+    marker: MarkerAndocken | None = None,
 ) -> None:
     """Schickt regelmäßig den Zustand an alle Clients."""
     zuletzt_aktiv = False
@@ -531,6 +603,8 @@ async def _status_loop(
                         homing=homing.aktiv,
                         pose_gemessen=odometry.misst_tatsaechlich,
                         collision=guard.zustand(),
+                        homing_phase=homing.phase,
+                        spur=localizer.status()["spur"],
                     )
                 )
     except asyncio.CancelledError:

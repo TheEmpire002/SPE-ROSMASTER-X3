@@ -161,6 +161,10 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
    beim Antrieb, während in Wahrheit die Sperre hält. */
 .switch-state.blockiert { color: var(--warn); }
 
+/* Lidar-Spur verloren: die Position ist dann nur geschätzt. */
+.readout dd.warn { color: var(--warn); }
+.hint a { color: var(--accent); }
+
 /* Attributregel vor der display-Angabe -- sonst bliebe das Element
    trotz hidden sichtbar (siehe .cam-error). */
 .slider[hidden] { display: none; }
