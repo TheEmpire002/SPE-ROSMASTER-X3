@@ -18,10 +18,15 @@ import logging
 import math
 import time
 
+from typing import TYPE_CHECKING
+
 from .. import config
 from ..protocol import DriveCommand
 from ..safety import SafetyWatchdog
 from .odometry import Odometry
+
+if TYPE_CHECKING:  # nur für die Typangabe -- vermeidet einen Ringimport
+    from .localizer import Localizer
 
 log = logging.getLogger(__name__)
 
@@ -29,9 +34,15 @@ log = logging.getLogger(__name__)
 class Homing:
     """Steuert den Roboter zurück zum Startpunkt."""
 
-    def __init__(self, watchdog: SafetyWatchdog, odometry: Odometry) -> None:
+    def __init__(
+        self,
+        watchdog: SafetyWatchdog,
+        odometry: Odometry,
+        localizer: "Localizer | None" = None,
+    ) -> None:
         self._watchdog = watchdog
         self._odometry = odometry
+        self._localizer = localizer
         self._task: asyncio.Task[None] | None = None
         self._grund: str | None = None
 
@@ -91,7 +102,21 @@ class Homing:
                     log.warning("Heimfahrt abgebrochen -- %s", self._grund)
                     return
 
-                self._watchdog.submit(self._schritt(x, y, winkel_grad, abstand))
+                befehl = self._schritt(x, y, winkel_grad, abstand)
+
+                # Erst kurz vor dem Losfahren prüfen, nicht vorher: die
+                # Fahrtrichtung ergibt sich aus dem Befehl.
+                blockiert = self._hindernis(befehl)
+                if blockiert is not None:
+                    self._watchdog.stop()
+                    self._grund = (
+                        f"Hindernis in {blockiert:.2f} m, noch {abstand:.2f} m "
+                        "bis zum Startpunkt"
+                    )
+                    log.warning("Heimfahrt angehalten -- %s", self._grund)
+                    return
+
+                self._watchdog.submit(befehl)
                 await asyncio.sleep(takt)
 
         except asyncio.CancelledError:
@@ -102,6 +127,26 @@ class Homing:
             self._watchdog.stop()
             self._grund = "Fehler während der Fahrt"
             log.exception("Heimfahrt abgebrochen")
+
+    def _hindernis(self, befehl: DriveCommand) -> float | None:
+        """Steht etwas im Weg? Gibt die Entfernung zurück, sonst None.
+
+        Der Roboter weicht nicht aus, er hält an. Ausweichen ohne Karte
+        endet leicht darin, dass er sich in einer Ecke festfährt -- lieber
+        stehenbleiben und Bescheid geben.
+        """
+        if self._localizer is None:
+            return None
+        if befehl.is_stop():
+            return None
+
+        # Bei Mecanum ist die Fahrtrichtung nicht "vorn": der Roboter kann
+        # seitwärts fahren. Also in die Richtung schauen, in die es geht.
+        richtung = math.degrees(math.atan2(befehl.vy, befehl.vx))
+        abstand = self._localizer.hindernis_voraus(richtung)
+        if abstand is None:
+            return None
+        return abstand if abstand < config.HOME_STOP_DISTANCE_M else None
 
     def _schritt(self, x: float, y: float, winkel_grad: float, abstand: float) -> DriveCommand:
         """Fahrbefehl für diesen Moment."""

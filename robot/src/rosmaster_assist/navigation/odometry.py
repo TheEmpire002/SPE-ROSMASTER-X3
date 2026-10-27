@@ -22,6 +22,7 @@ import logging
 import math
 import threading
 import time
+from collections import deque
 
 from ..drive.base import DriveBase
 from ..protocol import DriveCommand
@@ -44,8 +45,11 @@ class Odometry:
         # Rohwert der IMU beim Nullen -- der Winkel wird relativ dazu geführt,
         # weil die IMU ihren eigenen Nullpunkt hat.
         self._imu_referenz: float | None = None
-        self._imu_vorher: float | None = None
+        self._imu_versatz = 0.0
         self._gemessen = False
+        # Kurzer Rückblick für den Lidar-Abgleich: (Zeit, x, y, Winkel).
+        # Zwei Sekunden reichen -- eine Lidar-Umdrehung dauert 0,2 s.
+        self._verlauf: deque = deque(maxlen=120)
 
         # Stirbt der Empfangs-Thread der Bibliothek (etwa durch einen
         # Portkonflikt), liefert sie weiterhin Werte -- nämlich Nullen.
@@ -70,6 +74,62 @@ class Odometry:
         with self._lock:
             return math.hypot(self.x, self.y)
 
+    def pose_bei(self, zeitpunkt: float) -> tuple[float, float, float] | None:
+        """Wo der Roboter zu einem früheren Zeitpunkt stand (x, y, Bogenmaß).
+
+        Nötig für den Lidar-Abgleich: eine Aufnahme ist beim Auswerten
+        bereits ein paar Zehntelsekunden alt. Ohne diesen Rückblick würde
+        die Korrektur den Roboter auf eine Stelle ziehen, die er längst
+        verlassen hat -- bei 0,3 m/s sind das schon mehrere Zentimeter.
+        """
+        with self._lock:
+            if not self._verlauf:
+                return None
+            # Rückwärts suchen: der gesuchte Zeitpunkt liegt fast immer
+            # am Ende des Verlaufs.
+            bester = self._verlauf[0]
+            for eintrag in reversed(self._verlauf):
+                if eintrag[0] <= zeitpunkt:
+                    bester = eintrag
+                    break
+            return bester[1], bester[2], bester[3]
+
+    def korrigieren(self, x: float, y: float, theta: float, gewicht: float) -> None:
+        """Position Richtung eines gemessenen Werts ziehen.
+
+        Kommt vom Lidar-Abgleich. Bewusst nicht hart überschreiben: ein
+        einzelner Fehlabgleich würde die Position sonst verreißen und die
+        Heimfahrt in die Irre schicken. Über mehrere Durchgänge nähert sich
+        die Schätzung dem gemessenen Wert an.
+        """
+        gewicht = max(0.0, min(1.0, gewicht))
+        with self._lock:
+            dx = (x - self.x) * gewicht
+            dy = (y - self.y) * gewicht
+            # Winkel nicht einfach mitteln: zwischen 179° und -179° liegt
+            # ein Grad, nicht 358. Über die Differenz gehen.
+            dtheta = _normalisieren(theta - self.theta) * gewicht
+
+            self.x += dx
+            self.y += dy
+            self.theta = _normalisieren(self.theta + dtheta)
+
+            # Den Verlauf mitverschieben. Sonst stünden dort Positionen aus
+            # der Zeit vor der Korrektur, und die Latenzrechnung im
+            # Lidar-Abgleich würde die Korrektur selbst für zurückgelegte
+            # Strecke halten -- die Position schaukelt sich dann mit jedem
+            # Durchgang weiter auf, statt sich einzupendeln.
+            self._verlauf = deque(
+                ((t, vx + dx, vy + dy, _normalisieren(vt + dtheta))
+                 for t, vx, vy, vt in self._verlauf),
+                maxlen=self._verlauf.maxlen,
+            )
+
+            # Nach einer Korrektur ist der IMU-Bezug nicht mehr stimmig --
+            # er wird beim nächsten Schritt neu gesetzt.
+            if self._imu_referenz is not None:
+                self._imu_referenz = None
+
     # --- Nullen --------------------------------------------------------------
 
     def reset(self) -> None:
@@ -84,12 +144,13 @@ class Odometry:
             self.y = 0.0
             self.theta = 0.0
             self._imu_referenz = None
-            self._imu_vorher = None
+            self._imu_versatz = 0.0
             self._letzte_zeit = None
             # Der Messung eine neue Chance geben -- vielleicht wurde der
             # Portkonflikt inzwischen behoben.
             self._stillstand_trotz_befehl = 0.0
             self._messung_verworfen = False
+            self._verlauf.clear()
         log.info("Startpunkt neu gesetzt")
 
     # --- Fortschreiben --------------------------------------------------------
@@ -126,6 +187,7 @@ class Odometry:
             self.x += (vx * math.cos(mittel) - vy * math.sin(mittel)) * dt
             self.y += (vx * math.sin(mittel) + vy * math.cos(mittel)) * dt
             self.theta = neuer_winkel
+            self._verlauf.append((jetzt, self.x, self.y, self.theta))
 
     #: So lange darf gemeldeter Stillstand trotz Fahrbefehl andauern, bevor
     #: die Messung als unbrauchbar gilt. Großzügig, weil Motoren anlaufen
@@ -175,15 +237,19 @@ class Odometry:
             return _normalisieren(self.theta + omega * dt)
 
         if self._imu_referenz is None:
+            # Neuer Bezugspunkt. Der aktuelle Winkel wird als Versatz
+            # gemerkt, sonst ginge eine Korrektur vom Lidar beim nächsten
+            # Schritt wieder verloren -- die IMU würde ihren eigenen
+            # Nullpunkt durchsetzen.
             self._imu_referenz = imu
-            self._imu_vorher = imu
+            self._imu_versatz = self.theta
             return self.theta
 
-        # Der Sprung von +180 auf -180 muss abgefangen werden, sonst dreht
-        # sich der Roboter rechnerisch schlagartig um eine halbe Drehung.
-        roh = math.radians(imu - self._imu_referenz)
-        self._imu_vorher = imu
-        return _normalisieren(roh)
+        # Die Differenz bilden und nicht die Rohwerte vergleichen: sonst
+        # springt der Winkel beim Übergang von +180° auf -180° um eine
+        # halbe Umdrehung.
+        seit_bezug = _normalisieren(math.radians(imu - self._imu_referenz))
+        return _normalisieren(self._imu_versatz + seit_bezug)
 
 
 def _normalisieren(winkel: float) -> float:

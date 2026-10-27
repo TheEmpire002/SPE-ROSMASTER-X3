@@ -54,6 +54,39 @@ PORT = 8000
 # Takt, in dem der Roboter von sich aus Statusmeldungen an die App schickt.
 STATUS_INTERVAL_S = 0.5
 
+# --- Lidar ---------------------------------------------------------------------
+
+LIDAR_ENABLED = True
+
+# Fester Gerätepfad aus der udev-Regel. Nicht /dev/ttyUSB0 verwenden: das
+# Expansion Board hängt am selben Bus und die Nummern können tauschen.
+LIDAR_PORT = "/dev/rplidar"
+LIDAR_BAUDRATE = 115200
+
+# Messpunkte außerhalb dieser Grenzen werden verworfen. Zu nah sind meist
+# Teile des Roboters selbst, zu weit ist Rauschen.
+LIDAR_MIN_M = 0.15
+LIDAR_MAX_M = 8.0
+
+# --- Lidar-gestützte Ortung -----------------------------------------------------
+
+# Nur in dieser Entfernung zum Startpunkt wird mit der Referenzaufnahme
+# verglichen. Weiter weg überlappt zu wenig, und ein Fehlabgleich wäre
+# schlimmer als gar keine Korrektur.
+MATCH_RADIUS_M = 4.0
+
+# Mittlerer Restabstand nach dem Abgleich, bis zu dem das Ergebnis
+# übernommen wird. Darüber gilt der Abgleich als misslungen.
+MATCH_MAX_RESIDUAL_M = 0.18
+
+# Wie stark eine Korrektur je Durchgang einfließt (0..1). Niedrig, damit
+# ein einzelner Fehlabgleich die Position nicht verreißt.
+MATCH_TRUST = 0.55
+
+# Takt des Abgleichs. Öfter bringt wenig -- der Lidar dreht sich nur
+# rund fünfmal pro Sekunde.
+MATCH_HZ = 4.0
+
 # --- Heimfahrt ---------------------------------------------------------------------
 
 # Takt, in dem die Position fortgeschrieben wird. Höher = genauer, aber die
@@ -74,6 +107,15 @@ HOME_SLOWDOWN_M = 0.4
 # Notbremse: nach dieser Zeit bricht die Heimfahrt ab. Schützt davor, dass
 # der Roboter bei abgedrifteter Position endlos umherfährt.
 HOME_TIMEOUT_S = 60.0
+
+# Hält der Lidar etwas näher als das in Fahrtrichtung, wird angehalten.
+# Der Roboter weicht nicht aus -- er bleibt stehen und meldet es.
+HOME_STOP_DISTANCE_M = 0.45
+
+# Halber Öffnungswinkel des überwachten Bereichs, in Grad. Zu schmal
+# übersieht Tischbeine seitlich der Fahrlinie, zu breit hält wegen
+# Wänden an, an denen man problemlos vorbeifährt.
+HOME_CONE_DEG = 35.0
 
 # --- Kamera ---------------------------------------------------------------------
 

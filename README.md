@@ -90,6 +90,29 @@ Prüft Geräte, Rechte, konkurrierende Prozesse, OpenCV und das tatsächliche
 Einstellungen (Auflösung, Bildrate, Qualität): `config.py`, Abschnitt Kamera.
 Details in [`docs/hardware.md`](docs/hardware.md#kamera).
 
+## Lidar
+
+Der RPLIDAR A1 wird direkt ausgelesen — ohne ROS2. Er leistet zweierlei:
+
+1. **Ortung.** Beim Setzen des Startpunkts wird einmal aufgenommen, wie der
+   Raum von dort aussieht. Später wird die aktuelle Aufnahme damit
+   abgeglichen; die nötige Verschiebung ist die Position. Dieses Verfahren
+   driftet nicht — anders als die Koppelnavigation.
+2. **Hindernisse.** Während der Heimfahrt wird der Bereich in Fahrtrichtung
+   überwacht. Der Roboter weicht nicht aus, er hält an und meldet es.
+
+Dafür wird ein Paket gebraucht:
+
+```bash
+robot/.venv/bin/pip install rplidar-roboticia
+```
+
+Die App zeigt die Punktwolke als Draufsicht. Zustand und Trefferquote des
+Abgleichs: `http://<IP-des-Pi>:8000/lidar/status`
+
+**Wichtig:** ROS2 darf nicht parallel laufen — `sllidar_ros2` belegt
+denselben Anschluss. Siehe [`docs/hardware.md`](docs/hardware.md).
+
 ## Nach Hause fahren
 
 In der App gibt es unter „Startpunkt" zwei Knöpfe:
@@ -102,16 +125,19 @@ Während der Fahrt wird derselbe Knopf zum Abbrechen.
 
 **Zwei Einschränkungen, die man kennen muss:**
 
-Die Position wird *mitgerechnet*, nicht gemessen — aus Geschwindigkeit und
-Drehrate aufsummiert. Jeder Radschlupf geht dauerhaft in die Summe ein und
-wird nie korrigiert. Mecanum-Räder rutschen viel, besonders beim Drehen und
-auf glattem Boden. In einem Zimmer sind einige Dezimeter Abweichung normal;
-nach vielen Drehungen auch mehr. Wer es genauer braucht, kommt um Lidar und
-SLAM nicht herum (siehe [`docs/entscheidungen.md`](docs/entscheidungen.md)).
+Die Position kommt aus zwei Quellen: der Koppelnavigation (driftet, ist aber
+immer da) und dem Lidar-Abgleich (driftet nicht, braucht aber Sicht auf den
+Startbereich). Gemessen im Simulationslauf über 2,3 m: **30 cm Abweichung
+ohne Lidar, 7 cm mit**. Steht in der App „geschätzt" hinter der Entfernung,
+fehlt der Lidar oder die Bewegungsmessung — dann gilt der schlechtere Wert.
 
-Der Roboter **weicht keinen Hindernissen aus**. Er fährt stur die direkte
-Linie zum Startpunkt. Deshalb das gemächliche Tempo (`HOME_SPEED` in
-`config.py`) und die Zeitbegrenzung.
+Jenseits von `MATCH_RADIUS_M` (4 m) erkennt der Lidar den Startbereich nicht
+wieder und korrigiert nicht. Die Odometrie bringt den Roboter dorthin
+zurück, der Lidar weist ihn dann genau ein.
+
+Der Roboter **weicht Hindernissen nicht aus** — er hält davor an und meldet
+es. Ausweichen ohne Karte endet leicht in einer Ecke. Deshalb auch das
+gemächliche Tempo (`HOME_SPEED`) und die Zeitbegrenzung.
 
 Abgebrochen wird die Heimfahrt durch jede Fahreingabe, die Leertaste, den
 Abbrechen-Knopf oder eine verlorene Verbindung.
@@ -180,7 +206,7 @@ python scripts/check_hardware.py
 - [x] Manuelle Steuerung per Web-App
 - [x] Kamerabild in der App
 - [x] Rückfahrt zum Startpunkt (Koppelnavigation)
-- [ ] Lidar einbinden
+- [x] Lidar: Ortung und Hinderniserkennung
 - [ ] ESP-Anbindung (Bewegung, Puls)
 - [ ] Autonomes Fahren / SLAM
 - [ ] Box-Mechanik

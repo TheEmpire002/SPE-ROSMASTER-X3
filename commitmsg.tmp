@@ -1,0 +1,41 @@
+Lidar einbinden: Ortung per Aufnahmeabgleich und Hindernisstopp
+
+Die Koppelnavigation driftete prinzipbedingt, der vorhandene RPLIDAR A1
+blieb ungenutzt. Jetzt wird er direkt aus Python ausgelesen -- ohne ROS2,
+Begruendung in E4 (entscheidungen.md, loest die offene Frage aus E1a).
+
+sensors/lidar.py      Treiber ueber das Paket rplidar, dazu ein
+                      simulierter Lidar, der einen gedachten Raum
+                      abtastet. Damit laesst sich die Ortung ohne
+                      Hardware pruefen.
+navigation/
+  scan_matching.py    Iterative Closest Point: legt die aktuelle
+                      Aufnahme auf die Referenz vom Startpunkt. Die
+                      noetige Verschiebung ist die Position. Summiert
+                      nichts auf, driftet also nicht.
+  localizer.py        verzahnt beide Verfahren -- Odometrie traegt
+                      grob, Lidar zieht gerade, sobald er den
+                      Startbereich wiedererkennt
+
+Kein SLAM: es wird keine Karte gebaut, nur eine Referenzaufnahme
+gehalten. Fuer die Rueckfahrt zu einem einzigen Ort genuegt das.
+
+Messung in der Simulation (12 Prozent Radschlupf, 2,3 m Strecke):
+  nur Koppelnavigation   30,5 cm Abweichung
+  mit Lidar-Abgleich      7,3 cm waehrend der Fahrt, 5,6 cm im Stand
+Der Rest ist die Winkelaufloesung des A1: ein Grad sind auf vier Meter
+sieben Zentimeter.
+
+Zwei Fehler dabei gefunden und behoben:
+- korrigieren() verschob die Position, liess den Positionsverlauf aber
+  unveraendert. Die Latenzrechnung hielt die Korrektur daraufhin fuer
+  zurueckgelegte Strecke und schaukelte sich auf -- nach zwoelf
+  Durchgaengen 1,36 m daneben statt 2 cm.
+- Die wahre Position der Simulation wurde aus zwei Threads ohne Sperre
+  fortgeschrieben, was schon die Messgrundlage verfaelschte.
+
+Ausserdem: Hindernisstopp waehrend der Heimfahrt (der Roboter weicht
+nicht aus, er haelt an), Punktwolken-Draufsicht in der App und
+/lidar/status zur Diagnose.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>

@@ -11,3 +11,10 @@ uvicorn[standard]==0.34.0
 # Nur für USB-Kameras nötig. Eine CSI-Kamera läuft über picamera2, das bei
 # Raspberry Pi OS schon dabei ist; ohne beides zeigt die App ein Testbild.
 # opencv-python
+
+# Lidar-Auswertung (Punktwolken-Abgleich). Auf dem Pi meist schon da.
+numpy
+
+# RPLIDAR A1. Paketname beim Installieren: rplidar-roboticia (gepflegter
+# Fork), importiert wird es als `rplidar`.
+# rplidar-roboticia

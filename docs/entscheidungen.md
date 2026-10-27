@@ -58,11 +58,7 @@ gleichzeitig** laufen. Beide öffnen denselben seriellen Port, und zwei Leser
 bekommen jeweils nur Bruchstücke. Vor dem Start unseres Servers muss der
 ROS2-Stack beendet sein — und umgekehrt.
 
-**Offene Frage.** Beim autonomen Fahren entweder unser Server spricht über
-eine Brücke mit ROS2 (dann besitzt ROS2 den Port), oder wir lesen den Lidar
-selbst aus. Zu entscheiden, wenn es soweit ist. Foxy ist seit 2023 ohne
-Unterstützung, was für ein Schulprojekt verkraftbar ist, aber ein Argument
-gegen zu viel Aufbau darauf bleibt.
+**Entschieden in E4:** Der Lidar wird direkt ausgelesen, ohne ROS2.
 
 ---
 
@@ -100,3 +96,58 @@ einen Rettungsdienst.
 
 **Konsequenzen.** Die Notfallkette braucht immer einen Empfänger — App,
 Nachricht, Signalton. Das ist beim Design der Alarmierung einzuplanen.
+
+---
+
+## E4 — Lidar direkt auslesen, Ortung per Aufnahmeabgleich
+
+**Datum:** 2026-10-27
+**Status:** aktiv, schließt die offene Frage aus E1a
+
+**Kontext.** Die Rückfahrt zum Startpunkt lief über Koppelnavigation und
+driftete entsprechend: in der Simulation rund 30 cm auf zweieinhalb Metern,
+in Wirklichkeit eher mehr. Der RPLIDAR A1 war vorhanden, aber ungenutzt.
+
+**Entscheidung.** Der Lidar wird **direkt aus Python** ausgelesen, über das
+Paket `rplidar`, ohne ROS2. Zur Ortung dient **kein SLAM**, sondern der
+Abgleich der aktuellen Aufnahme mit einer einzigen Referenzaufnahme vom
+Startpunkt (Iterative Closest Point, `navigation/scan_matching.py`).
+
+**Warum kein ROS2, obwohl es installiert ist.** Es brächte einen zweiten
+Prozess mit eigenem Port-Anspruch, eine Brücke zwischen beiden Welten und
+eine EOL-Abhängigkeit (Foxy, seit 2023 ohne Pflege). Das Auslesen selbst ist
+dagegen ein überschaubares Stück Code. Für genau eine Sensorart lohnt der
+Mehraufwand nicht.
+
+**Warum kein SLAM.** Eine Karte aufzubauen und darin zu lokalisieren ist das
+Vielfache an Aufwand. Für „zurück zum Startpunkt" genügt der Vergleich mit
+*einem* Ort -- dem Startpunkt.
+
+**Arbeitsteilung der beiden Ortungsverfahren.** Die Koppelnavigation läuft
+immer und ist nie verloren, driftet aber. Der Lidar-Abgleich driftet nicht,
+braucht aber Wiedererkennung. Also: Die Odometrie bringt den Roboter *in die
+Nähe*, der Lidar weist ihn dort genau ein. Jenseits von
+`MATCH_RADIUS_M` wird gar nicht erst abgeglichen -- ein Fehlabgleich wäre
+schlimmer als keine Korrektur.
+
+**Messergebnis (Simulation, 12 % Radschlupf, 2,3 m Fahrstrecke):**
+
+| | Abweichung während der Fahrt | im Stand |
+|---|---|---|
+| nur Koppelnavigation | 30,5 cm | 30,5 cm |
+| mit Lidar-Abgleich | 7,3 cm | 5,6 cm |
+
+Die verbleibenden Zentimeter sind die Winkelauflösung des A1: ein Grad
+entspricht auf vier Meter Entfernung sieben Zentimetern.
+
+**Konsequenzen.**
+- *Gut:* Deutlich genauer, ohne zweiten Prozess und ohne ROS-Kenntnisse.
+  Nebenbei fällt die Hinderniskontrolle während der Heimfahrt ab.
+- *Schlecht:* Funktioniert nur in Sichtweite des Startpunkts. Wer durch
+  mehrere Räume fahren will, braucht doch eine Karte.
+- *Offen:* Der Tiefenkanal der Orbbec bleibt ungenutzt -- er bräuchte das
+  Orbbec-SDK (kein `pip`-Paket). Interessant wäre er für niedrige
+  Hindernisse, die der Lidar auf seiner Höhe nicht sieht.
+
+**Neu bewerten, wenn:** der Roboter zwischen Räumen wechseln soll. Dann
+führt an einer Karte kein Weg vorbei.

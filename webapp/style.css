@@ -141,6 +141,18 @@ main {
 kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
       padding: 1px 5px; font-size: 0.72rem; margin: 0 1px; }
 
+/* --- Lidar --- */
+
+.lidar {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  background: #0d0f13;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
 /* --- Heimfahrt --- */
 
 .home-buttons { display: grid; gap: 0.5rem; margin-top: 0.3rem; }

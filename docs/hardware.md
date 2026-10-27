@@ -7,7 +7,7 @@
 | Rechner         | Raspberry Pi 5 + AI HAT+ | —             | vorhanden   |
 | Fahrgestell     | Yahboom ROSMASTER X3  | USB-Serial       | vorhanden   |
 | Expansion Board | Yahboom (STM32)       | USB-Serial       | vorhanden   |
-| Lidar           | Slamtec RPLIDAR A1    | USB-Seriell      | vorhanden, nicht eingebunden |
+| Lidar           | Slamtec RPLIDAR A1    | USB-Seriell      | eingebunden (Ortung + Hindernisse) |
 | Kamera          | *(Modell eintragen)*  | USB / CSI        | eingebunden (CSI, USB oder Testbild) |
 | ESP32           | *(Modell eintragen)*  | WLAN             | geplant     |
 | Pulssensor      | *(Modell eintragen)*  | ESP32            | geplant     |
@@ -149,9 +149,23 @@ läuft mit **115200 Baud**. Auf diesem Pi existiert bereits der feste Pfad
 `/dev/ttyUSB0`. Der Motor wird über die DTR-Leitung gesteuert; dreht sich der
 Scanner nicht, liegt es meist daran.
 
-**Es gibt schon einen Treiber.** Unter ROS2 Foxy läuft `sllidar_ros2` auf
-diesem Pi bereits. Bevor jemand einen eigenen Python-Treiber schreibt, lohnt
-der Blick dorthin — siehe E1a in [`entscheidungen.md`](entscheidungen.md).
+**Eingebunden.** Der Lidar wird direkt aus Python ausgelesen, ohne ROS2
+(Begründung: E4 in [`entscheidungen.md`](entscheidungen.md)). Nötig ist dafür:
+
+```bash
+robot/.venv/bin/pip install rplidar-roboticia
+```
+
+**ROS2 darf nicht gleichzeitig laufen.** `sllidar_ros2` belegt denselben
+Anschluss — entweder das eine oder das andere:
+
+```bash
+sudo pkill -f sllidar_node
+```
+
+Zustand prüfen: `http://<IP-des-Pi>:8000/lidar/status`. Dort steht, wie viele
+Umdrehungen angekommen sind, ob der Startpunkt eingemessen wurde und wie gut
+der Abgleich passt (`letztes_residuum_m`; unter 5 cm ist gut).
 
 **⚠ Portverwechslung — wichtig.** Das X3-Expansion-Board nutzt *ebenfalls*
 einen USB-Seriell-Port. Bei zwei Geräten vergibt Linux `/dev/ttyUSB0` und

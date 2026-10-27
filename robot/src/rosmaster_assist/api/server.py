@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -28,9 +29,10 @@ from ..protocol import (
     state_message,
     vitals_message,
 )
-from ..navigation import Homing, Odometry
+from ..navigation import Homing, Localizer, Odometry
 from ..safety import SafetyWatchdog
 from ..sensors.camera import CameraService, create_camera
+from ..sensors.lidar import LidarService, create_lidar
 
 log = logging.getLogger(__name__)
 
@@ -80,11 +82,22 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
 
     watchdog = SafetyWatchdog(driver)
     odometry = Odometry(driver)
-    homing = Homing(watchdog, odometry)
     hub = ConnectionHub()
     camera = (
         CameraService(create_camera(use_mock_camera)) if config.CAMERA_ENABLED else None
     )
+
+    # Der simulierte Lidar braucht die wahre Position, um den gedachten Raum
+    # abzutasten. Die kennt nur der Mock-Antrieb -- die echte Hardware
+    # natürlich nicht, die misst einfach.
+    pose_quelle = getattr(driver, "wahre_pose", None)
+    lidar = (
+        LidarService(create_lidar(use_mock_camera, pose_quelle))
+        if config.LIDAR_ENABLED
+        else None
+    )
+    localizer = Localizer(odometry, lidar)
+    homing = Homing(watchdog, odometry, localizer)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -96,10 +109,19 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         watchdog.start()
         if camera is not None:
             camera.start()
+        if lidar is not None:
+            lidar.start()
+            # Dem Lidar eine Umdrehung Zeit geben, dann den Startpunkt
+            # einmessen. Ohne Referenz gäbe es bis zum ersten "set_home"
+            # keine Korrektur -- und den Knopf drückt erfahrungsgemäß
+            # niemand, bevor etwas schiefgeht.
+            asyncio.create_task(_referenz_nachholen(localizer))
+
         status_task = asyncio.create_task(
-            _status_loop(hub, watchdog, driver, odometry, homing)
+            _status_loop(hub, watchdog, driver, odometry, homing, localizer)
         )
         odo_task = asyncio.create_task(_odometry_loop(watchdog, odometry))
+        match_task = asyncio.create_task(_match_loop(localizer))
         try:
             yield
         finally:
@@ -107,10 +129,13 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             # Watchdog (der hält an), dann die Hardware trennen.
             status_task.cancel()
             odo_task.cancel()
+            match_task.cancel()
             homing.abbrechen("Server wird beendet")
             await watchdog.shutdown()
             if camera is not None:
                 camera.stop()
+            if lidar is not None:
+                lidar.stop()
             driver.disconnect()
 
     app = FastAPI(title="ROSMASTER X3 Hilfsroboter", lifespan=lifespan)
@@ -127,7 +152,9 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         try:
             while True:
                 msg = await ws.receive_json()
-                reply = await _handle(msg, watchdog, driver, hub, odometry, homing)
+                reply = await _handle(
+                    msg, watchdog, driver, hub, odometry, homing, localizer
+                )
                 if reply is not None:
                     await ws.send_json(reply)
         except WebSocketDisconnect:
@@ -203,6 +230,33 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         data, mime = frame
         return Response(data, media_type=mime, headers={"Cache-Control": "no-store"})
 
+    # --- Lidar ---
+
+    @app.get("/lidar/status")
+    async def lidar_status():
+        """Was der Lidar tut und ob die Ortung damit arbeitet."""
+        if lidar is None:
+            return {"lidar": None, "hinweis": "LIDAR_ENABLED ist False"}
+        return {**lidar.status(), "ortung": localizer.status()}
+
+    @app.get("/lidar/scan")
+    async def lidar_scan():
+        """Die letzte Umdrehung als Rohdaten -- für die Anzeige in der App."""
+        if lidar is None:
+            return {"punkte": [], "hinweis": "kein Lidar"}
+        scan = lidar.latest()
+        if scan is None:
+            return {"punkte": []}
+        # Gerundet übertragen: zwei Nachkommastellen bei Metern sind ein
+        # Zentimeter, feiner braucht es die Anzeige nicht -- und es
+        # halbiert die Datenmenge.
+        return {
+            "punkte": [
+                [round(w, 1), round(r, 2)] for w, r in zip(scan.winkel, scan.entfernungen)
+            ],
+            "alter_s": round(time.monotonic() - scan.zeit, 2),
+        }
+
     # Die Web-App direkt mitausliefern, damit eine Adresse genügt.
     if WEBAPP_DIR.is_dir():
         app.mount("/static", StaticFiles(directory=WEBAPP_DIR), name="static")
@@ -223,6 +277,7 @@ async def _handle(
     hub: ConnectionHub,
     odometry: Odometry,
     homing: Homing,
+    localizer: Localizer,
 ) -> dict[str, Any] | None:
     """Eine eingehende Nachricht verarbeiten.
 
@@ -271,8 +326,22 @@ async def _handle(
 
     if kind == "set_home":
         homing.abbrechen("Startpunkt wurde verschoben")
+        # Nur in der Simulation vorhanden: dort muss auch die gedachte
+        # Wirklichkeit auf den Startpunkt zurück, sonst stünde der Roboter
+        # außerhalb des simulierten Raums.
+        nullen = getattr(driver, "wahre_pose_nullen", None)
+        if nullen is not None:
+            nullen()
         odometry.reset()
-        await hub.broadcast(alert_message("info", "Startpunkt ist jetzt hier"))
+        # Die alte Referenzaufnahme gehört zum alten Startpunkt und würde
+        # die Position sonst dorthin zurückziehen.
+        eingemessen = localizer.referenz_aufnehmen()
+        text = (
+            "Startpunkt gesetzt und per Lidar eingemessen"
+            if eingemessen
+            else "Startpunkt gesetzt (ohne Lidar -- Position wird nur geschätzt)"
+        )
+        await hub.broadcast(alert_message("info", text))
         return None
 
     if kind == "ping":
@@ -293,6 +362,36 @@ async def _handle(
         return alert_message("info", "Box ist noch nicht angebaut")
 
     return error_message(f"Unbekannter Nachrichtentyp: {kind!r}")
+
+
+async def _referenz_nachholen(localizer: Localizer, versuche: int = 10) -> None:
+    """Nimmt die Referenzaufnahme, sobald der Lidar die erste Runde hat."""
+    for _ in range(versuche):
+        await asyncio.sleep(1.0)
+        if localizer.referenz_aufnehmen():
+            return
+    log.warning(
+        "Startpunkt konnte nicht eingemessen werden -- die Ortung läuft "
+        "ohne Lidar-Korrektur weiter"
+    )
+
+
+async def _match_loop(localizer: Localizer) -> None:
+    """Gleicht die Position regelmäßig mit der Referenzaufnahme ab."""
+    if not localizer.verfuegbar:
+        return
+    takt = 1.0 / max(0.1, config.MATCH_HZ)
+    try:
+        while True:
+            await asyncio.sleep(takt)
+            # Der Abgleich rechnet mit einigen hundert Punkten und würde
+            # die Ereignisschleife sonst kurz blockieren -- das macht sich
+            # in ruckelnder Steuerung bemerkbar.
+            await asyncio.to_thread(localizer.abgleichen)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        log.exception("Lidar-Abgleich abgestürzt -- Ortung nur noch per Odometrie")
 
 
 async def _odometry_loop(watchdog: SafetyWatchdog, odometry: Odometry) -> None:
@@ -318,6 +417,7 @@ async def _status_loop(
     driver: DriveBase,
     odometry: Odometry,
     homing: Homing,
+    localizer: Localizer,
 ) -> None:
     """Schickt regelmäßig den Zustand an alle Clients."""
     zuletzt_aktiv = False

@@ -307,6 +307,72 @@ function applyLimits() {
   updateLabels();
 }
 
+// --- Lidar-Anzeige ---------------------------------------------------------------
+
+/*
+ * Draufsicht: der Roboter in der Mitte, vorn ist oben. Die Punkte kommen
+ * per HTTP statt über den WebSocket -- eine Umdrehung sind einige hundert
+ * Werte, und die würden den Steuerkanal unnötig belasten.
+ */
+const LIDAR_HZ = 3;
+const LIDAR_REICHWEITE_M = 5;
+
+const lidarCanvas = el("lidar");
+const lidarInfo = el("lidar-info");
+const lidarCtx = lidarCanvas ? lidarCanvas.getContext("2d") : null;
+
+async function lidarHolen() {
+  if (!lidarCtx) return;
+  try {
+    const antwort = await fetch(`/lidar/scan?t=${Date.now()}`);
+    const daten = await antwort.json();
+    lidarZeichnen(daten.punkte || []);
+    lidarInfo.textContent = daten.punkte && daten.punkte.length
+      ? `${daten.punkte.length} Punkte · Kreise alle 1 m · Reichweite ${LIDAR_REICHWEITE_M} m`
+      : (daten.hinweis || "keine Daten");
+  } catch {
+    lidarInfo.textContent = "Lidar nicht erreichbar";
+  }
+}
+
+function lidarZeichnen(punkte) {
+  const b = lidarCanvas.width;
+  const mitte = b / 2;
+  const skala = (b / 2 - 10) / LIDAR_REICHWEITE_M;
+
+  lidarCtx.clearRect(0, 0, b, b);
+
+  // Entfernungsringe als Maßstab, sonst sagt die Punktwolke nichts.
+  lidarCtx.strokeStyle = "#2e323c";
+  lidarCtx.lineWidth = 1;
+  for (let m = 1; m <= LIDAR_REICHWEITE_M; m++) {
+    lidarCtx.beginPath();
+    lidarCtx.arc(mitte, mitte, m * skala, 0, Math.PI * 2);
+    lidarCtx.stroke();
+  }
+
+  lidarCtx.fillStyle = "#4da3ff";
+  for (const [grad, meter] of punkte) {
+    const a = (grad * Math.PI) / 180;
+    // Bildschirm: x nach rechts, y nach unten. Roboter: x vorwärts,
+    // y links. Deshalb vertauscht und gespiegelt, damit "vorn" oben ist.
+    const px = mitte - meter * Math.sin(a) * skala;
+    const py = mitte - meter * Math.cos(a) * skala;
+    lidarCtx.fillRect(px - 1, py - 1, 2, 2);
+  }
+
+  // Der Roboter selbst, mit Blickrichtung nach oben.
+  lidarCtx.fillStyle = "#3ecf8e";
+  lidarCtx.beginPath();
+  lidarCtx.moveTo(mitte, mitte - 7);
+  lidarCtx.lineTo(mitte - 5, mitte + 5);
+  lidarCtx.lineTo(mitte + 5, mitte + 5);
+  lidarCtx.closePath();
+  lidarCtx.fill();
+}
+
+if (lidarCtx) setInterval(lidarHolen, 1000 / LIDAR_HZ);
+
 // --- Heimfahrt ----------------------------------------------------------------
 
 let faehrtHeim = false;
