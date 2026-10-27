@@ -317,7 +317,10 @@ function zeigePose(pose) {
     return;
   }
   const entfernung = Math.hypot(pose.x, pose.y);
-  ui.dist.textContent = `${entfernung.toFixed(2)} m`;
+  // Ohne Messung stammt die Position nur aus den Fahrbefehlen. Das muss
+  // man sehen, bevor man dem Home-Knopf vertraut.
+  const güte = pose.gemessen === false ? " (geschätzt)" : "";
+  ui.dist.textContent = `${entfernung.toFixed(2)} m${güte}`;
   ui.pos.textContent = `${pose.x.toFixed(2)} / ${pose.y.toFixed(2)} m`;
   ui.winkel.textContent = `${pose.winkel.toFixed(0)}°`;
 }

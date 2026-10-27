@@ -47,6 +47,13 @@ class Odometry:
         self._imu_vorher: float | None = None
         self._gemessen = False
 
+        # Stirbt der Empfangs-Thread der Bibliothek (etwa durch einen
+        # Portkonflikt), liefert sie weiterhin Werte -- nämlich Nullen.
+        # Das wäre schlimmer als gar keine Messung: die Position bliebe
+        # stehen, und die Heimfahrt führte ins Leere, ohne zu warnen.
+        self._stillstand_trotz_befehl = 0.0
+        self._messung_verworfen = False
+
     # --- Abfrage -------------------------------------------------------------
 
     def pose(self) -> tuple[float, float, float]:
@@ -79,6 +86,10 @@ class Odometry:
             self._imu_referenz = None
             self._imu_vorher = None
             self._letzte_zeit = None
+            # Der Messung eine neue Chance geben -- vielleicht wurde der
+            # Portkonflikt inzwischen behoben.
+            self._stillstand_trotz_befehl = 0.0
+            self._messung_verworfen = False
         log.info("Startpunkt neu gesetzt")
 
     # --- Fortschreiben --------------------------------------------------------
@@ -97,7 +108,7 @@ class Odometry:
         if dt <= 0 or dt > 1.0:
             return
 
-        gemessen = self._driver.read_motion()
+        gemessen = self._pruefen(self._driver.read_motion(), befohlen, dt)
         self._gemessen = gemessen is not None
         vx, vy, omega = gemessen if gemessen is not None else (
             befohlen.vx,
@@ -115,6 +126,46 @@ class Odometry:
             self.x += (vx * math.cos(mittel) - vy * math.sin(mittel)) * dt
             self.y += (vx * math.sin(mittel) + vy * math.cos(mittel)) * dt
             self.theta = neuer_winkel
+
+    #: So lange darf gemeldeter Stillstand trotz Fahrbefehl andauern, bevor
+    #: die Messung als unbrauchbar gilt. Großzügig, weil Motoren anlaufen
+    #: müssen und der Roboter kurz blockieren kann.
+    STILLSTAND_GRENZE_S = 3.0
+
+    def _pruefen(
+        self, gemessen: tuple[float, float, float] | None, befohlen: DriveCommand, dt: float
+    ) -> tuple[float, float, float] | None:
+        """Verwirft Messwerte, die offensichtlich nicht stimmen können.
+
+        Meldet die Bibliothek beharrlich Stillstand, obwohl gefahren werden
+        soll, ist ihr Empfangs-Thread vermutlich gestorben. Dann ist es
+        besser, mit den Befehlen zu rechnen: ungenau, aber nicht falsch.
+        """
+        if gemessen is None:
+            return None
+
+        if self._messung_verworfen:
+            return None
+
+        bewegt_sich = any(abs(v) > 1e-6 for v in gemessen)
+        soll_fahren = not befohlen.is_stop()
+
+        if soll_fahren and not bewegt_sich:
+            self._stillstand_trotz_befehl += dt
+            if self._stillstand_trotz_befehl > self.STILLSTAND_GRENZE_S:
+                self._messung_verworfen = True
+                log.warning(
+                    "Bewegungsmessung meldet seit %.0f s Stillstand trotz "
+                    "Fahrbefehl -- vermutlich ist der Empfangs-Thread tot. "
+                    "Es wird ab jetzt mit den Fahrbefehlen gerechnet "
+                    "(ungenauer). Ursache: siehe docs/hardware.md, Portkonflikt.",
+                    self._stillstand_trotz_befehl,
+                )
+                return None
+        else:
+            self._stillstand_trotz_befehl = 0.0
+
+        return gemessen
 
     def _winkel_bestimmen(self, omega: float, dt: float) -> float:
         """Blickrichtung aus der IMU, ersatzweise aus der Drehrate."""

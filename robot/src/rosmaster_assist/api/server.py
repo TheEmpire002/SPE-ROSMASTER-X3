@@ -341,6 +341,7 @@ async def _status_loop(
                         driver.connected,
                         pose=odometry.pose(),
                         homing=homing.aktiv,
+                        pose_gemessen=odometry.misst_tatsaechlich,
                     )
                 )
     except asyncio.CancelledError:

@@ -7,6 +7,7 @@ nimmt `create_driver` stattdessen den Mock.
 from __future__ import annotations
 
 import logging
+import os
 
 from .base import DriveBase
 from .. import config
@@ -23,32 +24,52 @@ class RosmasterDriver(DriveBase):
         self._bot = None
         self._last: DriveCommand | None = None
 
-    def _warnen_bei_mehreren_ports(self) -> None:
-        """Meldet, wenn mehr als ein USB-Seriell-Gerät angeschlossen ist.
+    def _port_bestimmen(self) -> str | None:
+        """Sucht das Expansion Board unter mehreren seriellen Geräten.
 
-        Am ROSMASTER hängen typischerweise zwei: das Expansion Board (CH340)
-        und der RPLIDAR (CP210x). Sucht sich Rosmaster_Lib die Schnittstelle
-        selbst, kann es den Lidar erwischen -- und dann bewegt sich nichts,
-        ohne dass irgendwo ein Fehler erscheint.
+        Am ROSMASTER hängen typischerweise zwei USB-Seriell-Adapter: das
+        Board (CH340) und der RPLIDAR (CP210x). Beide erscheinen als
+        ``/dev/ttyUSB*``, und wer welche Nummer bekommt, hängt von der
+        Einschaltreihenfolge ab. Greift Rosmaster_Lib den Lidar, liest sie
+        dessen Datenstrom als Board-Antworten -- das endet in
+        "device reports readiness to read but returned no data".
+
+        Der Lidar lässt sich sicher ausschließen, weil eine udev-Regel ihn
+        unter ``/dev/rplidar`` festnagelt. Bleibt danach genau ein Gerät
+        übrig, ist das das Board.
         """
         import glob
 
+        if self._port:
+            return self._port
+
         geraete = sorted(glob.glob("/dev/serial/by-id/*"))
-        if len(geraete) <= 1:
-            return
+        if not geraete:
+            return None  # nichts zu entscheiden, Bibliothek soll suchen
+        if len(geraete) == 1:
+            return geraete[0]
+
+        lidar = os.path.realpath("/dev/rplidar") if os.path.exists("/dev/rplidar") else None
+        kandidaten = [g for g in geraete if os.path.realpath(g) != lidar]
+
+        if len(kandidaten) == 1:
+            log.info("Expansion Board erkannt: %s", kandidaten[0])
+            log.info("(Lidar ausgeschlossen über /dev/rplidar)")
+            return kandidaten[0]
 
         log.warning(
-            "%d serielle Geräte gefunden, SERIAL_PORT ist nicht gesetzt -- "
+            "%d serielle Geräte, keines eindeutig zuzuordnen -- "
             "Rosmaster_Lib sucht sich eines aus:",
             len(geraete),
         )
         for g in geraete:
             log.warning("    %s", g)
-        log.warning("Bei Problemen das richtige in config.py bei SERIAL_PORT eintragen.")
+        log.warning("Das richtige in config.py bei SERIAL_PORT eintragen.")
+        return None
 
     def connect(self) -> None:
         if self._port is None:
-            self._warnen_bei_mehreren_ports()
+            self._port = self._port_bestimmen()
 
         try:
             from Rosmaster_Lib import Rosmaster

@@ -93,6 +93,7 @@ def state_message(
     connected: bool,
     pose: tuple[float, float, float] | None = None,
     homing: bool = False,
+    pose_gemessen: bool = False,
 ) -> dict[str, Any]:
     msg: dict[str, Any] = {
         "type": "state",
@@ -103,7 +104,14 @@ def state_message(
     }
     if pose is not None:
         x, y, winkel = pose
-        msg["pose"] = {"x": round(x, 3), "y": round(y, 3), "winkel": round(winkel, 1)}
+        msg["pose"] = {
+            "x": round(x, 3),
+            "y": round(y, 3),
+            "winkel": round(winkel, 1),
+            # Falsch heißt: nur aus den Fahrbefehlen gerechnet, also
+            # deutlich ungenauer. Das gehört in die Anzeige.
+            "gemessen": pose_gemessen,
+        }
     return msg
 
 
