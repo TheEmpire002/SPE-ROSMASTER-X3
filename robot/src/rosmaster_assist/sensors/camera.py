@@ -55,7 +55,18 @@ class CameraBase(ABC):
     def open(self) -> None:
         if self._opened:
             return
-        self._open()
+        try:
+            self._open()
+        except Exception:
+            # Hinter einem Fehlschlag kann ein halb geöffnetes Gerät
+            # zurückbleiben -- etwa wenn picamera2 die Kamera schon belegt
+            # hat und erst der Encoder scheitert. Ohne Aufräumen wäre sie
+            # für den nächsten Versuch dauerhaft blockiert.
+            try:
+                self._close()
+            except Exception:
+                log.debug("Aufräumen nach Fehlschlag misslungen", exc_info=True)
+            raise
         self._opened = True
 
     def close(self) -> None:
