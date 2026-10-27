@@ -69,6 +69,16 @@ main {
   border-radius: 8px;
 }
 
+/* Das hidden-Attribut wirkt nur über die Browser-Standardregel
+   `display: none` -- und jede eigene display-Angabe schlägt diese.
+   Ohne diese Regel läge das Overlay dauerhaft undurchsichtig über dem
+   Kamerabild: der Stream läuft, man sieht ihn nur nicht.
+   Die Attributangabe gewinnt hier durch höhere Spezifität, nicht
+   durch die Reihenfolge. */
+.cam-error[hidden] {
+  display: none;
+}
+
 .cam-error {
   position: absolute;
   inset: 0;
