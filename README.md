@@ -23,6 +23,10 @@ ausliefern.
 
 Details: [`docs/architektur.md`](docs/architektur.md)
 
+**Eigene Oberfläche oder eigenen Client anbinden?** Die komplette Schnittstelle
+(Fahren, Lidar, Kamera, Heimfahrt) steht in [`docs/api.md`](docs/api.md).
+Hinweise für KI-Assistenten: [`AGENTS.md`](AGENTS.md).
+
 ## Schnellstart
 
 Ein Befehl, überall — auf dem Laptop wie auf dem Roboter:

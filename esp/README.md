@@ -29,7 +29,8 @@ Der Roboter reicht das unverändert an alle verbundenen Apps weiter. Mehr
 passiert vorerst nicht — die Bewertung kommt später und bewusst serverseitig,
 nicht auf dem ESP.
 
-Das vollständige Protokoll steht in
+Das vollständige Protokoll steht in [`docs/api.md`](../docs/api.md), der
+verbindliche Vertrag in
 [`robot/src/rosmaster_assist/protocol.py`](../robot/src/rosmaster_assist/protocol.py).
 
 ## Zum Testen ohne ESP

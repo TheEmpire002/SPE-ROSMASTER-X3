@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -144,6 +145,11 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             driver.disconnect()
 
     app = FastAPI(title="ROSMASTER X3 Hilfsroboter", lifespan=lifespan)
+    # Andere Oberflächen sollen die HTTP-Endpunkte aus dem Browser abrufen
+    # können, auch wenn sie nicht von diesem Server ausgeliefert werden
+    # (siehe docs/api.md). Eine Anmeldung gibt es ohnehin nicht -- wer im
+    # WLAN ist, kann den Roboter steuern.
+    app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"])
 
     @app.websocket("/ws")
     async def websocket_endpoint(ws: WebSocket) -> None:
