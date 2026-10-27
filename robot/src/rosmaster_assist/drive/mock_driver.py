@@ -33,17 +33,20 @@ class MockDriver(DriveBase):
     def drive(self, cmd: DriveCommand) -> None:
         # Nur bei Änderung loggen -- sonst ist die Konsole bei 10 Befehlen
         # pro Sekunde unlesbar.
+        # "SIM" im Klartext, damit niemand diese Zeilen für echte Fahrt
+        # hält und den Fehler woanders sucht, wenn sich nichts bewegt.
         if cmd != self._last:
-            log.info("fahren  vx=%+.2f  vy=%+.2f  omega=%+.2f", cmd.vx, cmd.vy, cmd.omega)
+            log.info("SIM fahren  vx=%+.2f  vy=%+.2f  omega=%+.2f",
+                     cmd.vx, cmd.vy, cmd.omega)
             self._last = cmd
 
     def stop(self) -> None:
         if self._last != STOP:
-            log.info("anhalten")
+            log.info("SIM anhalten")
             self._last = STOP
 
     def beep(self, ms: int = 100) -> None:
-        log.info("piep (%d ms)", ms)
+        log.info("SIM piep (%d ms)", ms)
 
     @property
     def connected(self) -> bool:

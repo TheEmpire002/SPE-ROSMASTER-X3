@@ -81,6 +81,10 @@ def create_app(driver: DriveBase) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         driver.connect()
+        if driver.name == "mock":
+            log.warning("Antrieb: SIMULATION — die Motoren bleiben stehen")
+        else:
+            log.warning("Antrieb: %s — der Roboter kann sich bewegen", driver.name)
         watchdog.start()
         status_task = asyncio.create_task(_status_loop(hub, watchdog, driver))
         try:

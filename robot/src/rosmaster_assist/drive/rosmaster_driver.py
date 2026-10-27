@@ -21,6 +21,7 @@ class RosmasterDriver(DriveBase):
     def __init__(self, port: str | None = None) -> None:
         self._port = port if port is not None else config.SERIAL_PORT
         self._bot = None
+        self._last: DriveCommand | None = None
 
     def connect(self) -> None:
         try:
@@ -56,6 +57,14 @@ class RosmasterDriver(DriveBase):
             raise RuntimeError("drive() vor connect() aufgerufen")
         # Mecanum: set_car_motion(vx, vy, vz) erwartet m/s, m/s, rad/s.
         self._bot.set_car_motion(cmd.vx, cmd.vy, cmd.omega)
+
+        # Nur bei Änderung loggen, sonst 10 Zeilen pro Sekunde. Dass hier
+        # überhaupt geloggt wird, ist Absicht: sonst sieht ein stiller
+        # Roboter im echten Betrieb genauso aus wie einer in der
+        # Simulation, und man sucht den Fehler an der falschen Stelle.
+        if cmd != self._last:
+            log.info("FAHRE  vx=%+.2f  vy=%+.2f  omega=%+.2f", cmd.vx, cmd.vy, cmd.omega)
+            self._last = cmd
 
     def stop(self) -> None:
         # Darf nie werfen -- stop() ist der Notausgang und wird auch aus
