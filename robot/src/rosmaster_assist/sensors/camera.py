@@ -32,15 +32,40 @@ Frame = tuple[bytes, str]
 
 
 class CameraBase(ABC):
-    """Eine Kamera, die Einzelbilder liefern kann."""
+    """Eine Kamera, die Einzelbilder liefern kann.
+
+    ``open()`` muss mehrfach aufrufbar sein, ohne die Kamera ein zweites Mal
+    zu belegen: ein doppelt geöffnetes Gerät lässt sich bei den meisten
+    Treibern nicht mehr öffnen, und der Fehler sieht dann so aus, als wäre
+    gar keine Kamera da.
+    """
 
     name: str = "base"
 
-    @abstractmethod
-    def open(self) -> None: ...
+    def __init__(self) -> None:
+        self._opened = False
+
+    @property
+    def opened(self) -> bool:
+        return self._opened
+
+    def open(self) -> None:
+        if self._opened:
+            return
+        self._open()
+        self._opened = True
+
+    def close(self) -> None:
+        if not self._opened:
+            return
+        self._close()
+        self._opened = False
 
     @abstractmethod
-    def close(self) -> None: ...
+    def _open(self) -> None: ...
+
+    @abstractmethod
+    def _close(self) -> None: ...
 
     @abstractmethod
     def read(self) -> Frame | None:
@@ -54,9 +79,10 @@ class Picamera2Camera(CameraBase):
     name = "picamera2"
 
     def __init__(self) -> None:
+        super().__init__()
         self._cam = None
 
-    def open(self) -> None:
+    def _open(self) -> None:
         from picamera2 import Picamera2  # nur auf dem Pi vorhanden
 
         self._cam = Picamera2()
@@ -71,9 +97,18 @@ class Picamera2Camera(CameraBase):
         time.sleep(1.0)
         log.info("Kamera (CSI) bereit")
 
-    def close(self) -> None:
-        if self._cam is not None:
+    def _close(self) -> None:
+        if self._cam is None:
+            return
+        try:
             self._cam.stop()
+            # stop() beendet nur den Bildstrom -- die Kamera bleibt dem
+            # Prozess zugeteilt. Ohne close() scheitert jedes spätere
+            # Öffnen mit "Device or resource busy".
+            self._cam.close()
+        except Exception:
+            log.exception("Kamera ließ sich nicht sauber schließen")
+        finally:
             self._cam = None
 
     def read(self) -> Frame | None:
@@ -93,10 +128,11 @@ class OpenCVCamera(CameraBase):
     name = "usb"
 
     def __init__(self, index: int | None = None) -> None:
+        super().__init__()
         self._index = config.CAMERA_INDEX if index is None else index
         self._cap = None
 
-    def open(self) -> None:
+    def _open(self) -> None:
         import cv2
 
         self._cap = cv2.VideoCapture(self._index)
@@ -108,7 +144,7 @@ class OpenCVCamera(CameraBase):
         self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAMERA_HEIGHT)
         log.info("Kamera (USB, Index %d) bereit", self._index)
 
-    def close(self) -> None:
+    def _close(self) -> None:
         if self._cap is not None:
             self._cap.release()
             self._cap = None
@@ -171,18 +207,17 @@ class MockCamera(CameraBase):
     HEIGHT = 240
 
     def __init__(self) -> None:
-        self._open = False
+        super().__init__()
         self._frame = 0
 
-    def open(self) -> None:
-        self._open = True
+    def _open(self) -> None:
         log.info("Kamera: Testbild (keine echte Kamera)")
 
-    def close(self) -> None:
-        self._open = False
+    def _close(self) -> None:
+        pass
 
     def read(self) -> Frame | None:
-        if not self._open:
+        if not self.opened:
             return None
 
         self._frame += 1
@@ -208,21 +243,37 @@ class MockCamera(CameraBase):
 
 
 def create_camera(use_mock: bool = False) -> CameraBase:
-    """Nimmt die erste Kamera, die sich tatsächlich öffnen lässt."""
+    """Nimmt die erste Kamera, die sich öffnen lässt -- und lässt sie offen.
+
+    Wichtig: die geöffnete Instanz wird zurückgegeben, nicht eine frische.
+    Wer zum Prüfen öffnet und danach eine zweite Instanz anlegt, bekommt
+    "Device or resource busy" -- entweder weil der Treiber das Gerät noch
+    nicht freigegeben hat, oder weil das Schließen es gar nicht freigibt
+    (so bei picamera2: ``stop()`` reicht nicht, es braucht ``close()``).
+    """
     if use_mock:
-        return MockCamera()
+        kamera: CameraBase = MockCamera()
+        kamera.open()
+        return kamera
 
     for kandidat in (Picamera2Camera, OpenCVCamera):
         kamera = kandidat()
         try:
             kamera.open()
-            kamera.close()
-            return kandidat()
+            return kamera
         except Exception as exc:
-            log.debug("%s nicht nutzbar: %s", kandidat.__name__, exc)
+            log.info("%s nicht nutzbar: %s", kandidat.__name__, exc)
+            # Auch nach einem Fehlschlag aufräumen: ein halb geöffnetes
+            # Gerät würde den nächsten Kandidaten blockieren.
+            try:
+                kamera.close()
+            except Exception:
+                pass
 
     log.warning("Keine Kamera gefunden -- es wird ein Testbild angezeigt")
-    return MockCamera()
+    ersatz = MockCamera()
+    ersatz.open()
+    return ersatz
 
 
 class CameraService:
@@ -249,6 +300,8 @@ class CameraService:
         if self._thread is not None:
             return
         try:
+            # Normalerweise schon offen (create_camera lässt sie offen);
+            # open() ist absichtlich wiederholbar und tut dann nichts.
             self._camera.open()
         except Exception:
             log.exception("Kamera lässt sich nicht öffnen -- kein Bild")
