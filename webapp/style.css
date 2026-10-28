@@ -220,3 +220,33 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 .log li:last-child { border-bottom: none; }
 .log .warning { color: var(--warn); }
 .log .emergency, .log .error { color: var(--danger); }
+
+/* --- Autonomes Fahren --- */
+
+/* Liegt deckungsgleich über dem Kamerabild; Klicks gehen durch. */
+.cam-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.hindernisse {
+  list-style: none;
+  margin: 0 0 0.7rem;
+  padding: 0;
+  font-size: 0.82rem;
+  max-height: 11rem;
+  overflow-y: auto;
+}
+.hindernisse li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.hindernisse li .art { display: flex; align-items: center; gap: 0.4rem; }
+.hindernisse li .farbe { width: 9px; height: 9px; border-radius: 50%; }
+.hindernisse li .wo { color: var(--muted); font-variant-numeric: tabular-nums; }

@@ -183,3 +183,108 @@ CAMERA_FPS = 15
 
 # JPEG-Qualität 1..100. Darunter wird das Bild matschig, darüber groß.
 CAMERA_QUALITY = 70
+
+# --- Autonomes Fahren (Erkunden) ------------------------------------------------
+#
+# Test 1: Der Roboter fährt zufällig umher und weicht dabei allem aus, was der
+# Lidar sieht. Die Werte stammen aus dem Sensor-Check vom 28.10.2026
+# (robot-protokolle/2026-10-28_sensorcheck): Der Befehl wird mit ~0,22 s
+# Verzögerung und nur zu 70-90 % umgesetzt -- deshalb gemächlich.
+
+# Reisetempo geradeaus. Mehr als 0,25 m/s lohnt im Zimmer nicht: Bei 7,5
+# Lidar-Umdrehungen pro Sekunde fährt er sonst zwischen zwei Scans 3-4 cm.
+EXPLORE_SPEED = 0.20      # m/s
+
+# Drehrate beim Wenden auf der Stelle. Langsamer als 0,4 rad/s laufen die
+# Motoren am Boden nicht zuverlässig an.
+EXPLORE_TURN_SPEED = 0.6  # rad/s
+
+# Gemessen wird ab der Lidar-Mitte. Der X3 ragt nach vorn ~0,15 m darüber
+# hinaus -- 0,40 m lassen also ~25 cm Luft, genug für den Bremsweg bei
+# 0,2 m/s plus Verzögerung.
+EXPLORE_STOP_M = 0.40
+
+# Ab hier vor einem Hindernis langsamer werden.
+EXPLORE_SLOW_M = 0.90
+
+# So viel Platz muss vorn frei sein, damit er nach dem Drehen losfährt.
+# Größer als EXPLORE_STOP_M, sonst hält er gleich wieder an und pendelt.
+EXPLORE_GO_M = 0.70
+
+# Halbe Breite des Fahrschlauchs: halbe Roboterbreite (0,245 m / 2) plus
+# Sicherheitsrand. Tischbeine knapp neben der Fahrlinie zählen so mit.
+EXPLORE_HALF_WIDTH_M = 0.20
+
+# Kommt seitlich etwas näher als das, schiebt ihn der Mecanum-Antrieb
+# sachte davon weg, statt anzuhalten.
+EXPLORE_SIDE_M = 0.30
+
+# Rückt etwas rundherum näher als das (Mensch tritt heran), bleibt er stehen,
+# statt sich in die Person hineinzudrehen.
+EXPLORE_NAH_M = 0.22
+
+# Zufällige Richtungswechsel, damit er nicht immer dieselbe Bahn fährt:
+# frühestens/spätestens nach so vielen Sekunden Geradeausfahrt.
+EXPLORE_WANDER_MIN_S = 4.0
+EXPLORE_WANDER_MAX_S = 10.0
+
+# Am Boden dreht er nur ~75 % dessen, was befohlen wird (Sensor-Check:
+# 90° befohlen, 65° gedreht). Die Drehdauer wird damit verlängert, weil sich
+# auf den IMU-Winkel der Bibliothek kein Verlass ist.
+EXPLORE_TURN_FACTOR = 1.3
+
+# Älter darf eine Lidar-Umdrehung nicht sein, sonst fährt er blind. Der
+# echte Lidar liefert alle ~0,13 s eine Runde.
+EXPLORE_SCAN_MAX_AGE_S = 1.0
+
+# So lange auf frische Lidar-Daten warten, bevor die Fahrt endet.
+EXPLORE_LIDAR_WAIT_S = 3.0
+
+# Steht ein Mensch so nah vor ihm, wartet er erst, statt sofort zu wenden --
+# vielleicht geht die Person ja weiter.
+EXPLORE_PERSON_WAIT_S = 2.0
+
+# Gesamtdauer einer Erkundung; 0 = bis jemand stoppt.
+EXPLORE_TIMEOUT_S = 0.0
+
+# --- Hinderniserkennung ----------------------------------------------------------
+
+# Springt der Abstand zwischen zwei Nachbarpunkten um mehr als das, beginnt
+# ein neues Objekt. Wächst mit der Entfernung, weil die Punkte dort weiter
+# auseinanderliegen (1° bei 3 m sind 5 cm).
+OBSTACLE_GAP_M = 0.10
+
+# Nur Objekte in diesem Umkreis werden benannt -- weiter weg sind es zu
+# wenige Punkte für eine sinnvolle Einordnung.
+OBSTACLE_RANGE_M = 3.0
+
+# Stuhl- und Tischbeine sind im Lidar dünne Punkthaufen (2-5 cm).
+OBSTACLE_LEG_MAX_M = 0.07
+
+# Menschenbeine sind 8-20 cm breit (Knöchel bis Wade, mit Hose).
+OBSTACLE_HUMAN_LEG_MAX_M = 0.25
+
+# Ab dieser Länge und Geradheit gilt ein Objekt als Wand.
+OBSTACLE_WALL_MIN_M = 0.60
+
+# --- Personenerkennung (Kamera) ------------------------------------------------
+
+# Nutzt den in OpenCV eingebauten HOG-Personendetektor -- braucht kein
+# Modell aus dem Netz. Fehlt OpenCV, läuft alles ohne Kamera-Erkennung.
+PERSON_DETECTION_ENABLED = True
+
+# Bilder pro Sekunde für die Erkennung. Ein Bild kostet auf dem Pi 5
+# ~0,1-0,2 s CPU; mehr würde Lidar und Steuerung ausbremsen.
+PERSON_DETECT_HZ = 2.0
+
+# Auf diese Breite verkleinert erkennen: schneller, und Personen im Zimmer
+# sind ohnehin groß im Bild.
+PERSON_DETECT_WIDTH = 320
+
+# Mindestgewicht des HOG-Detektors. Höher = weniger Fehlalarme, aber
+# Personen von der Seite werden eher übersehen.
+PERSON_MIN_SCORE = 0.5
+
+# Horizontaler Bildwinkel der Kamera in Grad. Damit wird eine Person im
+# Bild einer Richtung im Lidar zugeordnet.
+CAMERA_FOV_DEG = 60.0

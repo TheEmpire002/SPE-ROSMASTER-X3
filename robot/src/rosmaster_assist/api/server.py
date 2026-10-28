@@ -32,10 +32,11 @@ from ..protocol import (
     state_message,
     vitals_message,
 )
-from ..navigation import Homing, Localizer, Odometry
+from ..navigation import Erkunder, Hinderniserkennung, Homing, Localizer, Odometry
 from ..safety import CollisionGuard, SafetyWatchdog
 from ..sensors.camera import CameraService, create_camera
 from ..sensors.lidar import LidarService, create_lidar
+from ..sensors.personen import Personenerkennung
 
 log = logging.getLogger(__name__)
 
@@ -102,6 +103,9 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     localizer = Localizer(odometry, lidar)
     homing = Homing(watchdog, odometry, localizer)
     guard = CollisionGuard(localizer)
+    erkennung = Hinderniserkennung()
+    personen = Personenerkennung(camera)
+    erkunder = Erkunder(watchdog, lidar, erkennung, personen)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -113,6 +117,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         watchdog.start()
         if camera is not None:
             camera.start()
+        personen.start()
         if lidar is not None:
             lidar.start()
             # Dem Lidar eine Umdrehung Zeit geben, dann den Startpunkt
@@ -122,11 +127,16 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             asyncio.create_task(_referenz_nachholen(localizer, odometry))
 
         status_task = asyncio.create_task(
-            _status_loop(hub, watchdog, driver, odometry, homing, localizer, guard)
+            _status_loop(
+                hub, watchdog, driver, odometry, homing, localizer, guard,
+                erkunder, erkennung, lidar, personen,
+            )
         )
         odo_task = asyncio.create_task(_odometry_loop(watchdog, odometry))
         match_task = asyncio.create_task(_match_loop(localizer))
-        hw_task = asyncio.create_task(_hardware_loop(hub, watchdog, driver, homing))
+        hw_task = asyncio.create_task(
+            _hardware_loop(hub, watchdog, driver, homing, erkunder)
+        )
         try:
             yield
         finally:
@@ -137,7 +147,9 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             match_task.cancel()
             hw_task.cancel()
             homing.abbrechen("Server wird beendet")
+            erkunder.abbrechen("Server wird beendet")
             await watchdog.shutdown()
+            personen.stop()
             if camera is not None:
                 camera.stop()
             if lidar is not None:
@@ -167,7 +179,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             while True:
                 msg = await ws.receive_json()
                 reply = await _handle(
-                    msg, watchdog, driver, hub, odometry, homing, localizer, guard
+                    msg, watchdog, driver, hub, odometry, homing, localizer, guard,
+                    erkunder,
                 )
                 if reply is not None:
                     await ws.send_json(reply)
@@ -181,6 +194,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             if hub.count == 0:
                 log.warning("Kein Client mehr verbunden -- halte an")
                 homing.abbrechen("Verbindung verloren")
+                erkunder.abbrechen("Verbindung verloren")
                 watchdog.stop()
 
     # --- Kamera ---
@@ -277,6 +291,13 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             "alter_s": round(time.monotonic() - scan.zeit, 2),
         }
 
+    # --- Autonomes Fahren ---
+
+    @app.get("/autonomie/status")
+    async def autonomie_status():
+        """Erkunder, erkannte Hindernisse und Personenerkennung auf einen Blick."""
+        return _autonomie(erkunder, erkennung, lidar, personen)
+
     # Die Web-App direkt mitausliefern, damit eine Adresse genügt.
     if WEBAPP_DIR.is_dir():
         app.mount("/static", StaticFiles(directory=WEBAPP_DIR), name="static")
@@ -299,6 +320,7 @@ async def _handle(
     homing: Homing,
     localizer: Localizer,
     guard: CollisionGuard,
+    erkunder: Erkunder | None = None,
 ) -> dict[str, Any] | None:
     """Eine eingehende Nachricht verarbeiten.
 
@@ -321,6 +343,14 @@ async def _handle(
         elif homing.aktiv:
             return None  # Leerlauf-Nachrichten ignorieren, Heimfahrt steuert
 
+        # Beim autonomen Fahren genauso: Eingreifen beendet es, die
+        # Leerlauf-Nullen der App dürfen es nicht ausbremsen.
+        if erkunder is not None and erkunder.aktiv:
+            if cmd.is_stop():
+                return None
+            # Die Meldung mit Grund schickt _status_loop.
+            erkunder.abbrechen("von Hand übersteuert")
+
         erlaubt, hindernis = guard.pruefen(cmd)
         if hindernis is not None and guard.melden():
             await hub.broadcast(
@@ -338,6 +368,24 @@ async def _handle(
 
     if kind == "stop":
         homing.abbrechen("Not-Stopp")
+        if erkunder is not None:
+            erkunder.abbrechen("Not-Stopp")
+        watchdog.stop()
+        return None
+
+    if kind == "explore":
+        if erkunder is None or not erkunder.verfuegbar:
+            return alert_message("warning", "Autonomes Fahren geht nur mit Lidar")
+        if erkunder.aktiv:
+            return None
+        homing.abbrechen("autonomes Fahren gestartet")
+        if erkunder.start():
+            await hub.broadcast(alert_message("info", "Autonomes Fahren gestartet"))
+        return None
+
+    if kind == "explore_stop":
+        if erkunder is not None:
+            erkunder.abbrechen("vom Nutzer beendet")  # Meldung kommt aus _status_loop
         watchdog.stop()
         return None
 
@@ -345,6 +393,8 @@ async def _handle(
         if not odometry.misst_tatsaechlich:
             log.warning("Heimfahrt ohne Bewegungsmessung -- Position ist geschätzt")
         abstand = odometry.distanz_zum_start()
+        if erkunder is not None:
+            erkunder.abbrechen("Heimfahrt gestartet")
         if homing.start():
             await hub.broadcast(
                 alert_message("info", f"Heimfahrt gestartet ({abstand:.2f} m)")
@@ -359,6 +409,8 @@ async def _handle(
 
     if kind == "set_home":
         homing.abbrechen("Startpunkt wurde verschoben")
+        if erkunder is not None:
+            erkunder.abbrechen("Startpunkt wurde verschoben")
         # Nur in der Simulation vorhanden: dort muss auch die gedachte
         # Wirklichkeit auf den Startpunkt zurück, sonst stünde der Roboter
         # außerhalb des simulierten Raums.
@@ -445,6 +497,7 @@ async def _hardware_loop(
     watchdog: SafetyWatchdog,
     driver: DriveBase,
     homing: Homing,
+    erkunder: Erkunder | None = None,
 ) -> None:
     """Hält die Verbindung zum Antrieb am Leben.
 
@@ -465,6 +518,8 @@ async def _hardware_loop(
             verbunden = jetzt
             if not jetzt:
                 homing.abbrechen("Verbindung zum Antrieb verloren")
+                if erkunder is not None:
+                    erkunder.abbrechen("Verbindung zum Antrieb verloren")
                 watchdog.stop()
                 await hub.broadcast(
                     alert_message(
@@ -506,9 +561,14 @@ async def _status_loop(
     homing: Homing,
     localizer: Localizer,
     guard: CollisionGuard,
+    erkunder: Erkunder | None = None,
+    erkennung: Hinderniserkennung | None = None,
+    lidar: LidarService | None = None,
+    personen: Personenerkennung | None = None,
 ) -> None:
     """Schickt regelmäßig den Zustand an alle Clients."""
     zuletzt_aktiv = False
+    zuletzt_erkundet = False
     try:
         while True:
             await asyncio.sleep(config.STATUS_INTERVAL_S)
@@ -521,7 +581,22 @@ async def _status_loop(
                 )
             zuletzt_aktiv = homing.aktiv
 
+            # Ebenso das Ende des autonomen Fahrens (Lidar weg, festgefahren).
+            if erkunder is not None:
+                if zuletzt_erkundet and not erkunder.aktiv and erkunder.letzter_grund:
+                    await hub.broadcast(
+                        alert_message(
+                            "info", f"Autonomes Fahren beendet: {erkunder.letzter_grund}"
+                        )
+                    )
+                zuletzt_erkundet = erkunder.aktiv
+
             if hub.count:
+                autonomie = (
+                    _autonomie(erkunder, erkennung, lidar, personen)
+                    if erkunder is not None and erkennung is not None
+                    else None
+                )
                 await hub.broadcast(
                     state_message(
                         watchdog.current_command,
@@ -531,7 +606,34 @@ async def _status_loop(
                         homing=homing.aktiv,
                         pose_gemessen=odometry.misst_tatsaechlich,
                         collision=guard.zustand(),
+                        autonomie=autonomie,
                     )
                 )
     except asyncio.CancelledError:
         raise
+
+
+def _autonomie(
+    erkunder: Erkunder,
+    erkennung: Hinderniserkennung,
+    lidar: LidarService | None,
+    personen: Personenerkennung | None,
+) -> dict[str, Any]:
+    """Zustand für state.autonomie und /autonomie/status.
+
+    Die Hindernisse kommen auch ohne laufende Erkundung mit -- so sieht man
+    schon vor dem Start, was der Roboter erkennt.
+    """
+    scan = lidar.latest() if lidar is not None else None
+    if scan is not None and time.monotonic() - scan.zeit > 3.0:
+        scan = None  # alte Runde nicht als aktuelle Lage ausgeben
+    winkel = personen.winkelbereiche() if personen is not None else []
+    hindernisse = erkennung.aktuell(scan, winkel) if scan is not None else []
+    return {
+        **erkunder.zustand(),
+        # Die nächsten genügen für Anzeige und Liste; alle würden die
+        # Statusnachricht in vollen Räumen unnötig aufblähen.
+        "hindernisse": [h.als_dict() for h in hindernisse[:12]],
+        "personen": personen.boxen() if personen is not None else [],
+        "personenerkennung": personen.status() if personen is not None else None,
+    }

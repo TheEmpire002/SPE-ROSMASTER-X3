@@ -72,6 +72,15 @@ const ui = {
   driver: el("val-driver"),
   bpm: el("val-bpm"),
   motion: el("val-motion"),
+  btnExplore: el("btn-explore"),
+  autoZustand: el("val-auto-zustand"),
+  autoFrei: el("val-auto-frei"),
+  autoDauer: el("val-auto-dauer"),
+  autoMenschen: el("val-auto-menschen"),
+  autoKamera: el("val-auto-kamera"),
+  autoText: el("auto-text"),
+  hindernisse: el("hindernisse"),
+  camOverlay: el("cam-overlay"),
 };
 
 function logLine(text, level = "info") {
@@ -132,6 +141,7 @@ function handleMessage(msg) {
       zeigePose(msg.pose);
       setzeHomeKnopf(msg.homing === true);
       zeigeKollision(msg.collision);
+      zeigeAutonomie(msg.autonomie);
       break;
 
     case "collision":
@@ -264,9 +274,24 @@ window.addEventListener("keyup", (e) => {
 
 // Fenster verlassen oder Tab wechseln: anhalten. Sonst fährt der Roboter
 // weiter, obwohl niemand mehr hinschaut.
-window.addEventListener("blur", stopAll);
+//
+// Ausnahme autonomes Fahren: Da steuert niemand von Hand, und ein Stopp
+// würde die Fahrt beenden, sobald man z. B. ins Terminal klickt. Die
+// Handeingabe wird trotzdem gelöscht. Bricht die Verbindung ab, hält der
+// Server den Roboter ohnehin an.
+function fensterVerlassen() {
+  if (autonomAktiv) {
+    dir.x = dir.y = dir.rot = 0;
+    document.querySelectorAll(".pad-btn.active").forEach((b) =>
+      b.classList.remove("active")
+    );
+    return;
+  }
+  stopAll();
+}
+window.addEventListener("blur", fensterVerlassen);
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) stopAll();
+  if (document.hidden) fensterVerlassen();
 });
 
 // --- Tempo ------------------------------------------------------------------------
@@ -419,6 +444,8 @@ function lidarZeichnen(punkte) {
     lidarCtx.fillRect(px - 1, py - 1, 2, 2);
   }
 
+  hindernisseZeichnen(mitte, skala);
+
   // Der Roboter selbst, mit Blickrichtung nach oben.
   lidarCtx.fillStyle = "#3ecf8e";
   lidarCtx.beginPath();
@@ -430,6 +457,157 @@ function lidarZeichnen(punkte) {
 }
 
 if (lidarCtx) setInterval(lidarHolen, 1000 / LIDAR_HZ);
+
+// --- Autonomes Fahren ----------------------------------------------------------
+
+/*
+ * Der Server schickt den Zustand in jeder state-Nachricht mit
+ * (state.autonomie). Die App zeigt nur an und schickt explore /
+ * explore_stop -- entschieden wird auf dem Roboter.
+ */
+let autonomAktiv = false;
+let hindernisse = [];
+let personenBoxen = [];
+
+/** Farbe je Hindernisart, gleich in Liste, Lidar-Bild und Kamera. */
+const ART_FARBE = {
+  "Wand": "#9aa1ad",
+  "Stuhl": "#f5a524",
+  "Tisch": "#c58af9",
+  "Mensch": "#f05d5d",
+  "Bein (Mensch?)": "#ff9a8a",
+  "Bein (Stuhl/Tisch?)": "#e8c56a",
+  "Objekt": "#4da3ff",
+};
+const farbe = (art) => ART_FARBE[art] || "#4da3ff";
+
+function setzeExploreKnopf(aktiv) {
+  autonomAktiv = aktiv;
+  ui.btnExplore.textContent = aktiv ? "Autonomes Fahren beenden" : "Autonom fahren";
+  ui.btnExplore.classList.toggle("aktiv", aktiv);
+}
+
+ui.btnExplore.addEventListener("click", () => {
+  send({ type: autonomAktiv ? "explore_stop" : "explore" });
+  // Wie beim Home-Knopf: sofort umschalten, die nächste Statusmeldung
+  // korrigiert, falls der Server ablehnt (z. B. kein Lidar).
+  setzeExploreKnopf(!autonomAktiv);
+});
+
+function zeigeAutonomie(a) {
+  if (!a) return;
+  setzeExploreKnopf(a.aktiv === true);
+  ui.btnExplore.disabled = a.verfuegbar === false;
+
+  ui.autoZustand.textContent = a.aktiv ? a.zustand : (a.verfuegbar === false ? "kein Lidar" : "aus");
+  ui.autoFrei.textContent = typeof a.frei_vorn === "number" ? `${a.frei_vorn.toFixed(2)} m` : "—";
+  ui.autoDauer.textContent = a.aktiv && typeof a.dauer_s === "number"
+    ? `${Math.floor(a.dauer_s / 60)}:${String(Math.floor(a.dauer_s % 60)).padStart(2, "0")} min · ${a.ausweichen ?? 0}× ausgewichen`
+    : "—";
+
+  hindernisse = a.hindernisse || [];
+  personenBoxen = a.personen || [];
+
+  const menschen = hindernisse.filter((h) => h.art === "Mensch").length;
+  ui.autoMenschen.textContent = `${menschen} im Lidar · ${personenBoxen.length} im Bild`;
+
+  const pe = a.personenerkennung;
+  ui.autoKamera.textContent = !pe ? "—"
+    : !pe.verfuegbar ? (pe.fehler || "nicht verfügbar")
+    : pe.aktiv ? "erkennt Personen" : "bereit (läuft beim Fahren)";
+
+  let text = a.text || "—";
+  if (!a.aktiv && a.grund) text = `Zuletzt beendet: ${a.grund}`;
+  ui.autoText.textContent = text;
+
+  zeigeHindernisListe();
+  personenZeichnen();
+}
+
+function zeigeHindernisListe() {
+  ui.hindernisse.replaceChildren(...hindernisse.map((h) => {
+    const li = document.createElement("li");
+    const art = document.createElement("span");
+    art.className = "art";
+    const punkt = document.createElement("span");
+    punkt.className = "farbe";
+    punkt.style.background = farbe(h.art);
+    art.append(punkt, document.createTextNode(h.art));
+    const wo = document.createElement("span");
+    wo.className = "wo";
+    // Winkel wie beim Lidar: positiv = links. Für Menschen lesbarer als Grad.
+    const seite = Math.abs(h.winkel) < 15 ? "vorn"
+      : Math.abs(h.winkel) > 165 ? "hinten"
+      : h.winkel > 0 ? "links" : "rechts";
+    wo.textContent = `${h.abstand.toFixed(2)} m · ${seite} (${h.winkel.toFixed(0)}°)`;
+    li.append(art, wo);
+    return li;
+  }));
+  if (!hindernisse.length) {
+    const li = document.createElement("li");
+    li.textContent = "keine im Umkreis";
+    ui.hindernisse.append(li);
+  }
+}
+
+/** Markierungen ins Lidar-Bild, gleiche Umrechnung wie die Punkte. */
+function hindernisseZeichnen(mitte, skala) {
+  lidarCtx.font = "10px system-ui, sans-serif";
+  for (const h of hindernisse) {
+    if (h.art === "Wand") continue; // Wände sieht man an der Punktreihe
+    const px = mitte - h.y * skala;
+    const py = mitte - h.x * skala;
+    const r = Math.max(5, (h.breite / 2) * skala + 3);
+    lidarCtx.strokeStyle = farbe(h.art);
+    lidarCtx.lineWidth = 2;
+    lidarCtx.beginPath();
+    lidarCtx.arc(px, py, r, 0, Math.PI * 2);
+    lidarCtx.stroke();
+    lidarCtx.fillStyle = farbe(h.art);
+    lidarCtx.fillText(h.art, px + r + 2, py + 3);
+  }
+}
+
+/*
+ * Personenrahmen über dem Kamerabild. Das Bild ist mit object-fit:
+ * contain eingepasst, also kann es links/rechts oder oben/unten Rand
+ * geben -- die Rahmen müssen auf die tatsächliche Bildfläche.
+ */
+function personenZeichnen() {
+  const c = ui.camOverlay;
+  if (!c) return;
+  const w = c.clientWidth;
+  const h = c.clientHeight;
+  if (c.width !== w || c.height !== h) {
+    c.width = w;
+    c.height = h;
+  }
+  const ctx = c.getContext("2d");
+  ctx.clearRect(0, 0, w, h);
+  if (!personenBoxen.length || !ui.cam.naturalWidth) return;
+
+  const bildVerh = ui.cam.naturalWidth / ui.cam.naturalHeight;
+  let bw = w, bh = w / bildVerh;
+  if (bh > h) {
+    bh = h;
+    bw = h * bildVerh;
+  }
+  const ox = (w - bw) / 2;
+  const oy = (h - bh) / 2;
+
+  ctx.strokeStyle = farbe("Mensch");
+  ctx.fillStyle = farbe("Mensch");
+  ctx.lineWidth = 2;
+  ctx.font = "12px system-ui, sans-serif";
+  for (const b of personenBoxen) {
+    const x = ox + b.x1 * bw;
+    const y = oy + b.y1 * bh;
+    ctx.strokeRect(x, y, (b.x2 - b.x1) * bw, (b.y2 - b.y1) * bh);
+    ctx.fillText(`Mensch ${b.score.toFixed(1)}`, x + 3, y + 14);
+  }
+}
+
+window.addEventListener("resize", personenZeichnen);
 
 // --- Heimfahrt ----------------------------------------------------------------
 

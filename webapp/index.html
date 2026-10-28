@@ -22,6 +22,8 @@
     <div class="cam-wrap">
       <!-- MJPEG: der Browser zeigt den Stream direkt an, ohne JavaScript. -->
       <img id="cam" class="cam" alt="Kamerabild">
+      <!-- Rahmen um erkannte Personen beim autonomen Fahren. -->
+      <canvas id="cam-overlay" class="cam-overlay"></canvas>
       <p id="cam-error" class="cam-error" hidden>
         Kein Bild. <button type="button" id="cam-retry">Erneut versuchen</button>
       </p>
@@ -80,6 +82,35 @@
     <p class="hint">
       Tastatur: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> fahren ·
       <kbd>Q</kbd><kbd>E</kbd> drehen · <kbd>Leertaste</kbd> Stopp
+    </p>
+  </section>
+
+  <section class="panel">
+    <h2>Autonomes Fahren</h2>
+
+    <dl class="readout">
+      <dt>Zustand</dt>    <dd id="val-auto-zustand">—</dd>
+      <dt>Frei vorn</dt>  <dd id="val-auto-frei">—</dd>
+      <dt>Fahrzeit</dt>   <dd id="val-auto-dauer">—</dd>
+      <dt>Menschen</dt>   <dd id="val-auto-menschen">—</dd>
+      <dt>Kamera-KI</dt>  <dd id="val-auto-kamera">—</dd>
+    </dl>
+
+    <div class="home-buttons">
+      <button type="button" id="btn-explore" class="btn btn-primary">
+        Autonom fahren
+      </button>
+    </div>
+
+    <p class="hint" id="auto-text">—</p>
+
+    <h2>Hindernisse</h2>
+    <ul id="hindernisse" class="hindernisse"></ul>
+
+    <p class="hint">
+      Test 1: Der Roboter fährt zufällig herum und weicht allem aus, was der
+      Lidar sieht. Vor Menschen wartet er kurz. Jede Fahreingabe, der
+      Not-Stopp oder dieser Knopf beenden die Fahrt.
     </p>
   </section>
 
