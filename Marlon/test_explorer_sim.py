@@ -2,8 +2,9 @@
 """
 Offline test of the explorer logic (no ROS, no robot needed).
 
-Simulates a room with obstacles, a 360° lidar (mounted 180° rotated like on
+Simulates a room with obstacles, a 360° lidar (mounted 90° rotated like on
 the X3) and holonomic mecanum kinematics. Reports collisions and coverage.
+Also checks that a mirrored lidar is caught during the startup turn.
 
   python test_explorer_sim.py            # 10 simulated minutes, 3 seeds
   python test_explorer_sim.py --plot     # also save sim_path.png (matplotlib)
@@ -17,7 +18,7 @@ import sys
 from x3_explorer import Explorer, make_parser, scan_to_points, wrap
 
 ROBOT_R = 0.17          # physical contact radius of the X3 body
-# real X3 lidar (calibrated): robot angle = -(lidar angle) - 90 deg
+# real X3 lidar (/scan of sllidar_ros2): robot angle = lidar angle + 90 deg
 
 
 def build_world():
@@ -70,7 +71,7 @@ def clearance(x, y, segs, circles):
     return d
 
 
-def simulate(seed, minutes, p):
+def simulate(seed, minutes, p, mirrored=False):
     rnd = random.Random(seed)
     segs, circles = build_world()
     x, y, th = 0.8, 2.0, rnd.uniform(-math.pi, math.pi)
@@ -87,7 +88,10 @@ def simulate(seed, minutes, p):
             ranges = []
             for i in range(n_rays):
                 a_l = -math.pi + i * 2 * math.pi / n_rays
-                a_w = th - a_l - math.pi / 2
+                if mirrored:    # Lidar falsch herum eingestellt
+                    a_w = th - a_l - math.pi / 2
+                else:
+                    a_w = th + a_l + math.pi / 2
                 r = ray(x, y, math.cos(a_w), math.sin(a_w), segs, circles, 12.0)
                 r += rnd.gauss(0, 0.01)
                 if rnd.random() < 0.03:
@@ -108,7 +112,7 @@ def simulate(seed, minutes, p):
         visited.add((int(x / 0.25), int(y / 0.25)))
         states[ex.state] = states.get(ex.state, 0) + dt
         path.append((x, y))
-    return collisions, min_clear, len(visited), states, path
+    return collisions, min_clear, len(visited), states, path, ex.fault
 
 
 def main():
@@ -122,12 +126,19 @@ def main():
     ok = True
     paths = []
     for seed in range(args.seeds):
-        col, mc, cells, states, path = simulate(seed, args.minutes, p)
+        col, mc, cells, states, path, fault = simulate(seed, args.minutes, p)
         paths.append(path)
         st = ", ".join(f"{k}={v:.0f}s" for k, v in states.items())
         print(f"seed {seed}: Kollisionen={col}  min. Abstand={mc:.3f} m  "
               f"Abdeckung={cells}/{total_cells} Zellen  [{st}]")
-        ok &= col == 0
+        if fault:
+            print(f"  FEHLER: Spiegel-Pruefung schlaegt falsch an: {fault}")
+        ok &= col == 0 and not fault
+    for seed in range(args.seeds):
+        fault = simulate(seed, 0.5, p, mirrored=True)[5]
+        print(f"seed {seed}: gespiegelter Lidar "
+              f"{'erkannt' if fault else 'NICHT erkannt'}")
+        ok &= bool(fault)
     if args.plot:
         import matplotlib.pyplot as plt
         segs, circles = build_world()
@@ -142,7 +153,7 @@ def main():
         ax.legend()
         fig.savefig("sim_path.png", dpi=120, bbox_inches="tight")
         print("-> sim_path.png gespeichert")
-    print("OK" if ok else "FEHLER: Kollisionen")
+    print("OK" if ok else "FEHLER")
     sys.exit(0 if ok else 1)
 
 

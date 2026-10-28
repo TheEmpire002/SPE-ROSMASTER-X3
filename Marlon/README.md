@@ -59,9 +59,15 @@ bash Marlon/x3.sh --calibrate
 Hand ca. 30 cm **vor** den Roboter halten: es muss `VORNE` und ca. `0°` erscheinen.
 Hand **links**: ca. `+90°`.
 
-Unser X3 ist bereits eingestellt (`--front-offset 90`, gespiegelt).
+Unser X3 ist bereits eingestellt (`--front-offset -90`, nicht gespiegelt).
 Passt es nach einem Umbau nicht mehr: `--front-offset` (Grad) anpassen bzw.
-`--no-flip`, falls links und rechts vertauscht sind.
+`--flip`, falls links und rechts vertauscht sind. **Immer auch links prüfen** –
+ein Spiegelfehler fällt vorn und hinten nicht auf (so am 27.10.: der Roboter
+wich zur falschen Seite aus und fuhr ständig an).
+
+Zusätzlich prüft der Roboter beim Umschauen am Start, ob sich das Lidar-Bild
+richtig herum dreht. Wenn nicht, bleibt er mit `FEHLER: Lidar-Bild dreht sich …`
+stehen und piept. Ergebnis im Protokoll: `Spiegel-Pruefung: …x passend, …x gespiegelt`.
 
 ## 2. Fahren
 

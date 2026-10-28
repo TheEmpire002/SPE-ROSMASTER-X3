@@ -97,6 +97,48 @@ def corridor_free(points, theta, radius, cap):
     return free
 
 
+def range_profile(points, nbins=90):
+    """Closest obstacle distance per angular bin (robot frame), None = empty."""
+    prof = [None] * nbins
+    for x, y in points:
+        b = int((math.atan2(y, x) + math.pi) / TAU * nbins) % nbins
+        r = math.hypot(x, y)
+        if prof[b] is None or r < prof[b]:
+            prof[b] = r
+    return prof
+
+
+def profile_error(now, old, shift):
+    """Mean difference between `now` and `old` rotated by `shift` bins."""
+    n = len(now)
+    tot, cnt = 0.0, 0
+    for b in range(n):
+        a, c = now[b], old[(b + shift) % n]
+        if a is not None and c is not None:
+            tot += min(abs(a - c), 1.0)
+            cnt += 1
+    return tot / cnt if cnt >= n // 4 else None
+
+
+def rotation_vote(now, old, turned):
+    """Robot turned by `turned` rad between two scans. Static surroundings must
+    then appear rotated by -turned. Returns +1 if the scans agree with that,
+    -1 if they look rotated the other way (lidar mirrored or turn direction
+    swapped), 0 if unclear."""
+    k = int(round(turned / TAU * len(now)))
+    if k == 0:
+        return 0
+    e_ok = profile_error(now, old, k)
+    e_mirror = profile_error(now, old, -k)
+    if e_ok is None or e_mirror is None:
+        return 0
+    if e_ok < 0.75 * e_mirror:
+        return 1
+    if e_mirror < 0.75 * e_ok:
+        return -1
+    return 0
+
+
 class Cmd:
     __slots__ = ("vx", "vy", "wz")
 
@@ -134,6 +176,9 @@ class Explorer:
         self.chosen_free = 0.0
         self.free = [0.0] * n
         self.t = None
+        self.spin_ref = None           # (yaw, profile) for the mirror check
+        self.spin_votes = [0, 0]       # [agree, mirrored]
+        self.fault = None              # set -> robot stays stopped
 
     # ---- helpers -------------------------------------------------------- #
     def _enter(self, state, now):
@@ -207,11 +252,16 @@ class Explorer:
         dt = clamp(now - self.t, 0.0, 0.2)
         self.t = now
 
+        if self.fault:
+            self.cmd = Cmd()
+            self.status = "FEHLER: " + self.fault
+            return Cmd()
+
         self._evaluate(pts)
         nearest = self._min_dist(pts)
 
         if self.state == self.STARTUP:
-            target = self._startup(now)
+            target = self._startup(pts, now)
         elif self.state == self.LOOK:
             target = self._look(now)
         elif self.state == self.RECOVER:
@@ -229,7 +279,8 @@ class Explorer:
         speed = math.hypot(c.vx, c.vy)
         if speed > 0.02:
             d = corridor_free(pts, math.atan2(c.vy, c.vx), p.radius, 2.0)
-            brake = speed * speed / (2 * p.acc_lin) + p.stop_margin
+            brake = (speed * speed / (2 * p.acc_lin) + speed * p.latency
+                     + p.stop_margin)
             if d < brake:
                 # cannot stop in time with normal decel -> hard stop
                 scale = clamp(d / brake, 0.0, 1.0) if d > 0 else 0.0
@@ -250,12 +301,34 @@ class Explorer:
         return Cmd(c.vx, c.vy, c.wz)
 
     # ---- states ---------------------------------------------------------- #
-    def _startup(self, now):
-        """Full slow turn on the spot, then head for the most open direction."""
+    def _startup(self, pts, now):
+        """Full slow turn on the spot, then head for the most open direction.
+        While turning, check that the scan rotates the right way round."""
         p = self.p
         spin_time = TAU / p.look_speed
         if now - self.state_t < spin_time and min(self.free) > -0.02:
+            if now - self.state_t > 1.0 and pts:     # skip the run-up
+                prof = range_profile(pts)
+                if self.spin_ref is None:
+                    self.spin_ref = (self.yaw, prof)
+                else:
+                    turned = wrap(self.yaw - self.spin_ref[0])
+                    if abs(turned) >= math.radians(20):
+                        v = rotation_vote(prof, self.spin_ref[1], turned)
+                        if v:
+                            self.spin_votes[0 if v > 0 else 1] += 1
+                        self.spin_ref = (self.yaw, prof)
             return Cmd(0.0, 0.0, p.look_speed)
+        agree, mirrored = self.spin_votes
+        if p.mirror_check and mirrored >= 3 and mirrored > 2 * agree:
+            self.fault = (f"Lidar-Bild dreht sich beim Umschauen falsch herum "
+                          f"({mirrored}:{agree}) - links/rechts vertauscht. "
+                          f"--flip/--no-flip pruefen (--calibrate, Hand LINKS "
+                          f"muss +90° zeigen).")
+            self.events.append(("beep", 1.0))
+            return Cmd()
+        self.events.append(("info", f"Spiegel-Pruefung: {agree}x passend, "
+                                    f"{mirrored}x gespiegelt"))
         self.wander_world = self.prev_world = self._most_open_world(0.0)
         self.next_wander_t = now + self.rng.uniform(*p.wander_every)
         self._enter(self.EXPLORE, now)
@@ -384,13 +457,18 @@ def make_parser():
     g = a.add_argument
     g("--calibrate", action="store_true",
       help="nicht fahren, nur anzeigen wo der Lidar das naechste Objekt sieht")
-    # unser X3 (pi-bravo) kalibriert am 27.10.: --flip --front-offset 90
-    g("--front-offset", type=float, default=90.0,
-      help="Lidar-Winkel (Grad), der nach vorne zeigt (kalibriert: 90)")
-    g("--flip", dest="flip", action="store_true", default=True,
-      help="Lidar-Drehrichtung spiegeln (Standard, kalibriert)")
+    # Unser X3: sllidar_ros2 liefert /scan schon gegen den Uhrzeigersinn, vorn
+    # liegt bei -90° (passt zu Bens LIDAR_ANGLE_OFFSET_DEG). Das alte
+    # "--flip --front-offset 90" hatte vorn richtig, aber links/rechts
+    # vertauscht -> Kollisionen bei der Fahrt am 27.10.
+    g("--front-offset", type=float, default=-90.0,
+      help="Lidar-Winkel (Grad), der nach vorne zeigt (Standard: -90)")
+    g("--flip", dest="flip", action="store_true", default=False,
+      help="Lidar-Drehrichtung spiegeln")
     g("--no-flip", dest="flip", action="store_false",
-      help="Lidar-Drehrichtung nicht spiegeln")
+      help="Lidar-Drehrichtung nicht spiegeln (Standard)")
+    g("--no-mirror-check", dest="mirror_check", action="store_false",
+      help="beim Umschauen nicht pruefen, ob der Lidar gespiegelt ist")
     g("--ignore-below", type=float, default=0.12,
       help="Messungen naeher als dies (m) ignorieren (eigenes Chassis)")
     g("--max-v", type=float, default=0.30, help="max. Geschwindigkeit m/s")
@@ -402,6 +480,8 @@ def make_parser():
     g("--slow-dist", type=float, default=0.90)
     g("--min-free", type=float, default=0.25)
     g("--stop-margin", type=float, default=0.04)
+    g("--latency", type=float, default=0.25,
+      help="Reaktionszeit Befehl->Motor (s), verlaengert den Bremsweg")
     g("--look-ahead", type=float, default=2.5)
     g("--wall-dist", type=float, default=0.40)
     g("--wall-gain", type=float, default=0.06)
@@ -483,8 +563,21 @@ class Runner:
 
         c = self.explorer.update(pts, now)
         self.io.cmd(c.vx, c.vy, c.wz)
+        if self.explorer.fault:
+            for kind, val in self.explorer.events:
+                if kind == "beep" and self.p.sound:
+                    self.io.buzzer(True)
+                    self.beep_off_t = now + val
+            self.explorer.events.clear()
+            if now - self.last_print > 3.0:
+                print("[x3] FEHLER: " + self.explorer.fault +
+                      " Roboter bleibt stehen (Strg+C beendet).", flush=True)
+                self.last_print = now
+            return
         for kind, val in self.explorer.events:
-            if kind == "led" and self.p.led:
+            if kind == "info":
+                print("[x3] " + val, flush=True)
+            elif kind == "led" and self.p.led:
                 self.io.led(val)
             elif kind == "beep" and self.p.sound:
                 self.io.buzzer(True)
@@ -652,7 +745,8 @@ def main():
     if p.calibrate:
         print("[x3] KALIBRIERMODUS - Roboter faehrt nicht. Hand/Objekt vor den "
               "Roboter halten: es muss 'VORNE' und ca. 0° erscheinen.\n"
-              "     Links muss ca. +90° sein. Sonst --front-offset / --flip anpassen.")
+              "     Dann LINKS vom Roboter: muss 'LINKS' und ca. +90° zeigen.\n"
+              "     Vorne falsch -> --front-offset; links/rechts vertauscht -> --flip.")
     if ver == "1":
         run_ros1(p)
     elif ver == "2":
