@@ -316,6 +316,57 @@ Hubs über das Expansion-Board. Ein leerer Akku ist es nicht.
   Roboter nicht fahren lassen.
 - Die eigentliche Lösung liegt in der Hardware: ein Hub ohne Rückspeisung
   oder eine getrennte VBUS-Leitung.
-- Die C270 hängt an einem eigenen Bus und ist nicht betroffen.
+- Die C270 hängt an einem eigenen *Datenbus*, aber **nicht an einer eigenen
+  Stromversorgung**. Beim Pi 5 hängen alle vier Buchsen an einem
+  gemeinsamen Stromschalter (1,6 A gesamt). Löst er aus, melden alle Ports
+  gleichzeitig „over-current“, und bei einer längeren Überlast fällt auch die
+  C270 ab (so am 28.10. passiert).
+
+**Dauerschleife.** Ist die Versorgung einmal zusammengebrochen, kann sich das
+selbst halten: Beim Neu-Anmelden ziehen Orbbec und Lidar-Motor Anlaufstrom,
+der Schalter löst wieder aus, und so weiter. In `dmesg` steht dann
+`cannot reset (err = -71)` an den Hub-Ports. Meist endet die Schleife, wenn
+die Ursache weg ist (Last/Hitze), sonst den Roboter einmal ausschalten.
+
+**Kurzcheck vor jedem Test** (`python scripts/check_hardware.py`):
+
+| Prüfung | Gut | Schlecht → tun |
+|---|---|---|
+| USB-Versorgung | „keine neuen in 3 s“ | Neue Over-Current-Meldungen → nicht fahren, Ursache suchen (nächste Zeilen) |
+| Installiert/kompiliert der Pi? | keine Warnung | `dpkg`/`apt`/`dkms`/`cc1` läuft → abwarten bzw. abbrechen, nicht fahren |
+| Temperatur | unter ~70 °C | über 80 °C → Lüfter prüfen, Last wegnehmen |
+| Takt | 2000 MHz | höher → `arm_freq=2000` fehlt in `config.txt` |
+
+Am 28.10. lief zweimal ein sinnloser nvidia-Treiberbau (DKMS) im Hintergrund,
+ausgelöst durch einen hängenden `dpkg --configure -a`. Die nvidia-Pakete sind
+seitdem entfernt. Wer am Pi etwas mit `apt` installiert, tut das bitte nicht
+während eines Tests und prüft hinterher `dpkg --audit` (leer = gut).
+
+### Was am Roboter tun (Hardware)
+
+Nach Wirkung sortiert, das Einfachste zuerst:
+
+1. **Akku laden.** Beim Sensor-Check lag er bei 10,1–10,3 V, also fast leer
+   (3S-Akku). Hub und Board werden vermutlich über das Expansion-Board aus
+   dem Akku versorgt. Sackt diese Schiene ab, holen sich die Geräte den Strom
+   über das USB-Kabel vom Pi, und der 1,6-A-Schalter löst aus. Das ist eine
+   Vermutung, sie lässt sich aber leicht prüfen: mit vollem Akku testen.
+2. **Orbbec abziehen, solange sie niemand nutzt.** Sie ist der größte
+   Verbraucher am Hub (Tiefensensor mit Projektor, eigener interner Hub),
+   und unser Code verwendet sie nicht.
+3. **Nur nötige Geräte direkt am Pi.** Alles an den vier Pi-Buchsen teilt
+   sich 1,6 A. Momentan sind es C270, Lautsprecher, USB-Mikrofon und der Hub.
+   Die C270 hat selbst ein Mikrofon. Treten die Resets weiter auf, testweise
+   das zusätzliche Mikrofon abziehen und den Lautsprecher nicht voll aufdrehen.
+4. **Hub sauber versorgen (die eigentliche Lösung):** einen aktiven Hub mit
+   eigenem 5-V-Netzteil verwenden, am Roboter über einen DC/DC-Wandler aus
+   dem Akku (5 V, mindestens 3 A). Der Hub darf nicht rückspeisen. Ist der Hub
+   schon über das Board versorgt, kann man alternativ im Kabel vom Pi zum Hub
+   die 5-V-Ader (VBUS, rot) trennen, z. B. mit einem USB-Adapter „nur Daten“.
+   Dann fließt zwischen Pi und Hub kein Strom mehr.
+5. **Board und Lidar** nicht über die Orbbec bzw. eine Hub-Kaskade, sondern
+   direkt an den (versorgten) Hub.
+6. **Kühlung prüfen:** Der Lüfter des Pi muss laufen. 83 °C beim Kompilieren
+   deuten auf zu wenig Kühlung hin.
 
 Messungen und Herleitung: `Marlon/sensorcheck_2026-10-28/ZUSAMMENFASSUNG.md`.

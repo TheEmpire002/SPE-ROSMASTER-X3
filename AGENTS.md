@@ -52,6 +52,9 @@ ab. Alle Endpunkte verhalten sich wie am Roboter.
   beenden: `pkill -f rosmaster_assist; sudo pkill -f sllidar_node`.
 - Diagnose ohne Log-Suche: `/lidar/status`, `/camera/status` und
   `/stimme/status` (Lautsprecher).
+- Vor Tests `python scripts/check_hardware.py`: Es warnt bei neuen
+  USB-Überlast-Meldungen und wenn der Pi gerade installiert oder kompiliert.
+  Während `apt`/`dpkg` laufen, nicht fahren (Hitze → USB-Ausfälle).
 
 ## Dokumentieren
 

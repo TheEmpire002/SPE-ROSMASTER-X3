@@ -199,6 +199,23 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
   - Die Kamera wurde bisher nur über den Index gewählt (`CAMERA_INDEX = 0`). Meldet sich nach einem Reset die Orbbec zuerst an, wäre sie `video0`, und die Gesten würden in der falschen Kamera gesucht.
   - Neu: `CAMERA_NAME = "C270"` in `config.py`. Die Kamera mit diesem Namen wird zuerst probiert. Fehlt sie, gilt die alte Reihenfolge.
 
+### 28.10.2026 – „Alles stürzt ab“: Ursache NVIDIA-Build, Pakete entfernt (Marlon)
+- **Anlass:** Kamera, Motor und Lidar fielen im Team immer wieder aus.
+- **Befund (Uptime ~21 min):**
+  - `lsusb` zeigte nur noch die Root-Hubs. Seit s 1234 kamen dauernd Over-Current-Meldungen, am Ende ~4900 Zählerstände.
+  - 83 °C, Drosselung (`throttled=0xe0008`), Last ~6,7.
+  - Ursache war wieder `sudo dpkg --configure -a` aus einer Laptop-Sitzung. Ein `apt install mpg123` war um 13:32 gescheitert, weil dpkg noch das nvidia-Paket konfigurieren wollte, und danach baute `dkms` das nvidia-Modul mit `make -j4`. Das passiert bei jedem `apt`-Aufruf wieder.
+  - **Die Schleife hielt sich selbst:** Jedes Neu-Anmelden der Geräte (Orbbec, Lidar-Motor) löste die nächste Überlast aus. Die Hub-Ports meldeten `cannot reset (err -71)`. Diesmal fiel auch die C270 ab, obwohl sie direkt am Pi steckt.
+- **Was:**
+  - Build beendet. `nvidia-kernel-dkms` mit `dpkg --purge` entfernt, sodass er nicht noch einmal anläuft. Danach `dpkg --configure -a` und alle 44 nvidia/cuda-Pakete gelöscht (`apt-get purge`). Vorher mit `apt-get -s` geprüft: kein Hailo-Paket betroffen, `hailo1x_pci` bleibt in DKMS, `/dev/hailo0` ist da.
+  - `mpg123` installiert, `dpkg --audit` ist sauber.
+  - `scripts/check_hardware.py` hat jetzt den Abschnitt „USB-Versorgung“. Er zeigt, ob gerade neue Over-Current-Meldungen kommen und ob der Pi im Hintergrund installiert oder kompiliert.
+- **Ergebnis:**
+  - Etwa 2 min nach dem Ende des Builds hörte die Schleife von selbst auf, ein Neustart war nicht nötig.
+  - Alle Geräte sind zurück (Hub, Board, Lidar, Orbbec, C270, Mikrofon, Lautsprecher), die Symlinks stimmen.
+  - Danach 0 neue Over-Current-Meldungen, 61 °C.
+- **Neue Erkenntnis:** Beim Pi 5 hängen alle vier USB-Buchsen an **einem** gemeinsamen Stromschalter (1,6 A gesamt). Dass „alle Ports gleichzeitig“ melden, beweist deshalb noch keine Rückspeisung. Es zeigt nur, dass die Summe aller Geräte die Grenze überschritten hat. Empfehlungen zur Hardware in `docs/hardware.md`, Abschnitt „USB-Resets“.
+
 ---
 
 ## 3. Ergebnisse und Messwerte
@@ -226,6 +243,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 | Drehung ungenau | Gyro-Bias/-Vorzeichen, theta im Server ≈ 0 | Erkunder dreht nach Zeit; Gyro-Korrektur offen |
 | Roboter auf dem Tisch | Lidar sieht keine Kanten | Autonomes Fahren nur am Boden |
 | USB-Ausfälle bei Hitze | Pi über 80 °C (Kompilieren), Drosselung auf 1,5 GHz | Während Builds nicht fahren; `check_hardware.py` zeigt Temperatur und Drosselung |
+| Alles stürzt dauernd ab (Kamera, Motor, Lidar) | Hängender nvidia-DKMS-Build, der bei jedem `apt` neu startete → Hitze → USB-Überlast als Dauerschleife | nvidia-Pakete entfernt (28.10.), `check_hardware.py` warnt bei laufenden Builds und neuen Over-Current-Meldungen |
 | Winken löste „Weggehen“ aus | Schulterbreite bricht beim seitlichen Drehen ein, Maße in Schulterbreiten werden riesig | Median der Schulterbreite über das Fenster (28.10.) |
 | Tippen im „Sagen“-Feld hätte den Roboter gefahren | Tastatursteuerung der App reagiert auf alle Tasten, Leertaste = Not-Stopp | Tasten in Textfeldern werden ignoriert (28.10.) |
 | Falsche Kamera möglich | `/dev/video*`-Nummern tauschen nach USB-Resets, Orbbec könnte `video0` werden | Kamera über den Namen wählen, `CAMERA_NAME = "C270"` (28.10.) |
@@ -236,7 +254,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 ## 5. Offene Punkte und Ausblick
 
 - Bodentest des Erkunders mit Hindernissen.
-- Hardware-Fix der USB-Versorgung.
+- Hardware-Fix der USB-Versorgung: Akku laden, Orbbec abziehen solange ungenutzt, Hub eigenständig versorgen (siehe `docs/hardware.md`, „Was am Roboter tun“).
 - Interaktion: Hailo-Pose am Pi prüfen, Fahrtest Folgen/Herkommen am Boden; danach Stufen 4–5 (Sprache, Geist).
 - Stimme: Piper am Pi installieren, Lautsprecher und Lautstärke prüfen. Bei der Spracherkennung (Vosk) `Stimme.spricht` nutzen, damit er sich nicht selbst zuhört.
 - Später: lokales LLM auf dem Hailo, Gesichter wiedererkennen, Orbbec-Tiefe für niedrige Hindernisse.
