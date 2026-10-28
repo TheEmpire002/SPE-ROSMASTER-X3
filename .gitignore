@@ -1,3 +1,4 @@
+
 # Python
 __pycache__/
 *.py[cod]
@@ -8,6 +9,7 @@ venv/
 # IDE
 .vscode/
 .idea/
+*.iml
 
 # Betriebssystem
 .DS_Store
@@ -21,3 +23,18 @@ maps/*.yaml
 
 # Lokale Konfiguration (Geheimnisse, WLAN, Broker-Adressen)
 robot/.env
+
+# ESP-IDF / ESP32
+# Generierte Build-Dateien
+build/
+cmake-build-*/
+
+# ESP-IDF temporäre Konfigurationen
+sdkconfig.old
+sdkconfig.*.old
+
+# Temporäre Dateien
+*.tmp
+*.swp
+*.swo
+*~
