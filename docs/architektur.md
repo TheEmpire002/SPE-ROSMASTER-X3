@@ -56,7 +56,9 @@ Menschen aus. Es bewertet keinen Gesundheitszustand.
 | `protocol.py`  | Nachrichtenformat — die gemeinsame Sprache aller Beteiligten |
 | `drive/`       | Fahren. `base.py` = Schnittstelle, dazu echter Treiber + Mock |
 | `safety/`      | Watchdog, Not-Aus, Geschwindigkeitsbegrenzung               |
-| `sensors/`     | Lidar, Kamera, Vitaldaten vom ESP *(noch leer)*             |
+| `sensors/`     | Lidar, Kamera, Personenerkennung; geplant: Körperpose (Hailo) |
+| `navigation/`  | Odometrie, Lidar-Ortung, Heimfahrt, Erkunder, Hindernis-Benennung |
+| `interaktion/` | *(geplant)* Gesten, Sprache, Stimme, Verhalten, Geist — siehe [`interaktion.md`](interaktion.md) |
 | `box/`         | Motor/Servo der Transportbox *(noch leer)*                  |
 | `api/`         | WebSocket-Server, liefert auch die Web-App aus              |
 | `main.py`      | Startpunkt, baut alles zusammen                             |
@@ -75,3 +77,15 @@ Wenn SLAM und Navigation drankommen, gibt es zwei Wege:
 
 Diese Entscheidung fällt erst, wenn der Lidar Daten liefert — vorher fehlt
 die Grundlage dafür.
+
+**Stand 28.10.:** Gewählt wurde der zweite Weg. Der Erkunder
+(`navigation/explorer.py`) fährt direkt im Server auf den Lidar-Daten,
+mit demselben Watchdog wie die Handsteuerung. Das ältere ROS2-Projekt liegt
+zum Vergleich unter `Marlon/autonomes_fahren/`.
+
+## Interaktion
+
+Gesten, Sprache und eine „Geist“-Schicht sitzen als eigene Ebene über den
+Verhalten und fahren ebenfalls nur über den Watchdog. Aufbau, Gesten und
+Stufenplan beschreibt [`interaktion.md`](interaktion.md), die Begründung
+steht in E5 und E6 in [`entscheidungen.md`](entscheidungen.md).

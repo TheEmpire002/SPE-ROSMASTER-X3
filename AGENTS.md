@@ -51,3 +51,10 @@ ab. Alle Endpunkte verhalten sich wie am Roboter.
   (`sllidar_node`, `yahboomcar_bringup`) und alte Server-Instanzen vorher
   beenden: `pkill -f rosmaster_assist; sudo pkill -f sllidar_node`.
 - Diagnose ohne Log-Suche: `/lidar/status` und `/camera/status`.
+
+## Dokumentieren
+
+Jeder Arbeitsschritt kommt zusätzlich ins Projekttagebuch
+[`Marlon/PROJEKTDOKU.md`](Marlon/PROJEKTDOKU.md): was, warum, Ergebnis,
+Probleme. Es ist die Grundlage für Abschlussbericht und Präsentation.
+Technische Details gehören weiterhin nach `docs/`.

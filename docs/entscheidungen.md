@@ -151,3 +151,74 @@ entspricht auf vier Meter Entfernung sieben Zentimetern.
 
 **Neu bewerten, wenn:** der Roboter zwischen Räumen wechseln soll. Dann
 führt an einer Karte kein Weg vorbei.
+
+---
+
+## E5 — Gesten über die Körperpose auf dem Hailo, nicht über ein Handmodell
+
+**Datum:** 2026-10-28
+**Status:** beschlossen, Umsetzung in Stufe 2 (siehe [`interaktion.md`](interaktion.md))
+
+**Kontext.** Der Roboter soll auf Handzeichen reagieren: Folgen, Stopp,
+Herkommen, Weggehen. Übliche Handmodelle (z. B. MediaPipe Hands) erkennen
+Fingerstellungen, brauchen die Hand aber groß im Bild, also auf etwa einen
+Meter, und laufen auf der CPU. Die CPU ist am X3 heikel, denn Lastsprünge
+lösen USB-Resets aus (siehe [`hardware.md`](hardware.md)). Auf dem Pi
+steckt ein Hailo-10H, und mitgeliefert ist ein Pose-Modell
+(`yolov8s_pose_h10.hef`, 17 Körperpunkte).
+
+**Entscheidung.** Gesten werden aus der **Körperpose** bestimmt: aus der
+Lage von Handgelenken, Ellbogen und Schultern und ihrer Bewegung über eine
+kurze Zeit. Das Modell läuft auf dem Hailo. Die Gestenlogik besteht aus
+reinen Python-Funktionen über die Keypoints.
+
+**Konsequenzen.**
+- *Gut:* Das funktioniert auf 1–4 m, also auf dem Abstand, aus dem man
+  einem fahrenden Roboter winkt. Die CPU bleibt frei. Die Gestenlogik ist
+  ohne Hardware testbar, und dieselbe Pose liefert die Richtung zur Person
+  fürs Folgen.
+- *Schlecht:* Es gibt keine Fingergesten (Daumen hoch, Zahl zeigen), nur
+  Armgesten. Die C270 ist nur leicht nach oben geneigt, deshalb ist eine
+  stehende Person erst ab etwa 1,5 m ganz im Bild.
+- *Abgefedert durch:* Die Gesten sind bewusst groß und eindeutig gewählt
+  (Arm über den Kopf, winken, wischen). Eine Geste zählt erst nach mehreren
+  stabilen Bildern.
+
+**Neu bewerten, wenn:** feinere Gesten gebraucht werden. Dann kommt ein
+Handmodell als zweite Stufe dazu, aber nur auf den Bildausschnitt der
+Hand, den die Pose liefert.
+
+---
+
+## E6 — Hybrides Denken; das Sprachmodell steuert nie direkt
+
+**Datum:** 2026-10-28
+**Status:** beschlossen, Umsetzung in Stufe 5
+
+**Kontext.** Der Roboter soll sich unterhalten können und so wirken, als
+hätte er ein Innenleben. Ein großes Sprachmodell (Claude) klingt am
+natürlichsten, braucht aber Internet und kostet pro Aufruf. Lokal auf dem
+Hailo-10H laufen nur kleine Modelle. Vor allem aber können Sprachmodelle
+sich irren, und ein Irrtum darf nie zu einer Fahrbewegung führen.
+
+**Entscheidung.** Das Denken läuft **hybrid**, mit einer Schnittstelle und
+drei Stufen: Claude-API, wenn Internet da ist, dann ein lokales LLM auf dem
+Hailo (später) und schließlich Vorlagensätze. Das Sprachmodell liefert nur
+`gedanke`, `antwort` und optional eine `absicht` aus einer festen Liste. Ob
+diese Absicht ausgeführt wird, entscheidet der Geist. Fahrbefehle entstehen
+ausschließlich in den Verhaltensklassen und laufen über den Watchdog.
+Gesten und Sprachbefehle („stopp“) wirken ohne Sprachmodell.
+
+**Konsequenzen.**
+- *Gut:* Die Unterhaltung wirkt natürlich, wenn Internet da ist, und ohne
+  Internet funktioniert trotzdem alles. Ein falsches oder böswilliges
+  Modell-Ergebnis kann den Roboter nicht unkontrolliert fahren lassen.
+  „Stopp“ hängt nie an einer Netzverbindung.
+- *Schlecht:* Mit Vorlagen wirkt der Roboter deutlich schlichter. Die
+  Claude-API braucht einen Schlüssel und ein Budget.
+- *Abgefedert durch:* Gedanken entstehen nur bei Ereignissen oder alle
+  ~20 s. Der Schlüssel liegt nur in der Umgebungsvariable
+  `ANTHROPIC_API_KEY` und nie im Repo.
+
+**Neu bewerten, wenn:** das lokale LLM auf dem Hailo gut genug antwortet,
+dass die Cloud verzichtbar wird.
