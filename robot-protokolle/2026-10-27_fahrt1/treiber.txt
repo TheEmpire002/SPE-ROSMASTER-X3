@@ -1,0 +1,128 @@
+[treiber] Start 1  15:00:36
+Rosmaster Serial Opened! Baudrate=115200
+X3
+imu_link
+
+1.0
+1.0
+5.0
+----------------create receive threading--------------
+Exception in thread task_serial_receive:
+Traceback (most recent call last):
+  File "/usr/lib/python3.8/threading.py", line 932, in _bootstrap_inner
+    self.run()
+  File "/usr/lib/python3.8/threading.py", line 870, in run
+    self._target(*self._args, **self._kwargs)
+  File "/usr/local/lib/python3.8/dist-packages/Rosmaster_Lib-3.3.9-py3.8.egg/Rosmaster_Lib/Rosmaster_Lib.py", line 260, in __receive_data
+  File "/usr/local/lib/python3.8/dist-packages/serial/serialposix.py", line 595, in read
+    raise SerialException(
+serial.serialutil.SerialException: device reports readiness to read but returned no data (device disconnected or multiple access on port?)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.8/dist-packages/serial/serialposix.py", line 621, in write
+    n = os.write(self.fd, d)
+OSError: [Errno 5] Input/output error
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/root/yahboomcar_ros2_ws/yahboomcar_ws/install/yahboomcar_bringup/lib/yahboomcar_bringup/Mcnamu_driver_X3", line 11, in <module>
+    load_entry_point('yahboomcar-bringup==0.0.0', 'console_scripts', 'Mcnamu_driver_X3')()
+  File "/root/yahboomcar_ros2_ws/yahboomcar_ws/install/yahboomcar_bringup/lib/python3.8/site-packages/yahboomcar_bringup/Mcnamu_driver_X3.py", line 172, in main
+    rclpy.spin(driver)
+  File "/opt/ros/foxy/lib/python3.8/site-packages/rclpy/__init__.py", line 191, in spin
+    executor.spin_once()
+  File "/opt/ros/foxy/lib/python3.8/site-packages/rclpy/executors.py", line 718, in spin_once
+    raise handler.exception()
+  File "/opt/ros/foxy/lib/python3.8/site-packages/rclpy/task.py", line 239, in __call__
+    self._handler.send(None)
+  File "/opt/ros/foxy/lib/python3.8/site-packages/rclpy/executors.py", line 429, in handler
+    await call_coroutine(entity, arg)
+  File "/opt/ros/foxy/lib/python3.8/site-packages/rclpy/executors.py", line 343, in _execute_timer
+    await await_or_execute(tmr.callback)
+  File "/opt/ros/foxy/lib/python3.8/site-packages/rclpy/executors.py", line 118, in await_or_execute
+    return callback(*args)
+  File "/root/yahboomcar_ros2_ws/yahboomcar_ws/install/yahboomcar_bringup/lib/python3.8/site-packages/yahboomcar_bringup/Mcnamu_driver_X3.py", line 122, in pub_data
+    edition.data = self.car.get_version()*1.0
+  File "/usr/local/lib/python3.8/dist-packages/Rosmaster_Lib-3.3.9-py3.8.egg/Rosmaster_Lib/Rosmaster_Lib.py", line 1217, in get_version
+  File "/usr/local/lib/python3.8/dist-packages/Rosmaster_Lib-3.3.9-py3.8.egg/Rosmaster_Lib/Rosmaster_Lib.py", line 290, in __request_data
+  File "/usr/local/lib/python3.8/dist-packages/serial/serialposix.py", line 655, in write
+    raise SerialException('write failed: {}'.format(e))
+serial.serialutil.SerialException: write failed: [Errno 5] Input/output error
+[treiber] Start 2  15:00:44
+Rosmaster Serial Opened! Baudrate=115200
+X3
+imu_link
+
+1.0
+1.0
+5.0
+----------------create receive threading--------------
+Exception in thread task_serial_receive:
+Traceback (most recent call last):
+  File "/usr/lib/python3.8/threading.py", line 932, in _bootstrap_inner
+    self.run()
+  File "/usr/lib/python3.8/threading.py", line 870, in run
+    self._target(*self._args, **self._kwargs)
+  File "/usr/local/lib/python3.8/dist-packages/Rosmaster_Lib-3.3.9-py3.8.egg/Rosmaster_Lib/Rosmaster_Lib.py", line 260, in __receive_data
+  File "/usr/local/lib/python3.8/dist-packages/serial/serialposix.py", line 595, in read
+    raise SerialException(
+serial.serialutil.SerialException: device reports readiness to read but returned no data (device disconnected or multiple access on port?)
+---set_car_motion error!---
+---set_car_motion error!---
+---set_car_motion error!---
+---set_car_motion error!---
+---set_car_motion error!---
+---set_car_motion error!---
+---set_car_motion error!---
+---set_car_motion error!---
+---set_car_motion error!---
+---set_car_motion error!---
+---set_car_motion error!---
+---set_car_motion error!---
+---set_car_motion error!---
+---set_car_motion error!---
+---set_car_motion error!---
+---set_car_motion error!---
+---set_car_motion error!---
+---set_car_motion error!---
+---set_car_motion error!---
+---set_car_motion error!---
+---set_car_motion error!---
+Traceback (most recent call last):
+  File "/root/yahboomcar_ros2_ws/yahboomcar_ws/install/yahboomcar_bringup/lib/yahboomcar_bringup/Mcnamu_driver_X3", line 11, in <module>
+    load_entry_point('yahboomcar-bringup==0.0.0', 'console_scripts', 'Mcnamu_driver_X3')()
+  File "/root/yahboomcar_ros2_ws/yahboomcar_ws/install/yahboomcar_bringup/lib/python3.8/site-packages/yahboomcar_bringup/Mcnamu_driver_X3.py", line 172, in main
+    rclpy.spin(driver)
+  File "/opt/ros/foxy/lib/python3.8/site-packages/rclpy/__init__.py", line 191, in spin
+    executor.spin_once()
+  File "/opt/ros/foxy/lib/python3.8/site-packages/rclpy/executors.py", line 710, in spin_once
+    handler, entity, node = self.wait_for_ready_callbacks(timeout_sec=timeout_sec)
+  File "/opt/ros/foxy/lib/python3.8/site-packages/rclpy/executors.py", line 696, in wait_for_ready_callbacks
+    return next(self._cb_iter)
+  File "/opt/ros/foxy/lib/python3.8/site-packages/rclpy/executors.py", line 593, in _wait_for_ready_callbacks
+    _rclpy.rclpy_wait(wait_set, timeout_nsec)
+KeyboardInterrupt
+serial Close!
+[treiber] Start 3  15:01:06
+Rosmaster Serial Opened! Baudrate=115200
+X3
+imu_link
+
+1.0
+1.0
+5.0
+----------------create receive threading--------------
+Traceback (most recent call last):
+  File "/root/yahboomcar_ros2_ws/yahboomcar_ws/install/yahboomcar_bringup/lib/yahboomcar_bringup/Mcnamu_driver_X3", line 11, in <module>
+    load_entry_point('yahboomcar-bringup==0.0.0', 'console_scripts', 'Mcnamu_driver_X3')()
+  File "/root/yahboomcar_ros2_ws/yahboomcar_ws/install/yahboomcar_bringup/lib/python3.8/site-packages/yahboomcar_bringup/Mcnamu_driver_X3.py", line 172, in main
+    rclpy.spin(driver)
+  File "/opt/ros/foxy/lib/python3.8/site-packages/rclpy/__init__.py", line 191, in spin
+    executor.spin_once()
+  File "/opt/ros/foxy/lib/python3.8/site-packages/rclpy/executors.py", line 710, in spin_once
+    handler, entity, node = self.wait_for_ready_callbacks(timeout_sec=timeout_sec)
+  File "/opt/ros/foxy/lib/python3.8/site-packages/rclpy/executors.py", line 696, in wait_for_ready_callbacks
+    return next(self._cb_iter)
+  File "/opt/ros/foxy/lib/python3.8/site-packages/rclpy/executors.py", line 593, in _wait_for_ready_callbacks
+    _rclpy.rclpy_wait(wait_set, timeout_nsec)
+KeyboardInterrupt

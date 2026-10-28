@@ -1,0 +1,12 @@
+[lidar] Start 1  15:00:50
+[INFO] [1793113250.672331618] [sllidar_node]: SLLidar running on ROS2 package SLLidar.ROS2 SDK Version:1.0.1, SLLIDAR SDK Version:2.0.0
+[ERROR] [1793113250.716010836] [sllidar_node]: Error, operation time out. SL_RESULT_OPERATION_TIMEOUT! 
+[lidar] Start 2  15:00:52
+[INFO] [1793113253.056137878] [sllidar_node]: SLLidar running on ROS2 package SLLidar.ROS2 SDK Version:1.0.1, SLLIDAR SDK Version:2.0.0
+[INFO] [1793113253.209701852] [sllidar_node]: SLLidar S/N: 74BEED95C4E493CBA5E69EF0E56E4B6F
+[INFO] [1793113253.209760389] [sllidar_node]: Firmware Ver: 1.29
+[INFO] [1793113253.209773444] [sllidar_node]: Hardware Rev: 7
+[INFO] [1793113253.260938355] [sllidar_node]: SLLidar health status : 0
+[INFO] [1793113253.261016781] [sllidar_node]: SLLidar health status : OK.
+[INFO] [1793113253.489856101] [sllidar_node]: current scan mode: Sensitivity, sample rate: 8 Khz, max_distance: 12.0 m, scan frequency:10.0 Hz, 
+[INFO] [1793113358.379303623] [sllidar_node]: Stop motor

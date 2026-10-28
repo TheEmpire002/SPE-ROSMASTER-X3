@@ -1,0 +1,2383 @@
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:04 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:05 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:05 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:05 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:05 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:05 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:05 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:05 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:05 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:05 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:05 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:05 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:05 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:05 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:05 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:05 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:05 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:05 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:05 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:05 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:05 2026] usb usb2-port1: over-current change #29
+[Wed Oct 28 09:05:05 2026] usb 1-1: USB disconnect, device number 61
+[Wed Oct 28 09:05:05 2026] usb 1-1.1: USB disconnect, device number 62
+[Wed Oct 28 09:05:05 2026] usb 1-1.1.1: USB disconnect, device number 64
+[Wed Oct 28 09:05:05 2026] usb 1-1.3: ch341_read_int_callback - usb_submit_urb failed: -19
+[Wed Oct 28 09:05:05 2026] usb usb3-port2: over-current change #28
+[Wed Oct 28 09:05:05 2026] usb 1-1: clear tt 3 (9042) error -71
+[Wed Oct 28 09:05:05 2026] usb 1-1.1.2: USB disconnect, device number 66
+[Wed Oct 28 09:05:05 2026] usb 1-1.3: USB disconnect, device number 63
+[Wed Oct 28 09:05:05 2026] usb 1-1.3: failed to send control message: -19
+[Wed Oct 28 09:05:05 2026] ch341-uart ttyUSB3: ch341-uart converter now disconnected from ttyUSB3
+[Wed Oct 28 09:05:05 2026] ch341 1-1.3:1.0: device disconnected
+[Wed Oct 28 09:05:05 2026] usb 1-1.4: USB disconnect, device number 65
+[Wed Oct 28 09:05:05 2026] cp210x ttyUSB4: cp210x converter now disconnected from ttyUSB4
+[Wed Oct 28 09:05:05 2026] cp210x 1-1.4:1.0: device disconnected
+[Wed Oct 28 09:05:05 2026] usb 2-1: USB disconnect, device number 11
+[Wed Oct 28 09:05:05 2026] usb 1-1: new high-speed USB device number 67 using xhci-hcd
+[Wed Oct 28 09:05:05 2026] usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+[Wed Oct 28 09:05:05 2026] usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:05:05 2026] usb 1-1: Product: USB2.0 Hub             
+[Wed Oct 28 09:05:05 2026] usb 1-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:05:05 2026] hub 1-1:1.0: USB hub found
+[Wed Oct 28 09:05:05 2026] hub 1-1:1.0: 4 ports detected
+[Wed Oct 28 09:05:05 2026] usb usb1-port2: over-current change #17
+[Wed Oct 28 09:05:06 2026] usb 1-1.1: new high-speed USB device number 68 using xhci-hcd
+[Wed Oct 28 09:05:06 2026] usb 1-1.1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+[Wed Oct 28 09:05:06 2026] usb 1-1.1: New USB device strings: Mfr=0, Product=1, SerialNumber=0
+[Wed Oct 28 09:05:06 2026] usb 1-1.1: Product: USB2.0 Hub
+[Wed Oct 28 09:05:06 2026] hub 1-1.1:1.0: USB hub found
+[Wed Oct 28 09:05:06 2026] hub 1-1.1:1.0: 4 ports detected
+[Wed Oct 28 09:05:06 2026] usb 2-1: new SuperSpeed USB device number 12 using xhci-hcd
+[Wed Oct 28 09:05:06 2026] usb 2-1: New USB device found, idVendor=2109, idProduct=0817, bcdDevice= 0.50
+[Wed Oct 28 09:05:06 2026] usb 2-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:05:06 2026] usb 2-1: Product: USB3.0 Hub             
+[Wed Oct 28 09:05:06 2026] usb 2-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:05:06 2026] hub 2-1:1.0: USB hub found
+[Wed Oct 28 09:05:06 2026] hub 2-1:1.0: 4 ports detected
+[Wed Oct 28 09:05:06 2026] usb 1-1.4: new full-speed USB device number 69 using xhci-hcd
+[Wed Oct 28 09:05:06 2026] usb 1-1.4: New USB device found, idVendor=10c4, idProduct=ea60, bcdDevice= 1.00
+[Wed Oct 28 09:05:06 2026] usb 1-1.4: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[Wed Oct 28 09:05:06 2026] usb 1-1.4: Product: CP2102 USB to UART Bridge Controller
+[Wed Oct 28 09:05:06 2026] usb 1-1.4: Manufacturer: Silicon Labs
+[Wed Oct 28 09:05:06 2026] usb 1-1.4: SerialNumber: 0001
+[Wed Oct 28 09:05:06 2026] cp210x 1-1.4:1.0: cp210x converter detected
+[Wed Oct 28 09:05:06 2026] usb 1-1.4: cp210x converter now attached to ttyUSB3
+[Wed Oct 28 09:05:07 2026] usb 1-1.1.1: new high-speed USB device number 70 using xhci-hcd
+[Wed Oct 28 09:05:07 2026] usb 1-1.1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+[Wed Oct 28 09:05:07 2026] usb 1-1.1.1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:05:07 2026] usb 1-1.1.1: Product: ORBBEC Depth Sensor
+[Wed Oct 28 09:05:07 2026] usb 1-1.1.1: Manufacturer: Orbbec(R)
+[Wed Oct 28 09:05:07 2026] usb 1-1.3: new full-speed USB device number 71 using xhci-hcd
+[Wed Oct 28 09:05:07 2026] usb 1-1.3: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice=81.34
+[Wed Oct 28 09:05:07 2026] usb 1-1.3: New USB device strings: Mfr=0, Product=2, SerialNumber=0
+[Wed Oct 28 09:05:07 2026] usb 1-1.3: Product: USB Serial
+[Wed Oct 28 09:05:07 2026] ch341 1-1.3:1.0: ch341-uart converter detected
+[Wed Oct 28 09:05:07 2026] usb 1-1.3: ch341-uart converter now attached to ttyUSB4
+[Wed Oct 28 09:05:07 2026] usb 1-1.1.2: new high-speed USB device number 72 using xhci-hcd
+[Wed Oct 28 09:05:07 2026] usb 1-1.1.2: New USB device found, idVendor=2bc5, idProduct=050f, bcdDevice= 1.00
+[Wed Oct 28 09:05:07 2026] usb 1-1.1.2: New USB device strings: Mfr=2, Product=1, SerialNumber=3
+[Wed Oct 28 09:05:07 2026] usb 1-1.1.2: Product: USB 2.0 Camera
+[Wed Oct 28 09:05:07 2026] usb 1-1.1.2: Manufacturer: Sonix Technology Co., Ltd.
+[Wed Oct 28 09:05:07 2026] usb 1-1.1.2: SerialNumber: SN0001
+[Wed Oct 28 09:05:07 2026] uvcvideo 1-1.1.2:1.0: Found UVC 1.00 device USB 2.0 Camera (2bc5:050f)
+[Wed Oct 28 09:05:07 2026] usb usb1-port1: over-current change #23
+[Wed Oct 28 09:05:07 2026] usb usb3-port1: over-current change #32
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb usb4-port1: over-current change #35
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb usb3-port2: over-current change #29
+[Wed Oct 28 09:05:07 2026] usb usb2-port1: over-current change #30
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1: USB disconnect, device number 67
+[Wed Oct 28 09:05:07 2026] usb 1-1.1: USB disconnect, device number 68
+[Wed Oct 28 09:05:07 2026] usb 1-1.1.1: USB disconnect, device number 70
+[Wed Oct 28 09:05:07 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:05:07 2026] usb 1-1.3: ch341_read_int_callback - usb_submit_urb failed: -19
+[Wed Oct 28 09:05:07 2026] usb 1-1.1.2: USB disconnect, device number 72
+[Wed Oct 28 09:05:07 2026] usb 1-1.3: USB disconnect, device number 71
+[Wed Oct 28 09:05:07 2026] usb 1-1.3: failed to send control message: -19
+[Wed Oct 28 09:05:07 2026] ch341-uart ttyUSB4: ch341-uart converter now disconnected from ttyUSB4
+[Wed Oct 28 09:05:07 2026] ch341 1-1.3:1.0: device disconnected
+[Wed Oct 28 09:05:07 2026] usb 1-1.4: USB disconnect, device number 69
+[Wed Oct 28 09:05:07 2026] cp210x ttyUSB3: failed set request 0x7 status: -19
+[Wed Oct 28 09:05:07 2026] cp210x ttyUSB3: failed set request 0x12 status: -19
+[Wed Oct 28 09:05:07 2026] cp210x ttyUSB3: failed set request 0x0 status: -19
+[Wed Oct 28 09:05:07 2026] cp210x ttyUSB3: cp210x converter now disconnected from ttyUSB3
+[Wed Oct 28 09:05:07 2026] cp210x 1-1.4:1.0: device disconnected
+[Wed Oct 28 09:05:08 2026] usb 2-1: USB disconnect, device number 12
+[Wed Oct 28 09:05:08 2026] usb 1-1: new high-speed USB device number 73 using xhci-hcd
+[Wed Oct 28 09:05:08 2026] usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+[Wed Oct 28 09:05:08 2026] usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:05:08 2026] usb 1-1: Product: USB2.0 Hub             
+[Wed Oct 28 09:05:08 2026] usb 1-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:05:08 2026] hub 1-1:1.0: USB hub found
+[Wed Oct 28 09:05:08 2026] hub 1-1:1.0: 4 ports detected
+[Wed Oct 28 09:05:08 2026] usb usb1-port2: over-current change #18
+[Wed Oct 28 09:05:09 2026] usb 1-1.1: new high-speed USB device number 74 using xhci-hcd
+[Wed Oct 28 09:05:09 2026] usb 1-1.1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+[Wed Oct 28 09:05:09 2026] usb 1-1.1: New USB device strings: Mfr=0, Product=1, SerialNumber=0
+[Wed Oct 28 09:05:09 2026] usb 1-1.1: Product: USB2.0 Hub
+[Wed Oct 28 09:05:09 2026] hub 1-1.1:1.0: USB hub found
+[Wed Oct 28 09:05:09 2026] hub 1-1.1:1.0: 4 ports detected
+[Wed Oct 28 09:05:09 2026] usb 2-1: new SuperSpeed USB device number 13 using xhci-hcd
+[Wed Oct 28 09:05:09 2026] usb 2-1: New USB device found, idVendor=2109, idProduct=0817, bcdDevice= 0.50
+[Wed Oct 28 09:05:09 2026] usb 2-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:05:09 2026] usb 2-1: Product: USB3.0 Hub             
+[Wed Oct 28 09:05:09 2026] usb 2-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:05:09 2026] hub 2-1:1.0: USB hub found
+[Wed Oct 28 09:05:09 2026] hub 2-1:1.0: 4 ports detected
+[Wed Oct 28 09:05:09 2026] usb 1-1.4: new full-speed USB device number 75 using xhci-hcd
+[Wed Oct 28 09:05:09 2026] usb 1-1.4: New USB device found, idVendor=10c4, idProduct=ea60, bcdDevice= 1.00
+[Wed Oct 28 09:05:09 2026] usb 1-1.4: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[Wed Oct 28 09:05:09 2026] usb 1-1.4: Product: CP2102 USB to UART Bridge Controller
+[Wed Oct 28 09:05:09 2026] usb 1-1.4: Manufacturer: Silicon Labs
+[Wed Oct 28 09:05:09 2026] usb 1-1.4: SerialNumber: 0001
+[Wed Oct 28 09:05:09 2026] cp210x 1-1.4:1.0: cp210x converter detected
+[Wed Oct 28 09:05:09 2026] usb 1-1.4: cp210x converter now attached to ttyUSB4
+[Wed Oct 28 09:05:09 2026] usb 1-1.1.1: new high-speed USB device number 76 using xhci-hcd
+[Wed Oct 28 09:05:09 2026] usb 1-1.1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+[Wed Oct 28 09:05:09 2026] usb 1-1.1.1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:05:09 2026] usb 1-1.1.1: Product: ORBBEC Depth Sensor
+[Wed Oct 28 09:05:09 2026] usb 1-1.1.1: Manufacturer: Orbbec(R)
+[Wed Oct 28 09:05:10 2026] usb 1-1.3: new full-speed USB device number 77 using xhci-hcd
+[Wed Oct 28 09:05:10 2026] usb 1-1.3: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice=81.34
+[Wed Oct 28 09:05:10 2026] usb 1-1.3: New USB device strings: Mfr=0, Product=2, SerialNumber=0
+[Wed Oct 28 09:05:10 2026] usb 1-1.3: Product: USB Serial
+[Wed Oct 28 09:05:10 2026] ch341 1-1.3:1.0: ch341-uart converter detected
+[Wed Oct 28 09:05:10 2026] usb 1-1.3: ch341-uart converter now attached to ttyUSB5
+[Wed Oct 28 09:05:10 2026] usb 1-1.1.2: new high-speed USB device number 78 using xhci-hcd
+[Wed Oct 28 09:05:10 2026] usb 1-1.1.2: New USB device found, idVendor=2bc5, idProduct=050f, bcdDevice= 1.00
+[Wed Oct 28 09:05:10 2026] usb 1-1.1.2: New USB device strings: Mfr=2, Product=1, SerialNumber=3
+[Wed Oct 28 09:05:10 2026] usb 1-1.1.2: Product: USB 2.0 Camera
+[Wed Oct 28 09:05:10 2026] usb 1-1.1.2: Manufacturer: Sonix Technology Co., Ltd.
+[Wed Oct 28 09:05:10 2026] usb 1-1.1.2: SerialNumber: SN0001
+[Wed Oct 28 09:05:10 2026] uvcvideo 1-1.1.2:1.0: Found UVC 1.00 device USB 2.0 Camera (2bc5:050f)
+[Wed Oct 28 09:05:12 2026] usb usb1-port1: over-current change #24
+[Wed Oct 28 09:05:12 2026] usb usb3-port1: over-current change #33
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1.3: failed to send control message: -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:05:12 2026] usb 1-1: clear tt 3 (0060) error -71
+[Wed Oct 28 09:05:12 2026] usb usb4-port1: over-current change #36
+[Wed Oct 28 09:05:12 2026] usb usb2-port1: over-current change #31
+[Wed Oct 28 09:05:12 2026] usb 1-1: USB disconnect, device number 73
+[Wed Oct 28 09:05:12 2026] usb 1-1.1: USB disconnect, device number 74
+[Wed Oct 28 09:05:12 2026] usb 1-1.1.1: USB disconnect, device number 76
+[Wed Oct 28 09:05:12 2026] usb usb3-port2: over-current change #30
+[Wed Oct 28 09:05:13 2026] usb 1-1.1.2: USB disconnect, device number 78
+[Wed Oct 28 09:05:13 2026] usb 1-1.3: USB disconnect, device number 77
+[Wed Oct 28 09:05:13 2026] ch341-uart ttyUSB5: ch341-uart converter now disconnected from ttyUSB5
+[Wed Oct 28 09:05:13 2026] ch341 1-1.3:1.0: device disconnected
+[Wed Oct 28 09:05:13 2026] usb 1-1.4: USB disconnect, device number 75
+[Wed Oct 28 09:05:13 2026] cp210x ttyUSB4: cp210x converter now disconnected from ttyUSB4
+[Wed Oct 28 09:05:13 2026] cp210x 1-1.4:1.0: device disconnected
+[Wed Oct 28 09:05:13 2026] usb 2-1: USB disconnect, device number 13
+[Wed Oct 28 09:05:13 2026] usb 1-1: new high-speed USB device number 79 using xhci-hcd
+[Wed Oct 28 09:05:13 2026] usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+[Wed Oct 28 09:05:13 2026] usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:05:13 2026] usb 1-1: Product: USB2.0 Hub             
+[Wed Oct 28 09:05:13 2026] usb 1-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:05:13 2026] hub 1-1:1.0: USB hub found
+[Wed Oct 28 09:05:13 2026] hub 1-1:1.0: 4 ports detected
+[Wed Oct 28 09:05:13 2026] usb usb1-port2: over-current change #19
+[Wed Oct 28 09:05:14 2026] usb 1-1.1: new high-speed USB device number 80 using xhci-hcd
+[Wed Oct 28 09:05:14 2026] usb 1-1.1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+[Wed Oct 28 09:05:14 2026] usb 1-1.1: New USB device strings: Mfr=0, Product=1, SerialNumber=0
+[Wed Oct 28 09:05:14 2026] usb 1-1.1: Product: USB2.0 Hub
+[Wed Oct 28 09:05:14 2026] hub 1-1.1:1.0: USB hub found
+[Wed Oct 28 09:05:14 2026] hub 1-1.1:1.0: 4 ports detected
+[Wed Oct 28 09:05:14 2026] usb 2-1: new SuperSpeed USB device number 14 using xhci-hcd
+[Wed Oct 28 09:05:14 2026] usb 2-1: New USB device found, idVendor=2109, idProduct=0817, bcdDevice= 0.50
+[Wed Oct 28 09:05:14 2026] usb 2-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:05:14 2026] usb 2-1: Product: USB3.0 Hub             
+[Wed Oct 28 09:05:14 2026] usb 2-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:05:14 2026] hub 2-1:1.0: USB hub found
+[Wed Oct 28 09:05:14 2026] hub 2-1:1.0: 4 ports detected
+[Wed Oct 28 09:05:14 2026] usb 1-1.4: new full-speed USB device number 81 using xhci-hcd
+[Wed Oct 28 09:05:14 2026] usb 1-1.4: New USB device found, idVendor=10c4, idProduct=ea60, bcdDevice= 1.00
+[Wed Oct 28 09:05:14 2026] usb 1-1.4: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[Wed Oct 28 09:05:14 2026] usb 1-1.4: Product: CP2102 USB to UART Bridge Controller
+[Wed Oct 28 09:05:14 2026] usb 1-1.4: Manufacturer: Silicon Labs
+[Wed Oct 28 09:05:14 2026] usb 1-1.4: SerialNumber: 0001
+[Wed Oct 28 09:05:14 2026] cp210x 1-1.4:1.0: cp210x converter detected
+[Wed Oct 28 09:05:14 2026] usb 1-1.4: cp210x converter now attached to ttyUSB1
+[Wed Oct 28 09:05:15 2026] usb 1-1.1.1: new high-speed USB device number 82 using xhci-hcd
+[Wed Oct 28 09:05:15 2026] usb 1-1.1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+[Wed Oct 28 09:05:15 2026] usb 1-1.1.1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:05:15 2026] usb 1-1.1.1: Product: ORBBEC Depth Sensor
+[Wed Oct 28 09:05:15 2026] usb 1-1.1.1: Manufacturer: Orbbec(R)
+[Wed Oct 28 09:05:15 2026] usb 1-1.3: new full-speed USB device number 83 using xhci-hcd
+[Wed Oct 28 09:05:15 2026] usb 1-1.3: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice=81.34
+[Wed Oct 28 09:05:15 2026] usb 1-1.3: New USB device strings: Mfr=0, Product=2, SerialNumber=0
+[Wed Oct 28 09:05:15 2026] usb 1-1.3: Product: USB Serial
+[Wed Oct 28 09:05:15 2026] ch341 1-1.3:1.0: ch341-uart converter detected
+[Wed Oct 28 09:05:15 2026] usb 1-1.3: ch341-uart converter now attached to ttyUSB3
+[Wed Oct 28 09:05:15 2026] usb 1-1.1.2: new high-speed USB device number 84 using xhci-hcd
+[Wed Oct 28 09:05:15 2026] usb 1-1.1.2: New USB device found, idVendor=2bc5, idProduct=050f, bcdDevice= 1.00
+[Wed Oct 28 09:05:15 2026] usb 1-1.1.2: New USB device strings: Mfr=2, Product=1, SerialNumber=3
+[Wed Oct 28 09:05:15 2026] usb 1-1.1.2: Product: USB 2.0 Camera
+[Wed Oct 28 09:05:15 2026] usb 1-1.1.2: Manufacturer: Sonix Technology Co., Ltd.
+[Wed Oct 28 09:05:15 2026] usb 1-1.1.2: SerialNumber: SN0001
+[Wed Oct 28 09:05:15 2026] uvcvideo 1-1.1.2:1.0: Found UVC 1.00 device USB 2.0 Camera (2bc5:050f)
+[Wed Oct 28 09:05:15 2026] usb usb1-port1: over-current change #25
+[Wed Oct 28 09:05:15 2026] usb usb3-port1: over-current change #34
+[Wed Oct 28 09:05:15 2026] usb usb4-port1: over-current change #37
+[Wed Oct 28 09:05:15 2026] usb 1-1: USB disconnect, device number 79
+[Wed Oct 28 09:05:15 2026] usb 1-1.1: USB disconnect, device number 80
+[Wed Oct 28 09:05:15 2026] usb 1-1.1.1: USB disconnect, device number 82
+[Wed Oct 28 09:05:15 2026] usb usb2-port1: over-current change #32
+[Wed Oct 28 09:05:15 2026] usb usb3-port2: over-current change #31
+[Wed Oct 28 09:05:15 2026] usb 1-1.1.2: USB disconnect, device number 84
+[Wed Oct 28 09:05:15 2026] usb 1-1.3: USB disconnect, device number 83
+[Wed Oct 28 09:05:15 2026] ch341-uart ttyUSB3: ch341-uart converter now disconnected from ttyUSB3
+[Wed Oct 28 09:05:15 2026] ch341 1-1.3:1.0: device disconnected
+[Wed Oct 28 09:05:16 2026] usb 1-1.4: USB disconnect, device number 81
+[Wed Oct 28 09:05:16 2026] cp210x ttyUSB1: cp210x converter now disconnected from ttyUSB1
+[Wed Oct 28 09:05:16 2026] cp210x 1-1.4:1.0: device disconnected
+[Wed Oct 28 09:05:16 2026] usb 2-1: USB disconnect, device number 14
+[Wed Oct 28 09:05:16 2026] usb 1-1: new high-speed USB device number 85 using xhci-hcd
+[Wed Oct 28 09:05:16 2026] usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+[Wed Oct 28 09:05:16 2026] usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:05:16 2026] usb 1-1: Product: USB2.0 Hub             
+[Wed Oct 28 09:05:16 2026] usb 1-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:05:16 2026] hub 1-1:1.0: USB hub found
+[Wed Oct 28 09:05:16 2026] hub 1-1:1.0: 4 ports detected
+[Wed Oct 28 09:05:16 2026] usb usb1-port2: over-current change #20
+[Wed Oct 28 09:05:17 2026] usb 1-1.1: new high-speed USB device number 86 using xhci-hcd
+[Wed Oct 28 09:05:17 2026] usb 1-1.1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+[Wed Oct 28 09:05:17 2026] usb 1-1.1: New USB device strings: Mfr=0, Product=1, SerialNumber=0
+[Wed Oct 28 09:05:17 2026] usb 1-1.1: Product: USB2.0 Hub
+[Wed Oct 28 09:05:17 2026] hub 1-1.1:1.0: USB hub found
+[Wed Oct 28 09:05:17 2026] hub 1-1.1:1.0: 4 ports detected
+[Wed Oct 28 09:05:17 2026] usb 1-1.4: new full-speed USB device number 87 using xhci-hcd
+[Wed Oct 28 09:05:17 2026] usb 1-1.4: New USB device found, idVendor=10c4, idProduct=ea60, bcdDevice= 1.00
+[Wed Oct 28 09:05:17 2026] usb 1-1.4: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[Wed Oct 28 09:05:17 2026] usb 1-1.4: Product: CP2102 USB to UART Bridge Controller
+[Wed Oct 28 09:05:17 2026] usb 1-1.4: Manufacturer: Silicon Labs
+[Wed Oct 28 09:05:17 2026] usb 1-1.4: SerialNumber: 0001
+[Wed Oct 28 09:05:17 2026] cp210x 1-1.4:1.0: cp210x converter detected
+[Wed Oct 28 09:05:17 2026] usb 1-1.4: cp210x converter now attached to ttyUSB1
+[Wed Oct 28 09:05:17 2026] usb 2-1: new SuperSpeed USB device number 15 using xhci-hcd
+[Wed Oct 28 09:05:17 2026] usb 2-1: New USB device found, idVendor=2109, idProduct=0817, bcdDevice= 0.50
+[Wed Oct 28 09:05:17 2026] usb 2-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:05:17 2026] usb 2-1: Product: USB3.0 Hub             
+[Wed Oct 28 09:05:17 2026] usb 2-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:05:17 2026] hub 2-1:1.0: USB hub found
+[Wed Oct 28 09:05:17 2026] hub 2-1:1.0: 4 ports detected
+[Wed Oct 28 09:05:17 2026] usb 1-1.1.1: new high-speed USB device number 88 using xhci-hcd
+[Wed Oct 28 09:05:18 2026] usb 1-1.1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+[Wed Oct 28 09:05:18 2026] usb 1-1.1.1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:05:18 2026] usb 1-1.1.1: Product: ORBBEC Depth Sensor
+[Wed Oct 28 09:05:18 2026] usb 1-1.1.1: Manufacturer: Orbbec(R)
+[Wed Oct 28 09:05:18 2026] usb 1-1.3: new full-speed USB device number 89 using xhci-hcd
+[Wed Oct 28 09:05:18 2026] usb 1-1.3: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice=81.34
+[Wed Oct 28 09:05:18 2026] usb 1-1.3: New USB device strings: Mfr=0, Product=2, SerialNumber=0
+[Wed Oct 28 09:05:18 2026] usb 1-1.3: Product: USB Serial
+[Wed Oct 28 09:05:18 2026] ch341 1-1.3:1.0: ch341-uart converter detected
+[Wed Oct 28 09:05:18 2026] usb 1-1.3: ch341-uart converter now attached to ttyUSB3
+[Wed Oct 28 09:05:18 2026] usb 1-1.1.2: new high-speed USB device number 90 using xhci-hcd
+[Wed Oct 28 09:05:18 2026] usb 1-1.1.2: New USB device found, idVendor=2bc5, idProduct=050f, bcdDevice= 1.00
+[Wed Oct 28 09:05:18 2026] usb 1-1.1.2: New USB device strings: Mfr=2, Product=1, SerialNumber=3
+[Wed Oct 28 09:05:18 2026] usb 1-1.1.2: Product: USB 2.0 Camera
+[Wed Oct 28 09:05:18 2026] usb 1-1.1.2: Manufacturer: Sonix Technology Co., Ltd.
+[Wed Oct 28 09:05:18 2026] usb 1-1.1.2: SerialNumber: SN0001
+[Wed Oct 28 09:05:18 2026] uvcvideo 1-1.1.2:1.0: Found UVC 1.00 device USB 2.0 Camera (2bc5:050f)
+[Wed Oct 28 09:08:05 2026] usb usb1-port1: over-current change #26
+[Wed Oct 28 09:08:05 2026] usb usb3-port1: over-current change #35
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb usb4-port1: over-current change #38
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:08:05 2026] usb 1-1: USB disconnect, device number 85
+[Wed Oct 28 09:08:05 2026] usb 1-1.1: USB disconnect, device number 86
+[Wed Oct 28 09:08:05 2026] usb 1-1.1.1: USB disconnect, device number 88
+[Wed Oct 28 09:08:05 2026] usb 1-1: clear tt 4 (9031) error -71
+[Wed Oct 28 09:08:05 2026] usb usb2-port1: over-current change #33
+[Wed Oct 28 09:08:05 2026] usb 1-1.3: ch341_read_int_callback - usb_submit_urb failed: -19
+[Wed Oct 28 09:08:05 2026] usb 1-1.1.2: USB disconnect, device number 90
+[Wed Oct 28 09:08:05 2026] usb usb3-port2: over-current change #32
+[Wed Oct 28 09:08:05 2026] usb 1-1.3: USB disconnect, device number 89
+[Wed Oct 28 09:08:05 2026] usb 1-1.3: failed to send control message: -19
+[Wed Oct 28 09:08:05 2026] ch341-uart ttyUSB3: ch341-uart converter now disconnected from ttyUSB3
+[Wed Oct 28 09:08:05 2026] ch341 1-1.3:1.0: device disconnected
+[Wed Oct 28 09:08:05 2026] usb 1-1.4: USB disconnect, device number 87
+[Wed Oct 28 09:08:05 2026] cp210x ttyUSB1: failed set request 0x12 status: -19
+[Wed Oct 28 09:08:05 2026] cp210x ttyUSB1: failed set request 0x0 status: -19
+[Wed Oct 28 09:08:05 2026] cp210x ttyUSB1: cp210x converter now disconnected from ttyUSB1
+[Wed Oct 28 09:08:05 2026] cp210x 1-1.4:1.0: device disconnected
+[Wed Oct 28 09:08:05 2026] usb 2-1: USB disconnect, device number 15
+[Wed Oct 28 09:08:05 2026] usb 1-1: new high-speed USB device number 91 using xhci-hcd
+[Wed Oct 28 09:08:06 2026] usb usb3-port1: over-current change #36
+[Wed Oct 28 09:08:06 2026] usb 1-1: Device not responding to setup address.
+[Wed Oct 28 09:08:06 2026] usb usb4-port1: over-current change #39
+[Wed Oct 28 09:08:06 2026] usb usb2-port1: over-current change #34
+[Wed Oct 28 09:08:06 2026] usb usb3-port2: over-current change #33
+[Wed Oct 28 09:08:06 2026] usb 1-1: Device not responding to setup address.
+[Wed Oct 28 09:08:06 2026] usb 1-1: device not accepting address 91, error -71
+[Wed Oct 28 09:08:07 2026] usb usb1-port2: over-current change #21
+[Wed Oct 28 09:08:07 2026] usb 2-1: new SuperSpeed USB device number 16 using xhci-hcd
+[Wed Oct 28 09:08:07 2026] usb usb1-port1: over-current change #27
+[Wed Oct 28 09:08:07 2026] usb 2-1: New USB device found, idVendor=2109, idProduct=0817, bcdDevice= 0.50
+[Wed Oct 28 09:08:07 2026] usb 2-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:08:07 2026] usb 2-1: Product: USB3.0 Hub             
+[Wed Oct 28 09:08:07 2026] usb 2-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:08:07 2026] hub 2-1:1.0: USB hub found
+[Wed Oct 28 09:08:07 2026] hub 2-1:1.0: 4 ports detected
+[Wed Oct 28 09:08:07 2026] usb 1-1: new high-speed USB device number 93 using xhci-hcd
+[Wed Oct 28 09:08:07 2026] usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+[Wed Oct 28 09:08:07 2026] usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:08:07 2026] usb 1-1: Product: USB2.0 Hub             
+[Wed Oct 28 09:08:07 2026] usb 1-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:08:07 2026] hub 1-1:1.0: USB hub found
+[Wed Oct 28 09:08:07 2026] hub 1-1:1.0: 4 ports detected
+[Wed Oct 28 09:08:08 2026] usb 1-1.1: new high-speed USB device number 94 using xhci-hcd
+[Wed Oct 28 09:08:08 2026] usb 1-1.1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+[Wed Oct 28 09:08:08 2026] usb 1-1.1: New USB device strings: Mfr=0, Product=1, SerialNumber=0
+[Wed Oct 28 09:08:08 2026] usb 1-1.1: Product: USB2.0 Hub
+[Wed Oct 28 09:08:08 2026] hub 1-1.1:1.0: USB hub found
+[Wed Oct 28 09:08:08 2026] hub 1-1.1:1.0: 4 ports detected
+[Wed Oct 28 09:08:08 2026] usb 1-1.3: new full-speed USB device number 95 using xhci-hcd
+[Wed Oct 28 09:08:09 2026] usb 1-1.3: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice=81.34
+[Wed Oct 28 09:08:09 2026] usb 1-1.3: New USB device strings: Mfr=0, Product=2, SerialNumber=0
+[Wed Oct 28 09:08:09 2026] usb 1-1.3: Product: USB Serial
+[Wed Oct 28 09:08:09 2026] ch341 1-1.3:1.0: ch341-uart converter detected
+[Wed Oct 28 09:08:09 2026] usb 1-1.3: ch341-uart converter now attached to ttyUSB0
+[Wed Oct 28 09:08:09 2026] usb 1-1.1.1: new high-speed USB device number 96 using xhci-hcd
+[Wed Oct 28 09:08:09 2026] usb 1-1.1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+[Wed Oct 28 09:08:09 2026] usb 1-1.1.1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:08:09 2026] usb 1-1.1.1: Product: ORBBEC Depth Sensor
+[Wed Oct 28 09:08:09 2026] usb 1-1.1.1: Manufacturer: Orbbec(R)
+[Wed Oct 28 09:08:09 2026] usb 1-1.4: new full-speed USB device number 97 using xhci-hcd
+[Wed Oct 28 09:08:09 2026] usb 1-1.4: New USB device found, idVendor=10c4, idProduct=ea60, bcdDevice= 1.00
+[Wed Oct 28 09:08:09 2026] usb 1-1.4: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[Wed Oct 28 09:08:09 2026] usb 1-1.4: Product: CP2102 USB to UART Bridge Controller
+[Wed Oct 28 09:08:09 2026] usb 1-1.4: Manufacturer: Silicon Labs
+[Wed Oct 28 09:08:09 2026] usb 1-1.4: SerialNumber: 0001
+[Wed Oct 28 09:08:09 2026] cp210x 1-1.4:1.0: cp210x converter detected
+[Wed Oct 28 09:08:09 2026] usb 1-1.4: cp210x converter now attached to ttyUSB2
+[Wed Oct 28 09:08:09 2026] usb 1-1.1.2: new high-speed USB device number 98 using xhci-hcd
+[Wed Oct 28 09:08:09 2026] usb 1-1.1.2: New USB device found, idVendor=2bc5, idProduct=050f, bcdDevice= 1.00
+[Wed Oct 28 09:08:09 2026] usb 1-1.1.2: New USB device strings: Mfr=2, Product=1, SerialNumber=3
+[Wed Oct 28 09:08:09 2026] usb 1-1.1.2: Product: USB 2.0 Camera
+[Wed Oct 28 09:08:09 2026] usb 1-1.1.2: Manufacturer: Sonix Technology Co., Ltd.
+[Wed Oct 28 09:08:09 2026] usb 1-1.1.2: SerialNumber: SN0001
+[Wed Oct 28 09:08:09 2026] uvcvideo 1-1.1.2:1.0: Found UVC 1.00 device USB 2.0 Camera (2bc5:050f)
+[Wed Oct 28 09:08:14 2026] usb usb1-port1: over-current change #28
+[Wed Oct 28 09:08:14 2026] usb usb3-port1: over-current change #37
+[Wed Oct 28 09:08:14 2026] usb usb4-port1: over-current change #40
+[Wed Oct 28 09:08:14 2026] usb usb2-port1: over-current change #35
+[Wed Oct 28 09:08:14 2026] usb usb3-port2: over-current change #34
+[Wed Oct 28 09:08:14 2026] usb 1-1: USB disconnect, device number 93
+[Wed Oct 28 09:08:14 2026] usb 1-1.1: USB disconnect, device number 94
+[Wed Oct 28 09:08:14 2026] usb 1-1.1.1: USB disconnect, device number 96
+[Wed Oct 28 09:08:14 2026] usb 1-1.1.2: USB disconnect, device number 98
+[Wed Oct 28 09:08:14 2026] usb 1-1.3: USB disconnect, device number 95
+[Wed Oct 28 09:08:14 2026] ch341-uart ttyUSB0: ch341-uart converter now disconnected from ttyUSB0
+[Wed Oct 28 09:08:14 2026] ch341 1-1.3:1.0: device disconnected
+[Wed Oct 28 09:08:14 2026] usb 1-1.4: USB disconnect, device number 97
+[Wed Oct 28 09:08:14 2026] cp210x ttyUSB2: cp210x converter now disconnected from ttyUSB2
+[Wed Oct 28 09:08:14 2026] cp210x 1-1.4:1.0: device disconnected
+[Wed Oct 28 09:08:14 2026] usb 2-1: USB disconnect, device number 16
+[Wed Oct 28 09:08:14 2026] usb 1-1: new high-speed USB device number 99 using xhci-hcd
+[Wed Oct 28 09:08:14 2026] usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+[Wed Oct 28 09:08:14 2026] usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:08:14 2026] usb 1-1: Product: USB2.0 Hub             
+[Wed Oct 28 09:08:14 2026] usb 1-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:08:14 2026] hub 1-1:1.0: USB hub found
+[Wed Oct 28 09:08:14 2026] hub 1-1:1.0: 4 ports detected
+[Wed Oct 28 09:08:14 2026] usb usb1-port2: over-current change #22
+[Wed Oct 28 09:08:15 2026] usb 1-1.1: new high-speed USB device number 100 using xhci-hcd
+[Wed Oct 28 09:08:15 2026] usb 1-1.1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+[Wed Oct 28 09:08:15 2026] usb 1-1.1: New USB device strings: Mfr=0, Product=1, SerialNumber=0
+[Wed Oct 28 09:08:15 2026] usb 1-1.1: Product: USB2.0 Hub
+[Wed Oct 28 09:08:15 2026] hub 1-1.1:1.0: USB hub found
+[Wed Oct 28 09:08:15 2026] hub 1-1.1:1.0: 4 ports detected
+[Wed Oct 28 09:08:15 2026] usb 2-1: new SuperSpeed USB device number 17 using xhci-hcd
+[Wed Oct 28 09:08:15 2026] usb 2-1: New USB device found, idVendor=2109, idProduct=0817, bcdDevice= 0.50
+[Wed Oct 28 09:08:15 2026] usb 2-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:08:15 2026] usb 2-1: Product: USB3.0 Hub             
+[Wed Oct 28 09:08:15 2026] usb 2-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:08:15 2026] hub 2-1:1.0: USB hub found
+[Wed Oct 28 09:08:15 2026] hub 2-1:1.0: 4 ports detected
+[Wed Oct 28 09:08:15 2026] usb 1-1.4: new full-speed USB device number 101 using xhci-hcd
+[Wed Oct 28 09:08:16 2026] usb 1-1.4: New USB device found, idVendor=10c4, idProduct=ea60, bcdDevice= 1.00
+[Wed Oct 28 09:08:16 2026] usb 1-1.4: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[Wed Oct 28 09:08:16 2026] usb 1-1.4: Product: CP2102 USB to UART Bridge Controller
+[Wed Oct 28 09:08:16 2026] usb 1-1.4: Manufacturer: Silicon Labs
+[Wed Oct 28 09:08:16 2026] usb 1-1.4: SerialNumber: 0001
+[Wed Oct 28 09:08:16 2026] cp210x 1-1.4:1.0: cp210x converter detected
+[Wed Oct 28 09:08:16 2026] usb 1-1.4: cp210x converter now attached to ttyUSB0
+[Wed Oct 28 09:08:16 2026] usb 1-1.1.1: new high-speed USB device number 102 using xhci-hcd
+[Wed Oct 28 09:08:16 2026] usb 1-1.1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+[Wed Oct 28 09:08:16 2026] usb 1-1.1.1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:08:16 2026] usb 1-1.1.1: Product: ORBBEC Depth Sensor
+[Wed Oct 28 09:08:16 2026] usb 1-1.1.1: Manufacturer: Orbbec(R)
+[Wed Oct 28 09:08:16 2026] usb 1-1.3: new full-speed USB device number 103 using xhci-hcd
+[Wed Oct 28 09:08:16 2026] usb 1-1.3: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice=81.34
+[Wed Oct 28 09:08:16 2026] usb 1-1.3: New USB device strings: Mfr=0, Product=2, SerialNumber=0
+[Wed Oct 28 09:08:16 2026] usb 1-1.3: Product: USB Serial
+[Wed Oct 28 09:08:16 2026] ch341 1-1.3:1.0: ch341-uart converter detected
+[Wed Oct 28 09:08:16 2026] usb 1-1.3: ch341-uart converter now attached to ttyUSB2
+[Wed Oct 28 09:08:16 2026] usb 1-1.1.2: new high-speed USB device number 104 using xhci-hcd
+[Wed Oct 28 09:08:16 2026] usb 1-1.1.2: New USB device found, idVendor=2bc5, idProduct=050f, bcdDevice= 1.00
+[Wed Oct 28 09:08:16 2026] usb 1-1.1.2: New USB device strings: Mfr=2, Product=1, SerialNumber=3
+[Wed Oct 28 09:08:16 2026] usb 1-1.1.2: Product: USB 2.0 Camera
+[Wed Oct 28 09:08:16 2026] usb 1-1.1.2: Manufacturer: Sonix Technology Co., Ltd.
+[Wed Oct 28 09:08:16 2026] usb 1-1.1.2: SerialNumber: SN0001
+[Wed Oct 28 09:08:16 2026] uvcvideo 1-1.1.2:1.0: Found UVC 1.00 device USB 2.0 Camera (2bc5:050f)
+[Wed Oct 28 09:10:09 2026] usb usb1-port1: over-current change #29
+[Wed Oct 28 09:10:09 2026] usb usb3-port1: over-current change #38
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb usb4-port1: over-current change #41
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 09:10:09 2026] usb usb2-port1: over-current change #36
+[Wed Oct 28 09:10:09 2026] usb 1-1: USB disconnect, device number 99
+[Wed Oct 28 09:10:09 2026] usb 1-1.1: USB disconnect, device number 100
+[Wed Oct 28 09:10:09 2026] usb 1-1.1.1: USB disconnect, device number 102
+[Wed Oct 28 09:10:09 2026] usb usb3-port2: over-current change #35
+[Wed Oct 28 09:10:09 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 09:10:09 2026] usb 1-1.3: ch341_read_int_callback - usb_submit_urb failed: -19
+[Wed Oct 28 09:10:09 2026] usb 1-1.1.2: USB disconnect, device number 104
+[Wed Oct 28 09:10:09 2026] usb 1-1.3: USB disconnect, device number 103
+[Wed Oct 28 09:10:09 2026] usb 1-1.3: failed to send control message: -19
+[Wed Oct 28 09:10:09 2026] ch341-uart ttyUSB2: ch341-uart converter now disconnected from ttyUSB2
+[Wed Oct 28 09:10:09 2026] ch341 1-1.3:1.0: device disconnected
+[Wed Oct 28 09:10:09 2026] usb 1-1.4: USB disconnect, device number 101
+[Wed Oct 28 09:10:09 2026] cp210x ttyUSB0: failed set request 0x12 status: -19
+[Wed Oct 28 09:10:09 2026] cp210x ttyUSB0: failed set request 0x0 status: -19
+[Wed Oct 28 09:10:09 2026] cp210x ttyUSB0: cp210x converter now disconnected from ttyUSB0
+[Wed Oct 28 09:10:09 2026] cp210x 1-1.4:1.0: device disconnected
+[Wed Oct 28 09:10:09 2026] usb usb3-port1: over-current change #39
+[Wed Oct 28 09:10:09 2026] usb usb4-port1: over-current change #42
+[Wed Oct 28 09:10:09 2026] usb 2-1: USB disconnect, device number 17
+[Wed Oct 28 09:10:09 2026] usb usb2-port1: over-current change #37
+[Wed Oct 28 09:10:09 2026] usb usb3-port2: over-current change #36
+[Wed Oct 28 09:10:09 2026] usb usb1-port2: over-current change #23
+[Wed Oct 28 09:10:09 2026] usb usb1-port1: over-current change #30
+[Wed Oct 28 09:10:10 2026] usb 2-1: new SuperSpeed USB device number 18 using xhci-hcd
+[Wed Oct 28 09:10:10 2026] usb 2-1: New USB device found, idVendor=2109, idProduct=0817, bcdDevice= 0.50
+[Wed Oct 28 09:10:10 2026] usb 2-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:10:10 2026] usb 2-1: Product: USB3.0 Hub             
+[Wed Oct 28 09:10:10 2026] usb 2-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:10:10 2026] hub 2-1:1.0: USB hub found
+[Wed Oct 28 09:10:10 2026] hub 2-1:1.0: 4 ports detected
+[Wed Oct 28 09:10:10 2026] usb 1-1: new high-speed USB device number 105 using xhci-hcd
+[Wed Oct 28 09:10:10 2026] usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+[Wed Oct 28 09:10:10 2026] usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:10:10 2026] usb 1-1: Product: USB2.0 Hub             
+[Wed Oct 28 09:10:10 2026] usb 1-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:10:10 2026] hub 1-1:1.0: USB hub found
+[Wed Oct 28 09:10:10 2026] hub 1-1:1.0: 4 ports detected
+[Wed Oct 28 09:10:11 2026] usb 1-1.1: new high-speed USB device number 106 using xhci-hcd
+[Wed Oct 28 09:10:11 2026] usb 1-1.1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+[Wed Oct 28 09:10:11 2026] usb 1-1.1: New USB device strings: Mfr=0, Product=1, SerialNumber=0
+[Wed Oct 28 09:10:11 2026] usb 1-1.1: Product: USB2.0 Hub
+[Wed Oct 28 09:10:11 2026] hub 1-1.1:1.0: USB hub found
+[Wed Oct 28 09:10:11 2026] hub 1-1.1:1.0: 4 ports detected
+[Wed Oct 28 09:10:11 2026] usb 1-1.3: new full-speed USB device number 107 using xhci-hcd
+[Wed Oct 28 09:10:11 2026] usb 1-1.3: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice=81.34
+[Wed Oct 28 09:10:11 2026] usb 1-1.3: New USB device strings: Mfr=0, Product=2, SerialNumber=0
+[Wed Oct 28 09:10:11 2026] usb 1-1.3: Product: USB Serial
+[Wed Oct 28 09:10:11 2026] ch341 1-1.3:1.0: ch341-uart converter detected
+[Wed Oct 28 09:10:11 2026] usb 1-1.3: ch341-uart converter now attached to ttyUSB1
+[Wed Oct 28 09:10:11 2026] usb 1-1.1.1: new high-speed USB device number 108 using xhci-hcd
+[Wed Oct 28 09:10:11 2026] usb 1-1.1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+[Wed Oct 28 09:10:11 2026] usb 1-1.1.1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:10:11 2026] usb 1-1.1.1: Product: ORBBEC Depth Sensor
+[Wed Oct 28 09:10:11 2026] usb 1-1.1.1: Manufacturer: Orbbec(R)
+[Wed Oct 28 09:10:12 2026] usb 1-1.4: new full-speed USB device number 109 using xhci-hcd
+[Wed Oct 28 09:10:12 2026] usb 1-1.4: New USB device found, idVendor=10c4, idProduct=ea60, bcdDevice= 1.00
+[Wed Oct 28 09:10:12 2026] usb 1-1.4: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[Wed Oct 28 09:10:12 2026] usb 1-1.4: Product: CP2102 USB to UART Bridge Controller
+[Wed Oct 28 09:10:12 2026] usb 1-1.4: Manufacturer: Silicon Labs
+[Wed Oct 28 09:10:12 2026] usb 1-1.4: SerialNumber: 0001
+[Wed Oct 28 09:10:12 2026] cp210x 1-1.4:1.0: cp210x converter detected
+[Wed Oct 28 09:10:12 2026] usb 1-1.4: cp210x converter now attached to ttyUSB3
+[Wed Oct 28 09:10:12 2026] usb 1-1.1.2: new high-speed USB device number 110 using xhci-hcd
+[Wed Oct 28 09:10:12 2026] usb 1-1.1.2: New USB device found, idVendor=2bc5, idProduct=050f, bcdDevice= 1.00
+[Wed Oct 28 09:10:12 2026] usb 1-1.1.2: New USB device strings: Mfr=2, Product=1, SerialNumber=3
+[Wed Oct 28 09:10:12 2026] usb 1-1.1.2: Product: USB 2.0 Camera
+[Wed Oct 28 09:10:12 2026] usb 1-1.1.2: Manufacturer: Sonix Technology Co., Ltd.
+[Wed Oct 28 09:10:12 2026] usb 1-1.1.2: SerialNumber: SN0001
+[Wed Oct 28 09:10:12 2026] uvcvideo 1-1.1.2:1.0: Found UVC 1.00 device USB 2.0 Camera (2bc5:050f)
+[Wed Oct 28 09:11:45 2026] usb usb1-port1: over-current change #31
+[Wed Oct 28 09:11:45 2026] usb usb3-port1: over-current change #40
+[Wed Oct 28 09:11:45 2026] usb usb4-port1: over-current change #43
+[Wed Oct 28 09:11:45 2026] usb usb2-port1: over-current change #38
+[Wed Oct 28 09:11:45 2026] usb 1-1: USB disconnect, device number 105
+[Wed Oct 28 09:11:45 2026] usb 1-1.1: USB disconnect, device number 106
+[Wed Oct 28 09:11:45 2026] usb 1-1.1.1: USB disconnect, device number 108
+[Wed Oct 28 09:11:45 2026] usb usb3-port2: over-current change #37
+[Wed Oct 28 09:11:45 2026] usb 1-1.1.2: USB disconnect, device number 110
+[Wed Oct 28 09:11:45 2026] usb 1-1.3: USB disconnect, device number 107
+[Wed Oct 28 09:11:45 2026] ch341-uart ttyUSB1: ch341-uart converter now disconnected from ttyUSB1
+[Wed Oct 28 09:11:45 2026] ch341 1-1.3:1.0: device disconnected
+[Wed Oct 28 09:11:45 2026] usb 1-1.4: USB disconnect, device number 109
+[Wed Oct 28 09:11:45 2026] cp210x ttyUSB3: cp210x converter now disconnected from ttyUSB3
+[Wed Oct 28 09:11:45 2026] cp210x 1-1.4:1.0: device disconnected
+[Wed Oct 28 09:11:45 2026] usb usb4-port1: over-current change #44
+[Wed Oct 28 09:11:45 2026] usb usb3-port1: over-current change #41
+[Wed Oct 28 09:11:45 2026] usb 2-1: USB disconnect, device number 18
+[Wed Oct 28 09:11:45 2026] usb usb2-port1: over-current change #39
+[Wed Oct 28 09:11:45 2026] usb usb1-port2: over-current change #24
+[Wed Oct 28 09:11:45 2026] usb usb3-port2: over-current change #38
+[Wed Oct 28 09:11:45 2026] usb usb4-port1: over-current change #45
+[Wed Oct 28 09:11:45 2026] usb usb1-port1: over-current change #32
+[Wed Oct 28 09:11:45 2026] usb usb3-port1: over-current change #42
+[Wed Oct 28 09:11:45 2026] usb usb2-port1: over-current change #40
+[Wed Oct 28 09:11:45 2026] usb usb3-port2: over-current change #39
+[Wed Oct 28 09:11:45 2026] usb usb4-port1: over-current change #46
+[Wed Oct 28 09:11:46 2026] usb usb1-port2: over-current change #25
+[Wed Oct 28 09:11:46 2026] usb usb3-port1: over-current change #43
+[Wed Oct 28 09:11:46 2026] usb usb4-port1: over-current change #47
+[Wed Oct 28 09:11:46 2026] usb usb1-port1: over-current change #33
+[Wed Oct 28 09:11:46 2026] usb usb2-port1: over-current change #41
+[Wed Oct 28 09:11:46 2026] usb usb3-port2: over-current change #40
+[Wed Oct 28 09:11:46 2026] usb usb3-port1: over-current change #44
+[Wed Oct 28 09:11:46 2026] usb usb4-port1: over-current change #48
+[Wed Oct 28 09:11:46 2026] usb usb2-port1: over-current change #42
+[Wed Oct 28 09:11:46 2026] usb usb1-port2: over-current change #26
+[Wed Oct 28 09:11:46 2026] usb usb3-port2: over-current change #41
+[Wed Oct 28 09:11:46 2026] usb usb1-port1: over-current change #34
+[Wed Oct 28 09:11:46 2026] usb usb4-port1: over-current change #49
+[Wed Oct 28 09:11:46 2026] usb usb3-port1: over-current change #45
+[Wed Oct 28 09:11:46 2026] usb usb2-port1: over-current change #43
+[Wed Oct 28 09:11:46 2026] usb usb3-port2: over-current change #42
+[Wed Oct 28 09:11:46 2026] usb usb4-port1: over-current change #50
+[Wed Oct 28 09:11:46 2026] usb usb2-port1: over-current change #44
+[Wed Oct 28 09:11:46 2026] usb usb1-port2: over-current change #27
+[Wed Oct 28 09:11:46 2026] usb usb3-port1: over-current change #46
+[Wed Oct 28 09:11:46 2026] usb usb1-port1: over-current change #35
+[Wed Oct 28 09:11:47 2026] usb usb3-port2: over-current change #43
+[Wed Oct 28 09:11:47 2026] usb usb4-port1: over-current change #51
+[Wed Oct 28 09:11:47 2026] usb usb2-port1: over-current change #45
+[Wed Oct 28 09:11:47 2026] usb usb3-port1: over-current change #47
+[Wed Oct 28 09:11:47 2026] usb usb4-port1: over-current change #52
+[Wed Oct 28 09:11:47 2026] usb usb1-port2: over-current change #28
+[Wed Oct 28 09:11:47 2026] usb usb3-port2: over-current change #44
+[Wed Oct 28 09:11:47 2026] usb usb2-port1: over-current change #46
+[Wed Oct 28 09:11:47 2026] usb usb1-port1: over-current change #36
+[Wed Oct 28 09:11:47 2026] usb usb3-port1: over-current change #48
+[Wed Oct 28 09:11:47 2026] usb usb4-port1: over-current change #53
+[Wed Oct 28 09:11:47 2026] usb usb3-port2: over-current change #45
+[Wed Oct 28 09:11:47 2026] usb usb2-port1: over-current change #47
+[Wed Oct 28 09:11:47 2026] usb usb1-port2: over-current change #29
+[Wed Oct 28 09:11:47 2026] usb usb3-port1: over-current change #49
+[Wed Oct 28 09:11:47 2026] usb usb4-port1: over-current change #54
+[Wed Oct 28 09:11:47 2026] usb usb1-port1: over-current change #37
+[Wed Oct 28 09:11:47 2026] usb usb3-port2: over-current change #46
+[Wed Oct 28 09:11:47 2026] usb usb2-port1: over-current change #48
+[Wed Oct 28 09:11:47 2026] usb usb4-port1: over-current change #55
+[Wed Oct 28 09:11:47 2026] usb usb3-port1: over-current change #50
+[Wed Oct 28 09:11:48 2026] usb usb1-port2: over-current change #30
+[Wed Oct 28 09:11:48 2026] usb usb3-port2: over-current change #47
+[Wed Oct 28 09:11:48 2026] usb usb4-port1: over-current change #56
+[Wed Oct 28 09:11:48 2026] usb usb1-port1: over-current change #38
+[Wed Oct 28 09:11:48 2026] usb usb2-port1: over-current change #49
+[Wed Oct 28 09:11:48 2026] usb usb3-port1: over-current change #51
+[Wed Oct 28 09:11:48 2026] usb usb4-port1: over-current change #57
+[Wed Oct 28 09:11:48 2026] usb usb3-port2: over-current change #48
+[Wed Oct 28 09:11:48 2026] usb usb2-port1: over-current change #50
+[Wed Oct 28 09:11:48 2026] usb usb1-port2: over-current change #31
+[Wed Oct 28 09:11:48 2026] usb usb3-port1: over-current change #52
+[Wed Oct 28 09:11:48 2026] usb usb4-port1: over-current change #58
+[Wed Oct 28 09:11:48 2026] usb usb1-port1: over-current change #39
+[Wed Oct 28 09:11:48 2026] usb usb3-port2: over-current change #49
+[Wed Oct 28 09:11:48 2026] usb usb2-port1: over-current change #51
+[Wed Oct 28 09:11:48 2026] usb usb3-port1: over-current change #53
+[Wed Oct 28 09:11:48 2026] usb usb4-port1: over-current change #59
+[Wed Oct 28 09:11:48 2026] usb usb1-port2: over-current change #32
+[Wed Oct 28 09:11:48 2026] usb usb3-port2: over-current change #50
+[Wed Oct 28 09:11:48 2026] usb usb2-port1: over-current change #52
+[Wed Oct 28 09:11:48 2026] usb usb4-port1: over-current change #60
+[Wed Oct 28 09:11:48 2026] usb usb1-port1: over-current change #40
+[Wed Oct 28 09:11:48 2026] usb usb3-port1: over-current change #54
+[Wed Oct 28 09:11:49 2026] usb usb3-port2: over-current change #51
+[Wed Oct 28 09:11:49 2026] usb usb2-port1: over-current change #53
+[Wed Oct 28 09:11:49 2026] usb usb4-port1: over-current change #61
+[Wed Oct 28 09:11:49 2026] usb usb1-port2: over-current change #33
+[Wed Oct 28 09:11:49 2026] usb usb3-port1: over-current change #55
+[Wed Oct 28 09:11:49 2026] usb usb1-port1: over-current change #41
+[Wed Oct 28 09:11:49 2026] usb usb3-port2: over-current change #52
+[Wed Oct 28 09:11:49 2026] usb usb2-port1: over-current change #54
+[Wed Oct 28 09:11:49 2026] usb usb4-port1: over-current change #62
+[Wed Oct 28 09:11:49 2026] usb usb3-port1: over-current change #56
+[Wed Oct 28 09:11:49 2026] usb usb4-port1: over-current change #63
+[Wed Oct 28 09:11:49 2026] usb usb1-port2: over-current change #34
+[Wed Oct 28 09:11:49 2026] usb usb3-port2: over-current change #53
+[Wed Oct 28 09:11:49 2026] usb usb2-port1: over-current change #55
+[Wed Oct 28 09:11:49 2026] usb usb1-port1: over-current change #42
+[Wed Oct 28 09:11:49 2026] usb usb3-port1: over-current change #57
+[Wed Oct 28 09:11:49 2026] usb usb4-port1: over-current change #64
+[Wed Oct 28 09:11:49 2026] usb usb3-port2: over-current change #54
+[Wed Oct 28 09:11:49 2026] usb usb2-port1: over-current change #56
+[Wed Oct 28 09:11:49 2026] usb usb1-port2: over-current change #35
+[Wed Oct 28 09:11:49 2026] usb usb4-port1: over-current change #65
+[Wed Oct 28 09:11:49 2026] usb usb3-port1: over-current change #58
+[Wed Oct 28 09:11:50 2026] usb usb1-port1: over-current change #43
+[Wed Oct 28 09:11:50 2026] usb usb3-port2: over-current change #55
+[Wed Oct 28 09:11:50 2026] usb usb4-port1: over-current change #66
+[Wed Oct 28 09:11:50 2026] usb usb2-port1: over-current change #57
+[Wed Oct 28 09:11:50 2026] usb usb3-port1: over-current change #59
+[Wed Oct 28 09:11:50 2026] usb usb1-port2: over-current change #36
+[Wed Oct 28 09:11:50 2026] usb usb3-port2: over-current change #56
+[Wed Oct 28 09:11:50 2026] usb usb4-port1: over-current change #67
+[Wed Oct 28 09:11:50 2026] usb usb2-port1: over-current change #58
+[Wed Oct 28 09:11:50 2026] usb usb1-port1: over-current change #44
+[Wed Oct 28 09:11:50 2026] usb usb3-port1: over-current change #60
+[Wed Oct 28 09:11:50 2026] usb 1-1: new high-speed USB device number 111 using xhci-hcd
+[Wed Oct 28 09:11:50 2026] usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+[Wed Oct 28 09:11:50 2026] usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:11:50 2026] usb 1-1: Product: USB2.0 Hub             
+[Wed Oct 28 09:11:50 2026] usb 1-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:11:51 2026] hub 1-1:1.0: USB hub found
+[Wed Oct 28 09:11:51 2026] hub 1-1:1.0: 4 ports detected
+[Wed Oct 28 09:11:51 2026] usb 2-1: new SuperSpeed USB device number 19 using xhci-hcd
+[Wed Oct 28 09:11:51 2026] usb 2-1: New USB device found, idVendor=2109, idProduct=0817, bcdDevice= 0.50
+[Wed Oct 28 09:11:51 2026] usb 2-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:11:51 2026] usb 2-1: Product: USB3.0 Hub             
+[Wed Oct 28 09:11:51 2026] usb 2-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:11:51 2026] hub 2-1:1.0: USB hub found
+[Wed Oct 28 09:11:51 2026] hub 2-1:1.0: 4 ports detected
+[Wed Oct 28 09:11:51 2026] usb 1-1.1: new high-speed USB device number 112 using xhci-hcd
+[Wed Oct 28 09:11:51 2026] usb 1-1.1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+[Wed Oct 28 09:11:51 2026] usb 1-1.1: New USB device strings: Mfr=0, Product=1, SerialNumber=0
+[Wed Oct 28 09:11:51 2026] usb 1-1.1: Product: USB2.0 Hub
+[Wed Oct 28 09:11:51 2026] hub 1-1.1:1.0: USB hub found
+[Wed Oct 28 09:11:51 2026] hub 1-1.1:1.0: 4 ports detected
+[Wed Oct 28 09:11:52 2026] usb 1-1.3: new full-speed USB device number 113 using xhci-hcd
+[Wed Oct 28 09:11:52 2026] usb 1-1.3: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice=81.34
+[Wed Oct 28 09:11:52 2026] usb 1-1.3: New USB device strings: Mfr=0, Product=2, SerialNumber=0
+[Wed Oct 28 09:11:52 2026] usb 1-1.3: Product: USB Serial
+[Wed Oct 28 09:11:52 2026] ch341 1-1.3:1.0: ch341-uart converter detected
+[Wed Oct 28 09:11:52 2026] usb 1-1.3: ch341-uart converter now attached to ttyUSB1
+[Wed Oct 28 09:11:52 2026] usb 1-1.1.1: new high-speed USB device number 114 using xhci-hcd
+[Wed Oct 28 09:11:52 2026] usb 1-1.1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+[Wed Oct 28 09:11:52 2026] usb 1-1.1.1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:11:52 2026] usb 1-1.1.1: Product: ORBBEC Depth Sensor
+[Wed Oct 28 09:11:52 2026] usb 1-1.1.1: Manufacturer: Orbbec(R)
+[Wed Oct 28 09:11:52 2026] usb 1-1.4: new full-speed USB device number 115 using xhci-hcd
+[Wed Oct 28 09:11:52 2026] usb 1-1.4: New USB device found, idVendor=10c4, idProduct=ea60, bcdDevice= 1.00
+[Wed Oct 28 09:11:52 2026] usb 1-1.4: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[Wed Oct 28 09:11:52 2026] usb 1-1.4: Product: CP2102 USB to UART Bridge Controller
+[Wed Oct 28 09:11:52 2026] usb 1-1.4: Manufacturer: Silicon Labs
+[Wed Oct 28 09:11:52 2026] usb 1-1.4: SerialNumber: 0001
+[Wed Oct 28 09:11:52 2026] cp210x 1-1.4:1.0: cp210x converter detected
+[Wed Oct 28 09:11:52 2026] usb 1-1.4: cp210x converter now attached to ttyUSB3
+[Wed Oct 28 09:11:52 2026] usb 1-1.1.2: new high-speed USB device number 116 using xhci-hcd
+[Wed Oct 28 09:11:52 2026] usb 1-1.1.2: New USB device found, idVendor=2bc5, idProduct=050f, bcdDevice= 1.00
+[Wed Oct 28 09:11:52 2026] usb 1-1.1.2: New USB device strings: Mfr=2, Product=1, SerialNumber=3
+[Wed Oct 28 09:11:52 2026] usb 1-1.1.2: Product: USB 2.0 Camera
+[Wed Oct 28 09:11:52 2026] usb 1-1.1.2: Manufacturer: Sonix Technology Co., Ltd.
+[Wed Oct 28 09:11:52 2026] usb 1-1.1.2: SerialNumber: SN0001
+[Wed Oct 28 09:11:53 2026] uvcvideo 1-1.1.2:1.0: Found UVC 1.00 device USB 2.0 Camera (2bc5:050f)
+[Wed Oct 28 09:11:53 2026] usb usb1-port1: over-current change #45
+[Wed Oct 28 09:11:53 2026] usb usb3-port1: over-current change #61
+[Wed Oct 28 09:11:53 2026] usb usb4-port1: over-current change #68
+[Wed Oct 28 09:11:53 2026] usb usb2-port1: over-current change #59
+[Wed Oct 28 09:11:53 2026] usb 1-1: USB disconnect, device number 111
+[Wed Oct 28 09:11:53 2026] usb 1-1.1: USB disconnect, device number 112
+[Wed Oct 28 09:11:53 2026] usb 1-1.1.1: USB disconnect, device number 114
+[Wed Oct 28 09:11:53 2026] usb usb3-port2: over-current change #57
+[Wed Oct 28 09:11:53 2026] usb 1-1.1.2: USB disconnect, device number 116
+[Wed Oct 28 09:11:53 2026] usb 1-1.3: USB disconnect, device number 113
+[Wed Oct 28 09:11:53 2026] ch341-uart ttyUSB1: ch341-uart converter now disconnected from ttyUSB1
+[Wed Oct 28 09:11:53 2026] ch341 1-1.3:1.0: device disconnected
+[Wed Oct 28 09:11:53 2026] usb 1-1.4: USB disconnect, device number 115
+[Wed Oct 28 09:11:53 2026] cp210x ttyUSB3: cp210x converter now disconnected from ttyUSB3
+[Wed Oct 28 09:11:53 2026] cp210x 1-1.4:1.0: device disconnected
+[Wed Oct 28 09:11:53 2026] usb usb4-port1: over-current change #69
+[Wed Oct 28 09:11:53 2026] usb usb3-port1: over-current change #62
+[Wed Oct 28 09:11:53 2026] usb 2-1: USB disconnect, device number 19
+[Wed Oct 28 09:11:53 2026] usb usb2-port1: over-current change #60
+[Wed Oct 28 09:11:53 2026] usb usb1-port2: over-current change #37
+[Wed Oct 28 09:11:53 2026] usb usb3-port2: over-current change #58
+[Wed Oct 28 09:11:53 2026] usb usb1-port1: over-current change #46
+[Wed Oct 28 09:11:53 2026] usb 1-1: new high-speed USB device number 117 using xhci-hcd
+[Wed Oct 28 09:11:54 2026] usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+[Wed Oct 28 09:11:54 2026] usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:11:54 2026] usb 1-1: Product: USB2.0 Hub             
+[Wed Oct 28 09:11:54 2026] usb 1-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:11:54 2026] hub 1-1:1.0: USB hub found
+[Wed Oct 28 09:11:54 2026] hub 1-1:1.0: 4 ports detected
+[Wed Oct 28 09:11:54 2026] usb 2-1: new SuperSpeed USB device number 20 using xhci-hcd
+[Wed Oct 28 09:11:54 2026] usb 2-1: New USB device found, idVendor=2109, idProduct=0817, bcdDevice= 0.50
+[Wed Oct 28 09:11:54 2026] usb 2-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:11:54 2026] usb 2-1: Product: USB3.0 Hub             
+[Wed Oct 28 09:11:54 2026] usb 2-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:11:54 2026] hub 2-1:1.0: USB hub found
+[Wed Oct 28 09:11:54 2026] hub 2-1:1.0: 4 ports detected
+[Wed Oct 28 09:11:54 2026] usb 1-1.1: new high-speed USB device number 118 using xhci-hcd
+[Wed Oct 28 09:11:55 2026] usb 1-1.1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+[Wed Oct 28 09:11:55 2026] usb 1-1.1: New USB device strings: Mfr=0, Product=1, SerialNumber=0
+[Wed Oct 28 09:11:55 2026] usb 1-1.1: Product: USB2.0 Hub
+[Wed Oct 28 09:11:55 2026] hub 1-1.1:1.0: USB hub found
+[Wed Oct 28 09:11:55 2026] hub 1-1.1:1.0: 4 ports detected
+[Wed Oct 28 09:11:55 2026] usb 1-1.4: new full-speed USB device number 119 using xhci-hcd
+[Wed Oct 28 09:11:55 2026] usb 1-1.4: New USB device found, idVendor=10c4, idProduct=ea60, bcdDevice= 1.00
+[Wed Oct 28 09:11:55 2026] usb 1-1.4: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[Wed Oct 28 09:11:55 2026] usb 1-1.4: Product: CP2102 USB to UART Bridge Controller
+[Wed Oct 28 09:11:55 2026] usb 1-1.4: Manufacturer: Silicon Labs
+[Wed Oct 28 09:11:55 2026] usb 1-1.4: SerialNumber: 0001
+[Wed Oct 28 09:11:55 2026] cp210x 1-1.4:1.0: cp210x converter detected
+[Wed Oct 28 09:11:55 2026] usb 1-1.4: cp210x converter now attached to ttyUSB1
+[Wed Oct 28 09:11:55 2026] usb 1-1.1.1: new high-speed USB device number 120 using xhci-hcd
+[Wed Oct 28 09:11:55 2026] usb 1-1.1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+[Wed Oct 28 09:11:55 2026] usb 1-1.1.1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:11:55 2026] usb 1-1.1.1: Product: ORBBEC Depth Sensor
+[Wed Oct 28 09:11:55 2026] usb 1-1.1.1: Manufacturer: Orbbec(R)
+[Wed Oct 28 09:11:55 2026] usb 1-1.3: new full-speed USB device number 121 using xhci-hcd
+[Wed Oct 28 09:11:55 2026] usb 1-1.3: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice=81.34
+[Wed Oct 28 09:11:55 2026] usb 1-1.3: New USB device strings: Mfr=0, Product=2, SerialNumber=0
+[Wed Oct 28 09:11:55 2026] usb 1-1.3: Product: USB Serial
+[Wed Oct 28 09:11:55 2026] ch341 1-1.3:1.0: ch341-uart converter detected
+[Wed Oct 28 09:11:55 2026] usb 1-1.3: ch341-uart converter now attached to ttyUSB3
+[Wed Oct 28 09:11:56 2026] usb 1-1.1.2: new high-speed USB device number 122 using xhci-hcd
+[Wed Oct 28 09:11:56 2026] usb 1-1.1.2: New USB device found, idVendor=2bc5, idProduct=050f, bcdDevice= 1.00
+[Wed Oct 28 09:11:56 2026] usb 1-1.1.2: New USB device strings: Mfr=2, Product=1, SerialNumber=3
+[Wed Oct 28 09:11:56 2026] usb 1-1.1.2: Product: USB 2.0 Camera
+[Wed Oct 28 09:11:56 2026] usb 1-1.1.2: Manufacturer: Sonix Technology Co., Ltd.
+[Wed Oct 28 09:11:56 2026] usb 1-1.1.2: SerialNumber: SN0001
+[Wed Oct 28 09:11:56 2026] uvcvideo 1-1.1.2:1.0: Found UVC 1.00 device USB 2.0 Camera (2bc5:050f)
+[Wed Oct 28 09:12:08 2026] usb usb1-port1: over-current change #47
+[Wed Oct 28 09:12:08 2026] usb usb3-port1: over-current change #63
+[Wed Oct 28 09:12:08 2026] usb usb4-port1: over-current change #70
+[Wed Oct 28 09:12:08 2026] usb 1-1: USB disconnect, device number 117
+[Wed Oct 28 09:12:08 2026] usb 1-1.1: USB disconnect, device number 118
+[Wed Oct 28 09:12:08 2026] usb 1-1.1.1: USB disconnect, device number 120
+[Wed Oct 28 09:12:08 2026] usb usb3-port2: over-current change #59
+[Wed Oct 28 09:12:08 2026] usb usb2-port1: over-current change #61
+[Wed Oct 28 09:12:08 2026] usb 1-1.1.2: USB disconnect, device number 122
+[Wed Oct 28 09:12:08 2026] usb 1-1.3: USB disconnect, device number 121
+[Wed Oct 28 09:12:08 2026] ch341-uart ttyUSB3: ch341-uart converter now disconnected from ttyUSB3
+[Wed Oct 28 09:12:08 2026] ch341 1-1.3:1.0: device disconnected
+[Wed Oct 28 09:12:08 2026] usb 1-1.4: USB disconnect, device number 119
+[Wed Oct 28 09:12:08 2026] usb usb4-port1: over-current change #71
+[Wed Oct 28 09:12:08 2026] cp210x ttyUSB1: cp210x converter now disconnected from ttyUSB1
+[Wed Oct 28 09:12:08 2026] cp210x 1-1.4:1.0: device disconnected
+[Wed Oct 28 09:12:08 2026] usb usb3-port1: over-current change #64
+[Wed Oct 28 09:12:08 2026] usb 2-1: USB disconnect, device number 20
+[Wed Oct 28 09:12:08 2026] usb usb2-port1: over-current change #62
+[Wed Oct 28 09:12:08 2026] usb usb3-port2: over-current change #60
+[Wed Oct 28 09:12:08 2026] usb usb1-port2: over-current change #38
+[Wed Oct 28 09:12:08 2026] usb usb4-port1: over-current change #72
+[Wed Oct 28 09:12:08 2026] usb usb3-port1: over-current change #65
+[Wed Oct 28 09:12:08 2026] usb usb1-port1: over-current change #48
+[Wed Oct 28 09:12:08 2026] usb usb2-port1: over-current change #63
+[Wed Oct 28 09:12:09 2026] usb usb3-port2: over-current change #61
+[Wed Oct 28 09:12:09 2026] usb usb4-port1: over-current change #73
+[Wed Oct 28 09:12:09 2026] usb usb3-port1: over-current change #66
+[Wed Oct 28 09:12:09 2026] usb usb1-port2: over-current change #39
+[Wed Oct 28 09:12:09 2026] usb usb4-port1: over-current change #74
+[Wed Oct 28 09:12:09 2026] usb usb2-port1: over-current change #64
+[Wed Oct 28 09:12:09 2026] usb usb3-port2: over-current change #62
+[Wed Oct 28 09:12:09 2026] usb usb1-port1: over-current change #49
+[Wed Oct 28 09:12:09 2026] usb usb3-port1: over-current change #67
+[Wed Oct 28 09:12:09 2026] usb usb4-port1: over-current change #75
+[Wed Oct 28 09:12:09 2026] usb usb2-port1: over-current change #65
+[Wed Oct 28 09:12:09 2026] usb usb3-port2: over-current change #63
+[Wed Oct 28 09:12:09 2026] usb usb1-port2: over-current change #40
+[Wed Oct 28 09:12:09 2026] usb usb4-port1: over-current change #76
+[Wed Oct 28 09:12:09 2026] usb usb3-port1: over-current change #68
+[Wed Oct 28 09:12:09 2026] usb usb2-port1: over-current change #66
+[Wed Oct 28 09:12:09 2026] usb usb1-port1: over-current change #50
+[Wed Oct 28 09:12:09 2026] usb usb3-port2: over-current change #64
+[Wed Oct 28 09:12:09 2026] usb usb4-port1: over-current change #77
+[Wed Oct 28 09:12:09 2026] usb usb2-port1: over-current change #67
+[Wed Oct 28 09:12:09 2026] usb usb3-port1: over-current change #69
+[Wed Oct 28 09:12:09 2026] usb usb1-port2: over-current change #41
+[Wed Oct 28 09:12:10 2026] usb usb3-port2: over-current change #65
+[Wed Oct 28 09:12:10 2026] usb usb4-port1: over-current change #78
+[Wed Oct 28 09:12:10 2026] usb usb1-port1: over-current change #51
+[Wed Oct 28 09:12:10 2026] usb usb2-port1: over-current change #68
+[Wed Oct 28 09:12:10 2026] usb usb3-port1: over-current change #70
+[Wed Oct 28 09:12:10 2026] usb usb4-port1: over-current change #79
+[Wed Oct 28 09:12:10 2026] usb usb2-port1: over-current change #69
+[Wed Oct 28 09:12:10 2026] usb usb3-port2: over-current change #66
+[Wed Oct 28 09:12:10 2026] usb usb1-port2: over-current change #42
+[Wed Oct 28 09:12:10 2026] usb usb3-port1: over-current change #71
+[Wed Oct 28 09:12:10 2026] usb usb4-port1: over-current change #80
+[Wed Oct 28 09:12:10 2026] usb usb1-port1: over-current change #52
+[Wed Oct 28 09:12:10 2026] usb usb2-port1: over-current change #70
+[Wed Oct 28 09:12:10 2026] usb usb3-port2: over-current change #67
+[Wed Oct 28 09:12:10 2026] usb usb4-port1: over-current change #81
+[Wed Oct 28 09:12:10 2026] usb usb3-port1: over-current change #72
+[Wed Oct 28 09:12:10 2026] usb usb1-port2: over-current change #43
+[Wed Oct 28 09:12:10 2026] usb usb3-port2: over-current change #68
+[Wed Oct 28 09:12:10 2026] usb usb2-port1: over-current change #71
+[Wed Oct 28 09:12:10 2026] usb usb1-port1: over-current change #53
+[Wed Oct 28 09:12:10 2026] usb usb4-port1: over-current change #82
+[Wed Oct 28 09:12:10 2026] usb usb3-port1: over-current change #73
+[Wed Oct 28 09:12:11 2026] usb usb2-port1: over-current change #72
+[Wed Oct 28 09:12:11 2026] usb usb3-port2: over-current change #69
+[Wed Oct 28 09:12:11 2026] usb usb4-port1: over-current change #83
+[Wed Oct 28 09:12:11 2026] usb usb1-port2: over-current change #44
+[Wed Oct 28 09:12:11 2026] usb usb3-port1: over-current change #74
+[Wed Oct 28 09:12:11 2026] usb usb1-port1: over-current change #54
+[Wed Oct 28 09:12:11 2026] usb usb4-port1: over-current change #84
+[Wed Oct 28 09:12:11 2026] usb usb3-port2: over-current change #70
+[Wed Oct 28 09:12:11 2026] usb usb2-port1: over-current change #73
+[Wed Oct 28 09:12:11 2026] usb usb3-port1: over-current change #75
+[Wed Oct 28 09:12:11 2026] usb usb1-port2: over-current change #45
+[Wed Oct 28 09:12:11 2026] usb usb4-port1: over-current change #85
+[Wed Oct 28 09:12:11 2026] usb usb2-port1: over-current change #74
+[Wed Oct 28 09:12:11 2026] usb usb3-port2: over-current change #71
+[Wed Oct 28 09:12:11 2026] usb usb1-port1: over-current change #55
+[Wed Oct 28 09:12:11 2026] usb usb4-port1: over-current change #86
+[Wed Oct 28 09:12:11 2026] usb usb3-port1: over-current change #76
+[Wed Oct 28 09:12:11 2026] usb usb3-port2: over-current change #72
+[Wed Oct 28 09:12:11 2026] usb usb1-port2: over-current change #46
+[Wed Oct 28 09:12:11 2026] usb usb2-port1: over-current change #75
+[Wed Oct 28 09:12:11 2026] usb usb4-port1: over-current change #87
+[Wed Oct 28 09:12:12 2026] usb usb3-port1: over-current change #77
+[Wed Oct 28 09:12:12 2026] usb usb1-port1: over-current change #56
+[Wed Oct 28 09:12:12 2026] usb usb3-port2: over-current change #73
+[Wed Oct 28 09:12:12 2026] usb usb4-port1: over-current change #88
+[Wed Oct 28 09:12:12 2026] usb usb2-port1: over-current change #76
+[Wed Oct 28 09:12:12 2026] usb usb3-port1: over-current change #78
+[Wed Oct 28 09:12:12 2026] usb usb1-port2: over-current change #47
+[Wed Oct 28 09:12:12 2026] usb usb4-port1: over-current change #89
+[Wed Oct 28 09:12:12 2026] usb usb3-port2: over-current change #74
+[Wed Oct 28 09:12:12 2026] usb usb1-port1: over-current change #57
+[Wed Oct 28 09:12:12 2026] usb usb2-port1: over-current change #77
+[Wed Oct 28 09:12:12 2026] usb usb3-port1: over-current change #79
+[Wed Oct 28 09:12:12 2026] usb usb4-port1: over-current change #90
+[Wed Oct 28 09:12:12 2026] usb usb3-port2: over-current change #75
+[Wed Oct 28 09:12:12 2026] usb usb1-port2: over-current change #48
+[Wed Oct 28 09:12:12 2026] usb usb2-port1: over-current change #78
+[Wed Oct 28 09:12:12 2026] usb usb3-port1: over-current change #80
+[Wed Oct 28 09:12:12 2026] usb usb4-port1: over-current change #91
+[Wed Oct 28 09:12:12 2026] usb usb1-port1: over-current change #58
+[Wed Oct 28 09:12:12 2026] usb usb3-port2: over-current change #76
+[Wed Oct 28 09:12:13 2026] usb usb4-port1: over-current change #92
+[Wed Oct 28 09:12:13 2026] usb usb2-port1: over-current change #79
+[Wed Oct 28 09:12:13 2026] usb usb3-port1: over-current change #81
+[Wed Oct 28 09:12:13 2026] usb usb1-port2: over-current change #49
+[Wed Oct 28 09:12:13 2026] usb usb3-port2: over-current change #77
+[Wed Oct 28 09:12:13 2026] usb usb4-port1: over-current change #93
+[Wed Oct 28 09:12:13 2026] usb usb1-port1: over-current change #59
+[Wed Oct 28 09:12:13 2026] usb usb2-port1: over-current change #80
+[Wed Oct 28 09:12:13 2026] usb usb3-port1: over-current change #82
+[Wed Oct 28 09:12:13 2026] usb usb4-port1: over-current change #94
+[Wed Oct 28 09:12:13 2026] usb usb3-port2: over-current change #78
+[Wed Oct 28 09:12:13 2026] usb usb2-port1: over-current change #81
+[Wed Oct 28 09:12:13 2026] usb usb1-port2: over-current change #50
+[Wed Oct 28 09:12:13 2026] usb usb3-port1: over-current change #83
+[Wed Oct 28 09:12:13 2026] usb usb1-port1: over-current change #60
+[Wed Oct 28 09:12:13 2026] usb 2-1: new SuperSpeed USB device number 21 using xhci-hcd
+[Wed Oct 28 09:12:13 2026] usb 2-1: New USB device found, idVendor=2109, idProduct=0817, bcdDevice= 0.50
+[Wed Oct 28 09:12:13 2026] usb 2-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:12:13 2026] usb 2-1: Product: USB3.0 Hub             
+[Wed Oct 28 09:12:13 2026] usb 2-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:12:14 2026] hub 2-1:1.0: USB hub found
+[Wed Oct 28 09:12:14 2026] hub 2-1:1.0: 4 ports detected
+[Wed Oct 28 09:12:14 2026] usb 1-1: new high-speed USB device number 123 using xhci-hcd
+[Wed Oct 28 09:12:14 2026] usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+[Wed Oct 28 09:12:14 2026] usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:12:14 2026] usb 1-1: Product: USB2.0 Hub             
+[Wed Oct 28 09:12:14 2026] usb 1-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:12:14 2026] hub 1-1:1.0: USB hub found
+[Wed Oct 28 09:12:14 2026] hub 1-1:1.0: 4 ports detected
+[Wed Oct 28 09:12:15 2026] usb 1-1.1: new high-speed USB device number 124 using xhci-hcd
+[Wed Oct 28 09:12:15 2026] usb 1-1.1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+[Wed Oct 28 09:12:15 2026] usb 1-1.1: New USB device strings: Mfr=0, Product=1, SerialNumber=0
+[Wed Oct 28 09:12:15 2026] usb 1-1.1: Product: USB2.0 Hub
+[Wed Oct 28 09:12:15 2026] hub 1-1.1:1.0: USB hub found
+[Wed Oct 28 09:12:15 2026] hub 1-1.1:1.0: 4 ports detected
+[Wed Oct 28 09:12:15 2026] usb 1-1.3: new full-speed USB device number 125 using xhci-hcd
+[Wed Oct 28 09:12:15 2026] usb 1-1.3: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice=81.34
+[Wed Oct 28 09:12:15 2026] usb 1-1.3: New USB device strings: Mfr=0, Product=2, SerialNumber=0
+[Wed Oct 28 09:12:15 2026] usb 1-1.3: Product: USB Serial
+[Wed Oct 28 09:12:15 2026] ch341 1-1.3:1.0: ch341-uart converter detected
+[Wed Oct 28 09:12:15 2026] usb 1-1.3: ch341-uart converter now attached to ttyUSB1
+[Wed Oct 28 09:12:15 2026] usb 1-1.1.1: new high-speed USB device number 126 using xhci-hcd
+[Wed Oct 28 09:12:15 2026] usb 1-1.1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+[Wed Oct 28 09:12:15 2026] usb 1-1.1.1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:12:15 2026] usb 1-1.1.1: Product: ORBBEC Depth Sensor
+[Wed Oct 28 09:12:15 2026] usb 1-1.1.1: Manufacturer: Orbbec(R)
+[Wed Oct 28 09:12:15 2026] usb 1-1.4: new full-speed USB device number 127 using xhci-hcd
+[Wed Oct 28 09:12:15 2026] usb 1-1.4: New USB device found, idVendor=10c4, idProduct=ea60, bcdDevice= 1.00
+[Wed Oct 28 09:12:15 2026] usb 1-1.4: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[Wed Oct 28 09:12:15 2026] usb 1-1.4: Product: CP2102 USB to UART Bridge Controller
+[Wed Oct 28 09:12:15 2026] usb 1-1.4: Manufacturer: Silicon Labs
+[Wed Oct 28 09:12:15 2026] usb 1-1.4: SerialNumber: 0001
+[Wed Oct 28 09:12:15 2026] cp210x 1-1.4:1.0: cp210x converter detected
+[Wed Oct 28 09:12:15 2026] usb 1-1.4: cp210x converter now attached to ttyUSB3
+[Wed Oct 28 09:12:16 2026] usb 1-1.1.2: new high-speed USB device number 2 using xhci-hcd
+[Wed Oct 28 09:12:16 2026] usb 1-1.1.2: New USB device found, idVendor=2bc5, idProduct=050f, bcdDevice= 1.00
+[Wed Oct 28 09:12:16 2026] usb 1-1.1.2: New USB device strings: Mfr=2, Product=1, SerialNumber=3
+[Wed Oct 28 09:12:16 2026] usb 1-1.1.2: Product: USB 2.0 Camera
+[Wed Oct 28 09:12:16 2026] usb 1-1.1.2: Manufacturer: Sonix Technology Co., Ltd.
+[Wed Oct 28 09:12:16 2026] usb 1-1.1.2: SerialNumber: SN0001
+[Wed Oct 28 09:12:16 2026] uvcvideo 1-1.1.2:1.0: Found UVC 1.00 device USB 2.0 Camera (2bc5:050f)
+[Wed Oct 28 09:12:32 2026] usb usb1-port1: over-current change #61
+[Wed Oct 28 09:12:32 2026] usb usb3-port1: over-current change #84
+[Wed Oct 28 09:12:32 2026] usb usb4-port1: over-current change #95
+[Wed Oct 28 09:12:32 2026] usb 1-1: USB disconnect, device number 123
+[Wed Oct 28 09:12:32 2026] usb 1-1.1: USB disconnect, device number 124
+[Wed Oct 28 09:12:32 2026] usb 1-1.1.1: USB disconnect, device number 126
+[Wed Oct 28 09:12:32 2026] usb 1-1.1.2: USB disconnect, device number 2
+[Wed Oct 28 09:12:32 2026] usb usb3-port2: over-current change #79
+[Wed Oct 28 09:12:32 2026] usb usb2-port1: over-current change #82
+[Wed Oct 28 09:12:32 2026] usb 1-1.3: USB disconnect, device number 125
+[Wed Oct 28 09:12:32 2026] ch341-uart ttyUSB1: ch341-uart converter now disconnected from ttyUSB1
+[Wed Oct 28 09:12:32 2026] ch341 1-1.3:1.0: device disconnected
+[Wed Oct 28 09:12:32 2026] usb 1-1.4: USB disconnect, device number 127
+[Wed Oct 28 09:12:32 2026] cp210x ttyUSB3: cp210x converter now disconnected from ttyUSB3
+[Wed Oct 28 09:12:32 2026] cp210x 1-1.4:1.0: device disconnected
+[Wed Oct 28 09:12:32 2026] usb usb4-port1: over-current change #96
+[Wed Oct 28 09:12:32 2026] usb usb3-port1: over-current change #85
+[Wed Oct 28 09:12:32 2026] usb 2-1: USB disconnect, device number 21
+[Wed Oct 28 09:12:32 2026] usb usb2-port1: over-current change #83
+[Wed Oct 28 09:12:32 2026] usb usb1-port2: over-current change #51
+[Wed Oct 28 09:12:32 2026] usb usb3-port2: over-current change #80
+[Wed Oct 28 09:12:32 2026] usb usb4-port1: over-current change #97
+[Wed Oct 28 09:12:32 2026] usb usb1-port1: over-current change #62
+[Wed Oct 28 09:12:32 2026] usb usb3-port1: over-current change #86
+[Wed Oct 28 09:12:32 2026] usb usb2-port1: over-current change #84
+[Wed Oct 28 09:12:33 2026] usb usb3-port2: over-current change #81
+[Wed Oct 28 09:12:33 2026] usb usb4-port1: over-current change #98
+[Wed Oct 28 09:12:33 2026] usb usb1-port2: over-current change #52
+[Wed Oct 28 09:12:33 2026] usb usb3-port1: over-current change #87
+[Wed Oct 28 09:12:33 2026] usb usb4-port1: over-current change #99
+[Wed Oct 28 09:12:33 2026] usb usb2-port1: over-current change #85
+[Wed Oct 28 09:12:33 2026] usb usb1-port1: over-current change #63
+[Wed Oct 28 09:12:33 2026] usb usb3-port2: over-current change #82
+[Wed Oct 28 09:12:33 2026] usb usb3-port1: over-current change #88
+[Wed Oct 28 09:12:33 2026] usb usb4-port1: over-current change #100
+[Wed Oct 28 09:12:33 2026] usb usb2-port1: over-current change #86
+[Wed Oct 28 09:12:33 2026] usb usb1-port2: over-current change #53
+[Wed Oct 28 09:12:33 2026] usb usb3-port2: over-current change #83
+[Wed Oct 28 09:12:33 2026] usb usb4-port1: over-current change #101
+[Wed Oct 28 09:12:33 2026] usb usb1-port1: over-current change #64
+[Wed Oct 28 09:12:33 2026] usb usb3-port1: over-current change #89
+[Wed Oct 28 09:12:33 2026] usb usb3-port2: over-current change #84
+[Wed Oct 28 09:12:33 2026] usb usb2-port1: over-current change #87
+[Wed Oct 28 09:12:33 2026] usb usb4-port1: over-current change #102
+[Wed Oct 28 09:12:33 2026] usb usb1-port2: over-current change #54
+[Wed Oct 28 09:12:33 2026] usb usb3-port1: over-current change #90
+[Wed Oct 28 09:12:34 2026] usb usb2-port1: over-current change #88
+[Wed Oct 28 09:12:34 2026] usb usb1-port1: over-current change #65
+[Wed Oct 28 09:12:34 2026] usb usb3-port2: over-current change #85
+[Wed Oct 28 09:12:34 2026] usb usb4-port1: over-current change #103
+[Wed Oct 28 09:12:34 2026] usb usb3-port1: over-current change #91
+[Wed Oct 28 09:12:34 2026] usb usb4-port1: over-current change #104
+[Wed Oct 28 09:12:34 2026] usb usb1-port2: over-current change #55
+[Wed Oct 28 09:12:34 2026] usb usb3-port2: over-current change #86
+[Wed Oct 28 09:12:34 2026] usb usb2-port1: over-current change #89
+[Wed Oct 28 09:12:34 2026] usb usb1-port1: over-current change #66
+[Wed Oct 28 09:12:34 2026] usb usb3-port1: over-current change #92
+[Wed Oct 28 09:12:34 2026] usb usb4-port1: over-current change #105
+[Wed Oct 28 09:12:34 2026] usb usb3-port2: over-current change #87
+[Wed Oct 28 09:12:34 2026] usb usb2-port1: over-current change #90
+[Wed Oct 28 09:12:34 2026] usb usb1-port2: over-current change #56
+[Wed Oct 28 09:12:34 2026] usb usb4-port1: over-current change #106
+[Wed Oct 28 09:12:34 2026] usb usb3-port1: over-current change #93
+[Wed Oct 28 09:12:34 2026] usb usb2-port1: over-current change #91
+[Wed Oct 28 09:12:34 2026] usb usb1-port1: over-current change #67
+[Wed Oct 28 09:12:34 2026] usb usb3-port2: over-current change #88
+[Wed Oct 28 09:12:34 2026] usb usb4-port1: over-current change #107
+[Wed Oct 28 09:12:34 2026] usb usb3-port1: over-current change #94
+[Wed Oct 28 09:12:35 2026] usb usb2-port1: over-current change #92
+[Wed Oct 28 09:12:35 2026] usb usb1-port2: over-current change #57
+[Wed Oct 28 09:12:35 2026] usb usb3-port2: over-current change #89
+[Wed Oct 28 09:12:35 2026] usb usb4-port1: over-current change #108
+[Wed Oct 28 09:12:35 2026] usb usb2-port1: over-current change #93
+[Wed Oct 28 09:12:35 2026] usb usb1-port1: over-current change #68
+[Wed Oct 28 09:12:35 2026] usb usb3-port1: over-current change #95
+[Wed Oct 28 09:12:35 2026] usb usb4-port1: over-current change #109
+[Wed Oct 28 09:12:35 2026] usb usb3-port2: over-current change #90
+[Wed Oct 28 09:12:35 2026] usb usb2-port1: over-current change #94
+[Wed Oct 28 09:12:35 2026] usb usb3-port1: over-current change #96
+[Wed Oct 28 09:12:35 2026] usb usb1-port2: over-current change #58
+[Wed Oct 28 09:12:35 2026] usb usb4-port1: over-current change #110
+[Wed Oct 28 09:12:35 2026] usb usb3-port2: over-current change #91
+[Wed Oct 28 09:12:35 2026] usb usb1-port1: over-current change #69
+[Wed Oct 28 09:12:35 2026] usb usb2-port1: over-current change #95
+[Wed Oct 28 09:12:35 2026] usb usb3-port1: over-current change #97
+[Wed Oct 28 09:12:35 2026] usb usb4-port1: over-current change #111
+[Wed Oct 28 09:12:35 2026] usb usb3-port2: over-current change #92
+[Wed Oct 28 09:12:35 2026] usb usb1-port2: over-current change #59
+[Wed Oct 28 09:12:35 2026] usb usb4-port1: over-current change #112
+[Wed Oct 28 09:12:35 2026] usb usb2-port1: over-current change #96
+[Wed Oct 28 09:12:36 2026] usb usb3-port1: over-current change #98
+[Wed Oct 28 09:12:36 2026] usb usb1-port1: over-current change #70
+[Wed Oct 28 09:12:36 2026] usb usb3-port2: over-current change #93
+[Wed Oct 28 09:12:36 2026] usb usb4-port1: over-current change #113
+[Wed Oct 28 09:12:36 2026] usb usb2-port1: over-current change #97
+[Wed Oct 28 09:12:36 2026] usb usb3-port1: over-current change #99
+[Wed Oct 28 09:12:36 2026] usb usb1-port2: over-current change #60
+[Wed Oct 28 09:12:36 2026] usb usb3-port2: over-current change #94
+[Wed Oct 28 09:12:36 2026] usb usb2-port1: over-current change #98
+[Wed Oct 28 09:12:36 2026] usb usb4-port1: over-current change #114
+[Wed Oct 28 09:12:36 2026] usb usb1-port1: over-current change #71
+[Wed Oct 28 09:12:36 2026] usb usb3-port1: over-current change #100
+[Wed Oct 28 09:12:36 2026] usb 1-1: new high-speed USB device number 3 using xhci-hcd
+[Wed Oct 28 09:12:36 2026] usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+[Wed Oct 28 09:12:36 2026] usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:12:36 2026] usb 1-1: Product: USB2.0 Hub             
+[Wed Oct 28 09:12:36 2026] usb 1-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:12:36 2026] hub 1-1:1.0: USB hub found
+[Wed Oct 28 09:12:36 2026] hub 1-1:1.0: 4 ports detected
+[Wed Oct 28 09:12:37 2026] usb 2-1: new SuperSpeed USB device number 22 using xhci-hcd
+[Wed Oct 28 09:12:37 2026] usb usb1-port2: over-current change #61
+[Wed Oct 28 09:12:37 2026] usb 2-1: New USB device found, idVendor=2109, idProduct=0817, bcdDevice= 0.50
+[Wed Oct 28 09:12:37 2026] usb 2-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:12:37 2026] usb 2-1: Product: USB3.0 Hub             
+[Wed Oct 28 09:12:37 2026] usb 2-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:12:37 2026] hub 2-1:1.0: USB hub found
+[Wed Oct 28 09:12:37 2026] hub 2-1:1.0: 4 ports detected
+[Wed Oct 28 09:12:37 2026] usb 1-1.1: new high-speed USB device number 4 using xhci-hcd
+[Wed Oct 28 09:12:37 2026] usb 1-1.1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+[Wed Oct 28 09:12:37 2026] usb 1-1.1: New USB device strings: Mfr=0, Product=1, SerialNumber=0
+[Wed Oct 28 09:12:37 2026] usb 1-1.1: Product: USB2.0 Hub
+[Wed Oct 28 09:12:37 2026] hub 1-1.1:1.0: USB hub found
+[Wed Oct 28 09:12:37 2026] hub 1-1.1:1.0: 4 ports detected
+[Wed Oct 28 09:12:38 2026] usb 1-1.3: new full-speed USB device number 5 using xhci-hcd
+[Wed Oct 28 09:12:38 2026] usb 1-1.3: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice=81.34
+[Wed Oct 28 09:12:38 2026] usb 1-1.3: New USB device strings: Mfr=0, Product=2, SerialNumber=0
+[Wed Oct 28 09:12:38 2026] usb 1-1.3: Product: USB Serial
+[Wed Oct 28 09:12:38 2026] ch341 1-1.3:1.0: ch341-uart converter detected
+[Wed Oct 28 09:12:38 2026] usb 1-1.3: ch341-uart converter now attached to ttyUSB1
+[Wed Oct 28 09:12:38 2026] usb 1-1.1.1: new high-speed USB device number 6 using xhci-hcd
+[Wed Oct 28 09:12:38 2026] usb 1-1.1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+[Wed Oct 28 09:12:38 2026] usb 1-1.1.1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:12:38 2026] usb 1-1.1.1: Product: ORBBEC Depth Sensor
+[Wed Oct 28 09:12:38 2026] usb 1-1.1.1: Manufacturer: Orbbec(R)
+[Wed Oct 28 09:12:38 2026] usb 1-1.4: new full-speed USB device number 7 using xhci-hcd
+[Wed Oct 28 09:12:38 2026] usb 1-1.4: New USB device found, idVendor=10c4, idProduct=ea60, bcdDevice= 1.00
+[Wed Oct 28 09:12:38 2026] usb 1-1.4: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[Wed Oct 28 09:12:38 2026] usb 1-1.4: Product: CP2102 USB to UART Bridge Controller
+[Wed Oct 28 09:12:38 2026] usb 1-1.4: Manufacturer: Silicon Labs
+[Wed Oct 28 09:12:38 2026] usb 1-1.4: SerialNumber: 0001
+[Wed Oct 28 09:12:38 2026] cp210x 1-1.4:1.0: cp210x converter detected
+[Wed Oct 28 09:12:38 2026] usb 1-1.4: cp210x converter now attached to ttyUSB3
+[Wed Oct 28 09:12:38 2026] usb 1-1.1.2: new high-speed USB device number 8 using xhci-hcd
+[Wed Oct 28 09:12:38 2026] usb 1-1.1.2: New USB device found, idVendor=2bc5, idProduct=050f, bcdDevice= 1.00
+[Wed Oct 28 09:12:38 2026] usb 1-1.1.2: New USB device strings: Mfr=2, Product=1, SerialNumber=3
+[Wed Oct 28 09:12:38 2026] usb 1-1.1.2: Product: USB 2.0 Camera
+[Wed Oct 28 09:12:38 2026] usb 1-1.1.2: Manufacturer: Sonix Technology Co., Ltd.
+[Wed Oct 28 09:12:38 2026] usb 1-1.1.2: SerialNumber: SN0001
+[Wed Oct 28 09:12:38 2026] uvcvideo 1-1.1.2:1.0: Found UVC 1.00 device USB 2.0 Camera (2bc5:050f)
+[Wed Oct 28 09:12:39 2026] usb usb1-port1: over-current change #72
+[Wed Oct 28 09:12:39 2026] usb usb3-port1: over-current change #101
+[Wed Oct 28 09:12:39 2026] usb usb4-port1: over-current change #115
+[Wed Oct 28 09:12:39 2026] usb 1-1: USB disconnect, device number 3
+[Wed Oct 28 09:12:39 2026] usb 1-1.1: USB disconnect, device number 4
+[Wed Oct 28 09:12:39 2026] usb 1-1.1.1: USB disconnect, device number 6
+[Wed Oct 28 09:12:39 2026] usb usb3-port2: over-current change #95
+[Wed Oct 28 09:12:39 2026] usb usb2-port1: over-current change #99
+[Wed Oct 28 09:12:39 2026] usb 1-1.1.2: USB disconnect, device number 8
+[Wed Oct 28 09:12:39 2026] usb 1-1.3: USB disconnect, device number 5
+[Wed Oct 28 09:12:39 2026] ch341-uart ttyUSB1: ch341-uart converter now disconnected from ttyUSB1
+[Wed Oct 28 09:12:39 2026] ch341 1-1.3:1.0: device disconnected
+[Wed Oct 28 09:12:39 2026] usb 1-1.4: USB disconnect, device number 7
+[Wed Oct 28 09:12:39 2026] cp210x ttyUSB3: cp210x converter now disconnected from ttyUSB3
+[Wed Oct 28 09:12:39 2026] cp210x 1-1.4:1.0: device disconnected
+[Wed Oct 28 09:12:39 2026] usb 2-1: USB disconnect, device number 22
+[Wed Oct 28 09:12:39 2026] usb 1-1: new high-speed USB device number 9 using xhci-hcd
+[Wed Oct 28 09:12:39 2026] usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+[Wed Oct 28 09:12:39 2026] usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:12:39 2026] usb 1-1: Product: USB2.0 Hub             
+[Wed Oct 28 09:12:39 2026] usb 1-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:12:39 2026] hub 1-1:1.0: USB hub found
+[Wed Oct 28 09:12:39 2026] hub 1-1:1.0: 4 ports detected
+[Wed Oct 28 09:12:39 2026] usb usb1-port2: over-current change #62
+[Wed Oct 28 09:12:40 2026] usb 1-1.1: new high-speed USB device number 10 using xhci-hcd
+[Wed Oct 28 09:12:40 2026] usb 1-1.1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+[Wed Oct 28 09:12:40 2026] usb 1-1.1: New USB device strings: Mfr=0, Product=1, SerialNumber=0
+[Wed Oct 28 09:12:40 2026] usb 1-1.1: Product: USB2.0 Hub
+[Wed Oct 28 09:12:40 2026] hub 1-1.1:1.0: USB hub found
+[Wed Oct 28 09:12:40 2026] hub 1-1.1:1.0: 4 ports detected
+[Wed Oct 28 09:12:40 2026] usb 2-1: new SuperSpeed USB device number 23 using xhci-hcd
+[Wed Oct 28 09:12:40 2026] usb 2-1: New USB device found, idVendor=2109, idProduct=0817, bcdDevice= 0.50
+[Wed Oct 28 09:12:40 2026] usb 2-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:12:40 2026] usb 2-1: Product: USB3.0 Hub             
+[Wed Oct 28 09:12:40 2026] usb 2-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:12:40 2026] hub 2-1:1.0: USB hub found
+[Wed Oct 28 09:12:40 2026] hub 2-1:1.0: 4 ports detected
+[Wed Oct 28 09:12:40 2026] usb 1-1.4: new full-speed USB device number 11 using xhci-hcd
+[Wed Oct 28 09:12:41 2026] usb 1-1.4: New USB device found, idVendor=10c4, idProduct=ea60, bcdDevice= 1.00
+[Wed Oct 28 09:12:41 2026] usb 1-1.4: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[Wed Oct 28 09:12:41 2026] usb 1-1.4: Product: CP2102 USB to UART Bridge Controller
+[Wed Oct 28 09:12:41 2026] usb 1-1.4: Manufacturer: Silicon Labs
+[Wed Oct 28 09:12:41 2026] usb 1-1.4: SerialNumber: 0001
+[Wed Oct 28 09:12:41 2026] cp210x 1-1.4:1.0: cp210x converter detected
+[Wed Oct 28 09:12:41 2026] usb 1-1.4: cp210x converter now attached to ttyUSB1
+[Wed Oct 28 09:12:41 2026] usb 1-1.1.1: new high-speed USB device number 12 using xhci-hcd
+[Wed Oct 28 09:12:41 2026] usb 1-1.1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+[Wed Oct 28 09:12:41 2026] usb 1-1.1.1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:12:41 2026] usb 1-1.1.1: Product: ORBBEC Depth Sensor
+[Wed Oct 28 09:12:41 2026] usb 1-1.1.1: Manufacturer: Orbbec(R)
+[Wed Oct 28 09:12:41 2026] usb 1-1.3: new full-speed USB device number 13 using xhci-hcd
+[Wed Oct 28 09:12:41 2026] usb 1-1.3: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice=81.34
+[Wed Oct 28 09:12:41 2026] usb 1-1.3: New USB device strings: Mfr=0, Product=2, SerialNumber=0
+[Wed Oct 28 09:12:41 2026] usb 1-1.3: Product: USB Serial
+[Wed Oct 28 09:12:41 2026] ch341 1-1.3:1.0: ch341-uart converter detected
+[Wed Oct 28 09:12:41 2026] usb 1-1.3: ch341-uart converter now attached to ttyUSB3
+[Wed Oct 28 09:12:41 2026] usb 1-1.1.2: new high-speed USB device number 14 using xhci-hcd
+[Wed Oct 28 09:12:41 2026] usb 1-1.1.2: New USB device found, idVendor=2bc5, idProduct=050f, bcdDevice= 1.00
+[Wed Oct 28 09:12:41 2026] usb 1-1.1.2: New USB device strings: Mfr=2, Product=1, SerialNumber=3
+[Wed Oct 28 09:12:41 2026] usb 1-1.1.2: Product: USB 2.0 Camera
+[Wed Oct 28 09:12:41 2026] usb 1-1.1.2: Manufacturer: Sonix Technology Co., Ltd.
+[Wed Oct 28 09:12:41 2026] usb 1-1.1.2: SerialNumber: SN0001
+[Wed Oct 28 09:12:41 2026] uvcvideo 1-1.1.2:1.0: Found UVC 1.00 device USB 2.0 Camera (2bc5:050f)
+[Wed Oct 28 09:12:41 2026] usb usb1-port1: over-current change #73
+[Wed Oct 28 09:12:41 2026] usb usb3-port1: over-current change #102
+[Wed Oct 28 09:12:41 2026] usb usb4-port1: over-current change #116
+[Wed Oct 28 09:12:42 2026] usb 1-1: USB disconnect, device number 9
+[Wed Oct 28 09:12:42 2026] usb 1-1.1: USB disconnect, device number 10
+[Wed Oct 28 09:12:42 2026] usb 1-1.1.1: USB disconnect, device number 12
+[Wed Oct 28 09:12:42 2026] usb 1-1.1.2: USB disconnect, device number 14
+[Wed Oct 28 09:12:42 2026] usb usb3-port2: over-current change #96
+[Wed Oct 28 09:12:42 2026] usb usb2-port1: over-current change #100
+[Wed Oct 28 09:12:42 2026] usb 1-1.3: USB disconnect, device number 13
+[Wed Oct 28 09:12:42 2026] ch341-uart ttyUSB3: ch341-uart converter now disconnected from ttyUSB3
+[Wed Oct 28 09:12:42 2026] ch341 1-1.3:1.0: device disconnected
+[Wed Oct 28 09:12:42 2026] usb 1-1.4: USB disconnect, device number 11
+[Wed Oct 28 09:12:42 2026] cp210x ttyUSB1: cp210x converter now disconnected from ttyUSB1
+[Wed Oct 28 09:12:42 2026] cp210x 1-1.4:1.0: device disconnected
+[Wed Oct 28 09:12:42 2026] usb 2-1: USB disconnect, device number 23
+[Wed Oct 28 09:12:42 2026] usb 1-1: new high-speed USB device number 15 using xhci-hcd
+[Wed Oct 28 09:12:42 2026] usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+[Wed Oct 28 09:12:42 2026] usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:12:42 2026] usb 1-1: Product: USB2.0 Hub             
+[Wed Oct 28 09:12:42 2026] usb 1-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:12:42 2026] hub 1-1:1.0: USB hub found
+[Wed Oct 28 09:12:42 2026] hub 1-1:1.0: 4 ports detected
+[Wed Oct 28 09:12:42 2026] usb usb1-port2: over-current change #63
+[Wed Oct 28 09:12:43 2026] usb 1-1.1: new high-speed USB device number 16 using xhci-hcd
+[Wed Oct 28 09:12:43 2026] usb 1-1.1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+[Wed Oct 28 09:12:43 2026] usb 1-1.1: New USB device strings: Mfr=0, Product=1, SerialNumber=0
+[Wed Oct 28 09:12:43 2026] usb 1-1.1: Product: USB2.0 Hub
+[Wed Oct 28 09:12:43 2026] hub 1-1.1:1.0: USB hub found
+[Wed Oct 28 09:12:43 2026] hub 1-1.1:1.0: 4 ports detected
+[Wed Oct 28 09:12:43 2026] usb 2-1: new SuperSpeed USB device number 24 using xhci-hcd
+[Wed Oct 28 09:12:43 2026] usb 2-1: New USB device found, idVendor=2109, idProduct=0817, bcdDevice= 0.50
+[Wed Oct 28 09:12:43 2026] usb 2-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:12:43 2026] usb 2-1: Product: USB3.0 Hub             
+[Wed Oct 28 09:12:43 2026] usb 2-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:12:43 2026] hub 2-1:1.0: USB hub found
+[Wed Oct 28 09:12:43 2026] hub 2-1:1.0: 4 ports detected
+[Wed Oct 28 09:12:43 2026] usb 1-1.4: new full-speed USB device number 17 using xhci-hcd
+[Wed Oct 28 09:12:43 2026] usb 1-1.4: New USB device found, idVendor=10c4, idProduct=ea60, bcdDevice= 1.00
+[Wed Oct 28 09:12:43 2026] usb 1-1.4: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[Wed Oct 28 09:12:43 2026] usb 1-1.4: Product: CP2102 USB to UART Bridge Controller
+[Wed Oct 28 09:12:43 2026] usb 1-1.4: Manufacturer: Silicon Labs
+[Wed Oct 28 09:12:43 2026] usb 1-1.4: SerialNumber: 0001
+[Wed Oct 28 09:12:43 2026] cp210x 1-1.4:1.0: cp210x converter detected
+[Wed Oct 28 09:12:43 2026] usb 1-1.4: cp210x converter now attached to ttyUSB1
+[Wed Oct 28 09:12:44 2026] usb 1-1.1.1: new high-speed USB device number 18 using xhci-hcd
+[Wed Oct 28 09:12:44 2026] usb 1-1.1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+[Wed Oct 28 09:12:44 2026] usb 1-1.1.1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:12:44 2026] usb 1-1.1.1: Product: ORBBEC Depth Sensor
+[Wed Oct 28 09:12:44 2026] usb 1-1.1.1: Manufacturer: Orbbec(R)
+[Wed Oct 28 09:12:44 2026] usb 1-1.3: new full-speed USB device number 19 using xhci-hcd
+[Wed Oct 28 09:12:44 2026] usb usb1-port1: over-current change #74
+[Wed Oct 28 09:12:44 2026] usb usb3-port1: over-current change #103
+[Wed Oct 28 09:12:44 2026] usb 1-1.3: Device not responding to setup address.
+[Wed Oct 28 09:12:44 2026] usb usb4-port1: over-current change #117
+[Wed Oct 28 09:12:44 2026] usb 1-1: USB disconnect, device number 15
+[Wed Oct 28 09:12:44 2026] usb usb2-port1: over-current change #101
+[Wed Oct 28 09:12:44 2026] usb usb3-port2: over-current change #97
+[Wed Oct 28 09:12:44 2026] usb 1-1.1.1: 2:1: usb_set_interface failed (-19)
+[Wed Oct 28 09:12:44 2026] usb 1-1.3: Device not responding to setup address.
+[Wed Oct 28 09:12:44 2026] usb 1-1.1.1: 2:1: usb_set_interface failed (-19)
+[Wed Oct 28 09:12:44 2026] usb 1-1.1.1: 2:1: usb_set_interface failed (-19)
+[Wed Oct 28 09:12:44 2026] usb 2-1: USB disconnect, device number 24
+[Wed Oct 28 09:12:44 2026] usb 1-1.1.1: 2:1: usb_set_interface failed (-19)
+[Wed Oct 28 09:12:44 2026] usb 1-1.1.1: 2:1: usb_set_interface failed (-19)
+[Wed Oct 28 09:12:44 2026] usb 1-1.3: device not accepting address 19, error -71
+[Wed Oct 28 09:12:44 2026] usb 1-1.3: WARN: invalid context state for evaluate context command.
+[Wed Oct 28 09:12:44 2026] usb 1-1.1.1: 2:1: usb_set_interface failed (-19)
+[Wed Oct 28 09:12:44 2026] usb 1-1-port3: attempt power cycle
+[Wed Oct 28 09:12:45 2026] usb 1-1.1.1: 2:1: usb_set_interface failed (-19)
+[Wed Oct 28 09:12:45 2026] usb 1-1.1-port2: attempt power cycle
+[Wed Oct 28 09:12:45 2026] usb 1-1.1.1: 2:1: usb_set_interface failed (-19)
+[Wed Oct 28 09:12:45 2026] usb 1-1.1.1: 2:1: usb_set_interface failed (-19)
+[Wed Oct 28 09:12:45 2026] usb 1-1.1.1: 2:1: usb_set_interface failed (-19)
+[Wed Oct 28 09:12:46 2026] usb 2-1: new SuperSpeed USB device number 25 using xhci-hcd
+[Wed Oct 28 09:12:46 2026] usb 2-1: New USB device found, idVendor=2109, idProduct=0817, bcdDevice= 0.50
+[Wed Oct 28 09:12:46 2026] usb 2-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:12:46 2026] usb 2-1: Product: USB3.0 Hub             
+[Wed Oct 28 09:12:46 2026] usb 2-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:12:46 2026] usb 1-1.1: USB disconnect, device number 16
+[Wed Oct 28 09:12:46 2026] usb 1-1.1.1: USB disconnect, device number 18
+[Wed Oct 28 09:12:46 2026] hub 2-1:1.0: USB hub found
+[Wed Oct 28 09:12:46 2026] hub 2-1:1.0: 4 ports detected
+[Wed Oct 28 09:12:46 2026] usb 1-1.4: USB disconnect, device number 17
+[Wed Oct 28 09:12:46 2026] cp210x ttyUSB1: cp210x converter now disconnected from ttyUSB1
+[Wed Oct 28 09:12:46 2026] cp210x 1-1.4:1.0: device disconnected
+[Wed Oct 28 09:12:46 2026] usb 1-1: new high-speed USB device number 27 using xhci-hcd
+[Wed Oct 28 09:12:46 2026] usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+[Wed Oct 28 09:12:46 2026] usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:12:46 2026] usb 1-1: Product: USB2.0 Hub             
+[Wed Oct 28 09:12:46 2026] usb 1-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 09:12:46 2026] hub 1-1:1.0: USB hub found
+[Wed Oct 28 09:12:46 2026] hub 1-1:1.0: 4 ports detected
+[Wed Oct 28 09:12:47 2026] usb usb1-port2: over-current change #64
+[Wed Oct 28 09:12:47 2026] usb 1-1.1: new high-speed USB device number 28 using xhci-hcd
+[Wed Oct 28 09:12:47 2026] usb 1-1.1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+[Wed Oct 28 09:12:47 2026] usb 1-1.1: New USB device strings: Mfr=0, Product=1, SerialNumber=0
+[Wed Oct 28 09:12:47 2026] usb 1-1.1: Product: USB2.0 Hub
+[Wed Oct 28 09:12:47 2026] hub 1-1.1:1.0: USB hub found
+[Wed Oct 28 09:12:47 2026] hub 1-1.1:1.0: 4 ports detected
+[Wed Oct 28 09:12:48 2026] usb 1-1.3: new full-speed USB device number 29 using xhci-hcd
+[Wed Oct 28 09:12:48 2026] usb 1-1.3: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice=81.34
+[Wed Oct 28 09:12:48 2026] usb 1-1.3: New USB device strings: Mfr=0, Product=2, SerialNumber=0
+[Wed Oct 28 09:12:48 2026] usb 1-1.3: Product: USB Serial
+[Wed Oct 28 09:12:48 2026] ch341 1-1.3:1.0: ch341-uart converter detected
+[Wed Oct 28 09:12:48 2026] usb 1-1.3: ch341-uart converter now attached to ttyUSB1
+[Wed Oct 28 09:12:48 2026] usb 1-1.1.1: new high-speed USB device number 30 using xhci-hcd
+[Wed Oct 28 09:12:48 2026] usb 1-1.1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+[Wed Oct 28 09:12:48 2026] usb 1-1.1.1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 09:12:48 2026] usb 1-1.1.1: Product: ORBBEC Depth Sensor
+[Wed Oct 28 09:12:48 2026] usb 1-1.1.1: Manufacturer: Orbbec(R)
+[Wed Oct 28 09:12:48 2026] usb 1-1.4: new full-speed USB device number 31 using xhci-hcd
+[Wed Oct 28 09:12:48 2026] usb 1-1.4: New USB device found, idVendor=10c4, idProduct=ea60, bcdDevice= 1.00
+[Wed Oct 28 09:12:48 2026] usb 1-1.4: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[Wed Oct 28 09:12:48 2026] usb 1-1.4: Product: CP2102 USB to UART Bridge Controller
+[Wed Oct 28 09:12:48 2026] usb 1-1.4: Manufacturer: Silicon Labs
+[Wed Oct 28 09:12:48 2026] usb 1-1.4: SerialNumber: 0001
+[Wed Oct 28 09:12:48 2026] cp210x 1-1.4:1.0: cp210x converter detected
+[Wed Oct 28 09:12:48 2026] usb 1-1.4: cp210x converter now attached to ttyUSB3
+[Wed Oct 28 09:12:48 2026] usb 1-1.1.2: new high-speed USB device number 32 using xhci-hcd
+[Wed Oct 28 09:12:48 2026] usb 1-1.1.2: New USB device found, idVendor=2bc5, idProduct=050f, bcdDevice= 1.00
+[Wed Oct 28 09:12:48 2026] usb 1-1.1.2: New USB device strings: Mfr=2, Product=1, SerialNumber=3
+[Wed Oct 28 09:12:48 2026] usb 1-1.1.2: Product: USB 2.0 Camera
+[Wed Oct 28 09:12:48 2026] usb 1-1.1.2: Manufacturer: Sonix Technology Co., Ltd.
+[Wed Oct 28 09:12:48 2026] usb 1-1.1.2: SerialNumber: SN0001
+[Wed Oct 28 09:12:48 2026] uvcvideo 1-1.1.2:1.0: Found UVC 1.00 device USB 2.0 Camera (2bc5:050f)

@@ -1,0 +1,56 @@
+{
+ "gyro_bias_z": 0.3888,
+ "gyro_std_z": 0.0007,
+ "drehen": {
+  "links": {
+   "soll_deg": 90.0,
+   "odom_deg": 68.6,
+   "gyro_deg": -70.3,
+   "gyro_ohne_bias_korr_deg": 36.7,
+   "lidar_verschiebung_deg": -65,
+   "lidar_fehler_m": 0.101
+  },
+  "rechts": {
+   "soll_deg": -90.0,
+   "odom_deg": -66.9,
+   "gyro_deg": 67.4,
+   "gyro_ohne_bias_korr_deg": 174.4,
+   "lidar_verschiebung_deg": 64,
+   "lidar_fehler_m": 0.101
+  }
+ },
+ "fahren": {
+  "vor": {
+   "soll_m": 0.3,
+   "odom_m": 0.266,
+   "lidar_vorher_m": 8.5,
+   "lidar_nachher_m": 8.252,
+   "lidar_delta_m": 0.248,
+   "drift_gyro_deg": -1.1
+  },
+  "zurueck": {
+   "soll_m": -0.3,
+   "odom_m": -0.269,
+   "lidar_vorher_m": 8.232,
+   "lidar_nachher_m": 8.504,
+   "lidar_delta_m": -0.272,
+   "drift_gyro_deg": 0.9
+  },
+  "links": {
+   "soll_m": 0.3,
+   "odom_m": 0.212,
+   "lidar_vorher_m": 5.296,
+   "lidar_nachher_m": 5.088,
+   "lidar_delta_m": 0.208,
+   "drift_gyro_deg": -3.0
+  },
+  "rechts": {
+   "soll_m": -0.3,
+   "odom_m": -0.205,
+   "lidar_vorher_m": 5.088,
+   "lidar_nachher_m": 5.288,
+   "lidar_delta_m": -0.2,
+   "drift_gyro_deg": 3.0
+  }
+ }
+}
