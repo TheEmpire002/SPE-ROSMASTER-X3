@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Startet alles fuer autonomes Fahren auf dem ROSMASTER X3 - IM Docker-Container.
-# Normalerweise nicht direkt aufrufen, sondern auf dem Pi:  bash Marlon/x3.sh
+# Normalerweise nicht direkt aufrufen, sondern auf dem Pi:  bash Marlon/autonomes_fahren/x3.sh
 #
 #   ./start_autonomy.sh                  # losfahren
 #   ./start_autonomy.sh --calibrate      # Lidar-Ausrichtung pruefen (faehrt nicht)
@@ -17,14 +17,14 @@
 # Liefert der Lidar waehrend der Fahrt nichts mehr, wird er automatisch neu gestartet
 # (der Roboter steht so lange still).
 #
-# Protokolle landen in Marlon/protokoll/ (im Git, damit man sie hochladen kann).
+# Protokolle landen in Marlon/autonomes_fahren/protokoll/ (im Git, damit man sie hochladen kann).
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Nur eine Instanz. x3.sh stop / Ctrl+C ohne Terminal schicken SIGINT an diese PID.
 PIDFILE="/tmp/x3_start.pid"
 old=$(cat "$PIDFILE" 2>/dev/null)
 if [ -n "$old" ] && [ "$old" != "$$" ] && grep -q start_autonomy "/proc/$old/cmdline" 2>/dev/null; then
-    echo "FEHLER: start_autonomy.sh laeuft schon (PID $old). Stoppen:  bash Marlon/x3.sh stop" >&2
+    echo "FEHLER: start_autonomy.sh laeuft schon (PID $old). Stoppen:  bash Marlon/autonomes_fahren/x3.sh stop" >&2
     exit 1
 fi
 echo $$ > "$PIDFILE"
@@ -55,7 +55,7 @@ if [ -z "${ROS_DISTRO:-}" ]; then
 fi
 if [ -z "${ROS_DISTRO:-}" ]; then
     echo "FEHLER: Keine ROS-Installation gefunden (/opt/ros/...)." >&2
-    echo "        Laeuft ROS bei euch in Docker? Dann auf dem Pi  bash Marlon/x3.sh  benutzen." >&2
+    echo "        Laeuft ROS bei euch in Docker? Dann auf dem Pi  bash Marlon/autonomes_fahren/x3.sh  benutzen." >&2
     exit 1
 fi
 for ws in "$HOME/yahboomcar_ros2_ws/software/library_ws/install" \
@@ -164,7 +164,7 @@ trap 'cleanup 143' TERM HUP
 if [ -e /dev/rplidar ] && [ -e /dev/myserial ] && \
    [ "$(stat -Lc '%t:%T' /dev/rplidar)" = "$(stat -Lc '%t:%T' /dev/myserial)" ]; then
     echo "FEHLER: /dev/rplidar und /dev/myserial sind dasselbe Geraet." >&2
-    echo "        Container neu starten:  bash Marlon/x3.sh neustart" >&2
+    echo "        Container neu starten:  bash Marlon/autonomes_fahren/x3.sh neustart" >&2
     cleanup 1
 fi
 for d in /dev/rplidar /dev/myserial; do
@@ -319,7 +319,7 @@ echo
 if ! lidar_ready; then
     echo "FEHLER: Lidar liefert keine Daten. Siehe $LIDAR_LOG" >&2
     tail -n 15 "$LIDAR_LOG" >&2
-    echo "        Bei TIMEOUT: USB-Kabel pruefen, dann  bash Marlon/x3.sh neustart" >&2
+    echo "        Bei TIMEOUT: USB-Kabel pruefen, dann  bash Marlon/autonomes_fahren/x3.sh neustart" >&2
     cleanup 1
 fi
 echo "[start] Lidar OK"

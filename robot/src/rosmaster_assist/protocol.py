@@ -17,12 +17,16 @@ Von der App / vom ESP an den Roboter
 {"type": "home_cancel"}                                   Heimfahrt abbrechen
 {"type": "set_home"}                                      hier ist der neue Startpunkt
 {"type": "collision", "enabled": true, "distance": 0.35}  Kollisionsvermeidung
+{"type": "explore"}                                       autonom umherfahren (Test 1)
+{"type": "explore_stop"}                                  autonomes Fahren beenden
 {"type": "ping"}                                          Verbindung am Leben halten
 
 Vom Roboter an die App
 ----------------------
 {"type": "limits", "max_vx":…, "max_vy":…, "max_omega":…}  einmalig beim Verbinden
 {"type": "state",  "vx":…, "vy":…, "omega":…, "driver":…, "connected":…}
+                   (mit Lidar zusätzlich "autonomie": {"aktiv":…, "zustand":…,
+                    "hindernisse": […], "personen": […], …})
 {"type": "vitals", "bpm":…, "motion":…}                   weitergereichte ESP-Daten
 {"type": "alert",  "level": "info"|"warning"|"emergency", "text": "…"}
 {"type": "error",  "text": "…"}                           ungültige Nachricht o.Ä.
@@ -97,6 +101,7 @@ def state_message(
     homing: bool = False,
     pose_gemessen: bool = False,
     collision: dict[str, Any] | None = None,
+    autonomie: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     msg: dict[str, Any] = {
         "type": "state",
@@ -107,6 +112,8 @@ def state_message(
     }
     if collision is not None:
         msg["collision"] = collision
+    if autonomie is not None:
+        msg["autonomie"] = autonomie
     if pose is not None:
         x, y, winkel = pose
         msg["pose"] = {

@@ -149,7 +149,9 @@ Reihenfolge:
 | `type` | Felder | Wirkung | Antwort |
 |---|---|---|---|
 | `drive` | `vx`, `vy`, `omega` (Zahlen, fehlende = 0) | Fahren. Siehe Regeln 1, 3, 4. Bricht eine laufende Heimfahrt ab, sobald ein Wert ≠ 0 ist; Nullbefehle werden während der Heimfahrt ignoriert. | keine; bei ungültigen Werten `error` |
-| `stop` | – | Sofort anhalten, Heimfahrt abbrechen. | keine |
+| `stop` | – | Sofort anhalten, Heimfahrt und autonomes Fahren abbrechen. | keine |
+| `explore` | – | Autonomes Fahren starten (siehe unten). Braucht den Lidar; bricht eine Heimfahrt ab. | `alert` an alle; ohne Lidar `alert` (warning) |
+| `explore_stop` | – | Autonomes Fahren beenden und anhalten. | `alert` an alle |
 | `home` | – | Selbstständig zum Startpunkt zurückfahren (siehe unten). | `alert` an alle |
 | `home_cancel` | – | Heimfahrt abbrechen und anhalten. | `alert` an alle |
 | `set_home` | – | Aktuelle Stelle wird neuer Startpunkt (0, 0, 0°), Lidar-Referenz wird neu aufgenommen. | `alert` an alle |
@@ -179,7 +181,8 @@ Ein unbekannter `type` liefert `{"type": "error", "text": "Unbekannter Nachricht
   "homing": false,
   "vx": 0.2, "vy": 0.0, "omega": 0.0,
   "pose": {"x": 1.234, "y": -0.05, "winkel": 12.5, "gemessen": true},
-  "collision": {"enabled": false, "distance": 0.35, "verfuegbar": true, "blockiert": false}
+  "collision": {"enabled": false, "distance": 0.35, "verfuegbar": true, "blockiert": false},
+  "autonomie": {"aktiv": false, "verfuegbar": true, "zustand": null, "...": "siehe unten"}
 }
 ```
 
@@ -192,6 +195,7 @@ Ein unbekannter `type` liefert `{"type": "error", "text": "Unbekannter Nachricht
 | `pose` | geschätzte Position, siehe Konventionen. `gemessen: false` heißt: nur aus den Befehlen gerechnet, deutlich ungenauer. |
 | `collision.verfuegbar` | ob ein Lidar da ist, der Hindernisse sehen kann |
 | `collision.blockiert` | die Kollisionsvermeidung hält gerade eine Fahrt zurück |
+| `autonomie` | autonomes Fahren und erkannte Hindernisse, siehe „Autonomes Fahren im Detail“ |
 
 **`collision`**: beim Verbinden und nach jeder Änderung, Felder wie
 `state.collision`.
@@ -225,6 +229,71 @@ der Roboter dafür nicht drehen. Die Werte stehen in `config.py`:
 - **weicht nicht aus**: steht etwas näher als 0,45 m in Fahrtrichtung, hält
   er an und meldet das
 - endet mit einem `alert` „Heimfahrt: …“ und `state.homing = false`
+
+### Autonomes Fahren im Detail
+
+`explore` startet Test 1: Der Roboter fährt zufällig durch den Raum und
+weicht allem aus, was der Lidar sieht. Werte in `config.py` (`EXPLORE_*`):
+
+- geradeaus mit `EXPLORE_SPEED` (0,2 m/s), langsamer ab 0,9 m vor einem
+  Hindernis; schiebt sich seitlich von nahen Wänden weg
+- frei ist ein 40 cm breiter Korridor (`EXPLORE_HALF_WIDTH_M`), nicht ein
+  Kegel -- so passt er nicht in Lücken, die schmaler sind als er selbst
+- unter `EXPLORE_STOP_M` (0,4 m) vorn: anhalten und in die freieste
+  Richtung drehen. Gedreht wird nach Zeit (`EXPLORE_TURN_FACTOR`), weil
+  der Roboter seine Blickrichtung nicht misst.
+- alle 4–10 s biegt er zufällig ab, damit er nicht immer dieselbe Bahn fährt
+- steht ein **Mensch** bis 1 m vor ihm, wartet er `EXPLORE_PERSON_WAIT_S`
+  (2 s), bevor er ausweicht
+- liefert der Lidar länger als 3 s nichts, endet die Fahrt
+- jede Fahreingabe ≠ 0, `stop`, `home`, `set_home` oder das Trennen des
+  letzten Clients beendet sie. Nullbefehle der App werden ignoriert.
+- endet mit `alert` „Autonomes Fahren beendet: …“ und `autonomie.aktiv = false`
+
+Die Hindernisse werden auch ohne laufende Fahrt erkannt (bis 3 m) und grob
+benannt: `Wand`, `Stuhl` (dünne Beine dicht beieinander), `Tisch` (dünne
+Beine 0,6–1,8 m auseinander), `Mensch` (zwei dicke Beine oder Kamera-Treffer),
+`Bein (Mensch?)`, `Bein (Stuhl/Tisch?)`, `Objekt`. Das ist eine Faustregel
+auf einer Lidar-Ebene, keine Objekterkennung.
+
+Ist OpenCV installiert, sucht die Kamera während der Fahrt nach Personen
+(HOG-Detektor, 2 Bilder/s). Lidar-Hindernisse in deren Richtung heißen dann
+`Mensch` mit `quelle: "Kamera+Lidar"`. Ohne OpenCV läuft alles andere weiter.
+
+`state.autonomie`:
+
+```json
+{
+  "aktiv": true,
+  "verfuegbar": true,
+  "zustand": "faehrt",
+  "text": "frei: 1.8 m",
+  "frei_vorn": 1.83,
+  "dauer_s": 42,
+  "ausweichen": 5,
+  "menschen": 1,
+  "grund": null,
+  "hindernisse": [
+    {"art": "Stuhl", "winkel": 31.5, "abstand": 0.84, "breite": 0.41,
+     "x": 0.71, "y": 0.44, "quelle": "Lidar"}
+  ],
+  "personen": [{"x1": 0.41, "y1": 0.1, "x2": 0.62, "y2": 0.95, "score": 1.2}],
+  "personenerkennung": {"verfuegbar": true, "aktiv": true, "fehler": null,
+                        "letzte_erkennung_vor_s": 0.3}
+}
+```
+
+| Feld | Bedeutung |
+|---|---|
+| `verfuegbar` | Lidar vorhanden, `explore` möglich |
+| `zustand` | `faehrt`, `dreht`, `wartet`, `wartet auf Mensch`, `wartet auf Lidar`; `null` wenn aus |
+| `text` | Erklärung für die Anzeige |
+| `frei_vorn` | freie Strecke im Korridor vor dem Roboter (m) |
+| `ausweichen`, `menschen` | Zähler dieser Fahrt |
+| `grund` | warum die letzte Fahrt endete |
+| `hindernisse` | die 12 nächsten, nächstes zuerst. `winkel` in Grad wie beim Lidar, `x`/`y` Mitte in Roboterkoordinaten (m) |
+| `personen` | Personenrahmen im Kamerabild, relativ zur Bildgröße (0..1) |
+| `personenerkennung` | ob die Kamera-Erkennung geht; `fehler` z. B. „opencv fehlt“ |
 
 ---
 
@@ -292,6 +361,12 @@ xy = [(m * math.cos(math.radians(g)), m * math.sin(math.radians(g))) for g, m in
 
 `letztes_residuum_m` sagt, wie gut die aktuelle Aufnahme auf die Referenz
 vom Startpunkt passt. Unter 0,05 ist gut.
+
+### Autonomes Fahren
+
+| Endpunkt | Liefert |
+|---|---|
+| `GET /autonomie/status` | dasselbe wie `state.autonomie`, zum Nachsehen ohne WebSocket |
 
 ### Sonstiges
 
