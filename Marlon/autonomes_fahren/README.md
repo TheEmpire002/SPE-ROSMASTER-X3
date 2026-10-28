@@ -23,7 +23,7 @@ Auf dem Pi (User `pi`, **nicht** im Docker-Container), im Repo-Ordner:
 ```bash
 cd ~/gitpipeline/SPE-ROSMASTER-X3   # bzw. wo das Repo liegt
 git pull
-bash Marlon/x3.sh              # Container + Treiber + Lidar + losfahren
+bash Marlon/autonomes_fahren/x3.sh              # Container + Treiber + Lidar + losfahren
 ```
 **Stoppen: Ctrl+C**. Der Roboter wird angehalten und alle Prozesse beendet.
 
@@ -35,17 +35,17 @@ bash Marlon/x3.sh              # Container + Treiber + Lidar + losfahren
 
 | Befehl | Wirkung |
 |--------|---------|
-| `bash Marlon/x3.sh` | losfahren (max. 0,30 m/s) |
-| `bash Marlon/x3.sh --max-v 0.2` | langsamer; alle Optionen gehen an `x3_explorer.py` |
-| `bash Marlon/x3.sh --calibrate` | Lidar-Ausrichtung prüfen, fährt **nicht** |
-| `bash Marlon/x3.sh stop` | anhalten (z. B. aus einem zweiten Terminal) |
-| `bash Marlon/x3.sh neustart` | alle ROS-Container beenden, frisch starten, losfahren |
-| `bash Marlon/x3.sh shell` | Terminal im Container (`ros2 topic echo /scan` …) |
-| `bash Marlon/x3.sh hochladen` | Protokolle committen und pushen |
+| `bash Marlon/autonomes_fahren/x3.sh` | losfahren (max. 0,30 m/s) |
+| `bash Marlon/autonomes_fahren/x3.sh --max-v 0.2` | langsamer; alle Optionen gehen an `x3_explorer.py` |
+| `bash Marlon/autonomes_fahren/x3.sh --calibrate` | Lidar-Ausrichtung prüfen, fährt **nicht** |
+| `bash Marlon/autonomes_fahren/x3.sh stop` | anhalten (z. B. aus einem zweiten Terminal) |
+| `bash Marlon/autonomes_fahren/x3.sh neustart` | alle ROS-Container beenden, frisch starten, losfahren |
+| `bash Marlon/autonomes_fahren/x3.sh shell` | Terminal im Container (`ros2 topic echo /scan` …) |
+| `bash Marlon/autonomes_fahren/x3.sh hochladen` | Protokolle committen und pushen |
 
 **Wichtig:**
 - Läuft noch ein anderer ROS-Container (z. B. aus `~/run_docker.sh`), bricht `x3.sh`
-  mit einer Meldung ab → `bash Marlon/x3.sh neustart`.
+  mit einer Meldung ab → `bash Marlon/autonomes_fahren/x3.sh neustart`.
 - Läuft die Web-App (`python main.py`, Port 8000), bricht der Start ab: sie benutzt
   dieselbe Motorplatine und denselben Lidar. Erst die Web-App beenden.
 - Die Yahboom-App startet nach jedem Booten neu (`~/.config/autostart/`); `x3.sh`
@@ -54,7 +54,7 @@ bash Marlon/x3.sh              # Container + Treiber + Lidar + losfahren
 ## 1. Kalibrieren (einmalig, Roboter fährt NICHT)
 
 ```bash
-bash Marlon/x3.sh --calibrate
+bash Marlon/autonomes_fahren/x3.sh --calibrate
 ```
 Hand ca. 30 cm **vor** den Roboter halten: es muss `VORNE` und ca. `0°` erscheinen.
 Hand **links**: ca. `+90°`.
@@ -80,7 +80,7 @@ Gut für eine Präsentation.
 
 ## Protokolle
 
-Jeder Lauf schreibt nach `Marlon/protokoll/` (der vorige Lauf wird überschrieben):
+Jeder Lauf schreibt nach `Marlon/autonomes_fahren/protokoll/` (der vorige Lauf wird überschrieben):
 
 | Datei | Inhalt |
 |-------|--------|
@@ -91,7 +91,7 @@ Jeder Lauf schreibt nach `Marlon/protokoll/` (der vorige Lauf wird überschriebe
 | `diagnose.txt` | Geräte, Prozesse, Topics bei Start und bei Fehlern |
 
 Gepusht wird nur vom Laptop. Die Protokolle direkt am Pi lesen (z. B. per SSH).
-`bash Marlon/x3.sh hochladen` gibt es noch, ist dafür aber nicht nötig.
+`bash Marlon/autonomes_fahren/x3.sh hochladen` gibt es noch, ist dafür aber nicht nötig.
 
 ## Wenn etwas nicht startet
 
@@ -103,10 +103,10 @@ Das Skript erkennt ROS1/ROS2 automatisch und startet:
 | Lidar   | `ros2 run sllidar_ros2 sllidar_node` mit `serial_port:=/dev/rplidar` | `rplidar_ros rplidar.launch` |
 
 Heißen die Launch-Dateien auf eurem Image anders (z. B. RPLIDAR S2), überschreiben
-(im Container: `bash Marlon/x3.sh shell`, dann `cd` in den Repo-Ordner – gleicher Pfad wie auf dem Pi):
+(im Container: `bash Marlon/autonomes_fahren/x3.sh shell`, dann `cd` in den Repo-Ordner – gleicher Pfad wie auf dem Pi):
 
 ```bash
-LIDAR_LAUNCH="sllidar_ros2 sllidar_s2_launch.py" bash Marlon/start_autonomy.sh
+LIDAR_LAUNCH="sllidar_ros2 sllidar_s2_launch.py" bash Marlon/autonomes_fahren/start_autonomy.sh
 ```
 Laufen Treiber/Lidar schon (z. B. selbst gestartet), werden sie nicht doppelt gestartet.
 Ein hängender `sllidar_node` vom letzten Lauf wird vorher beendet.

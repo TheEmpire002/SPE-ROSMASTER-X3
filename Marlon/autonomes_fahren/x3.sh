@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # EIN Befehl fuer alles - auf dem Pi (NICHT im Container) im Repo-Ordner:
 #
-#   bash Marlon/x3.sh                    # Container + Treiber + Lidar + losfahren
-#   bash Marlon/x3.sh --calibrate        # Lidar-Ausrichtung pruefen (faehrt nicht)
-#   bash Marlon/x3.sh --max-v 0.2        # Parameter gehen an x3_explorer.py
-#   bash Marlon/x3.sh stop               # Roboter anhalten (z.B. aus 2. Terminal)
-#   bash Marlon/x3.sh neustart [...]     # ROS-Container frisch starten, dann losfahren
-#   bash Marlon/x3.sh hochladen          # Protokolle committen und pushen
-#   bash Marlon/x3.sh shell              # Terminal im Container (ros2 topic echo ...)
+#   bash Marlon/autonomes_fahren/x3.sh                    # Container + Treiber + Lidar + losfahren
+#   bash Marlon/autonomes_fahren/x3.sh --calibrate        # Lidar-Ausrichtung pruefen (faehrt nicht)
+#   bash Marlon/autonomes_fahren/x3.sh --max-v 0.2        # Parameter gehen an x3_explorer.py
+#   bash Marlon/autonomes_fahren/x3.sh stop               # Roboter anhalten (z.B. aus 2. Terminal)
+#   bash Marlon/autonomes_fahren/x3.sh neustart [...]     # ROS-Container frisch starten, dann losfahren
+#   bash Marlon/autonomes_fahren/x3.sh hochladen          # Protokolle committen und pushen
+#   bash Marlon/autonomes_fahren/x3.sh shell              # Terminal im Container (ros2 topic echo ...)
 #
 # Stoppen beim Fahren: Ctrl+C
 #
@@ -17,10 +17,10 @@
 #      -v /dev:/dev (Lidar-Port live), --ipc=host (ROS-Daten zwischen Terminals)
 #      und diesem Repo unter demselben Pfad
 #   3. darin start_autonomy.sh ausfuehren
-# Protokolle: Marlon/protokoll/*.txt
+# Protokolle: Marlon/autonomes_fahren/protokoll/*.txt
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO="$(cd "$HERE/.." && pwd)"
+REPO="$(git -C "$HERE" rev-parse --show-toplevel 2>/dev/null || (cd "$HERE/../.." && pwd))"
 NAME="x3"
 IMAGE="${X3_IMAGE:-yahboomtechnology/ros-foxy:4.0.8}"
 PIDFILE="/tmp/x3_start.pid"            # im Container, schreibt start_autonomy.sh
@@ -38,11 +38,11 @@ if [ "${1:-}" = "hochladen" ] || [ "${1:-}" = "upload" ]; then
         echo "Keine Protokolle in $HERE/protokoll - erst einmal fahren." >&2
         exit 1
     fi
-    git add -- Marlon/protokoll || exit 1
-    if git diff --cached --quiet -- Marlon/protokoll; then
+    git add -- Marlon/autonomes_fahren/protokoll || exit 1
+    if git diff --cached --quiet -- Marlon/autonomes_fahren/protokoll; then
         echo "[x3] Protokolle unveraendert, nichts zu committen"
     else
-        git commit -m "Protokoll vom Roboter $(date '+%Y-%m-%d %H:%M')" -- Marlon/protokoll || exit 1
+        git commit -m "Protokoll vom Roboter $(date '+%Y-%m-%d %H:%M')" -- Marlon/autonomes_fahren/protokoll || exit 1
     fi
     git pull --rebase --autostash || { echo "FEHLER: git pull fehlgeschlagen" >&2; exit 1; }
     git push && echo "[x3] Protokolle hochgeladen"
@@ -79,7 +79,7 @@ case "${1:-}" in
         echo "[x3] gestoppt"
         exit 0 ;;
     shell)
-        running || { echo "Container $NAME laeuft nicht. Erst: bash Marlon/x3.sh" >&2; exit 1; }
+        running || { echo "Container $NAME laeuft nicht. Erst: bash Marlon/autonomes_fahren/x3.sh" >&2; exit 1; }
         exec $DOCKER exec -it "$NAME" bash ;;
     neustart|restart)
         shift
@@ -109,13 +109,13 @@ done)
 if [ -n "$others" ]; then
     echo "FEHLER: Es laufen noch andere ROS-Container: $(echo $others)" >&2
     echo "        (z.B. aus ~/run_docker.sh). Sie stoeren Treiber und Lidar." >&2
-    echo "        Alles beenden und neu starten:  bash Marlon/x3.sh neustart" >&2
+    echo "        Alles beenden und neu starten:  bash Marlon/autonomes_fahren/x3.sh neustart" >&2
     exit 1
 fi
 
 if running && ! $DOCKER exec "$NAME" test -f "$HERE/start_autonomy.sh"; then
     echo "FEHLER: Container $NAME sieht dieses Repo nicht ($REPO)." >&2
-    echo "        bash Marlon/x3.sh neustart" >&2
+    echo "        bash Marlon/autonomes_fahren/x3.sh neustart" >&2
     exit 1
 fi
 

@@ -1,4 +1,4 @@
 *.sh text eol=lf
 *.py text eol=lf
 *.md text eol=lf
-protokoll/*.txt text eol=lf
+autonomes_fahren/protokoll/*.txt text eol=lf

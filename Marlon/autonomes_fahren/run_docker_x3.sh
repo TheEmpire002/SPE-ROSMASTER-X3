@@ -7,7 +7,7 @@
 # Mit -v /dev:/dev zeigt /dev/rplidar im Container immer auf den aktuellen Port.
 #
 # Auf dem Pi (nicht im Container) starten:  bash ~/run_docker_x3.sh
-# Zum Fahren reicht  bash Marlon/x3.sh  - das startet den Container selbst.
+# Zum Fahren reicht  bash Marlon/autonomes_fahren/x3.sh  - das startet den Container selbst.
 #
 # Laeuft der Container "x3" von x3.sh schon, oeffnet das hier nur ein weiteres
 # Terminal darin. Ein zweiter Container wuerde Treiber und Lidar stoeren.
