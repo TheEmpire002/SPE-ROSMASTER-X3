@@ -1,0 +1,10 @@
+Exception in thread task_serial_receive:
+Traceback (most recent call last):
+  File "/usr/lib/python3.8/threading.py", line 932, in _bootstrap_inner
+    self.run()
+  File "/usr/lib/python3.8/threading.py", line 870, in run
+    self._target(*self._args, **self._kwargs)
+  File "/usr/local/lib/python3.8/dist-packages/Rosmaster_Lib-3.3.9-py3.8.egg/Rosmaster_Lib/Rosmaster_Lib.py", line 260, in __receive_data
+  File "/usr/local/lib/python3.8/dist-packages/serial/serialposix.py", line 595, in read
+    raise SerialException(
+serial.serialutil.SerialException: device reports readiness to read but returned no data (device disconnected or multiple access on port?)
