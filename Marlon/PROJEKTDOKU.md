@@ -127,6 +127,19 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
   - Kurz nach dem Booten zeigte `dmesg` bereits 61 over-current-Meldungen auf allen Bussen.
   - Die USB-Versorgung bleibt damit das größte Hardware-Risiko.
 
+### 28.10.2026 – Takt dauerhaft auf 2,0 GHz, Überhitzung (Marlon, mit Ben abgesprochen)
+- **Was:**
+  - In `/boot/firmware/config.txt` steht jetzt `arm_freq=2000`, mit Kommentar und Verweis auf `docs/hardware.md`.
+  - Die Sicherung heißt `config.txt.vor-arm_freq-2026-10-28`. Rückgängig machen: die Zeile löschen.
+- **Warum:** Die Begrenzung zur Laufzeit ging bei jedem Neustart verloren (siehe Eintrag davor).
+- **Anpassung am Code:**
+  - Bens Server braucht keine Änderung, weil seine Schleifen nach Uhrzeit takten und nicht nach Rechenzeit.
+  - `scripts/check_hardware.py` zeigt jetzt CPU-Takt, Temperatur und Drosselung an. Es warnt, wenn die Begrenzung fehlt, z. B. nach einem neuen Image.
+- **Befund:**
+  - Eine andere Sitzung hatte `sudo dpkg --configure -a` gestartet. Das baute ein nvidia-Treibermodul (DKMS), das auf dem Pi sinnlos ist.
+  - Der Pi lief dadurch mit 84 °C und drosselte auf 1,5 GHz (`throttled=0xe0006`). Board und Lidar fielen dabei dauernd vom USB.
+  - Lehre: Nicht fahren und nicht testen, solange der Pi kompiliert. Die USB-Resets hängen auch an der Temperatur, nicht nur am Takt.
+
 ---
 
 ## 3. Ergebnisse und Messwerte
@@ -146,10 +159,11 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 
 | Problem | Ursache | Lösung / Stand |
 |---|---|---|
-| Geräte fallen vom USB ab | CPU-Lastsprung bei 2,4 GHz, Backfeed des Hubs | Takt auf 2,0 GHz (zur Laufzeit), Treiber verbinden sich selbst neu. **Offen:** Hub ohne Backfeed bzw. VBUS trennen, `arm_freq=2000` dauerhaft (mit Ben absprechen) |
+| Geräte fallen vom USB ab | CPU-Lastsprung bei 2,4 GHz, Backfeed des Hubs | `arm_freq=2000` dauerhaft in config.txt (28.10.), Treiber verbinden sich selbst neu. **Offen:** Hub ohne Backfeed bzw. VBUS trennen |
 | Kollisionen beim ersten Erkunder | Lidar gespiegelt und um 90° verdreht | `LIDAR_ANGLE_OFFSET_DEG = -90`, Hand-Test |
 | Drehung ungenau | Gyro-Bias/-Vorzeichen, theta im Server ≈ 0 | Erkunder dreht nach Zeit; Gyro-Korrektur offen |
 | Roboter auf dem Tisch | Lidar sieht keine Kanten | Autonomes Fahren nur am Boden |
+| USB-Ausfälle bei Hitze | Pi über 80 °C (Kompilieren), Drosselung auf 1,5 GHz | Während Builds nicht fahren; `check_hardware.py` zeigt Temperatur und Drosselung |
 | Push aus dem Laptop hängt | Git Credential Manager wartet auf Login-Fenster | Nutzer pusht selbst, der Pi zieht nur (`git pull`) |
 
 ---

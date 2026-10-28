@@ -29,6 +29,34 @@ def check_system() -> None:
             print(f"Modell   {f.read().strip(chr(0))}")
     except OSError:
         print("Modell   (kein Raspberry Pi)")
+    check_takt()
+
+
+def check_takt() -> None:
+    """CPU-Takt und Drosselung -- am X3 hängen die USB-Resets daran.
+
+    Bei 2,4 GHz fielen Board, Lidar und Kamera bei Lastsprüngen ab, deshalb
+    steht in /boot/firmware/config.txt `arm_freq=2000`. Fehlt die Zeile
+    (z. B. nach einem neuen Image), soll man das hier sofort sehen.
+    """
+    try:
+        with open("/sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq") as f:
+            mhz = int(f.read()) // 1000
+    except (OSError, ValueError):
+        return  # kein Linux mit cpufreq, z. B. Windows -- nichts zu prüfen
+    hinweis = "" if mhz <= 2000 else "  [WARNUNG] über 2000 MHz -> USB-Resets möglich, siehe docs/hardware.md"
+    print(f"CPU max  {mhz} MHz{hinweis}")
+    if shutil.which("vcgencmd") is None:
+        return
+    for args, name in ((["measure_temp"], "Temp    "), (["get_throttled"], "Drossel ")):
+        try:
+            out = subprocess.run(["vcgencmd", *args], capture_output=True, text=True, timeout=5)
+            wert = out.stdout.strip().split("=", 1)[-1]
+        except (subprocess.SubprocessError, OSError):
+            continue
+        # get_throttled: 0x0 = nie gedrosselt. Bit 0/16 Unterspannung,
+        # Bit 3/19 Temperaturgrenze (aktuell/seit dem Start).
+        print(f"{name} {wert}")
 
 
 def check_serial() -> None:

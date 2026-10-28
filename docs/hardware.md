@@ -260,10 +260,17 @@ ab. `dmesg` zeigt dann „over-current“ auf allen Ports. Die Ursache sind
 **CPU-Lastsprünge bei 2,4 GHz**, vermutlich mit Rückspeisung (Backfeed) des
 Hubs über das Expansion-Board. Ein leerer Akku ist es nicht.
 
-- Begrenzt man den Takt zur Laufzeit auf 2,0 GHz, treten die Resets deutlich
-  seltener auf, ganz weg sind sie aber nicht. Die Begrenzung gilt nur bis
-  zum nächsten Neustart. Dauerhaft ginge es über `arm_freq=2000` in
-  `/boot/firmware/config.txt`, was aber alle Nutzer des Pi betrifft.
+- Mit 2,0 GHz treten die Resets deutlich seltener auf, ganz weg sind sie
+  aber nicht. **Seit dem 28.10. steht deshalb `arm_freq=2000` in
+  `/boot/firmware/config.txt`** (mit Ben abgestimmt, Backup
+  `config.txt.vor-arm_freq-2026-10-28`). Der Server braucht dafür keine
+  Anpassung: Alle Schleifen laufen nach Uhrzeit, nicht nach Rechenzeit, und
+  die teuersten Teile (Personenerkennung 2 Hz, JPEG 15 fps) haben genug Luft.
+- `python scripts/check_hardware.py` zeigt Takt, Temperatur und Drosselung
+  und warnt, wenn die Begrenzung fehlt.
+- Wird der Pi heiß (über ~80 °C, z. B. beim Kompilieren), drosselt er selbst
+  auf 1,5 GHz und die USB-Geräte fallen massenhaft ab. Beim Kompilieren also
+  Roboter nicht fahren lassen.
 - Die eigentliche Lösung liegt in der Hardware: ein Hub ohne Rückspeisung
   oder eine getrennte VBUS-Leitung.
 - Die C270 hängt an einem eigenen Bus und ist nicht betroffen.
