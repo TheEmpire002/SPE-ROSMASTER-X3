@@ -345,6 +345,9 @@ class LidarService:
         self._runden = 0
         self._letzter_fehler: str | None = None
         self._neuverbindungen = 0
+        # Für die Schonfrist beim Neu-Verbinden (siehe _neu_oeffnen).
+        self._verbunden_seit: float | None = None
+        self._letzte_wartezeit = config.RECONNECT_MIN_S
 
     @property
     def label(self) -> str:
@@ -436,7 +439,24 @@ class LidarService:
         except Exception:
             log.debug("Lidar schließen misslungen", exc_info=True)
 
-        wartezeit = config.RECONNECT_MIN_S
+        # Fällt der Lidar kurz nach dem letzten Neu-Verbinden wieder aus, war
+        # vermutlich sein eigener Motoranlauf der Auslöser: Der zieht Strom,
+        # die USB-Versorgung bricht ein, alles meldet sich ab. Am 28.10. hielt
+        # das eine Dauerschleife am Laufen, weil die Wartezeit nach jedem
+        # Erfolg wieder bei 1 s begann. Deshalb dann weiter verdoppeln.
+        jetzt = time.monotonic()
+        if (self._verbunden_seit is not None
+                and jetzt - self._verbunden_seit < config.LIDAR_STABIL_S):
+            wartezeit = min(self._letzte_wartezeit * 2, config.RECONNECT_MAX_S)
+            log.warning(
+                "Lidar fiel %.0f s nach dem Neu-Verbinden wieder aus -- "
+                "warte %.0f s, damit der Motoranlauf keine Dauerschleife auslöst",
+                jetzt - self._verbunden_seit, wartezeit,
+            )
+        else:
+            wartezeit = config.RECONNECT_MIN_S
+        self._verbunden_seit = None
+
         while not self._stop.wait(wartezeit):
             try:
                 self._lidar.open()
@@ -451,5 +471,7 @@ class LidarService:
                 wartezeit = min(wartezeit * 2, config.RECONNECT_MAX_S)
                 continue
             self._neuverbindungen += 1
+            self._verbunden_seit = time.monotonic()
+            self._letzte_wartezeit = wartezeit
             log.warning("Lidar wieder verbunden")
             return

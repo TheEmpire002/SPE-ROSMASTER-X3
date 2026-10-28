@@ -37,6 +37,11 @@ RECONNECT_CHECK_S = 1.0
 RECONNECT_MIN_S = 1.0
 RECONNECT_MAX_S = 30.0
 
+# Fällt der Lidar innerhalb dieser Zeit nach dem Neu-Verbinden wieder aus,
+# beginnt die Wartezeit nicht von vorn, sondern wächst weiter. Sonst startet
+# sein Motor alle paar Sekunden neu und hält die USB-Ausfälle am Laufen.
+LIDAR_STABIL_S = 60.0
+
 # Kommt so lange kein neues Kamerabild, wird die Kamera neu geöffnet.
 # Die Wartezeit dazwischen wächst bei jedem Fehlschlag: ist das Anlaufen der
 # Kamera selbst der Auslöser des Spannungseinbruchs, würde ein schnelles

@@ -356,6 +356,12 @@ Die Software übersteht die Aussetzer (Board und Lidar verbinden sich neu,
 das Board immer über `/dev/myserial`, nie über den Lidar-Port), aber
 zuverlässig fährt der Roboter so nicht.
 
+Der Lidar kann die Schleife auch im Stand antreiben: Sein Motor läuft nach
+jedem Neu-Verbinden an. Deshalb wartet der Server länger und länger, wenn
+der Lidar kurz nach dem Neu-Verbinden wieder ausfällt (`LIDAR_STABIL_S`).
+Meldet sich der Lidar gar nicht mehr an (`dmesg`: immer wieder „new
+full-speed USB device“ an 1-1.4), Lidar-Kabel neu stecken.
+
 ### Was am Roboter tun (Hardware)
 
 Nach Wirkung sortiert, das Einfachste zuerst:

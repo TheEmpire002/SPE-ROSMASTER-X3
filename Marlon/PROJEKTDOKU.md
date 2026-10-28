@@ -228,6 +228,9 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Dabei gefundene Fehler in der Software, behoben:**
   - **Fahrbefehle konnten an den Lidar gehen.** Nach einem Aussetzer meldete sich der Lidar eine Sekunde vor dem Board wieder an. Bens Treiber nahm dann „das einzige Gerät“ und verband sich mit dem Lidar. Jetzt wählt der Treiber zuerst `/dev/myserial` (udev-Regel über Hersteller- und Produktnummer) und schließt den Lidar immer aus. Am Pi geprüft: Jedes Neu-Verbinden lief über `/dev/myserial`.
   - **Strg+C beendete den Server nicht.** uvicorn wartete ewig darauf, dass der Kamera-Stream endet, der nie endet. Dadurch lief auch das Aufräumen (Motoren aus) nicht an. Jetzt werden offene Verbindungen nach 3 s gekappt (`SHUTDOWN_TIMEOUT_S`). Am Pi mit offenem Stream geprüft: beendet nach 4 s, Aufräumen vollständig.
+- **Danach: Dauerschleife schon im Stand.** Nach dem Neustart des Servers (alter Stand) stieg der Zähler in 4 min von 5129 auf 5752, ohne dass der Roboter fuhr. Mit gestopptem Server stand der Zähler sofort still. Ursache: Nach jedem erfolgreichen Neu-Verbinden läuft der Lidar-Motor an, der Anlaufstrom löst den nächsten Einbruch aus, und die Wartezeit begann jedes Mal wieder bei 1 s. Der Server startete den Motor also alle paar Sekunden neu.
+  - **Behoben:** Fällt der Lidar innerhalb von 60 s nach dem Neu-Verbinden wieder aus (`LIDAR_STABIL_S`), wächst die Wartezeit weiter (1 → 2 → 4 … 30 s), statt neu zu beginnen. Lokal mit einem Schein-Lidar geprüft.
+  - Der Lidar-Port am Hub (1-1.4) meldete sich danach gar nicht mehr an. Dann hilft nur Lidar-Kabel neu stecken oder Roboter aus- und einschalten.
 
 ---
 
@@ -263,6 +266,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 | Falsche Kamera möglich | `/dev/video*`-Nummern tauschen nach USB-Resets, Orbbec könnte `video0` werden | Kamera über den Namen wählen, `CAMERA_NAME = "C270"` (28.10.) |
 | Resets beim Drehen, trotz vollem Akku und ohne Orbbec | Anlaufstrom aller vier Motoren zieht die 5-V-Versorgung herunter | **Offen:** getrennte 5-V-Versorgung (DC/DC) für Pi bzw. Hub, siehe `docs/hardware.md` |
 | Treiber verband sich mit dem Lidar | Nach einem Aussetzer war der Lidar kurz das einzige serielle Gerät | Board über `/dev/myserial`, Lidar immer ausgeschlossen (28.10.) |
+| USB-Dauerschleife auch im Stand | Lidar-Motor lief nach jedem Neu-Verbinden sofort wieder an, Wartezeit begann bei 1 s | Wartezeit wächst weiter, wenn er kurz danach wieder ausfällt (`LIDAR_STABIL_S`, 28.10.) |
 | Strg+C beendete den Server nicht | uvicorn wartete auf den endlosen Kamera-Stream, Motoren-Stopp lief nicht an | `SHUTDOWN_TIMEOUT_S = 3` (28.10.) |
 | Push aus dem Laptop hängt | Git Credential Manager wartet auf Login-Fenster | Nutzer pusht selbst, der Pi zieht nur (`git pull`) |
 
