@@ -1,0 +1,1750 @@
+[Wed Oct 28 08:19:42 2026] Booting Linux on physical CPU 0x0000000000 [0x414fd0b1]
+[Wed Oct 28 08:19:42 2026] Linux version 6.18.50+rpt-rpi-2712 (serge@raspberrypi.com) (aarch64-linux-gnu-gcc-14 (Debian 14.2.0-19) 14.2.0, GNU ld (GNU Binutils for Debian) 2.44) #1 SMP PREEMPT Debian 1:6.18.50-1+rpt1 (2026-09-11)
+[Wed Oct 28 08:19:42 2026] KASLR enabled
+[Wed Oct 28 08:19:42 2026] random: crng init done
+[Wed Oct 28 08:19:42 2026] Machine model: Raspberry Pi 5 Model B Rev 1.1
+[Wed Oct 28 08:19:42 2026] efi: UEFI not found.
+[Wed Oct 28 08:19:42 2026] Reserved memory: created CMA memory pool at 0x000000003a000000, size 64 MiB
+[Wed Oct 28 08:19:42 2026] OF: reserved mem: initialized node linux,cma, compatible id shared-dma-pool
+[Wed Oct 28 08:19:42 2026] OF: reserved mem: 0x000000003a000000..0x000000003dffffff (65536 KiB) map reusable linux,cma
+[Wed Oct 28 08:19:42 2026] OF: reserved mem: 0x0000000000000000..0x000000000007ffff (512 KiB) nomap non-reusable atf@0
+[Wed Oct 28 08:19:42 2026] OF: reserved mem: 0x000000003fd1b634..0x000000003fd1b671 (0 KiB) nomap non-reusable nvram@0
+[Wed Oct 28 08:19:42 2026] NUMA: Faking a node at [mem 0x0000000000000000-0x00000003ffffffff]
+[Wed Oct 28 08:19:42 2026] Faking node 0 at [mem 0x0000000000000000-0x000000007fffffff] (2048MB)
+[Wed Oct 28 08:19:42 2026] Faking node 1 at [mem 0x0000000080000000-0x00000000ffffffff] (2048MB)
+[Wed Oct 28 08:19:42 2026] Faking node 2 at [mem 0x0000000100000000-0x000000017fffffff] (2048MB)
+[Wed Oct 28 08:19:42 2026] Faking node 3 at [mem 0x0000000180000000-0x00000001ffffffff] (2048MB)
+[Wed Oct 28 08:19:42 2026] Faking node 4 at [mem 0x0000000200000000-0x000000027fffffff] (2048MB)
+[Wed Oct 28 08:19:42 2026] Faking node 5 at [mem 0x0000000280000000-0x00000002ffffffff] (2048MB)
+[Wed Oct 28 08:19:42 2026] Faking node 6 at [mem 0x0000000300000000-0x000000037fffffff] (2048MB)
+[Wed Oct 28 08:19:42 2026] Faking node 7 at [mem 0x0000000380000000-0x00000003ffffffff] (2048MB)
+[Wed Oct 28 08:19:42 2026] NODE_DATA(0) allocated [mem 0x7fffd180-0x7fffffff]
+[Wed Oct 28 08:19:42 2026] NODE_DATA(1) allocated [mem 0xffffd180-0xffffffff]
+[Wed Oct 28 08:19:42 2026] NODE_DATA(2) allocated [mem 0x17fffd180-0x17fffffff]
+[Wed Oct 28 08:19:42 2026] NODE_DATA(3) allocated [mem 0x1ffffd180-0x1ffffffff]
+[Wed Oct 28 08:19:42 2026] NODE_DATA(4) allocated [mem 0x27fffd180-0x27fffffff]
+[Wed Oct 28 08:19:42 2026] NODE_DATA(5) allocated [mem 0x2ffffd180-0x2ffffffff]
+[Wed Oct 28 08:19:42 2026] NODE_DATA(6) allocated [mem 0x37fffd180-0x37fffffff]
+[Wed Oct 28 08:19:42 2026] NODE_DATA(7) allocated [mem 0x3ff799180-0x3ff79bfff]
+[Wed Oct 28 08:19:42 2026] Zone ranges:
+[Wed Oct 28 08:19:42 2026]   DMA      [mem 0x0000000000000000-0x00000000ffffffff]
+[Wed Oct 28 08:19:42 2026]   DMA32    empty
+[Wed Oct 28 08:19:42 2026]   Normal   [mem 0x0000000100000000-0x00000003ffffffff]
+[Wed Oct 28 08:19:42 2026] Movable zone start for each node
+[Wed Oct 28 08:19:42 2026] Early memory node ranges
+[Wed Oct 28 08:19:42 2026]   node   0: [mem 0x0000000000000000-0x000000000007ffff]
+[Wed Oct 28 08:19:42 2026]   node   0: [mem 0x0000000000080000-0x000000003fbfffff]
+[Wed Oct 28 08:19:42 2026]   node   0: [mem 0x0000000040000000-0x000000007fffffff]
+[Wed Oct 28 08:19:42 2026]   node   1: [mem 0x0000000080000000-0x00000000ffffffff]
+[Wed Oct 28 08:19:42 2026]   node   2: [mem 0x0000000100000000-0x000000017fffffff]
+[Wed Oct 28 08:19:42 2026]   node   3: [mem 0x0000000180000000-0x00000001ffffffff]
+[Wed Oct 28 08:19:42 2026]   node   4: [mem 0x0000000200000000-0x000000027fffffff]
+[Wed Oct 28 08:19:42 2026]   node   5: [mem 0x0000000280000000-0x00000002ffffffff]
+[Wed Oct 28 08:19:42 2026]   node   6: [mem 0x0000000300000000-0x000000037fffffff]
+[Wed Oct 28 08:19:42 2026]   node   7: [mem 0x0000000380000000-0x00000003ffffffff]
+[Wed Oct 28 08:19:42 2026] Initmem setup node 0 [mem 0x0000000000000000-0x000000007fffffff]
+[Wed Oct 28 08:19:42 2026] Initmem setup node 1 [mem 0x0000000080000000-0x00000000ffffffff]
+[Wed Oct 28 08:19:42 2026] Initmem setup node 2 [mem 0x0000000100000000-0x000000017fffffff]
+[Wed Oct 28 08:19:42 2026] Initmem setup node 3 [mem 0x0000000180000000-0x00000001ffffffff]
+[Wed Oct 28 08:19:42 2026] Initmem setup node 4 [mem 0x0000000200000000-0x000000027fffffff]
+[Wed Oct 28 08:19:42 2026] Initmem setup node 5 [mem 0x0000000280000000-0x00000002ffffffff]
+[Wed Oct 28 08:19:42 2026] Initmem setup node 6 [mem 0x0000000300000000-0x000000037fffffff]
+[Wed Oct 28 08:19:42 2026] Initmem setup node 7 [mem 0x0000000380000000-0x00000003ffffffff]
+[Wed Oct 28 08:19:42 2026] On node 0, zone DMA: 256 pages in unavailable ranges
+[Wed Oct 28 08:19:42 2026] psci: probing for conduit method from DT.
+[Wed Oct 28 08:19:42 2026] psci: PSCIv1.1 detected in firmware.
+[Wed Oct 28 08:19:42 2026] psci: Using standard PSCI v0.2 function IDs
+[Wed Oct 28 08:19:42 2026] psci: MIGRATE_INFO_TYPE not supported.
+[Wed Oct 28 08:19:42 2026] psci: SMC Calling Convention v1.2
+[Wed Oct 28 08:19:42 2026] percpu: Embedded 9 pages/cpu s95896 r8192 d43368 u147456
+[Wed Oct 28 08:19:42 2026] pcpu-alloc: s95896 r8192 d43368 u147456 alloc=9*16384
+[Wed Oct 28 08:19:42 2026] pcpu-alloc: [0] 0 [0] 1 [0] 2 [0] 3 
+[Wed Oct 28 08:19:42 2026] Detected PIPT I-cache on CPU0
+[Wed Oct 28 08:19:42 2026] CPU features: detected: Virtualization Host Extensions
+[Wed Oct 28 08:19:42 2026] CPU features: detected: Spectre-v4
+[Wed Oct 28 08:19:42 2026] CPU features: detected: Spectre-BHB
+[Wed Oct 28 08:19:42 2026] CPU features: kernel page table isolation forced ON by KASLR
+[Wed Oct 28 08:19:42 2026] CPU features: detected: Kernel page table isolation (KPTI)
+[Wed Oct 28 08:19:42 2026] CPU features: detected: Broken broadcast TLBI completion
+[Wed Oct 28 08:19:42 2026] CPU features: detected: SSBS not fully self-synchronizing
+[Wed Oct 28 08:19:42 2026] alternatives: applying boot alternatives
+[Wed Oct 28 08:19:42 2026] Kernel command line: reboot=w coherent_pool=1M 8250.nr_uarts=1 pci=pcie_bus_safe cgroup_disable=memory numa_policy=interleave nvme.max_host_mem_size_mb=32  numa=fake=8 system_heap.max_order=0 iommu_dma_numa_policy=interleave smsc95xx.macaddr=88:A2:9E:A8:05:25 vc_mem.mem_base=0x3fc00000 vc_mem.mem_size=0x40000000  console=tty1 root=PARTUUID=c777c139-02 rootfstype=ext4 fsck.repair=yes rootwait cgroup_enable=memory cgroup_memory=1 quiet splash plymouth.ignore-serial-consoles cfg80211.ieee80211_regdom=DE
+[Wed Oct 28 08:19:42 2026] cgroup: Disabling memory control group subsystem
+[Wed Oct 28 08:19:42 2026] mempolicy: NUMA default policy overridden to 'interleave:0-7'
+[Wed Oct 28 08:19:42 2026] DMA IOMMU NUMA default policy overridden to 'interleave:0-7'
+[Wed Oct 28 08:19:42 2026] cgroup: Enabling memory control group subsystem
+[Wed Oct 28 08:19:42 2026] Unknown kernel command line parameters "splash cgroup_memory=1", will be passed to user space.
+[Wed Oct 28 08:19:42 2026] printk: log buffer data + meta data: 131072 + 458752 = 589824 bytes
+[Wed Oct 28 08:19:42 2026] software IO TLB: area num 4.
+[Wed Oct 28 08:19:42 2026] software IO TLB: mapped [mem 0x00000000fbffc000-0x00000000ffffc000] (64MB)
+[Wed Oct 28 08:19:42 2026] Fallback order for Node 0: 0 1 2 3 4 5 6 7 
+[Wed Oct 28 08:19:42 2026] Fallback order for Node 1: 1 2 3 4 5 6 7 0 
+[Wed Oct 28 08:19:42 2026] Fallback order for Node 2: 2 3 4 5 6 7 0 1 
+[Wed Oct 28 08:19:42 2026] Fallback order for Node 3: 3 4 5 6 7 0 1 2 
+[Wed Oct 28 08:19:42 2026] Fallback order for Node 4: 4 5 6 7 0 1 2 3 
+[Wed Oct 28 08:19:42 2026] Fallback order for Node 5: 5 6 7 0 1 2 3 4 
+[Wed Oct 28 08:19:42 2026] Fallback order for Node 6: 6 7 0 1 2 3 4 5 
+[Wed Oct 28 08:19:42 2026] Fallback order for Node 7: 7 0 1 2 3 4 5 6 
+[Wed Oct 28 08:19:42 2026] Built 8 zonelists, mobility grouping on.  Total pages: 1048320
+[Wed Oct 28 08:19:42 2026] Policy zone: Normal
+[Wed Oct 28 08:19:42 2026] mem auto-init: stack:all(zero), heap alloc:off, heap free:off
+[Wed Oct 28 08:19:42 2026] SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=4, Nodes=8
+[Wed Oct 28 08:19:42 2026] ftrace: allocating 46803 entries in 46 pages
+[Wed Oct 28 08:19:42 2026] ftrace: allocated 46 pages with 4 groups
+[Wed Oct 28 08:19:42 2026] rcu: Preemptible hierarchical RCU implementation.
+[Wed Oct 28 08:19:42 2026] rcu: 	RCU event tracing is enabled.
+[Wed Oct 28 08:19:42 2026] 	Trampoline variant of Tasks RCU enabled.
+[Wed Oct 28 08:19:42 2026] 	Rude variant of Tasks RCU enabled.
+[Wed Oct 28 08:19:42 2026] 	Tracing variant of Tasks RCU enabled.
+[Wed Oct 28 08:19:42 2026] rcu: RCU calculated value of scheduler-enlistment delay is 25 jiffies.
+[Wed Oct 28 08:19:42 2026] RCU Tasks: Setting shift to 2 and lim to 1 rcu_task_cb_adjust=1 rcu_task_cpu_ids=4.
+[Wed Oct 28 08:19:42 2026] RCU Tasks Rude: Setting shift to 2 and lim to 1 rcu_task_cb_adjust=1 rcu_task_cpu_ids=4.
+[Wed Oct 28 08:19:42 2026] RCU Tasks Trace: Setting shift to 2 and lim to 1 rcu_task_cb_adjust=1 rcu_task_cpu_ids=4.
+[Wed Oct 28 08:19:42 2026] NR_IRQS: 64, nr_irqs: 64, preallocated irqs: 0
+[Wed Oct 28 08:19:42 2026] Root IRQ handler: gic_handle_irq
+[Wed Oct 28 08:19:42 2026] GIC: Using split EOI/Deactivate mode
+[Wed Oct 28 08:19:42 2026] rcu: srcu_init: Setting srcu_struct sizes based on contention.
+[Wed Oct 28 08:19:42 2026] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[Wed Oct 28 08:19:42 2026] arch_timer: cp15 timer running at 54.00MHz (phys).
+[Wed Oct 28 08:19:42 2026] clocksource: arch_sys_counter: mask: 0xffffffffffffff max_cycles: 0xc743ce346, max_idle_ns: 440795203123 ns
+[Wed Oct 28 08:19:42 2026] sched_clock: 56 bits at 54MHz, resolution 18ns, wraps every 4398046511102ns
+[Wed Oct 28 08:19:42 2026] Console: colour dummy device 80x25
+[Wed Oct 28 08:19:42 2026] printk: legacy console [tty1] enabled
+[Wed Oct 28 08:19:42 2026] Calibrating delay loop (skipped), value calculated using timer frequency.. 108.00 BogoMIPS (lpj=216000)
+[Wed Oct 28 08:19:42 2026] pid_max: default: 32768 minimum: 301
+[Wed Oct 28 08:19:42 2026] LSM: initializing lsm=capability
+[Wed Oct 28 08:19:42 2026] Dentry cache hash table entries: 2097152 (order: 10, 16777216 bytes, vmalloc hugepage)
+[Wed Oct 28 08:19:42 2026] Inode-cache hash table entries: 1048576 (order: 9, 8388608 bytes, vmalloc hugepage)
+[Wed Oct 28 08:19:42 2026] Mount-cache hash table entries: 32768 (order: 4, 262144 bytes, vmalloc)
+[Wed Oct 28 08:19:42 2026] Mountpoint-cache hash table entries: 32768 (order: 4, 262144 bytes, vmalloc)
+[Wed Oct 28 08:19:42 2026] rcu: Hierarchical SRCU implementation.
+[Wed Oct 28 08:19:42 2026] rcu: 	Max phase no-delay instances is 1000.
+[Wed Oct 28 08:19:42 2026] Timer migration: 1 hierarchy levels; 8 children per group; 0 crossnode level
+[Wed Oct 28 08:19:42 2026] EFI services will not be available.
+[Wed Oct 28 08:19:42 2026] smp: Bringing up secondary CPUs ...
+[Wed Oct 28 08:19:42 2026] Detected PIPT I-cache on CPU1
+[Wed Oct 28 08:19:42 2026] CPU1: Booted secondary processor 0x0000000100 [0x414fd0b1]
+[Wed Oct 28 08:19:42 2026] Detected PIPT I-cache on CPU2
+[Wed Oct 28 08:19:42 2026] CPU2: Booted secondary processor 0x0000000200 [0x414fd0b1]
+[Wed Oct 28 08:19:42 2026] Detected PIPT I-cache on CPU3
+[Wed Oct 28 08:19:42 2026] CPU3: Booted secondary processor 0x0000000300 [0x414fd0b1]
+[Wed Oct 28 08:19:42 2026] smp: Brought up 8 nodes, 4 CPUs
+[Wed Oct 28 08:19:42 2026] SMP: Total of 4 processors activated.
+[Wed Oct 28 08:19:42 2026] CPU: All CPU(s) started at EL2
+[Wed Oct 28 08:19:42 2026] CPU features: detected: 32-bit EL0 Support
+[Wed Oct 28 08:19:42 2026] CPU features: detected: Data cache clean to the PoU not required for I/D coherence
+[Wed Oct 28 08:19:42 2026] CPU features: detected: Common not Private translations
+[Wed Oct 28 08:19:42 2026] CPU features: detected: CRC32 instructions
+[Wed Oct 28 08:19:42 2026] CPU features: detected: RCpc load-acquire (LDAPR)
+[Wed Oct 28 08:19:42 2026] CPU features: detected: LSE atomic instructions
+[Wed Oct 28 08:19:42 2026] CPU features: detected: Privileged Access Never
+[Wed Oct 28 08:19:42 2026] CPU features: detected: PMUv3
+[Wed Oct 28 08:19:42 2026] CPU features: detected: RAS Extension Support
+[Wed Oct 28 08:19:42 2026] CPU features: detected: Speculative Store Bypassing Safe (SSBS)
+[Wed Oct 28 08:19:42 2026] alternatives: applying system-wide alternatives
+[Wed Oct 28 08:19:42 2026] CPU features: detected: Hardware dirty bit management on CPU0-3
+[Wed Oct 28 08:19:42 2026] Memory: 16480848K/16773120K available (15104K kernel code, 2482K rwdata, 5216K rodata, 2240K init, 563K bss, 190224K reserved, 65536K cma-reserved)
+[Wed Oct 28 08:19:42 2026] devtmpfs: initialized
+[Wed Oct 28 08:19:42 2026] Enabled cp15_barrier support
+[Wed Oct 28 08:19:42 2026] Enabled setend support
+[Wed Oct 28 08:19:42 2026] posixtimers hash table entries: 2048 (order: 1, 32768 bytes, vmalloc)
+[Wed Oct 28 08:19:42 2026] futex hash table entries: 128 (8192 bytes on 8 NUMA nodes, total 64 KiB, linear).
+[Wed Oct 28 08:19:42 2026] 2G module region forced by RANDOMIZE_MODULE_REGION_FULL
+[Wed Oct 28 08:19:42 2026] 0 pages in range for non-PLT usage
+[Wed Oct 28 08:19:42 2026] 129448 pages in range for PLT usage
+[Wed Oct 28 08:19:42 2026] pinctrl core: initialized pinctrl subsystem
+[Wed Oct 28 08:19:42 2026] DMI not present or invalid.
+[Wed Oct 28 08:19:42 2026] NET: Registered PF_NETLINK/PF_ROUTE protocol family
+[Wed Oct 28 08:19:42 2026] DMA: preallocated 1024 KiB GFP_KERNEL pool for atomic allocations
+[Wed Oct 28 08:19:42 2026] DMA: preallocated 1024 KiB GFP_KERNEL|GFP_DMA pool for atomic allocations
+[Wed Oct 28 08:19:42 2026] DMA: preallocated 1024 KiB GFP_KERNEL|GFP_DMA32 pool for atomic allocations
+[Wed Oct 28 08:19:42 2026] audit: initializing netlink subsys (disabled)
+[Wed Oct 28 08:19:42 2026] audit: type=2000 audit(0.012:1): state=initialized audit_enabled=0 res=1
+[Wed Oct 28 08:19:42 2026] thermal_sys: Registered thermal governor 'step_wise'
+[Wed Oct 28 08:19:42 2026] cpuidle: using governor menu
+[Wed Oct 28 08:19:42 2026] hw-breakpoint: found 6 breakpoint and 4 watchpoint registers.
+[Wed Oct 28 08:19:42 2026] ASID allocator initialised with 32768 entries
+[Wed Oct 28 08:19:42 2026] Serial: AMBA PL011 UART driver
+[Wed Oct 28 08:19:42 2026] /soc@107c000000/interrupt-controller@7fff9000: Fixed dependency cycle(s) with /soc@107c000000/interrupt-controller@7fff9000
+[Wed Oct 28 08:19:42 2026] bcm2835-mbox 107c013880.mailbox: mailbox enabled
+[Wed Oct 28 08:19:42 2026] 107d001000.serial: ttyAMA10 at MMIO 0x107d001000 (irq = 15, base_baud = 0) is a PL011 rev3
+[Wed Oct 28 08:19:42 2026] raspberrypi-firmware soc@107c000000:firmware: Attached to firmware from 2026-09-25T15:59:09, variant start_cd
+[Wed Oct 28 08:19:42 2026] raspberrypi-firmware soc@107c000000:firmware: Firmware hash is 1accd66500000000000000000000000000000000
+[Wed Oct 28 08:19:42 2026] /axi/pcie@1000120000/rp1/i2c@80000/imx219@10: Fixed dependency cycle(s) with /axi/pcie@1000120000/rp1/csi@128000
+[Wed Oct 28 08:19:42 2026] /axi/pcie@1000120000/rp1/csi@128000: Fixed dependency cycle(s) with /axi/pcie@1000120000/rp1/i2c@80000/imx219@10
+[Wed Oct 28 08:19:42 2026] /axi/pcie@1000120000/rp1/i2c@80000/imx219@10: Fixed dependency cycle(s) with /axi/pcie@1000120000/rp1/csi@128000
+[Wed Oct 28 08:19:42 2026] /axi/pcie@1000120000/rp1/csi@128000: Fixed dependency cycle(s) with /axi/pcie@1000120000/rp1/i2c@80000/imx219@10
+[Wed Oct 28 08:19:42 2026] bcm2835-dma 1000010000.dma: DMA legacy API manager, dmachans=0x1
+[Wed Oct 28 08:19:42 2026] iommu: Default domain type: Translated
+[Wed Oct 28 08:19:42 2026] iommu: DMA domain TLB invalidation policy: strict mode
+[Wed Oct 28 08:19:42 2026] SCSI subsystem initialized
+[Wed Oct 28 08:19:42 2026] usbcore: registered new interface driver usbfs
+[Wed Oct 28 08:19:42 2026] usbcore: registered new interface driver hub
+[Wed Oct 28 08:19:42 2026] usbcore: registered new device driver usb
+[Wed Oct 28 08:19:42 2026] pps_core: LinuxPPS API ver. 1 registered
+[Wed Oct 28 08:19:42 2026] pps_core: Software ver. 5.3.6 - Copyright 2005-2007 Rodolfo Giometti <giometti@linux.it>
+[Wed Oct 28 08:19:42 2026] PTP clock support registered
+[Wed Oct 28 08:19:42 2026] vgaarb: loaded
+[Wed Oct 28 08:19:42 2026] clocksource: Switched to clocksource arch_sys_counter
+[Wed Oct 28 08:19:42 2026] VFS: Disk quotas dquot_6.6.0
+[Wed Oct 28 08:19:42 2026] VFS: Dquot-cache hash table entries: 2048 (order 0, 16384 bytes)
+[Wed Oct 28 08:19:42 2026] NET: Registered PF_INET protocol family
+[Wed Oct 28 08:19:42 2026] IP idents hash table entries: 262144 (order: 7, 2097152 bytes, vmalloc hugepage)
+[Wed Oct 28 08:19:42 2026] tcp_listen_portaddr_hash hash table entries: 8192 (order: 3, 131072 bytes, vmalloc)
+[Wed Oct 28 08:19:42 2026] Table-perturb hash table entries: 65536 (order: 4, 262144 bytes, vmalloc)
+[Wed Oct 28 08:19:42 2026] TCP established hash table entries: 131072 (order: 6, 1048576 bytes, vmalloc)
+[Wed Oct 28 08:19:42 2026] TCP bind hash table entries: 65536 (order: 7, 2097152 bytes, vmalloc hugepage)
+[Wed Oct 28 08:19:42 2026] TCP: Hash tables configured (established 131072 bind 65536)
+[Wed Oct 28 08:19:42 2026] MPTCP token hash table entries: 16384 (order: 5, 393216 bytes, vmalloc)
+[Wed Oct 28 08:19:42 2026] UDP hash table entries: 8192 (order: 5, 524288 bytes, vmalloc)
+[Wed Oct 28 08:19:42 2026] UDP-Lite hash table entries: 8192 (order: 5, 524288 bytes, vmalloc)
+[Wed Oct 28 08:19:42 2026] NET: Registered PF_UNIX/PF_LOCAL protocol family
+[Wed Oct 28 08:19:42 2026] RPC: Registered named UNIX socket transport module.
+[Wed Oct 28 08:19:42 2026] RPC: Registered udp transport module.
+[Wed Oct 28 08:19:42 2026] RPC: Registered tcp transport module.
+[Wed Oct 28 08:19:42 2026] RPC: Registered tcp-with-tls transport module.
+[Wed Oct 28 08:19:42 2026] RPC: Registered tcp NFSv4.1 backchannel transport module.
+[Wed Oct 28 08:19:42 2026] PCI: CLS 0 bytes, default 64
+[Wed Oct 28 08:19:42 2026] Trying to unpack rootfs image as initramfs...
+[Wed Oct 28 08:19:42 2026] kvm [1]: nv: 568 coarse grained trap handlers
+[Wed Oct 28 08:19:42 2026] kvm [1]: IPA Size Limit: 40 bits
+[Wed Oct 28 08:19:42 2026] kvm [1]: GICV region size/alignment is unsafe, using trapping (reduced performance)
+[Wed Oct 28 08:19:42 2026] kvm [1]: vgic interrupt IRQ9
+[Wed Oct 28 08:19:42 2026] kvm [1]: VHE mode initialized successfully
+[Wed Oct 28 08:19:42 2026] Initialise system trusted keyrings
+[Wed Oct 28 08:19:42 2026] workingset: timestamp_bits=42 max_order=20 bucket_order=0
+[Wed Oct 28 08:19:42 2026] NFS: Registering the id_resolver key type
+[Wed Oct 28 08:19:42 2026] Key type id_resolver registered
+[Wed Oct 28 08:19:42 2026] Key type id_legacy registered
+[Wed Oct 28 08:19:42 2026] nfs4filelayout_init: NFSv4 File Layout Driver Registering...
+[Wed Oct 28 08:19:42 2026] nfs4flexfilelayout_init: NFSv4 Flexfile Layout Driver Registering...
+[Wed Oct 28 08:19:42 2026] Key type asymmetric registered
+[Wed Oct 28 08:19:42 2026] Asymmetric key parser 'x509' registered
+[Wed Oct 28 08:19:42 2026] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 246)
+[Wed Oct 28 08:19:42 2026] io scheduler mq-deadline registered
+[Wed Oct 28 08:19:42 2026] io scheduler kyber registered
+[Wed Oct 28 08:19:42 2026] io scheduler bfq registered
+[Wed Oct 28 08:19:42 2026] irq_brcmstb_l2: registered L2 intc (/soc@107c000000/interrupt-controller@7d510600, parent irq: 26)
+[Wed Oct 28 08:19:42 2026] irq_brcmstb_l2: registered L2 intc (/soc@107c000000/interrupt-controller@7c502000, parent irq: 27)
+[Wed Oct 28 08:19:42 2026] irq_brcmstb_l2: registered L2 intc (/soc@107c000000/interrupt-controller@7d508380, parent irq: 28)
+[Wed Oct 28 08:19:42 2026] irq_brcmstb_l2: registered L2 intc (/soc@107c000000/interrupt-controller@7d508400, parent irq: 29)
+[Wed Oct 28 08:19:42 2026] irq_brcmstb_l2: registered L2 intc (/soc@107c000000/intc@7d503000, parent irq: 30)
+[Wed Oct 28 08:19:42 2026] ledtrig-cpu: registered to indicate activity on CPUs
+[Wed Oct 28 08:19:42 2026] Freeing initrd memory: 22384K
+[Wed Oct 28 08:19:42 2026] Serial: 8250/16550 driver, 1 ports, IRQ sharing enabled
+[Wed Oct 28 08:19:42 2026] 107d50c000.serial: ttyS0 at MMIO 0x107d50c000 (irq = 32, base_baud = 6000000) is a Broadcom BCM7271 UART
+[Wed Oct 28 08:19:42 2026] serial serial0: tty port ttyS0 registered
+[Wed Oct 28 08:19:42 2026] iproc-rng200 107d208000.rng: hwrng registered
+[Wed Oct 28 08:19:42 2026] vc-mem: phys_addr:0x00000000 mem_base=0x3fc00000 mem_size:0x40000000(1024 MiB)
+[Wed Oct 28 08:19:42 2026] bcm2712-iommu-cache 1000005b00.iommuc: bcm2712_iommu_cache_probe
+[Wed Oct 28 08:19:42 2026] brd: module loaded
+[Wed Oct 28 08:19:42 2026] loop: module loaded
+[Wed Oct 28 08:19:42 2026] bcm2835-power bcm2835-power: Broadcom BCM2835 power domains driver
+[Wed Oct 28 08:19:42 2026] Loading iSCSI transport class v2.0-870.
+[Wed Oct 28 08:19:42 2026] usbcore: registered new interface driver lan78xx
+[Wed Oct 28 08:19:42 2026] usbcore: registered new interface driver smsc95xx
+[Wed Oct 28 08:19:42 2026] dwc_otg: version 3.00a 10-AUG-2012 (platform bus)
+[Wed Oct 28 08:19:42 2026] dwc_otg: FIQ enabled
+[Wed Oct 28 08:19:42 2026] dwc_otg: NAK holdoff enabled
+[Wed Oct 28 08:19:42 2026] dwc_otg: FIQ split-transaction FSM enabled
+[Wed Oct 28 08:19:42 2026] Module dwc_common_port init
+[Wed Oct 28 08:19:42 2026] usbcore: registered new interface driver uas
+[Wed Oct 28 08:19:42 2026] usbcore: registered new interface driver usb-storage
+[Wed Oct 28 08:19:42 2026] mousedev: PS/2 mouse device common for all mice
+[Wed Oct 28 08:19:42 2026] rpi-rtc soc@107c000000:rpi_rtc: registered as rtc0
+[Wed Oct 28 08:19:42 2026] rpi-rtc soc@107c000000:rpi_rtc: setting system clock to 1970-01-01T00:00:14 UTC (14)
+[Wed Oct 28 08:19:42 2026] bcm2835-wdt bcm2835-wdt: Poweroff handler already present!
+[Wed Oct 28 08:19:42 2026] bcm2835-wdt bcm2835-wdt: Broadcom BCM2835 watchdog timer
+[Wed Oct 28 08:19:42 2026] sdhci: Secure Digital Host Controller Interface driver
+[Wed Oct 28 08:19:42 2026] sdhci: Copyright(c) Pierre Ossman
+[Wed Oct 28 08:19:42 2026] sdhci-pltfm: SDHCI platform and OF driver helper
+[Wed Oct 28 08:19:42 2026] SMCCC: SOC_ID: ARCH_SOC_ID not implemented, skipping ....
+[Wed Oct 28 08:19:42 2026] hid: raw HID events driver (C) Jiri Kosina
+[Wed Oct 28 08:19:42 2026] usbcore: registered new interface driver usbhid
+[Wed Oct 28 08:19:42 2026] usbhid: USB HID core driver
+[Wed Oct 28 08:19:42 2026] hw perfevents: enabled with armv8_cortex_a76 PMU driver, 7 (0,8000003f) counters available
+[Wed Oct 28 08:19:42 2026] NET: Registered PF_PACKET protocol family
+[Wed Oct 28 08:19:42 2026] Key type dns_resolver registered
+[Wed Oct 28 08:19:42 2026] registered taskstats version 1
+[Wed Oct 28 08:19:42 2026] Loading compiled-in X.509 certificates
+[Wed Oct 28 08:19:42 2026] Demotion targets for Node 0: null
+[Wed Oct 28 08:19:42 2026] Demotion targets for Node 1: null
+[Wed Oct 28 08:19:42 2026] Demotion targets for Node 2: null
+[Wed Oct 28 08:19:42 2026] Demotion targets for Node 3: null
+[Wed Oct 28 08:19:42 2026] Demotion targets for Node 4: null
+[Wed Oct 28 08:19:42 2026] Demotion targets for Node 5: null
+[Wed Oct 28 08:19:42 2026] Demotion targets for Node 6: null
+[Wed Oct 28 08:19:42 2026] Demotion targets for Node 7: null
+[Wed Oct 28 08:19:42 2026] Key type .fscrypt registered
+[Wed Oct 28 08:19:42 2026] Key type fscrypt-provisioning registered
+[Wed Oct 28 08:19:42 2026] brcm-pcie 1000110000.pcie: host bridge /axi/pcie@1000110000 ranges:
+[Wed Oct 28 08:19:42 2026] brcm-pcie 1000110000.pcie:      MEM 0x1b80000000..0x1bffffffff -> 0x0080000000
+[Wed Oct 28 08:19:42 2026] brcm-pcie 1000110000.pcie:      MEM 0x1800000000..0x1b7fffffff -> 0x0400000000
+[Wed Oct 28 08:19:42 2026] brcm-pcie 1000110000.pcie:   IB MEM 0x0000000000..0x0fffffffff -> 0x1000000000
+[Wed Oct 28 08:19:42 2026] brcm-pcie 1000110000.pcie:   IB MEM 0x1000131000..0x1000131fff -> 0xfffffff000
+[Wed Oct 28 08:19:42 2026] brcm-pcie 1000110000.pcie: PCI host bridge to bus 0001:00
+[Wed Oct 28 08:19:42 2026] pci_bus 0001:00: root bus resource [bus 00-ff]
+[Wed Oct 28 08:19:42 2026] pci_bus 0001:00: root bus resource [mem 0x1b80000000-0x1bffffffff] (bus address [0x80000000-0xffffffff])
+[Wed Oct 28 08:19:42 2026] pci_bus 0001:00: root bus resource [mem 0x1800000000-0x1b7fffffff pref] (bus address [0x400000000-0x77fffffff])
+[Wed Oct 28 08:19:42 2026] pci 0001:00:00.0: [14e4:2712] type 01 class 0x060400 PCIe Root Port
+[Wed Oct 28 08:19:42 2026] pci 0001:00:00.0: PCI bridge to [bus 00]
+[Wed Oct 28 08:19:42 2026] pci 0001:00:00.0:   bridge window [mem 0x00000000-0x000fffff]
+[Wed Oct 28 08:19:42 2026] pci 0001:00:00.0:   bridge window [mem 0x00000000-0x000fffff 64bit pref]
+[Wed Oct 28 08:19:42 2026] pci 0001:00:00.0: PME# supported from D0 D3hot
+[Wed Oct 28 08:19:42 2026] pci 0001:00:00.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+[Wed Oct 28 08:19:42 2026] brcm-pcie 1000110000.pcie: clkreq-mode set to safe
+[Wed Oct 28 08:19:42 2026] brcm-pcie 1000110000.pcie: link up, 8.0 GT/s PCIe x1 (!SSC)
+[Wed Oct 28 08:19:42 2026] pci 0001:01:00.0: [1e60:45c4] type 00 class 0x0b4000 PCIe Endpoint
+[Wed Oct 28 08:19:42 2026] pci 0001:01:00.0: BAR 0 [mem 0x00000000-0x00003fff 64bit pref]
+[Wed Oct 28 08:19:42 2026] pci 0001:01:00.0: BAR 2 [mem 0x00000000-0x00000fff 64bit pref]
+[Wed Oct 28 08:19:42 2026] pci 0001:01:00.0: BAR 4 [mem 0x00000000-0x00003fff 64bit pref]
+[Wed Oct 28 08:19:42 2026] pci 0001:01:00.0: PME# supported from D3hot
+[Wed Oct 28 08:19:42 2026] pci 0001:01:00.0: 7.876 Gb/s available PCIe bandwidth, limited by 8.0 GT/s PCIe x1 link at 0001:00:00.0 (capable of 31.504 Gb/s with 8.0 GT/s PCIe x4 link)
+[Wed Oct 28 08:19:42 2026] pci 0001:01:00.0: ASPM: default states L1
+[Wed Oct 28 08:19:42 2026] pci_bus 0001:01: busn_res: [bus 01-ff] end is updated to 01
+[Wed Oct 28 08:19:42 2026] pci 0001:00:00.0: bridge window [mem 0x1800000000-0x18000fffff 64bit pref]: assigned
+[Wed Oct 28 08:19:42 2026] pci 0001:01:00.0: BAR 0 [mem 0x1800000000-0x1800003fff 64bit pref]: assigned
+[Wed Oct 28 08:19:42 2026] pci 0001:01:00.0: BAR 4 [mem 0x1800004000-0x1800007fff 64bit pref]: assigned
+[Wed Oct 28 08:19:42 2026] pci 0001:01:00.0: BAR 2 [mem 0x1800008000-0x1800008fff 64bit pref]: assigned
+[Wed Oct 28 08:19:42 2026] pci 0001:00:00.0: PCI bridge to [bus 01]
+[Wed Oct 28 08:19:42 2026] pci 0001:00:00.0:   bridge window [mem 0x1800000000-0x18000fffff 64bit pref]
+[Wed Oct 28 08:19:42 2026] pci_bus 0001:00: resource 4 [mem 0x1b80000000-0x1bffffffff]
+[Wed Oct 28 08:19:42 2026] pci_bus 0001:00: resource 5 [mem 0x1800000000-0x1b7fffffff pref]
+[Wed Oct 28 08:19:42 2026] pci_bus 0001:01: resource 2 [mem 0x1800000000-0x18000fffff 64bit pref]
+[Wed Oct 28 08:19:42 2026] pci 0001:00:00.0: Max Payload Size set to  256/ 512 (was  128), Max Read Rq  512
+[Wed Oct 28 08:19:42 2026] pci 0001:01:00.0: Max Payload Size set to  256/ 256 (was  128), Max Read Rq  512
+[Wed Oct 28 08:19:42 2026] pcieport 0001:00:00.0: enabling device (0000 -> 0002)
+[Wed Oct 28 08:19:42 2026] pcieport 0001:00:00.0: PME: Signaling with IRQ 37
+[Wed Oct 28 08:19:42 2026] pcieport 0001:00:00.0: AER: enabled with IRQ 37
+[Wed Oct 28 08:19:42 2026] brcm-pcie 1000120000.pcie: host bridge /axi/pcie@1000120000 ranges:
+[Wed Oct 28 08:19:42 2026] brcm-pcie 1000120000.pcie:      MEM 0x1f00000000..0x1ffffffffb -> 0x0000000000
+[Wed Oct 28 08:19:42 2026] brcm-pcie 1000120000.pcie:      MEM 0x1c00000000..0x1effffffff -> 0x0400000000
+[Wed Oct 28 08:19:42 2026] brcm-pcie 1000120000.pcie:   IB MEM 0x1f00000000..0x1f003fffff -> 0x0000000000
+[Wed Oct 28 08:19:42 2026] brcm-pcie 1000120000.pcie:   IB MEM 0x0000000000..0x0fffffffff -> 0x1000000000
+[Wed Oct 28 08:19:42 2026] brcm-pcie 1000120000.pcie:   IB MEM 0x1000130000..0x1000130fff -> 0xfffffff000
+[Wed Oct 28 08:19:42 2026] brcm-pcie 1000120000.pcie: PCI host bridge to bus 0002:00
+[Wed Oct 28 08:19:42 2026] pci_bus 0002:00: root bus resource [bus 00-ff]
+[Wed Oct 28 08:19:42 2026] pci_bus 0002:00: root bus resource [mem 0x1f00000000-0x1ffffffffb] (bus address [0x00000000-0xfffffffb])
+[Wed Oct 28 08:19:42 2026] pci_bus 0002:00: root bus resource [mem 0x1c00000000-0x1effffffff pref] (bus address [0x400000000-0x6ffffffff])
+[Wed Oct 28 08:19:42 2026] pci 0002:00:00.0: [14e4:2712] type 01 class 0x060400 PCIe Root Port
+[Wed Oct 28 08:19:42 2026] pci 0002:00:00.0: PCI bridge to [bus 00]
+[Wed Oct 28 08:19:42 2026] pci 0002:00:00.0:   bridge window [mem 0x1f80000000-0x1fbfffffff]
+[Wed Oct 28 08:19:42 2026] pci 0002:00:00.0: PME# supported from D0 D3hot
+[Wed Oct 28 08:19:42 2026] pci 0002:00:00.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+[Wed Oct 28 08:19:42 2026] brcm-pcie 1000120000.pcie: clkreq-mode set to default
+[Wed Oct 28 08:19:42 2026] brcm-pcie 1000120000.pcie: link up, 5.0 GT/s PCIe x4 (!SSC)
+[Wed Oct 28 08:19:42 2026] pci 0002:01:00.0: [1de4:0001] type 00 class 0x020000 PCIe Endpoint
+[Wed Oct 28 08:19:42 2026] pci 0002:01:00.0: BAR 0 [mem 0xffffc000-0xffffffff]
+[Wed Oct 28 08:19:42 2026] pci 0002:01:00.0: BAR 1 [mem 0xffc00000-0xffffffff]
+[Wed Oct 28 08:19:42 2026] pci 0002:01:00.0: BAR 2 [mem 0xffff0000-0xffffffff]
+[Wed Oct 28 08:19:42 2026] pci 0002:01:00.0: supports D1
+[Wed Oct 28 08:19:42 2026] pci 0002:01:00.0: PME# supported from D0 D1 D3hot D3cold
+[Wed Oct 28 08:19:42 2026] pci 0002:01:00.0: ASPM: default states L1
+[Wed Oct 28 08:19:42 2026] pci_bus 0002:01: busn_res: [bus 01-ff] end is updated to 01
+[Wed Oct 28 08:19:42 2026] pci 0002:00:00.0: bridge window [mem 0x1f00000000-0x1f004fffff]: assigned
+[Wed Oct 28 08:19:42 2026] pci 0002:01:00.0: BAR 1 [mem 0x1f00000000-0x1f003fffff]: assigned
+[Wed Oct 28 08:19:42 2026] pci 0002:01:00.0: BAR 2 [mem 0x1f00400000-0x1f0040ffff]: assigned
+[Wed Oct 28 08:19:42 2026] pci 0002:01:00.0: BAR 0 [mem 0x1f00410000-0x1f00413fff]: assigned
+[Wed Oct 28 08:19:42 2026] pci 0002:00:00.0: PCI bridge to [bus 01]
+[Wed Oct 28 08:19:42 2026] pci 0002:00:00.0:   bridge window [mem 0x1f00000000-0x1f004fffff]
+[Wed Oct 28 08:19:42 2026] pci_bus 0002:00: resource 4 [mem 0x1f00000000-0x1ffffffffb]
+[Wed Oct 28 08:19:42 2026] pci_bus 0002:00: resource 5 [mem 0x1c00000000-0x1effffffff pref]
+[Wed Oct 28 08:19:42 2026] pci_bus 0002:01: resource 1 [mem 0x1f00000000-0x1f004fffff]
+[Wed Oct 28 08:19:42 2026] pci 0002:00:00.0: Max Payload Size set to  256/ 512 (was  128), Max Read Rq  512
+[Wed Oct 28 08:19:42 2026] pci 0002:01:00.0: Max Payload Size set to  256/ 256 (was  128), Max Read Rq  512
+[Wed Oct 28 08:19:42 2026] pcieport 0002:00:00.0: enabling device (0000 -> 0002)
+[Wed Oct 28 08:19:42 2026] pcieport 0002:00:00.0: PME: Signaling with IRQ 38
+[Wed Oct 28 08:19:42 2026] pcieport 0002:00:00.0: AER: enabled with IRQ 38
+[Wed Oct 28 08:19:42 2026] rp1 0002:01:00.0: bar0 len 0x4000, start 0x1f00410000, end 0x1f00413fff, flags, 0x40200
+[Wed Oct 28 08:19:42 2026] rp1 0002:01:00.0: bar1 len 0x400000, start 0x1f00000000, end 0x1f003fffff, flags, 0x40200
+[Wed Oct 28 08:19:42 2026] rp1 0002:01:00.0: enabling device (0000 -> 0002)
+[Wed Oct 28 08:19:42 2026] rp1 0002:01:00.0: chip_id 0x20001927
+[Wed Oct 28 08:19:42 2026] /axi/pcie@1000120000/rp1/i2c@80000/imx219@10: Fixed dependency cycle(s) with /axi/pcie@1000120000/rp1/csi@128000
+[Wed Oct 28 08:19:42 2026] /axi/pcie@1000120000/rp1/i2c@80000/imx219@10: Fixed dependency cycle(s) with /axi/pcie@1000120000/rp1/csi@128000
+[Wed Oct 28 08:19:42 2026] /axi/pcie@1000120000/rp1/csi@128000: Fixed dependency cycle(s) with /axi/pcie@1000120000/rp1/i2c@80000/imx219@10
+[Wed Oct 28 08:19:42 2026] bcm2712-iommu 1000005100.iommu: IOVA aperture 0xa00000000..0xb00000000 including DMA offset 0x0
+[Wed Oct 28 08:19:42 2026] bcm2712-iommu 1000005100.iommu: bcm2712_iommu_init: DEBUG_INFO = 0x20804774
+[Wed Oct 28 08:19:42 2026] platform 1000800000.codec: bcm2712_iommu_of_xlate: MMU 1000005100.iommu
+[Wed Oct 28 08:19:42 2026] platform 1000800000.codec: bcm2712_iommu_probe_device: MMU 1000005100.iommu
+[Wed Oct 28 08:19:42 2026] platform 1000800000.codec: bcm2712_iommu_device_group: MMU 1000005100.iommu
+[Wed Oct 28 08:19:42 2026] platform 1000800000.codec: Adding to iommu group 0
+[Wed Oct 28 08:19:42 2026] platform 1000880000.pisp_be: bcm2712_iommu_of_xlate: MMU 1000005100.iommu
+[Wed Oct 28 08:19:42 2026] platform 1000880000.pisp_be: bcm2712_iommu_probe_device: MMU 1000005100.iommu
+[Wed Oct 28 08:19:42 2026] platform 1000880000.pisp_be: bcm2712_iommu_device_group: MMU 1000005100.iommu
+[Wed Oct 28 08:19:42 2026] platform 1000880000.pisp_be: Adding to iommu group 0
+[Wed Oct 28 08:19:42 2026] platform 1000800000.codec: bcm2712_iommu_attach_dev: MMU 1000005100.iommu
+[Wed Oct 28 08:19:42 2026] platform 1000880000.pisp_be: bcm2712_iommu_attach_dev: MMU 1000005100.iommu
+[Wed Oct 28 08:19:42 2026] bcm2712-iommu 1000005200.iommu: IOVA aperture 0xa00000000..0xa80000000 including DMA offset 0x0
+[Wed Oct 28 08:19:42 2026] bcm2712-iommu 1000005200.iommu: bcm2712_iommu_init: DEBUG_INFO = 0x20804774
+[Wed Oct 28 08:19:42 2026] platform axi:gpu: bcm2712_iommu_of_xlate: MMU 1000005200.iommu
+[Wed Oct 28 08:19:42 2026] platform axi:gpu: bcm2712_iommu_probe_device: MMU 1000005200.iommu
+[Wed Oct 28 08:19:42 2026] platform axi:gpu: bcm2712_iommu_device_group: MMU 1000005200.iommu
+[Wed Oct 28 08:19:42 2026] platform axi:gpu: Adding to iommu group 1
+[Wed Oct 28 08:19:42 2026] platform 107c580000.hvs: bcm2712_iommu_of_xlate: MMU 1000005200.iommu
+[Wed Oct 28 08:19:42 2026] platform 107c580000.hvs: bcm2712_iommu_probe_device: MMU 1000005200.iommu
+[Wed Oct 28 08:19:42 2026] platform 107c580000.hvs: bcm2712_iommu_device_group: MMU 1000005200.iommu
+[Wed Oct 28 08:19:42 2026] platform 107c580000.hvs: Adding to iommu group 1
+[Wed Oct 28 08:19:42 2026] platform axi:gpu: bcm2712_iommu_attach_dev: MMU 1000005200.iommu
+[Wed Oct 28 08:19:42 2026] platform 107c580000.hvs: bcm2712_iommu_attach_dev: MMU 1000005200.iommu
+[Wed Oct 28 08:19:42 2026] bcm2712-iommu 1000005280.iommu: IOVA aperture 0x1a00000000..0x1a80000000 including DMA offset 0x1000000000
+[Wed Oct 28 08:19:42 2026] bcm2712-iommu 1000005280.iommu: bcm2712_iommu_init: DEBUG_INFO = 0x20804774
+[Wed Oct 28 08:19:42 2026] platform 1f00128000.csi: bcm2712_iommu_of_xlate: MMU 1000005280.iommu
+[Wed Oct 28 08:19:42 2026] platform 1f00128000.csi: bcm2712_iommu_probe_device: MMU 1000005280.iommu
+[Wed Oct 28 08:19:42 2026] platform 1f00128000.csi: bcm2712_iommu_device_group: MMU 1000005280.iommu
+[Wed Oct 28 08:19:42 2026] platform 1f00128000.csi: Adding to iommu group 2
+[Wed Oct 28 08:19:42 2026] platform 1f00128000.csi: bcm2712_iommu_attach_dev: MMU 1000005280.iommu
+[Wed Oct 28 08:19:42 2026] sdhci-brcmstb 1000fff000.mmc: Got CD GPIO
+[Wed Oct 28 08:19:42 2026] mmc1: CQHCI version 5.10
+[Wed Oct 28 08:19:42 2026] mmc0: CQHCI version 5.10
+[Wed Oct 28 08:19:42 2026] macb 1f00100000.ethernet eth0: Cadence GEM rev 0x00070109 at 0x1f00100000 irq 106 (88:a2:9e:a8:05:25)
+[Wed Oct 28 08:19:42 2026] dw_axi_dmac_platform 1f00188000.dma: DesignWare AXI DMA Controller, 8 channels
+[Wed Oct 28 08:19:42 2026] xhci-hcd xhci-hcd.0: xHCI Host Controller
+[Wed Oct 28 08:19:42 2026] xhci-hcd xhci-hcd.0: new USB bus registered, assigned bus number 1
+[Wed Oct 28 08:19:42 2026] mmc0: SDHCI controller on 1000fff000.mmc [1000fff000.mmc] using ADMA 64-bit
+[Wed Oct 28 08:19:42 2026] xhci-hcd xhci-hcd.0: hcc params 0x0240fe6d hci version 0x110 quirks 0x0000808000000810
+[Wed Oct 28 08:19:42 2026] xhci-hcd xhci-hcd.0: irq 131, io mem 0x1f00200000
+[Wed Oct 28 08:19:42 2026] xhci-hcd xhci-hcd.0: xHCI Host Controller
+[Wed Oct 28 08:19:42 2026] xhci-hcd xhci-hcd.0: new USB bus registered, assigned bus number 2
+[Wed Oct 28 08:19:42 2026] xhci-hcd xhci-hcd.0: Host supports USB 3.0 SuperSpeed
+[Wed Oct 28 08:19:42 2026] usb usb1: New USB device found, idVendor=1d6b, idProduct=0002, bcdDevice= 6.18
+[Wed Oct 28 08:19:42 2026] usb usb1: New USB device strings: Mfr=3, Product=2, SerialNumber=1
+[Wed Oct 28 08:19:42 2026] usb usb1: Product: xHCI Host Controller
+[Wed Oct 28 08:19:42 2026] usb usb1: Manufacturer: Linux 6.18.50+rpt-rpi-2712 xhci-hcd
+[Wed Oct 28 08:19:42 2026] usb usb1: SerialNumber: xhci-hcd.0
+[Wed Oct 28 08:19:42 2026] hub 1-0:1.0: USB hub found
+[Wed Oct 28 08:19:42 2026] hub 1-0:1.0: 2 ports detected
+[Wed Oct 28 08:19:42 2026] usb usb2: New USB device found, idVendor=1d6b, idProduct=0003, bcdDevice= 6.18
+[Wed Oct 28 08:19:42 2026] usb usb2: New USB device strings: Mfr=3, Product=2, SerialNumber=1
+[Wed Oct 28 08:19:42 2026] usb usb2: Product: xHCI Host Controller
+[Wed Oct 28 08:19:42 2026] usb usb2: Manufacturer: Linux 6.18.50+rpt-rpi-2712 xhci-hcd
+[Wed Oct 28 08:19:42 2026] usb usb2: SerialNumber: xhci-hcd.0
+[Wed Oct 28 08:19:42 2026] hub 2-0:1.0: USB hub found
+[Wed Oct 28 08:19:42 2026] hub 2-0:1.0: 1 port detected
+[Wed Oct 28 08:19:42 2026] xhci-hcd xhci-hcd.1: xHCI Host Controller
+[Wed Oct 28 08:19:42 2026] xhci-hcd xhci-hcd.1: new USB bus registered, assigned bus number 3
+[Wed Oct 28 08:19:42 2026] xhci-hcd xhci-hcd.1: hcc params 0x0240fe6d hci version 0x110 quirks 0x0000808000000810
+[Wed Oct 28 08:19:42 2026] xhci-hcd xhci-hcd.1: irq 136, io mem 0x1f00300000
+[Wed Oct 28 08:19:42 2026] xhci-hcd xhci-hcd.1: xHCI Host Controller
+[Wed Oct 28 08:19:42 2026] xhci-hcd xhci-hcd.1: new USB bus registered, assigned bus number 4
+[Wed Oct 28 08:19:42 2026] xhci-hcd xhci-hcd.1: Host supports USB 3.0 SuperSpeed
+[Wed Oct 28 08:19:42 2026] usb usb3: New USB device found, idVendor=1d6b, idProduct=0002, bcdDevice= 6.18
+[Wed Oct 28 08:19:42 2026] usb usb3: New USB device strings: Mfr=3, Product=2, SerialNumber=1
+[Wed Oct 28 08:19:42 2026] usb usb3: Product: xHCI Host Controller
+[Wed Oct 28 08:19:42 2026] usb usb3: Manufacturer: Linux 6.18.50+rpt-rpi-2712 xhci-hcd
+[Wed Oct 28 08:19:42 2026] usb usb3: SerialNumber: xhci-hcd.1
+[Wed Oct 28 08:19:42 2026] hub 3-0:1.0: USB hub found
+[Wed Oct 28 08:19:42 2026] hub 3-0:1.0: 2 ports detected
+[Wed Oct 28 08:19:42 2026] usb usb4: New USB device found, idVendor=1d6b, idProduct=0003, bcdDevice= 6.18
+[Wed Oct 28 08:19:42 2026] usb usb4: New USB device strings: Mfr=3, Product=2, SerialNumber=1
+[Wed Oct 28 08:19:42 2026] usb usb4: Product: xHCI Host Controller
+[Wed Oct 28 08:19:42 2026] usb usb4: Manufacturer: Linux 6.18.50+rpt-rpi-2712 xhci-hcd
+[Wed Oct 28 08:19:42 2026] usb usb4: SerialNumber: xhci-hcd.1
+[Wed Oct 28 08:19:42 2026] hub 4-0:1.0: USB hub found
+[Wed Oct 28 08:19:42 2026] hub 4-0:1.0: 1 port detected
+[Wed Oct 28 08:19:42 2026] of_cfs_init
+[Wed Oct 28 08:19:42 2026] of_cfs_init: OK
+[Wed Oct 28 08:19:42 2026] clk: Disabling unused clocks
+[Wed Oct 28 08:19:42 2026] PM: genpd: Disabling unused power domains
+[Wed Oct 28 08:19:42 2026] mmc0: new UHS-I speed SDR104 SDXC card at address d555
+[Wed Oct 28 08:19:42 2026] mmcblk0: mmc0:d555 SM256 238 GiB
+[Wed Oct 28 08:19:42 2026]  mmcblk0: p1 p2
+[Wed Oct 28 08:19:42 2026] mmcblk0: mmc0:d555 SM256 238 GiB (quirks 0x00004000)
+[Wed Oct 28 08:19:42 2026] mmc1: SDHCI controller on 1001100000.mmc [1001100000.mmc] using ADMA 64-bit
+[Wed Oct 28 08:19:42 2026] Freeing unused kernel memory: 2240K
+[Wed Oct 28 08:19:42 2026] Run /init as init process
+[Wed Oct 28 08:19:42 2026]   with arguments:
+[Wed Oct 28 08:19:42 2026]     /init
+[Wed Oct 28 08:19:42 2026]     splash
+[Wed Oct 28 08:19:42 2026]   with environment:
+[Wed Oct 28 08:19:42 2026]     HOME=/
+[Wed Oct 28 08:19:42 2026]     TERM=linux
+[Wed Oct 28 08:19:42 2026]     cgroup_memory=1
+[Wed Oct 28 08:19:42 2026] mmc1: new UHS-I speed DDR50 SDIO card at address 0001
+[Wed Oct 28 08:19:42 2026] usb 1-1: new high-speed USB device number 2 using xhci-hcd
+[Wed Oct 28 08:19:42 2026] input: pwr_button as /devices/platform/pwr_button/input/input0
+[Wed Oct 28 08:19:42 2026] rp1-firmware rp1_firmware: RP1 Firmware version a2e0ebda04df1820f792a7acd4479f6f5a2130d4
+[Wed Oct 28 08:19:42 2026] rp1-pio 1f00178000.pio: Created instance as pio0 (op count 38, 2 interrupts)
+[Wed Oct 28 08:19:42 2026] brcmstb-i2c 107d508200.i2c:  @97500hz registered in interrupt mode
+[Wed Oct 28 08:19:42 2026] brcmstb-i2c 107d508280.i2c:  @97500hz registered in interrupt mode
+[Wed Oct 28 08:19:42 2026] /axi/pcie@1000120000/rp1/csi@128000: Fixed dependency cycle(s) with /axi/pcie@1000120000/rp1/i2c@80000/imx219@10
+[Wed Oct 28 08:19:42 2026] /axi/pcie@1000120000/rp1/i2c@80000/imx219@10: Fixed dependency cycle(s) with /axi/pcie@1000120000/rp1/csi@128000
+[Wed Oct 28 08:19:42 2026] v3d 1002000000.v3d: [drm] Transparent Hugepage support is recommended for optimal performance on this platform!
+[Wed Oct 28 08:19:42 2026] [drm] Initialized v3d 1.0.0 for 1002000000.v3d on minor 0
+[Wed Oct 28 08:19:42 2026] vc4-drm axi:gpu: bound 107c580000.hvs (ops vc4_hvs_ops [vc4])
+[Wed Oct 28 08:19:42 2026] Registered IR keymap rc-cec
+[Wed Oct 28 08:19:42 2026] rc rc0: vc4-hdmi-0 as /devices/platform/soc@107c000000/107c701400.hdmi/rc/rc0
+[Wed Oct 28 08:19:42 2026] input: vc4-hdmi-0 as /devices/platform/soc@107c000000/107c701400.hdmi/rc/rc0/input1
+[Wed Oct 28 08:19:42 2026] input: vc4-hdmi-0 HDMI Jack as /devices/platform/soc@107c000000/107c701400.hdmi/sound/card0/input2
+[Wed Oct 28 08:19:42 2026] vc4-drm axi:gpu: bound 107c701400.hdmi (ops vc4_hdmi_ops [vc4])
+[Wed Oct 28 08:19:43 2026] Registered IR keymap rc-cec
+[Wed Oct 28 08:19:43 2026] rc rc1: vc4-hdmi-1 as /devices/platform/soc@107c000000/107c706400.hdmi/rc/rc1
+[Wed Oct 28 08:19:43 2026] input: vc4-hdmi-1 as /devices/platform/soc@107c000000/107c706400.hdmi/rc/rc1/input3
+[Wed Oct 28 08:19:43 2026] input: vc4-hdmi-1 HDMI Jack as /devices/platform/soc@107c000000/107c706400.hdmi/sound/card1/input4
+[Wed Oct 28 08:19:43 2026] vc4-drm axi:gpu: bound 107c706400.hdmi (ops vc4_hdmi_ops [vc4])
+[Wed Oct 28 08:19:43 2026] vc4-drm axi:gpu: bound 107c500000.mop (ops vc4_txp_ops [vc4])
+[Wed Oct 28 08:19:43 2026] vc4-drm axi:gpu: bound 107c501000.moplet (ops vc4_txp_ops [vc4])
+[Wed Oct 28 08:19:43 2026] vc4-drm axi:gpu: bound 107c410000.pixelvalve (ops vc4_crtc_ops [vc4])
+[Wed Oct 28 08:19:43 2026] vc4-drm axi:gpu: bound 107c411000.pixelvalve (ops vc4_crtc_ops [vc4])
+[Wed Oct 28 08:19:43 2026] [drm] Initialized vc4 0.0.0 for axi:gpu on minor 1
+[Wed Oct 28 08:19:43 2026] vc4-drm axi:gpu: [drm] Cannot find any crtc or sizes
+[Wed Oct 28 08:19:43 2026] vc4-drm axi:gpu: [drm] Cannot find any crtc or sizes
+[Wed Oct 28 08:19:43 2026] vc4-drm axi:gpu: [drm] Cannot find any crtc or sizes
+[Wed Oct 28 08:19:43 2026] usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+[Wed Oct 28 08:19:43 2026] usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 08:19:43 2026] usb 1-1: Product: USB2.0 Hub             
+[Wed Oct 28 08:19:43 2026] usb 1-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 08:19:43 2026] hub 1-1:1.0: USB hub found
+[Wed Oct 28 08:19:43 2026] hub 1-1:1.0: 4 ports detected
+[Wed Oct 28 08:19:43 2026] usb 2-1: new SuperSpeed USB device number 2 using xhci-hcd
+[Wed Oct 28 08:19:43 2026] usb 2-1: New USB device found, idVendor=2109, idProduct=0817, bcdDevice= 0.50
+[Wed Oct 28 08:19:43 2026] usb 2-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 08:19:43 2026] usb 2-1: Product: USB3.0 Hub             
+[Wed Oct 28 08:19:43 2026] usb 2-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 08:19:43 2026] hub 2-1:1.0: USB hub found
+[Wed Oct 28 08:19:43 2026] hub 2-1:1.0: 4 ports detected
+[Wed Oct 28 08:19:43 2026] EXT4-fs (mmcblk0p2): mounted filesystem 4aa56689-dcb4-4759-90e6-179beae559ac ro with ordered data mode. Quota mode: none.
+[Wed Oct 28 08:19:43 2026] usb 1-1.1: new high-speed USB device number 3 using xhci-hcd
+[Wed Oct 28 08:19:44 2026] usb 1-1.1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+[Wed Oct 28 08:19:44 2026] usb 1-1.1: New USB device strings: Mfr=0, Product=1, SerialNumber=0
+[Wed Oct 28 08:19:44 2026] usb 1-1.1: Product: USB2.0 Hub
+[Wed Oct 28 08:19:44 2026] hub 1-1.1:1.0: USB hub found
+[Wed Oct 28 08:19:44 2026] hub 1-1.1:1.0: 4 ports detected
+[Wed Oct 28 08:19:44 2026] systemd[1]: System time advanced to timestamp on /var/lib/systemd/timesync/clock: Tue 2026-10-27 16:12:29 CET
+[Wed Oct 28 08:19:44 2026] NET: Registered PF_INET6 protocol family
+[Wed Oct 28 08:19:44 2026] Segment Routing with IPv6
+[Wed Oct 28 08:19:44 2026] In-situ OAM (IOAM) with IPv6
+[Wed Oct 28 08:19:44 2026] usb 1-1.3: new full-speed USB device number 4 using xhci-hcd
+[Wed Oct 28 08:19:44 2026] systemd[1]: systemd 257.13-1~deb13u1 running in system mode (+PAM +AUDIT +SELINUX +APPARMOR +IMA +IPE +SMACK +SECCOMP +GCRYPT -GNUTLS +OPENSSL +ACL +BLKID +CURL +ELFUTILS +FIDO2 +IDN2 -IDN +IPTC +KMOD +LIBCRYPTSETUP +LIBCRYPTSETUP_PLUGINS +LIBFDISK +PCRE2 +PWQUALITY +P11KIT +QRENCODE +TPM2 +BZIP2 +LZ4 +XZ +ZLIB +ZSTD +BPF_FRAMEWORK +BTF -XKBCOMMON -UTMP +SYSVINIT +LIBARCHIVE)
+[Wed Oct 28 08:19:44 2026] systemd[1]: Detected architecture arm64.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Hostname set to <pi-bravo>.
+[Wed Oct 28 08:19:44 2026] systemd[1]: bpf-restrict-fs: BPF LSM hook not enabled in the kernel, BPF LSM not supported.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Using hardware watchdog 'Broadcom BCM2835 Watchdog timer', version 0, device /dev/watchdog0
+[Wed Oct 28 08:19:44 2026] systemd[1]: Watchdog running with a hardware timeout of 1min.
+[Wed Oct 28 08:19:44 2026] usb 1-1.3: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice=81.34
+[Wed Oct 28 08:19:44 2026] usb 1-1.3: New USB device strings: Mfr=0, Product=2, SerialNumber=0
+[Wed Oct 28 08:19:44 2026] usb 1-1.3: Product: USB Serial
+[Wed Oct 28 08:19:44 2026] usb 1-1.1.1: new high-speed USB device number 5 using xhci-hcd
+[Wed Oct 28 08:19:44 2026] usb 1-1.1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+[Wed Oct 28 08:19:44 2026] usb 1-1.1.1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 08:19:44 2026] usb 1-1.1.1: Product: ORBBEC Depth Sensor
+[Wed Oct 28 08:19:44 2026] usb 1-1.1.1: Manufacturer: Orbbec(R)
+[Wed Oct 28 08:19:44 2026] usb 1-1.4: new full-speed USB device number 6 using xhci-hcd
+[Wed Oct 28 08:19:44 2026] systemd[1]: /etc/systemd/system/jupyter.service:7: Unknown key 'config' in section [Service], ignoring.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Queued start job for default target multi-user.target.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Created slice system-getty.slice - Slice /system/getty.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Created slice system-modprobe.slice - Slice /system/modprobe.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Created slice system-systemd\x2dfsck.slice - Slice /system/systemd-fsck.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Created slice user.slice - User and Session Slice.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Started systemd-ask-password-wall.path - Forward Password Requests to Wall Directory Watch.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Set up automount proc-sys-fs-binfmt_misc.automount - Arbitrary Executable File Formats File System Automount Point.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Expecting device dev-disk-by\x2dpartuuid-c777c139\x2d01.device - /dev/disk/by-partuuid/c777c139-01...
+[Wed Oct 28 08:19:44 2026] systemd[1]: Reached target integritysetup.target - Local Integrity Protected Volumes.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Reached target slices.target - Slice Units.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Reached target swap.target - Swaps.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Reached target veritysetup.target - Local Verity Protected Volumes.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Listening on systemd-creds.socket - Credential Encryption/Decryption.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Listening on systemd-initctl.socket - initctl Compatibility Named Pipe.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Listening on systemd-journald-dev-log.socket - Journal Socket (/dev/log).
+[Wed Oct 28 08:19:44 2026] systemd[1]: Listening on systemd-journald.socket - Journal Sockets.
+[Wed Oct 28 08:19:44 2026] systemd[1]: systemd-pcrextend.socket - TPM PCR Measurements skipped, unmet condition check ConditionSecurity=measured-uki
+[Wed Oct 28 08:19:44 2026] systemd[1]: systemd-pcrlock.socket - Make TPM PCR Policy skipped, unmet condition check ConditionSecurity=measured-uki
+[Wed Oct 28 08:19:44 2026] systemd[1]: Listening on systemd-udevd-control.socket - udev Control Socket.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Listening on systemd-udevd-kernel.socket - udev Kernel Socket.
+[Wed Oct 28 08:19:44 2026] systemd[1]: dev-hugepages.mount - Huge Pages File System skipped, unmet condition check ConditionPathExists=/sys/kernel/mm/hugepages
+[Wed Oct 28 08:19:44 2026] systemd[1]: Mounting dev-mqueue.mount - POSIX Message Queue File System...
+[Wed Oct 28 08:19:44 2026] systemd[1]: Mounting run-lock.mount - Legacy Locks Directory /run/lock...
+[Wed Oct 28 08:19:44 2026] systemd[1]: Mounting sys-kernel-debug.mount - Kernel Debug File System...
+[Wed Oct 28 08:19:44 2026] systemd[1]: Mounting sys-kernel-tracing.mount - Kernel Trace File System...
+[Wed Oct 28 08:19:44 2026] systemd[1]: tmp.mount: Directory /tmp to mount over is not empty, mounting anyway.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Mounting tmp.mount - Temporary Directory /tmp...
+[Wed Oct 28 08:19:44 2026] systemd[1]: auth-rpcgss-module.service - Kernel Module supporting RPCSEC_GSS skipped, unmet condition check ConditionPathExists=/etc/krb5.keytab
+[Wed Oct 28 08:19:44 2026] systemd[1]: Starting fake-hwclock-load.service - Restore the current clock...
+[Wed Oct 28 08:19:44 2026] systemd[1]: Starting keyboard-setup.service - Set the console keyboard layout...
+[Wed Oct 28 08:19:44 2026] systemd[1]: Starting kmod-static-nodes.service - Create List of Static Device Nodes...
+[Wed Oct 28 08:19:44 2026] systemd[1]: Starting modprobe@configfs.service - Load Kernel Module configfs...
+[Wed Oct 28 08:19:44 2026] systemd[1]: Starting modprobe@drm.service - Load Kernel Module drm...
+[Wed Oct 28 08:19:44 2026] systemd[1]: Starting modprobe@efi_pstore.service - Load Kernel Module efi_pstore...
+[Wed Oct 28 08:19:44 2026] systemd[1]: Starting modprobe@fuse.service - Load Kernel Module fuse...
+[Wed Oct 28 08:19:44 2026] systemd[1]: systemd-hibernate-clear.service - Clear Stale Hibernate Storage Info skipped, unmet condition check ConditionPathExists=/sys/firmware/efi/efivars/HibernateLocation-8cf2644b-4b0b-428f-9387-6d876050dc67
+[Wed Oct 28 08:19:44 2026] usb 1-1.4: New USB device found, idVendor=10c4, idProduct=ea60, bcdDevice= 1.00
+[Wed Oct 28 08:19:44 2026] usb 1-1.4: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[Wed Oct 28 08:19:44 2026] usb 1-1.4: Product: CP2102 USB to UART Bridge Controller
+[Wed Oct 28 08:19:44 2026] usb 1-1.4: Manufacturer: Silicon Labs
+[Wed Oct 28 08:19:44 2026] usb 1-1.4: SerialNumber: 0001
+[Wed Oct 28 08:19:44 2026] systemd[1]: Starting systemd-journald.service - Journal Service...
+[Wed Oct 28 08:19:44 2026] systemd[1]: Starting systemd-modules-load.service - Load Kernel Modules...
+[Wed Oct 28 08:19:44 2026] systemd[1]: systemd-pcrmachine.service - TPM PCR Machine ID Measurement skipped, unmet condition check ConditionSecurity=measured-uki
+[Wed Oct 28 08:19:44 2026] systemd[1]: systemd-tpm2-setup-early.service - Early TPM SRK Setup skipped, unmet condition check ConditionSecurity=measured-uki
+[Wed Oct 28 08:19:44 2026] systemd[1]: Starting systemd-udev-load-credentials.service - Load udev Rules from Credentials...
+[Wed Oct 28 08:19:44 2026] systemd[1]: Starting systemd-udev-trigger.service - Coldplug All udev Devices...
+[Wed Oct 28 08:19:44 2026] systemd[1]: Mounted dev-mqueue.mount - POSIX Message Queue File System.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Mounted run-lock.mount - Legacy Locks Directory /run/lock.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Mounted sys-kernel-debug.mount - Kernel Debug File System.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Mounted sys-kernel-tracing.mount - Kernel Trace File System.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Mounted tmp.mount - Temporary Directory /tmp.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Finished kmod-static-nodes.service - Create List of Static Device Nodes.
+[Wed Oct 28 08:19:44 2026] systemd[1]: modprobe@configfs.service: Deactivated successfully.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Finished modprobe@configfs.service - Load Kernel Module configfs.
+[Wed Oct 28 08:19:44 2026] systemd[1]: modprobe@efi_pstore.service: Deactivated successfully.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Finished modprobe@efi_pstore.service - Load Kernel Module efi_pstore.
+[Wed Oct 28 08:19:44 2026] systemd[1]: modprobe@drm.service: Deactivated successfully.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Finished modprobe@drm.service - Load Kernel Module drm.
+[Wed Oct 28 08:19:44 2026] fuse: init (API version 7.45)
+[Wed Oct 28 08:19:44 2026] systemd[1]: Mounting sys-kernel-config.mount - Kernel Configuration File System...
+[Wed Oct 28 08:19:44 2026] systemd[1]: Starting systemd-tmpfiles-setup-dev-early.service - Create Static Device Nodes in /dev gracefully...
+[Wed Oct 28 08:19:44 2026] systemd[1]: modprobe@fuse.service: Deactivated successfully.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Finished modprobe@fuse.service - Load Kernel Module fuse.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Mounting sys-fs-fuse-connections.mount - FUSE Control File System...
+[Wed Oct 28 08:19:44 2026] systemd[1]: Mounted sys-kernel-config.mount - Kernel Configuration File System.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Mounted sys-fs-fuse-connections.mount - FUSE Control File System.
+[Wed Oct 28 08:19:44 2026] systemd[1]: fake-hwclock-load.service: Deactivated successfully.
+[Wed Oct 28 08:19:44 2026] i2c_dev: i2c /dev entries driver
+[Wed Oct 28 08:19:44 2026] systemd[1]: Finished fake-hwclock-load.service - Restore the current clock.
+[Wed Oct 28 08:19:44 2026] systemd[1]: systemd-fsck-root.service - File System Check on Root Device skipped, unmet condition check ConditionPathExists=!/run/initramfs/fsck-root
+[Wed Oct 28 08:19:44 2026] systemd-journald[269]: Collecting audit messages is disabled.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Starting systemd-remount-fs.service - Remount Root and Kernel File Systems...
+[Wed Oct 28 08:19:44 2026] systemd[1]: Finished systemd-udev-load-credentials.service - Load udev Rules from Credentials.
+[Wed Oct 28 08:19:44 2026] usb 1-1.1.2: new high-speed USB device number 7 using xhci-hcd
+[Wed Oct 28 08:19:44 2026] systemd[1]: systemd-modules-load.service: Main process exited, code=exited, status=1/FAILURE
+[Wed Oct 28 08:19:44 2026] systemd[1]: systemd-modules-load.service: Failed with result 'exit-code'.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Failed to start systemd-modules-load.service - Load Kernel Modules.
+[Wed Oct 28 08:19:44 2026] systemd[1]: Starting systemd-sysctl.service - Apply Kernel Variables...
+[Wed Oct 28 08:19:44 2026] systemd[1]: Started systemd-journald.service - Journal Service.
+[Wed Oct 28 08:19:44 2026] EXT4-fs (mmcblk0p2): re-mounted 4aa56689-dcb4-4759-90e6-179beae559ac r/w.
+[Wed Oct 28 08:19:44 2026] systemd-journald[269]: Received client request to flush runtime journal.
+[Wed Oct 28 08:19:44 2026] usb 1-1.1.2: New USB device found, idVendor=2bc5, idProduct=050f, bcdDevice= 1.00
+[Wed Oct 28 08:19:44 2026] usb 1-1.1.2: New USB device strings: Mfr=2, Product=1, SerialNumber=3
+[Wed Oct 28 08:19:44 2026] usb 1-1.1.2: Product: USB 2.0 Camera
+[Wed Oct 28 08:19:44 2026] usb 1-1.1.2: Manufacturer: Sonix Technology Co., Ltd.
+[Wed Oct 28 08:19:44 2026] usb 1-1.1.2: SerialNumber: SN0001
+[Wed Oct 28 08:19:45 2026] rpi-gpiomem 107d508500.gpiomem: window base 0x107d508500 size 0x00000040
+[Wed Oct 28 08:19:45 2026] rpi-gpiomem 107d508500.gpiomem: initialised 1 regions as /dev/gpiomem1
+[Wed Oct 28 08:19:45 2026] rpi-gpiomem 107d517c00.gpiomem: window base 0x107d517c00 size 0x00000040
+[Wed Oct 28 08:19:45 2026] rpi-gpiomem 107d517c00.gpiomem: initialised 1 regions as /dev/gpiomem2
+[Wed Oct 28 08:19:45 2026] rpi-gpiomem 107d504100.gpiomem: window base 0x107d504100 size 0x00000020
+[Wed Oct 28 08:19:45 2026] rpi-gpiomem 107d504100.gpiomem: initialised 1 regions as /dev/gpiomem3
+[Wed Oct 28 08:19:45 2026] rpi-gpiomem 107d510700.gpiomem: window base 0x107d510700 size 0x00000020
+[Wed Oct 28 08:19:45 2026] rpi-gpiomem 107d510700.gpiomem: initialised 1 regions as /dev/gpiomem4
+[Wed Oct 28 08:19:45 2026] rpi-gpiomem 1f000d0000.gpiomem: window base 0x1f000d0000 size 0x00030000
+[Wed Oct 28 08:19:45 2026] rpi-gpiomem 1f000d0000.gpiomem: initialised 1 regions as /dev/gpiomem0
+[Wed Oct 28 08:19:45 2026] usbcore: registered new interface driver usbserial_generic
+[Wed Oct 28 08:19:45 2026] usbserial: USB Serial support registered for generic
+[Wed Oct 28 08:19:45 2026] usbcore: registered new interface driver cp210x
+[Wed Oct 28 08:19:45 2026] usbserial: USB Serial support registered for cp210x
+[Wed Oct 28 08:19:45 2026] cp210x 1-1.4:1.0: cp210x converter detected
+[Wed Oct 28 08:19:45 2026] usb 1-1.4: cp210x converter now attached to ttyUSB0
+[Wed Oct 28 08:19:45 2026] Bluetooth: Core ver 2.22
+[Wed Oct 28 08:19:45 2026] NET: Registered PF_BLUETOOTH protocol family
+[Wed Oct 28 08:19:45 2026] Bluetooth: HCI device and connection manager initialized
+[Wed Oct 28 08:19:45 2026] Bluetooth: HCI socket layer initialized
+[Wed Oct 28 08:19:45 2026] Bluetooth: L2CAP socket layer initialized
+[Wed Oct 28 08:19:45 2026] Bluetooth: SCO socket layer initialized
+[Wed Oct 28 08:19:45 2026] mc: Linux media interface: v0.10
+[Wed Oct 28 08:19:45 2026] Bluetooth: HCI UART driver ver 2.3
+[Wed Oct 28 08:19:45 2026] Bluetooth: HCI UART protocol H4 registered
+[Wed Oct 28 08:19:45 2026] Bluetooth: HCI UART protocol Three-wire (H5) registered
+[Wed Oct 28 08:19:45 2026] hci_uart_bcm serial0-0: supply vbat not found, using dummy regulator
+[Wed Oct 28 08:19:45 2026] hci_uart_bcm serial0-0: supply vddio not found, using dummy regulator
+[Wed Oct 28 08:19:45 2026] Bluetooth: HCI UART protocol Broadcom registered
+[Wed Oct 28 08:19:45 2026] hailo1x_pci: loading out-of-tree module taints kernel.
+[Wed Oct 28 08:19:45 2026] videodev: Linux video capture interface: v2.00
+[Wed Oct 28 08:19:45 2026] hailo1x: Init module. driver version 5.1.1
+[Wed Oct 28 08:19:45 2026] hailo1x 0001:01:00.0: Probing on: 1e60:45c4...
+[Wed Oct 28 08:19:45 2026] hailo1x 0001:01:00.0: Probing: Allocate memory for device extension, 11256
+[Wed Oct 28 08:19:45 2026] hailo1x 0001:01:00.0: enabling device (0000 -> 0002)
+[Wed Oct 28 08:19:45 2026] hailo1x 0001:01:00.0: Probing: Device enabled
+[Wed Oct 28 08:19:45 2026] hailo1x 0001:01:00.0: Probing: mapped bar 0 - 000000004523a1e4 16384
+[Wed Oct 28 08:19:45 2026] hailo1x 0001:01:00.0: Probing: mapped bar 2 - 000000009e4f30a9 4096
+[Wed Oct 28 08:19:45 2026] hailo1x 0001:01:00.0: Probing: mapped bar 4 - 00000000d8ffddec 16384
+[Wed Oct 28 08:19:45 2026] hailo1x 0001:01:00.0: Probing: Setting max_desc_page_size to 4096, (PAGE_SIZE=16384)
+[Wed Oct 28 08:19:45 2026] hailo1x 0001:01:00.0: Probing: Enabled 64 bit dma
+[Wed Oct 28 08:19:45 2026] hailo1x 0001:01:00.0: Disabling ASPM L0s 
+[Wed Oct 28 08:19:45 2026] hailo1x 0001:01:00.0: Successfully disabled ASPM L0s 
+[Wed Oct 28 08:19:45 2026] hailo1x 0001:01:00.0: Writing file hailo/hailo10h/customer_certificate.bin
+[Wed Oct 28 08:19:45 2026] hailo1x 0001:01:00.0: File hailo/hailo10h/customer_certificate.bin written successfully
+[Wed Oct 28 08:19:45 2026] hailo1x 0001:01:00.0: Writing file hailo/hailo10h/scu_fw.bin
+[Wed Oct 28 08:19:45 2026] usbcore: registered new interface driver ch341
+[Wed Oct 28 08:19:45 2026] usbserial: USB Serial support registered for ch341-uart
+[Wed Oct 28 08:19:45 2026] ch341 1-1.3:1.0: ch341-uart converter detected
+[Wed Oct 28 08:19:45 2026] usb 1-1.3: ch341-uart converter now attached to ttyUSB1
+[Wed Oct 28 08:19:45 2026] cfg80211: Loading compiled-in X.509 certificates for regulatory database
+[Wed Oct 28 08:19:45 2026] Loaded X.509 cert 'benh@debian.org: 577e021cb980e0e820821ba7b54b4961b8b4fadf'
+[Wed Oct 28 08:19:45 2026] Loaded X.509 cert 'romain.perier@gmail.com: 3abbc6ec146e09d1b6016ab9d6cf71dd233f0328'
+[Wed Oct 28 08:19:45 2026] Loaded X.509 cert 'sforshee: 00b28ddf47aef9cea7'
+[Wed Oct 28 08:19:45 2026] Loaded X.509 cert 'wens: 61c038651aabdcf94bd0ac7ff06c7248db18c600'
+[Wed Oct 28 08:19:45 2026] hailo1x 0001:01:00.0: File hailo/hailo10h/scu_fw.bin written successfully
+[Wed Oct 28 08:19:45 2026] hailo1x 0001:01:00.0: Board SKU-ID is: 6
+[Wed Oct 28 08:19:45 2026] hailo1x 0001:01:00.0: Writing file hailo/hailo10h/u-boot-6.dtb.signed
+[Wed Oct 28 08:19:45 2026] hailo1x 0001:01:00.0: File hailo/hailo10h/u-boot-6.dtb.signed written successfully
+[Wed Oct 28 08:19:45 2026] systemd-journald[269]: Time jumped backwards, rotating.
+[Wed Oct 28 08:19:45 2026] hailo1x 0001:01:00.0: Reading firmware file hailo/hailo10h/u-boot-spl.bin
+[Wed Oct 28 08:19:45 2026] hailo1x 0001:01:00.0: Reading firmware file hailo/hailo10h/u-boot-tfa.itb
+[Wed Oct 28 08:19:45 2026] hailo1x 0001:01:00.0: Reading firmware file hailo/hailo10h/fitImage
+[Wed Oct 28 08:19:45 2026] Bluetooth: hci0: BCM: chip id 107
+[Wed Oct 28 08:19:45 2026] Bluetooth: hci0: BCM: features 0x2f
+[Wed Oct 28 08:19:45 2026] Bluetooth: hci0: BCM4345C0
+[Wed Oct 28 08:19:45 2026] Bluetooth: hci0: BCM4345C0 (003.001.025) build 0000
+[Wed Oct 28 08:19:45 2026] hailo1x 0001:01:00.0: Reading firmware file hailo/hailo10h/image-fs
+[Wed Oct 28 08:19:46 2026] Bluetooth: hci0: BCM4345C0 'brcm/BCM4345C0.raspberrypi,5-model-b.hcd' Patch
+[Wed Oct 28 08:19:46 2026] Bluetooth: hci0: BCM: features 0x2f
+[Wed Oct 28 08:19:46 2026] Bluetooth: hci0: BCM43455 37.4MHz Raspberry Pi 3+-0190
+[Wed Oct 28 08:19:46 2026] Bluetooth: hci0: BCM4345C0 (003.001.025) build 0382
+[Wed Oct 28 08:19:46 2026] Bluetooth: hci0: BCM: Using default device address (43:45:c0:00:1f:ac)
+[Wed Oct 28 08:19:46 2026] hailo1x 0001:01:00.0: Firmware file programmed successfully
+[Wed Oct 28 08:19:46 2026] hailo1x 0001:01:00.0: Firmware file index 0 programmed successfully
+[Wed Oct 28 08:19:46 2026] hailo1x 0001:01:00.0: Firmware file programmed successfully
+[Wed Oct 28 08:19:46 2026] hailo1x 0001:01:00.0: Firmware file index 2 programmed successfully
+[Wed Oct 28 08:19:46 2026] hailo1x 0001:01:00.0: Firmware file programmed successfully
+[Wed Oct 28 08:19:46 2026] hailo1x 0001:01:00.0: Firmware file index 3 programmed successfully
+[Wed Oct 28 08:19:46 2026] hailo1x 0001:01:00.0: Firmware batch programming completed for stage 2
+[Wed Oct 28 08:19:46 2026] hailo1x 0001:01:00.0: vDMA transfer completed, triggering boot
+[Wed Oct 28 08:19:49 2026] hailo1x 0001:01:00.0: SOC Firmware Batch loaded successfully
+[Wed Oct 28 08:19:49 2026] hailo1x 0001:01:00.0: Firmware loaded in 3664 ms
+[Wed Oct 28 08:19:49 2026] hailo1x 0001:01:00.0: Probing: Added board 1e60-45c4, /dev/hailo0
+[Wed Oct 28 08:19:49 2026] usb usb1-port1: over-current change #1
+[Wed Oct 28 08:19:49 2026] usb usb3-port1: over-current change #1
+[Wed Oct 28 08:19:49 2026] ov5647 11-0036: Unsupported clock frequency: 24000000
+[Wed Oct 28 08:19:49 2026] ov5647 11-0036: probe with driver ov5647 failed with error -22
+[Wed Oct 28 08:19:49 2026] brcmfmac: F1 signature read @0x18000000=0x15264345
+[Wed Oct 28 08:19:49 2026] uvcvideo 1-1.1.2:1.0: Found UVC 1.00 device USB 2.0 Camera (2bc5:050f)
+[Wed Oct 28 08:19:49 2026] uvcvideo 1-1.1.2:1.0: Failed to query (GET_INFO) UVC control 2 on unit 2: -71 (exp. 1).
+[Wed Oct 28 08:19:49 2026] rp1-cfe 1f00128000.csi: DW dphy Host HW v1.20
+[Wed Oct 28 08:19:49 2026] uvcvideo 1-1.1.2:1.0: Failed to query (GET_INFO) UVC control 3 on unit 2: -71 (exp. 1).
+[Wed Oct 28 08:19:49 2026] rp1-cfe 1f00128000.csi: PiSP FE HW v0.1
+[Wed Oct 28 08:19:49 2026] rpi-hevc-dec 1000800000.codec: Device registered as /dev/video19
+[Wed Oct 28 08:19:49 2026] rp1-cfe 1f00128000.csi: found subdevice /axi/pcie@1000120000/rp1/i2c@80000/imx219@10
+[Wed Oct 28 08:19:49 2026] uvcvideo 1-1.1.2:1.0: Failed to query (GET_INFO) UVC control 6 on unit 2: -71 (exp. 1).
+[Wed Oct 28 08:19:49 2026] uvcvideo 1-1.1.2:1.0: Failed to query (GET_INFO) UVC control 7 on unit 2: -71 (exp. 1).
+[Wed Oct 28 08:19:49 2026] uvcvideo 1-1.1.2:1.0: Failed to query (GET_INFO) UVC control 8 on unit 2: -71 (exp. 1).
+[Wed Oct 28 08:19:49 2026] uvcvideo 1-1.1.2:1.0: Failed to query (GET_INFO) UVC control 9 on unit 2: -71 (exp. 1).
+[Wed Oct 28 08:19:49 2026] usb usb4-port1: over-current change #1
+[Wed Oct 28 08:19:49 2026] uvcvideo 1-1.1.2:1.0: Failed to query (GET_INFO) UVC control 10 on unit 2: -71 (exp. 1).
+[Wed Oct 28 08:19:49 2026] uvcvideo 1-1.1.2:1.0: Failed to query (GET_INFO) UVC control 1 on unit 2: -71 (exp. 1).
+[Wed Oct 28 08:19:49 2026] uvcvideo 1-1.1.2:1.0: Failed to query (GET_INFO) UVC control 4 on unit 2: -71 (exp. 1).
+[Wed Oct 28 08:19:49 2026] uvcvideo 1-1.1.2:1.0: Failed to query (GET_INFO) UVC control 5 on unit 2: -71 (exp. 1).
+[Wed Oct 28 08:19:49 2026] uvcvideo 1-1.1.2:1.0: Failed to query (GET_CUR) UVC control 5 on unit 2: -71 (exp. 1).
+[Wed Oct 28 08:19:49 2026] uvcvideo 1-1.1.2:1.0: Failed to query (GET_INFO) UVC control 11 on unit 2: -71 (exp. 1).
+[Wed Oct 28 08:19:49 2026] uvcvideo 1-1.1.2:1.0: Failed to query (GET_INFO) UVC control 2 on unit 1: -71 (exp. 1).
+[Wed Oct 28 08:19:49 2026] uvcvideo 1-1.1.2:1.0: Failed to query (GET_INFO) UVC control 3 on unit 1: -71 (exp. 1).
+[Wed Oct 28 08:19:49 2026] uvcvideo 1-1.1.2:1.0: Failed to query (GET_INFO) UVC control 4 on unit 1: -71 (exp. 1).
+[Wed Oct 28 08:19:49 2026] uvcvideo 1-1.1.2:1.0: UVC non compliance - GET_DEF(PROBE) not supported. Enabling workaround.
+[Wed Oct 28 08:19:49 2026] uvcvideo 1-1.1.2:1.1: Failed to query (GET_CUR) UVC probe control : -71 (exp. 26).
+[Wed Oct 28 08:19:49 2026] uvcvideo 1-1.1.2:1.1: Failed to initialize the device (-71).
+[Wed Oct 28 08:19:49 2026] uvcvideo 1-1.1.2:1.0: probe with driver uvcvideo failed with error -71
+[Wed Oct 28 08:19:49 2026] usbcore: registered new interface driver uvcvideo
+[Wed Oct 28 08:19:49 2026] brcmfmac: brcmf_fw_alloc_request: using brcm/brcmfmac43455-sdio for chip BCM4345/6
+[Wed Oct 28 08:19:49 2026] usbcore: registered new interface driver brcmfmac
+[Wed Oct 28 08:19:49 2026] imx219 11-0010: Error reading reg 0x0000: -121
+[Wed Oct 28 08:19:49 2026] imx219 11-0010: error -EREMOTEIO: failed to read chip id 219
+[Wed Oct 28 08:19:49 2026] imx219 11-0010: probe with driver imx219 failed with error -121
+[Wed Oct 28 08:19:49 2026] systemd-journald[269]: Time jumped backwards, rotating.
+[Wed Oct 28 08:19:49 2026] usb 1-1.1.1: 2:1: cannot set freq 48000 to ep 0x83
+[Wed Oct 28 08:19:49 2026] usb usb2-port1: over-current change #1
+[Wed Oct 28 08:19:49 2026] usb 1-1: USB disconnect, device number 2
+[Wed Oct 28 08:19:49 2026] usb 1-1.1: USB disconnect, device number 3
+[Wed Oct 28 08:19:49 2026] usb 1-1.1.1: USB disconnect, device number 5
+[Wed Oct 28 08:19:49 2026] usb usb3-port2: over-current change #1
+[Wed Oct 28 08:19:49 2026] usb 1-1.1.1: 3:1: failed to get current value for ch 1 (-22)
+[Wed Oct 28 08:19:49 2026] usb 1-1.1.1: 3:1: failed to get current value for ch 2 (-22)
+[Wed Oct 28 08:19:49 2026] usb 1-1.1.1: 3:1: failed to get current value for ch 0 (-22)
+[Wed Oct 28 08:19:49 2026] usb 1-1.1.1: 3:1: cannot get min/max values for control 2 (id 3)
+[Wed Oct 28 08:19:49 2026] usb 1-1.1.1: 3:1: cannot get min/max values for control 2 (id 3)
+[Wed Oct 28 08:19:49 2026] usb 1-1.1.2: USB disconnect, device number 7
+[Wed Oct 28 08:19:49 2026] usbcore: registered new interface driver snd-usb-audio
+[Wed Oct 28 08:19:49 2026] usb 1-1.3: USB disconnect, device number 4
+[Wed Oct 28 08:19:49 2026] ch341-uart ttyUSB1: ch341-uart converter now disconnected from ttyUSB1
+[Wed Oct 28 08:19:49 2026] ch341 1-1.3:1.0: device disconnected
+[Wed Oct 28 08:19:49 2026] brcmfmac: brcmf_c_process_txcap_blob: no txcap_blob available (err=-2)
+[Wed Oct 28 08:19:49 2026] brcmfmac: brcmf_c_preinit_dcmds: Firmware: BCM4345/6 wl0: Aug 29 2023 01:47:08 version 7.45.265 (28bca26 CY) FWID 01-b677b91b
+[Wed Oct 28 08:19:49 2026] usb 1-1.4: USB disconnect, device number 6
+[Wed Oct 28 08:19:49 2026] cp210x ttyUSB0: cp210x converter now disconnected from ttyUSB0
+[Wed Oct 28 08:19:49 2026] cp210x 1-1.4:1.0: device disconnected
+[Wed Oct 28 08:19:49 2026] usb usb4-port1: over-current change #2
+[Wed Oct 28 08:19:49 2026] usb usb3-port1: over-current change #2
+[Wed Oct 28 08:19:49 2026] usb 2-1: USB disconnect, device number 2
+[Wed Oct 28 08:19:49 2026] Adding 4194288k swap on /var/swap.  Priority:-2 extents:16 across:16523248k SS
+[Wed Oct 28 08:19:49 2026] usb usb2-port1: over-current change #2
+[Wed Oct 28 08:19:49 2026] usb usb3-port2: over-current change #2
+[Wed Oct 28 08:19:49 2026] usb usb1-port2: over-current change #1
+[Wed Oct 28 08:19:49 2026] Bluetooth: BNEP (Ethernet Emulation) ver 1.3
+[Wed Oct 28 08:19:49 2026] Bluetooth: BNEP filters: protocol multicast
+[Wed Oct 28 08:19:49 2026] Bluetooth: BNEP socket layer initialized
+[Wed Oct 28 08:19:49 2026] Bluetooth: MGMT ver 1.23
+[Wed Oct 28 08:19:49 2026] NET: Registered PF_ALG protocol family
+[Wed Oct 28 08:19:49 2026] Bluetooth: RFCOMM TTY layer initialized
+[Wed Oct 28 08:19:49 2026] Bluetooth: RFCOMM socket layer initialized
+[Wed Oct 28 08:19:49 2026] Bluetooth: RFCOMM ver 1.11
+[Wed Oct 28 08:19:49 2026] usb usb1-port1: over-current change #2
+[Wed Oct 28 08:19:50 2026] usb 1-1: new high-speed USB device number 8 using xhci-hcd
+[Wed Oct 28 08:19:50 2026] usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+[Wed Oct 28 08:19:50 2026] usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 08:19:50 2026] usb 1-1: Product: USB2.0 Hub             
+[Wed Oct 28 08:19:50 2026] usb 1-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 08:19:50 2026] hub 1-1:1.0: USB hub found
+[Wed Oct 28 08:19:50 2026] hub 1-1:1.0: 4 ports detected
+[Wed Oct 28 08:19:50 2026] usb 2-1: new SuperSpeed USB device number 3 using xhci-hcd
+[Wed Oct 28 08:19:50 2026] usb usb1-port1: over-current change #3
+[Wed Oct 28 08:19:50 2026] usb usb3-port1: over-current change #3
+[Wed Oct 28 08:19:50 2026] usb 1-1-port1: cannot reset (err = -71)
+[Wed Oct 28 08:19:50 2026] usb 1-1-port1: cannot reset (err = -71)
+[Wed Oct 28 08:19:50 2026] usb 1-1-port1: cannot reset (err = -71)
+[Wed Oct 28 08:19:50 2026] usb 1-1-port1: cannot reset (err = -71)
+[Wed Oct 28 08:19:50 2026] usb 1-1-port1: cannot reset (err = -71)
+[Wed Oct 28 08:19:50 2026] usb 1-1-port1: Cannot enable. Maybe the USB cable is bad?
+[Wed Oct 28 08:19:50 2026] usb 1-1-port1: cannot disable (err = -71)
+[Wed Oct 28 08:19:50 2026] usb 1-1-port1: cannot reset (err = -71)
+[Wed Oct 28 08:19:50 2026] usb 1-1-port1: cannot reset (err = -71)
+[Wed Oct 28 08:19:50 2026] usb 1-1-port1: cannot reset (err = -71)
+[Wed Oct 28 08:19:50 2026] usb 1-1-port1: cannot reset (err = -71)
+[Wed Oct 28 08:19:50 2026] usb 1-1-port1: cannot reset (err = -71)
+[Wed Oct 28 08:19:50 2026] usb 1-1-port1: Cannot enable. Maybe the USB cable is bad?
+[Wed Oct 28 08:19:50 2026] usb 1-1-port1: cannot disable (err = -71)
+[Wed Oct 28 08:19:50 2026] usb 1-1-port1: attempt power cycle
+[Wed Oct 28 08:19:50 2026] usb usb4-port1: over-current change #3
+[Wed Oct 28 08:19:51 2026] usb 1-1: USB disconnect, device number 8
+[Wed Oct 28 08:19:51 2026] usb usb3-port2: over-current change #3
+[Wed Oct 28 08:19:51 2026] macb 1f00100000.ethernet eth0: PHY [1f00100000.ethernet-ffffffff:01] driver [Broadcom BCM54213PE] (irq=POLL)
+[Wed Oct 28 08:19:51 2026] macb 1f00100000.ethernet eth0: configuring for phy/rgmii-id link mode
+[Wed Oct 28 08:19:51 2026] macb 1f00100000.ethernet: gem-ptp-timer ptp clock registered.
+[Wed Oct 28 08:19:51 2026] brcmfmac: brcmf_cfg80211_set_power_mgmt: power save enabled
+[Wed Oct 28 08:19:52 2026] usb 1-1: new high-speed USB device number 13 using xhci-hcd
+[Wed Oct 28 08:19:52 2026] usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+[Wed Oct 28 08:19:52 2026] usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 08:19:52 2026] usb 1-1: Product: USB2.0 Hub             
+[Wed Oct 28 08:19:52 2026] usb 1-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 08:19:52 2026] hub 1-1:1.0: USB hub found
+[Wed Oct 28 08:19:52 2026] hub 1-1:1.0: 4 ports detected
+[Wed Oct 28 08:19:52 2026] usb usb1-port2: over-current change #2
+[Wed Oct 28 08:19:53 2026] usb 1-1.1: new high-speed USB device number 14 using xhci-hcd
+[Wed Oct 28 08:19:53 2026] usb 1-1.1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+[Wed Oct 28 08:19:53 2026] usb 1-1.1: New USB device strings: Mfr=0, Product=1, SerialNumber=0
+[Wed Oct 28 08:19:53 2026] usb 1-1.1: Product: USB2.0 Hub
+[Wed Oct 28 08:19:53 2026] hub 1-1.1:1.0: USB hub found
+[Wed Oct 28 08:19:53 2026] hub 1-1.1:1.0: 4 ports detected
+[Wed Oct 28 08:19:53 2026] usb 1-1.3: new full-speed USB device number 15 using xhci-hcd
+[Wed Oct 28 08:19:53 2026] usb 1-1.3: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice=81.34
+[Wed Oct 28 08:19:53 2026] usb 1-1.3: New USB device strings: Mfr=0, Product=2, SerialNumber=0
+[Wed Oct 28 08:19:53 2026] usb 1-1.3: Product: USB Serial
+[Wed Oct 28 08:19:53 2026] ch341 1-1.3:1.0: ch341-uart converter detected
+[Wed Oct 28 08:19:53 2026] usb 1-1.3: ch341-uart converter now attached to ttyUSB0
+[Wed Oct 28 08:19:53 2026] usb 1-1.1.1: new high-speed USB device number 16 using xhci-hcd
+[Wed Oct 28 08:19:53 2026] usb 1-1.1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+[Wed Oct 28 08:19:53 2026] usb 1-1.1.1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 08:19:53 2026] usb 1-1.1.1: Product: ORBBEC Depth Sensor
+[Wed Oct 28 08:19:53 2026] usb 1-1.1.1: Manufacturer: Orbbec(R)
+[Wed Oct 28 08:19:54 2026] usb 1-1.4: new full-speed USB device number 17 using xhci-hcd
+[Wed Oct 28 08:19:54 2026] usb 1-1.4: New USB device found, idVendor=10c4, idProduct=ea60, bcdDevice= 1.00
+[Wed Oct 28 08:19:54 2026] usb 1-1.4: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[Wed Oct 28 08:19:54 2026] usb 1-1.4: Product: CP2102 USB to UART Bridge Controller
+[Wed Oct 28 08:19:54 2026] usb 1-1.4: Manufacturer: Silicon Labs
+[Wed Oct 28 08:19:54 2026] usb 1-1.4: SerialNumber: 0001
+[Wed Oct 28 08:19:54 2026] cp210x 1-1.4:1.0: cp210x converter detected
+[Wed Oct 28 08:19:54 2026] usb 1-1.4: cp210x converter now attached to ttyUSB1
+[Wed Oct 28 08:19:54 2026] usb 1-1.1.2: new high-speed USB device number 18 using xhci-hcd
+[Wed Oct 28 08:19:54 2026] usb 1-1.1.2: New USB device found, idVendor=2bc5, idProduct=050f, bcdDevice= 1.00
+[Wed Oct 28 08:19:54 2026] usb 1-1.1.2: New USB device strings: Mfr=2, Product=1, SerialNumber=3
+[Wed Oct 28 08:19:54 2026] usb 1-1.1.2: Product: USB 2.0 Camera
+[Wed Oct 28 08:19:54 2026] usb 1-1.1.2: Manufacturer: Sonix Technology Co., Ltd.
+[Wed Oct 28 08:19:54 2026] usb 1-1.1.2: SerialNumber: SN0001
+[Wed Oct 28 08:19:54 2026] uvcvideo 1-1.1.2:1.0: Found UVC 1.00 device USB 2.0 Camera (2bc5:050f)
+[Wed Oct 28 08:19:56 2026] usb 2-1: unable to read config index 0 descriptor/all
+[Wed Oct 28 08:19:56 2026] usb 2-1: can't read configurations, error -110
+[Wed Oct 28 08:19:56 2026] usb usb2-port1: over-current change #3
+[Wed Oct 28 08:19:57 2026] usb 2-1: new SuperSpeed USB device number 5 using xhci-hcd
+[Wed Oct 28 08:19:57 2026] usb 2-1: New USB device found, idVendor=2109, idProduct=0817, bcdDevice= 0.50
+[Wed Oct 28 08:19:57 2026] usb 2-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 08:19:57 2026] usb 2-1: Product: USB3.0 Hub             
+[Wed Oct 28 08:19:57 2026] usb 2-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 08:19:57 2026] hub 2-1:1.0: USB hub found
+[Wed Oct 28 08:19:57 2026] hub 2-1:1.0: 4 ports detected
+[Wed Oct 28 08:19:59 2026] Initializing XFRM netlink socket
+[Wed Oct 28 08:19:59 2026] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[Wed Oct 28 08:36:27 2026] usb usb1-port1: over-current change #4
+[Wed Oct 28 08:36:27 2026] usb usb3-port1: over-current change #4
+[Wed Oct 28 08:36:27 2026] usb usb4-port1: over-current change #4
+[Wed Oct 28 08:36:27 2026] usb usb2-port1: over-current change #4
+[Wed Oct 28 08:36:27 2026] usb 1-1: USB disconnect, device number 13
+[Wed Oct 28 08:36:27 2026] usb 1-1.1: USB disconnect, device number 14
+[Wed Oct 28 08:36:27 2026] usb 1-1.1.1: USB disconnect, device number 16
+[Wed Oct 28 08:36:27 2026] usb 1-1.1.2: USB disconnect, device number 18
+[Wed Oct 28 08:36:27 2026] usb usb3-port2: over-current change #4
+[Wed Oct 28 08:36:27 2026] usb 1-1.3: USB disconnect, device number 15
+[Wed Oct 28 08:36:27 2026] ch341-uart ttyUSB0: ch341-uart converter now disconnected from ttyUSB0
+[Wed Oct 28 08:36:27 2026] ch341 1-1.3:1.0: device disconnected
+[Wed Oct 28 08:36:27 2026] usb 1-1.4: USB disconnect, device number 17
+[Wed Oct 28 08:36:27 2026] cp210x ttyUSB1: cp210x converter now disconnected from ttyUSB1
+[Wed Oct 28 08:36:27 2026] cp210x 1-1.4:1.0: device disconnected
+[Wed Oct 28 08:36:27 2026] usb 2-1: USB disconnect, device number 5
+[Wed Oct 28 08:36:27 2026] usb 1-1: new high-speed USB device number 19 using xhci-hcd
+[Wed Oct 28 08:36:27 2026] usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+[Wed Oct 28 08:36:27 2026] usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 08:36:27 2026] usb 1-1: Product: USB2.0 Hub             
+[Wed Oct 28 08:36:27 2026] usb 1-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 08:36:27 2026] hub 1-1:1.0: USB hub found
+[Wed Oct 28 08:36:27 2026] hub 1-1:1.0: 4 ports detected
+[Wed Oct 28 08:36:28 2026] usb usb1-port2: over-current change #3
+[Wed Oct 28 08:36:28 2026] usb 1-1.1: new high-speed USB device number 20 using xhci-hcd
+[Wed Oct 28 08:36:28 2026] usb 1-1.1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+[Wed Oct 28 08:36:28 2026] usb 1-1.1: New USB device strings: Mfr=0, Product=1, SerialNumber=0
+[Wed Oct 28 08:36:28 2026] usb 1-1.1: Product: USB2.0 Hub
+[Wed Oct 28 08:36:28 2026] hub 1-1.1:1.0: USB hub found
+[Wed Oct 28 08:36:28 2026] hub 1-1.1:1.0: 4 ports detected
+[Wed Oct 28 08:36:28 2026] usb 2-1: new SuperSpeed USB device number 6 using xhci-hcd
+[Wed Oct 28 08:36:29 2026] usb 2-1: New USB device found, idVendor=2109, idProduct=0817, bcdDevice= 0.50
+[Wed Oct 28 08:36:29 2026] usb 2-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 08:36:29 2026] usb 2-1: Product: USB3.0 Hub             
+[Wed Oct 28 08:36:29 2026] usb 2-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 08:36:29 2026] hub 2-1:1.0: USB hub found
+[Wed Oct 28 08:36:29 2026] hub 2-1:1.0: 4 ports detected
+[Wed Oct 28 08:36:29 2026] usb 1-1.4: new full-speed USB device number 21 using xhci-hcd
+[Wed Oct 28 08:36:29 2026] usb 1-1.4: New USB device found, idVendor=10c4, idProduct=ea60, bcdDevice= 1.00
+[Wed Oct 28 08:36:29 2026] usb 1-1.4: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[Wed Oct 28 08:36:29 2026] usb 1-1.4: Product: CP2102 USB to UART Bridge Controller
+[Wed Oct 28 08:36:29 2026] usb 1-1.4: Manufacturer: Silicon Labs
+[Wed Oct 28 08:36:29 2026] usb 1-1.4: SerialNumber: 0001
+[Wed Oct 28 08:36:29 2026] cp210x 1-1.4:1.0: cp210x converter detected
+[Wed Oct 28 08:36:29 2026] usb 1-1.4: cp210x converter now attached to ttyUSB0
+[Wed Oct 28 08:36:29 2026] usb 1-1.1.1: new high-speed USB device number 22 using xhci-hcd
+[Wed Oct 28 08:36:29 2026] usb 1-1.1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+[Wed Oct 28 08:36:29 2026] usb 1-1.1.1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 08:36:29 2026] usb 1-1.1.1: Product: ORBBEC Depth Sensor
+[Wed Oct 28 08:36:29 2026] usb 1-1.1.1: Manufacturer: Orbbec(R)
+[Wed Oct 28 08:36:29 2026] usb 1-1.3: new full-speed USB device number 23 using xhci-hcd
+[Wed Oct 28 08:36:29 2026] usb 1-1.3: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice=81.34
+[Wed Oct 28 08:36:29 2026] usb 1-1.3: New USB device strings: Mfr=0, Product=2, SerialNumber=0
+[Wed Oct 28 08:36:29 2026] usb 1-1.3: Product: USB Serial
+[Wed Oct 28 08:36:29 2026] ch341 1-1.3:1.0: ch341-uart converter detected
+[Wed Oct 28 08:36:29 2026] usb 1-1.3: ch341-uart converter now attached to ttyUSB1
+[Wed Oct 28 08:36:29 2026] usb 1-1.1.2: new high-speed USB device number 24 using xhci-hcd
+[Wed Oct 28 08:36:29 2026] usb 1-1.1.2: New USB device found, idVendor=2bc5, idProduct=050f, bcdDevice= 1.00
+[Wed Oct 28 08:36:29 2026] usb 1-1.1.2: New USB device strings: Mfr=2, Product=1, SerialNumber=3
+[Wed Oct 28 08:36:29 2026] usb 1-1.1.2: Product: USB 2.0 Camera
+[Wed Oct 28 08:36:29 2026] usb 1-1.1.2: Manufacturer: Sonix Technology Co., Ltd.
+[Wed Oct 28 08:36:29 2026] usb 1-1.1.2: SerialNumber: SN0001
+[Wed Oct 28 08:36:30 2026] uvcvideo 1-1.1.2:1.0: Found UVC 1.00 device USB 2.0 Camera (2bc5:050f)
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb usb3-port1: over-current change #5
+[Wed Oct 28 08:45:29 2026] usb usb1-port1: over-current change #5
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb usb4-port1: over-current change #5
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb usb2-port1: over-current change #5
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb usb3-port2: over-current change #5
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1: USB disconnect, device number 19
+[Wed Oct 28 08:45:29 2026] usb 1-1.1: USB disconnect, device number 20
+[Wed Oct 28 08:45:29 2026] usb 1-1.1.1: USB disconnect, device number 22
+[Wed Oct 28 08:45:29 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:45:29 2026] usb 1-1.3: ch341_read_int_callback - usb_submit_urb failed: -19
+[Wed Oct 28 08:45:29 2026] usb 1-1.1.2: USB disconnect, device number 24
+[Wed Oct 28 08:45:29 2026] usb 1-1.3: USB disconnect, device number 23
+[Wed Oct 28 08:45:29 2026] usb 1-1.3: failed to send control message: -19
+[Wed Oct 28 08:45:29 2026] ch341-uart ttyUSB1: ch341-uart converter now disconnected from ttyUSB1
+[Wed Oct 28 08:45:29 2026] ch341 1-1.3:1.0: device disconnected
+[Wed Oct 28 08:45:29 2026] usb 1-1.4: USB disconnect, device number 21
+[Wed Oct 28 08:45:29 2026] cp210x ttyUSB0: failed set request 0x12 status: -19
+[Wed Oct 28 08:45:29 2026] cp210x ttyUSB0: failed set request 0x0 status: -19
+[Wed Oct 28 08:45:29 2026] cp210x ttyUSB0: cp210x converter now disconnected from ttyUSB0
+[Wed Oct 28 08:45:29 2026] cp210x 1-1.4:1.0: device disconnected
+[Wed Oct 28 08:45:29 2026] usb usb3-port1: over-current change #6
+[Wed Oct 28 08:45:29 2026] usb usb4-port1: over-current change #6
+[Wed Oct 28 08:45:29 2026] usb 2-1: USB disconnect, device number 6
+[Wed Oct 28 08:45:29 2026] usb usb2-port1: over-current change #6
+[Wed Oct 28 08:45:30 2026] usb usb1-port2: over-current change #4
+[Wed Oct 28 08:45:30 2026] usb usb3-port2: over-current change #6
+[Wed Oct 28 08:45:30 2026] usb usb1-port1: over-current change #6
+[Wed Oct 28 08:45:30 2026] usb 1-1: new high-speed USB device number 25 using xhci-hcd
+[Wed Oct 28 08:45:30 2026] usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+[Wed Oct 28 08:45:30 2026] usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 08:45:30 2026] usb 1-1: Product: USB2.0 Hub             
+[Wed Oct 28 08:45:30 2026] usb 1-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 08:45:30 2026] hub 1-1:1.0: USB hub found
+[Wed Oct 28 08:45:30 2026] hub 1-1:1.0: 4 ports detected
+[Wed Oct 28 08:45:31 2026] usb 1-1.1: new high-speed USB device number 26 using xhci-hcd
+[Wed Oct 28 08:45:31 2026] usb 1-1.1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+[Wed Oct 28 08:45:31 2026] usb 1-1.1: New USB device strings: Mfr=0, Product=1, SerialNumber=0
+[Wed Oct 28 08:45:31 2026] usb 1-1.1: Product: USB2.0 Hub
+[Wed Oct 28 08:45:31 2026] hub 1-1.1:1.0: USB hub found
+[Wed Oct 28 08:45:31 2026] hub 1-1.1:1.0: 4 ports detected
+[Wed Oct 28 08:45:31 2026] usb 2-1: new SuperSpeed USB device number 7 using xhci-hcd
+[Wed Oct 28 08:45:31 2026] usb 2-1: New USB device found, idVendor=2109, idProduct=0817, bcdDevice= 0.50
+[Wed Oct 28 08:45:31 2026] usb 2-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 08:45:31 2026] usb 2-1: Product: USB3.0 Hub             
+[Wed Oct 28 08:45:31 2026] usb 2-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 08:45:31 2026] hub 2-1:1.0: USB hub found
+[Wed Oct 28 08:45:31 2026] hub 2-1:1.0: 4 ports detected
+[Wed Oct 28 08:45:31 2026] usb 1-1.4: new full-speed USB device number 27 using xhci-hcd
+[Wed Oct 28 08:45:32 2026] usb 1-1.4: New USB device found, idVendor=10c4, idProduct=ea60, bcdDevice= 1.00
+[Wed Oct 28 08:45:32 2026] usb 1-1.4: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[Wed Oct 28 08:45:32 2026] usb 1-1.4: Product: CP2102 USB to UART Bridge Controller
+[Wed Oct 28 08:45:32 2026] usb 1-1.4: Manufacturer: Silicon Labs
+[Wed Oct 28 08:45:32 2026] usb 1-1.4: SerialNumber: 0001
+[Wed Oct 28 08:45:32 2026] cp210x 1-1.4:1.0: cp210x converter detected
+[Wed Oct 28 08:45:32 2026] usb 1-1.4: cp210x converter now attached to ttyUSB2
+[Wed Oct 28 08:45:32 2026] usb 1-1.1.1: new high-speed USB device number 28 using xhci-hcd
+[Wed Oct 28 08:45:32 2026] usb 1-1.1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+[Wed Oct 28 08:45:32 2026] usb 1-1.1.1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 08:45:32 2026] usb 1-1.1.1: Product: ORBBEC Depth Sensor
+[Wed Oct 28 08:45:32 2026] usb 1-1.1.1: Manufacturer: Orbbec(R)
+[Wed Oct 28 08:45:32 2026] usb 1-1.3: new full-speed USB device number 29 using xhci-hcd
+[Wed Oct 28 08:45:32 2026] usb 1-1.3: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice=81.34
+[Wed Oct 28 08:45:32 2026] usb 1-1.3: New USB device strings: Mfr=0, Product=2, SerialNumber=0
+[Wed Oct 28 08:45:32 2026] usb 1-1.3: Product: USB Serial
+[Wed Oct 28 08:45:32 2026] ch341 1-1.3:1.0: ch341-uart converter detected
+[Wed Oct 28 08:45:32 2026] usb 1-1.3: ch341-uart converter now attached to ttyUSB3
+[Wed Oct 28 08:45:32 2026] usb 1-1.1.2: new high-speed USB device number 30 using xhci-hcd
+[Wed Oct 28 08:45:32 2026] usb 1-1.1.2: New USB device found, idVendor=2bc5, idProduct=050f, bcdDevice= 1.00
+[Wed Oct 28 08:45:32 2026] usb 1-1.1.2: New USB device strings: Mfr=2, Product=1, SerialNumber=3
+[Wed Oct 28 08:45:32 2026] usb 1-1.1.2: Product: USB 2.0 Camera
+[Wed Oct 28 08:45:32 2026] usb 1-1.1.2: Manufacturer: Sonix Technology Co., Ltd.
+[Wed Oct 28 08:45:32 2026] usb 1-1.1.2: SerialNumber: SN0001
+[Wed Oct 28 08:45:32 2026] uvcvideo 1-1.1.2:1.0: Found UVC 1.00 device USB 2.0 Camera (2bc5:050f)
+[Wed Oct 28 08:46:54 2026] usb usb1-port1: over-current change #7
+[Wed Oct 28 08:46:54 2026] usb usb3-port1: over-current change #7
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb usb4-port1: over-current change #7
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb usb2-port1: over-current change #7
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 4 (9041) error -71
+[Wed Oct 28 08:46:54 2026] usb 1-1: USB disconnect, device number 25
+[Wed Oct 28 08:46:54 2026] usb 1-1.1: USB disconnect, device number 26
+[Wed Oct 28 08:46:54 2026] usb 1-1.1.1: USB disconnect, device number 28
+[Wed Oct 28 08:46:54 2026] usb 1-1: clear tt 3 (9062) error -71
+[Wed Oct 28 08:46:54 2026] usb usb3-port2: over-current change #7
+[Wed Oct 28 08:46:54 2026] usb 1-1.3: ch341_read_int_callback - usb_submit_urb failed: -19
+[Wed Oct 28 08:46:54 2026] usb 1-1.1.2: USB disconnect, device number 30
+[Wed Oct 28 08:46:54 2026] usb 1-1.3: USB disconnect, device number 29
+[Wed Oct 28 08:46:54 2026] usb 1-1.3: failed to send control message: -19
+[Wed Oct 28 08:46:54 2026] ch341-uart ttyUSB3: ch341-uart converter now disconnected from ttyUSB3
+[Wed Oct 28 08:46:54 2026] ch341 1-1.3:1.0: device disconnected
+[Wed Oct 28 08:46:54 2026] usb 1-1.4: USB disconnect, device number 27
+[Wed Oct 28 08:46:54 2026] cp210x ttyUSB2: failed set request 0x12 status: -19
+[Wed Oct 28 08:46:54 2026] cp210x ttyUSB2: failed set request 0x0 status: -19
+[Wed Oct 28 08:46:54 2026] cp210x ttyUSB2: cp210x converter now disconnected from ttyUSB2
+[Wed Oct 28 08:46:54 2026] cp210x 1-1.4:1.0: device disconnected
+[Wed Oct 28 08:46:54 2026] usb usb4-port1: over-current change #8
+[Wed Oct 28 08:46:54 2026] usb usb3-port1: over-current change #8
+[Wed Oct 28 08:46:54 2026] usb 2-1: USB disconnect, device number 7
+[Wed Oct 28 08:46:54 2026] usb usb2-port1: over-current change #8
+[Wed Oct 28 08:46:54 2026] usb usb3-port2: over-current change #8
+[Wed Oct 28 08:46:54 2026] usb usb1-port2: over-current change #5
+[Wed Oct 28 08:46:54 2026] usb usb4-port1: over-current change #9
+[Wed Oct 28 08:46:54 2026] usb usb3-port1: over-current change #9
+[Wed Oct 28 08:46:54 2026] usb usb1-port1: over-current change #8
+[Wed Oct 28 08:46:54 2026] usb 2-1: new SuperSpeed USB device number 8 using xhci-hcd
+[Wed Oct 28 08:46:54 2026] usb 2-1: New USB device found, idVendor=2109, idProduct=0817, bcdDevice= 0.50
+[Wed Oct 28 08:46:54 2026] usb 2-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 08:46:54 2026] usb 2-1: Product: USB3.0 Hub             
+[Wed Oct 28 08:46:54 2026] usb 2-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 08:46:54 2026] hub 2-1:1.0: USB hub found
+[Wed Oct 28 08:46:54 2026] hub 2-1:1.0: 4 ports detected
+[Wed Oct 28 08:46:54 2026] usb 1-1: new high-speed USB device number 31 using xhci-hcd
+[Wed Oct 28 08:46:55 2026] usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+[Wed Oct 28 08:46:55 2026] usb 1-1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 08:46:55 2026] usb 1-1: Product: USB2.0 Hub             
+[Wed Oct 28 08:46:55 2026] usb 1-1: Manufacturer: VIA Labs, Inc.         
+[Wed Oct 28 08:46:55 2026] hub 1-1:1.0: USB hub found
+[Wed Oct 28 08:46:55 2026] hub 1-1:1.0: 4 ports detected
+[Wed Oct 28 08:46:55 2026] usb 1-1.1: new high-speed USB device number 32 using xhci-hcd
+[Wed Oct 28 08:46:56 2026] usb 1-1.1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+[Wed Oct 28 08:46:56 2026] usb 1-1.1: New USB device strings: Mfr=0, Product=1, SerialNumber=0
+[Wed Oct 28 08:46:56 2026] usb 1-1.1: Product: USB2.0 Hub
+[Wed Oct 28 08:46:56 2026] hub 1-1.1:1.0: USB hub found
+[Wed Oct 28 08:46:56 2026] hub 1-1.1:1.0: 4 ports detected
+[Wed Oct 28 08:46:56 2026] usb 1-1.3: new full-speed USB device number 33 using xhci-hcd
+[Wed Oct 28 08:46:56 2026] usb 1-1.3: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice=81.34
+[Wed Oct 28 08:46:56 2026] usb 1-1.3: New USB device strings: Mfr=0, Product=2, SerialNumber=0
+[Wed Oct 28 08:46:56 2026] usb 1-1.3: Product: USB Serial
+[Wed Oct 28 08:46:56 2026] ch341 1-1.3:1.0: ch341-uart converter detected
+[Wed Oct 28 08:46:56 2026] usb 1-1.3: ch341-uart converter now attached to ttyUSB0
+[Wed Oct 28 08:46:56 2026] usb 1-1.1.1: new high-speed USB device number 34 using xhci-hcd
+[Wed Oct 28 08:46:56 2026] usb 1-1.1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+[Wed Oct 28 08:46:56 2026] usb 1-1.1.1: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+[Wed Oct 28 08:46:56 2026] usb 1-1.1.1: Product: ORBBEC Depth Sensor
+[Wed Oct 28 08:46:56 2026] usb 1-1.1.1: Manufacturer: Orbbec(R)
+[Wed Oct 28 08:46:56 2026] usb 1-1.4: new full-speed USB device number 35 using xhci-hcd
+[Wed Oct 28 08:46:56 2026] usb 1-1.4: New USB device found, idVendor=10c4, idProduct=ea60, bcdDevice= 1.00
+[Wed Oct 28 08:46:56 2026] usb 1-1.4: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[Wed Oct 28 08:46:56 2026] usb 1-1.4: Product: CP2102 USB to UART Bridge Controller
+[Wed Oct 28 08:46:56 2026] usb 1-1.4: Manufacturer: Silicon Labs
+[Wed Oct 28 08:46:56 2026] usb 1-1.4: SerialNumber: 0001
+[Wed Oct 28 08:46:56 2026] cp210x 1-1.4:1.0: cp210x converter detected
+[Wed Oct 28 08:46:56 2026] usb 1-1.4: cp210x converter now attached to ttyUSB1
+[Wed Oct 28 08:46:57 2026] usb 1-1.1.2: new high-speed USB device number 36 using xhci-hcd
+[Wed Oct 28 08:46:57 2026] usb 1-1.1.2: New USB device found, idVendor=2bc5, idProduct=050f, bcdDevice= 1.00
+[Wed Oct 28 08:46:57 2026] usb 1-1.1.2: New USB device strings: Mfr=2, Product=1, SerialNumber=3
+[Wed Oct 28 08:46:57 2026] usb 1-1.1.2: Product: USB 2.0 Camera
+[Wed Oct 28 08:46:57 2026] usb 1-1.1.2: Manufacturer: Sonix Technology Co., Ltd.
+[Wed Oct 28 08:46:57 2026] usb 1-1.1.2: SerialNumber: SN0001
+[Wed Oct 28 08:46:57 2026] uvcvideo 1-1.1.2:1.0: Found UVC 1.00 device USB 2.0 Camera (2bc5:050f)

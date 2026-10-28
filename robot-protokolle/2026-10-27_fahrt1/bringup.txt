@@ -1,0 +1,72 @@
+[INFO] [launch]: All log files can be found below /root/.ros/log/2026-10-27-15-00-22-972162-pi-bravo-1092
+[INFO] [launch]: Default logging verbosity is set to INFO
+---------------------robot_type = x3---------------------
+[INFO] [joint_state_publisher-1]: process started with pid [1104]
+[INFO] [robot_state_publisher-2]: process started with pid [1106]
+[INFO] [Mcnamu_driver_X3-3]: process started with pid [1108]
+[INFO] [base_node_X3-4]: process started with pid [1110]
+[INFO] [imu_filter_madgwick_node-5]: process started with pid [1113]
+[INFO] [ekf_node-6]: process started with pid [1115]
+[INFO] [yahboom_joy_X3-7]: process started with pid [1126]
+[robot_state_publisher-2] Parsing robot urdf xml string.
+[robot_state_publisher-2] Link base_link had 7 children
+[robot_state_publisher-2] Link back_left_wheel had 0 children
+[robot_state_publisher-2] Link back_right_wheel had 0 children
+[robot_state_publisher-2] Link imu_link had 0 children
+[robot_state_publisher-2] Link camera_link had 0 children
+[robot_state_publisher-2] Link front_left_wheel had 0 children
+[robot_state_publisher-2] Link front_right_wheel had 0 children
+[robot_state_publisher-2] Link laser_link had 0 children
+[robot_state_publisher-2] [INFO] [1793113223.508509692] [robot_state_publisher]: got segment back_left_wheel
+[robot_state_publisher-2] [INFO] [1793113223.508651544] [robot_state_publisher]: got segment back_right_wheel
+[robot_state_publisher-2] [INFO] [1793113223.508672118] [robot_state_publisher]: got segment base_footprint
+[robot_state_publisher-2] [INFO] [1793113223.508683896] [robot_state_publisher]: got segment base_link
+[robot_state_publisher-2] [INFO] [1793113223.508693730] [robot_state_publisher]: got segment camera_link
+[robot_state_publisher-2] [INFO] [1793113223.508703804] [robot_state_publisher]: got segment front_left_wheel
+[robot_state_publisher-2] [INFO] [1793113223.508714563] [robot_state_publisher]: got segment front_right_wheel
+[robot_state_publisher-2] [INFO] [1793113223.508723581] [robot_state_publisher]: got segment imu_link
+[robot_state_publisher-2] [INFO] [1793113223.508732396] [robot_state_publisher]: got segment laser_link
+[imu_filter_madgwick_node-5] [INFO] [1793113223.531644202] [imu_filter_madgwick]: Starting ImuFilter
+[imu_filter_madgwick_node-5] [INFO] [1793113223.533820556] [imu_filter_madgwick]: Using dt computed from message headers
+[imu_filter_madgwick_node-5] [INFO] [1793113223.533857612] [imu_filter_madgwick]: The gravity vector is kept in the IMU message.
+[imu_filter_madgwick_node-5] [INFO] [1793113223.533918316] [imu_filter_madgwick]: Imu filter gain set to 0.100000
+[imu_filter_madgwick_node-5] [INFO] [1793113223.533938464] [imu_filter_madgwick]: Gyro drift bias set to 0.000000
+[imu_filter_madgwick_node-5] [INFO] [1793113223.533949556] [imu_filter_madgwick]: Magnetometer bias values: 0.000000 0.000000 0.000000
+[joint_state_publisher-1] [INFO] [1793113223.756915160] [joint_state_publisher]: Waiting for robot_description to be published on the robot_description topic...
+[Mcnamu_driver_X3-3] Traceback (most recent call last):
+[Mcnamu_driver_X3-3]   File "/usr/local/lib/python3.8/dist-packages/serial/serialposix.py", line 322, in open
+[Mcnamu_driver_X3-3]     self.fd = os.open(self.portstr, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+[Mcnamu_driver_X3-3] FileNotFoundError: [Errno 2] No such file or directory: '/dev/myserial'
+[Mcnamu_driver_X3-3] 
+[Mcnamu_driver_X3-3] During handling of the above exception, another exception occurred:
+[Mcnamu_driver_X3-3] 
+[Mcnamu_driver_X3-3] Traceback (most recent call last):
+[Mcnamu_driver_X3-3]   File "/root/yahboomcar_ros2_ws/yahboomcar_ws/install/yahboomcar_bringup/lib/yahboomcar_bringup/Mcnamu_driver_X3", line 11, in <module>
+[Mcnamu_driver_X3-3]     load_entry_point('yahboomcar-bringup==0.0.0', 'console_scripts', 'Mcnamu_driver_X3')()
+[Mcnamu_driver_X3-3]   File "/root/yahboomcar_ros2_ws/yahboomcar_ws/install/yahboomcar_bringup/lib/python3.8/site-packages/yahboomcar_bringup/Mcnamu_driver_X3.py", line 171, in main
+[Mcnamu_driver_X3-3]     driver = yahboomcar_driver('driver_node')
+[Mcnamu_driver_X3-3]   File "/root/yahboomcar_ros2_ws/yahboomcar_ws/install/yahboomcar_bringup/lib/python3.8/site-packages/yahboomcar_bringup/Mcnamu_driver_X3.py", line 32, in __init__
+[Mcnamu_driver_X3-3]     self.car = Rosmaster()
+[Mcnamu_driver_X3-3]   File "/usr/local/lib/python3.8/dist-packages/Rosmaster_Lib-3.3.9-py3.8.egg/Rosmaster_Lib/Rosmaster_Lib.py", line 20, in __init__
+[Mcnamu_driver_X3-3]   File "/usr/local/lib/python3.8/dist-packages/serial/serialutil.py", line 244, in __init__
+[Mcnamu_driver_X3-3]     self.open()
+[Mcnamu_driver_X3-3]   File "/usr/local/lib/python3.8/dist-packages/serial/serialposix.py", line 325, in open
+[Mcnamu_driver_X3-3]     raise SerialException(msg.errno, "could not open port {}: {}".format(self._port, msg))
+[Mcnamu_driver_X3-3] serial.serialutil.SerialException: [Errno 2] could not open port /dev/myserial: [Errno 2] No such file or directory: '/dev/myserial'
+[Mcnamu_driver_X3-3] Exception ignored in: <function Rosmaster.__del__ at 0x7fff18c039d0>
+[Mcnamu_driver_X3-3] Traceback (most recent call last):
+[Mcnamu_driver_X3-3]   File "/usr/local/lib/python3.8/dist-packages/Rosmaster_Lib-3.3.9-py3.8.egg/Rosmaster_Lib/Rosmaster_Lib.py", line 134, in __del__
+[Mcnamu_driver_X3-3] AttributeError: 'Rosmaster' object has no attribute 'ser'
+[ERROR] [Mcnamu_driver_X3-3]: process has died [pid 1108, exit code 1, cmd '/root/yahboomcar_ros2_ws/yahboomcar_ws/install/yahboomcar_bringup/lib/yahboomcar_bringup/Mcnamu_driver_X3 --ros-args'].
+[imu_filter_madgwick_node-5] [WARN] [1793113233.550300329] [imu_filter_madgwick]: Still waiting for data on topic /imu/data_raw...
+[imu_filter_madgwick_node-5] [WARN] [1793113237.657177101] [imu_filter_madgwick]: The IMU seems to be in free fall, cannot determine gravity direction!
+[imu_filter_madgwick_node-5] [WARN] [1793113243.550313439] [imu_filter_madgwick]: Still waiting for data on topic /imu/data_raw...
+[imu_filter_madgwick_node-5] [INFO] [1793113244.971842272] [imu_filter_madgwick]: First IMU message received.
+[imu_filter_madgwick_node-5] [INFO] [1793113358.245901771] [rclcpp]: signal_handler(signal_value=2)
+[base_node_X3-4] [INFO] [1793113358.245974678] [rclcpp]: signal_handler(signal_value=2)
+[ekf_node-6] [INFO] [1793113358.246533994] [rclcpp]: signal_handler(signal_value=2)
+[robot_state_publisher-2] [INFO] [1793113358.247120550] [rclcpp]: signal_handler(signal_value=2)
+[INFO] [base_node_X3-4]: process has finished cleanly [pid 1110]
+[INFO] [robot_state_publisher-2]: process has finished cleanly [pid 1106]
+[INFO] [imu_filter_madgwick_node-5]: process has finished cleanly [pid 1113]
+[INFO] [ekf_node-6]: process has finished cleanly [pid 1115]

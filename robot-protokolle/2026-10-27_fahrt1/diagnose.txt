@@ -1,0 +1,90 @@
+==== 2026-10-27 15:00:54  Start OK
+-- Geraete
+ls: cannot access '/dev/ttyACM*': No such file or directory
+lrwxrwxrwx 1 root root         7 Oct 27 15:00 /dev/myserial -> ttyUSB2
+lrwxrwxrwx 1 root root         7 Oct 27 15:00 /dev/rplidar -> ttyUSB1
+crwxrwxrwx 1 root dialout 188, 1 Oct 27 15:00 /dev/ttyUSB1
+crwxrwxrwx 1 root dialout 188, 2 Oct 27 15:00 /dev/ttyUSB2
+-- Prozesse
+    102       1       04:18 /usr/bin/python3 /opt/ros/foxy/bin/_ros2_daemon --rmw-implementation rmw_fastrtps_cpp --ros-domain-id 2
+   1092     978       00:32 /usr/bin/python3 /opt/ros/foxy/bin/ros2 launch yahboomcar_bringup yahboomcar_bringup_X3_launch.py
+   1104    1092       00:32 /usr/bin/python3 /opt/ros/foxy/lib/joint_state_publisher/joint_state_publisher --ros-args
+   1110    1092       00:32 /root/yahboomcar_ros2_ws/yahboomcar_ws/install/yahboomcar_base_node/lib/yahboomcar_base_node/base_node_X3 --ros-args --params-file /tmp/launch_params_6unmbyc5
+   1113    1092       00:32 /opt/ros/foxy/lib/imu_filter_madgwick/imu_filter_madgwick_node --ros-args --params-file /root/yahboomcar_ros2_ws/yahboomcar_ws/install/yahboomcar_bringup/share/yahboomcar_bringup/param/imu_filter_param.yaml
+   1115    1092       00:32 /root/yahboomcar_ros2_ws/software/library_ws/install/robot_localization/lib/robot_localization/ekf_node --ros-args -r __node:=ekf_filter_node --params-file /root/yahboomcar_ros2_ws/software/library_ws/install/robot_localization/share/robot_localization/params/ekf_x1_x3.yaml -r /odometry/filtered:=/odom
+   1126    1092       00:32 /usr/bin/python3 /root/yahboomcar_ros2_ws/yahboomcar_ws/install/yahboomcar_ctrl/lib/yahboomcar_ctrl/yahboom_joy_X3 --ros-args
+   1324    1259       00:11 /usr/bin/python3 /opt/ros/foxy/bin/ros2 run yahboomcar_bringup Mcnamu_driver_X3
+   1325    1324       00:10 /usr/bin/python3 /root/yahboomcar_ros2_ws/yahboomcar_ws/install/yahboomcar_bringup/lib/yahboomcar_bringup/Mcnamu_driver_X3
+   1400    1368       00:02 /usr/bin/python3 /opt/ros/foxy/bin/ros2 run sllidar_ros2 sllidar_node --ros-args -p serial_port:=/dev/rplidar -p serial_baudrate:=115200 -p frame_id:=laser -p angle_compensate:=true
+   1401    1400       00:02 /root/yahboomcar_ros2_ws/software/library_ws/install/sllidar_ros2/lib/sllidar_ros2/sllidar_node --ros-args -p serial_port:=/dev/rplidar -p serial_baudrate:=115200 -p frame_id:=laser -p angle_compensate:=true
+-- Topics
+/Buzzer
+/JoyState
+/RGBLight
+/cmd_vel
+/diagnostics
+/edition
+/imu/data
+/imu/data_raw
+/imu/mag
+/joint_states
+/joy
+/move_base/cancel
+/odom
+/odom_raw
+/parameter_events
+/robot_description
+/rosout
+/scan
+/set_pose
+/tf
+/tf_static
+/vel_raw
+/voltage
+-- ros2 topic info /scan
+Type: sensor_msgs/msg/LaserScan
+Publisher count: 1
+Subscription count: 0
+-- ros2 topic info /cmd_vel
+Type: geometry_msgs/msg/Twist
+Publisher count: 1
+Subscription count: 1
+-- ros2 topic info /RGBLight
+Type: std_msgs/msg/Int32
+Publisher count: 1
+Subscription count: 1
+
+==== 2026-10-27 15:02:42  Fehler (Code 130)
+-- Geraete
+ls: cannot access '/dev/ttyACM*': No such file or directory
+lrwxrwxrwx 1 root root         7 Oct 27 15:00 /dev/myserial -> ttyUSB2
+lrwxrwxrwx 1 root root         7 Oct 27 15:00 /dev/rplidar -> ttyUSB1
+crwxrwxrwx 1 root dialout 188, 1 Oct 27 15:02 /dev/ttyUSB1
+crwxrwxrwx 1 root dialout 188, 2 Oct 27 15:02 /dev/ttyUSB2
+-- Prozesse
+    102       1       06:06 /usr/bin/python3 /opt/ros/foxy/bin/_ros2_daemon --rmw-implementation rmw_fastrtps_cpp --ros-domain-id 2
+   1092     978       02:20 /usr/bin/python3 /opt/ros/foxy/bin/ros2 launch yahboomcar_bringup yahboomcar_bringup_X3_launch.py
+   1104    1092       02:20 /usr/bin/python3 /opt/ros/foxy/lib/joint_state_publisher/joint_state_publisher --ros-args
+   1126    1092       02:20 /usr/bin/python3 /root/yahboomcar_ros2_ws/yahboomcar_ws/install/yahboomcar_ctrl/lib/yahboomcar_ctrl/yahboom_joy_X3 --ros-args
+-- Topics
+/Buzzer
+/JoyState
+/RGBLight
+/cmd_vel
+/joint_states
+/joy
+/move_base/cancel
+/parameter_events
+/robot_description
+/rosout
+-- ros2 topic info /scan
+Unknown topic '/scan'
+-- ros2 topic info /cmd_vel
+Type: geometry_msgs/msg/Twist
+Publisher count: 2
+Subscription count: 0
+-- ros2 topic info /RGBLight
+Type: std_msgs/msg/Int32
+Publisher count: 1
+Subscription count: 0
+

@@ -1,0 +1,9 @@
+08:20:53 Akku 10.100000381469727
+08:20:57 Gyro-Bias z 0.3888 rad/s (std 0.0007, n=40)
+08:21:03 Drehen links: {'soll_deg': 90.0, 'odom_deg': 68.6, 'gyro_deg': -70.3, 'gyro_ohne_bias_korr_deg': 36.7, 'lidar_verschiebung_deg': -65, 'lidar_fehler_m': 0.101}
+08:21:09 Drehen rechts: {'soll_deg': -90.0, 'odom_deg': -66.9, 'gyro_deg': 67.4, 'gyro_ohne_bias_korr_deg': 174.4, 'lidar_verschiebung_deg': 64, 'lidar_fehler_m': 0.101}
+08:21:13 Fahren vor (0.15, 0.0, 0.0): {'soll_m': 0.3, 'odom_m': 0.266, 'lidar_vorher_m': 8.5, 'lidar_nachher_m': 8.252, 'lidar_delta_m': 0.248, 'drift_gyro_deg': -1.1}
+08:21:18 Fahren zurueck (-0.15, 0.0, 0.0): {'soll_m': -0.3, 'odom_m': -0.269, 'lidar_vorher_m': 8.232, 'lidar_nachher_m': 8.504, 'lidar_delta_m': -0.272, 'drift_gyro_deg': 0.9}
+08:21:22 Fahren links (0.0, 0.15, 0.0): {'soll_m': 0.3, 'odom_m': 0.212, 'lidar_vorher_m': 5.296, 'lidar_nachher_m': 5.088, 'lidar_delta_m': 0.208, 'drift_gyro_deg': -3.0}
+08:21:27 Fahren rechts (0.0, -0.15, 0.0): {'soll_m': -0.3, 'odom_m': -0.205, 'lidar_vorher_m': 5.088, 'lidar_nachher_m': 5.288, 'lidar_delta_m': -0.2, 'drift_gyro_deg': 3.0}
+08:21:27 fertig, Akku 10.100000381469727

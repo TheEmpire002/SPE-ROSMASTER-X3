@@ -1,0 +1,4 @@
+[Tue Oct 27 16:00:02 2026] usb 1-1: USB disconnect, device number 2
+[Tue Oct 27 16:00:04 2026] usb 1-1: USB disconnect, device number 8
+[Tue Oct 27 16:00:06 2026] usb 1-1: USB disconnect, device number 9
+[Tue Oct 27 16:00:28 2026] usb 1-1: USB disconnect, device number 22
