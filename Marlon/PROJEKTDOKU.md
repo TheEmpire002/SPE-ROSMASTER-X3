@@ -140,6 +140,24 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
   - Der Pi lief dadurch mit 84 °C und drosselte auf 1,5 GHz (`throttled=0xe0006`). Board und Lidar fielen dabei dauernd vom USB.
   - Lehre: Nicht fahren und nicht testen, solange der Pi kompiliert. Die USB-Resets hängen auch an der Temperatur, nicht nur am Takt.
 
+### 28.10.2026 – Interaktion Stufe 2 und 3: Handzeichen und Verhalten (Marlon)
+- **Was:**
+  - `sensors/pose.py`: Körperpose mit YOLOv8-Pose auf dem Hailo-10H, 10 Bilder/s, 17 Körperpunkte pro Person. Der Hailo ist nur aktiv, solange die Interaktion läuft, und wird nach Fehlern neu geöffnet. Im Mock spielt eine simulierte Person die Gesten vor.
+  - `interaktion/gesten.py`: erkennt Folgen (Arm über dem Kopf), Stopp (beide Hände über den Schultern), Herkommen (winken) und Weggehen (seitlich wischen).
+  - `interaktion/verhalten.py`: Folgen auf 1,0 m, Herkommen bis 0,7 m, Weggehen 1 m rückwärts, Stopp. Richtung aus der Kamera, Abstand aus dem Lidar.
+  - Server und Web-App: Befehle `interaction_start/stop`, `follow/follow_stop`, Feld `state.interaktion`, Endpunkte `/interaktion/status` und `/interaktion/pose`. Neues Panel „Interaktion“; das Skelett wird über das Kamerabild gezeichnet.
+- **Warum so:**
+  - Gesten über die Körperpose statt über ein Handmodell (E5): Der Hailo rechnet sie, die CPU bleibt frei, und Arme sieht man auch aus 2–3 m Entfernung.
+  - Die Verdrahtung ist eine Kopie des Erkunder-Musters. Es lenkt immer nur ein Programm, und jede Handeingabe bricht ab.
+- **Problem und Lösung:**
+  - Im ersten Test löste Winken auch „Weggehen“ aus. Ursache: Alle Maße sind in Schulterbreiten gerechnet. Dreht sich die Person kurz seitlich, wird die Schulterbreite in einem Bild winzig, und eine kleine Handbewegung wirkt riesig.
+  - Lösung: den Median der Schulterbreite über das Zeitfenster nehmen.
+  - Der „Arm waagerecht nach vorn“ als Stopp ist entfallen. In 2D sieht er fast so aus wie ein hängender Arm.
+- **Ergebnis (lokal, Mock):**
+  - `test_gesten.py` und `test_hindernisse.py`: alles bestanden. Smoke-Test: 19 von 19.
+  - Ablauf im Mock: Herkommen → „bin da“, Weggehen → „Abstand genommen“, Folgen, Stopp. Abbruch durch Handsteuerung und durch „Autonom fahren“ funktioniert.
+- **Offen:** am Pi prüfen, ob der Hailo die Pose liefert (`/interaktion/status`, fps). Danach der Fahrtest **am Boden**.
+
 ---
 
 ## 3. Ergebnisse und Messwerte
@@ -152,6 +170,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 | Odometrie | 0,27 m gemessen bei 0,30 m Soll, seitwärts ~70 % | Sensor-Check §4 |
 | Hinderniserkennung | Wand, Stuhl, Tisch und Mensch in der Simulation korrekt | `test_hindernisse.py` |
 | Autonomes Fahren | startet und fährt am echten Roboter; Bodentest steht noch aus | 28.10. |
+| Gestenerkennung und Verhalten | 4 Gesten, Negativfälle (Zittern, Hallo-Winken, Flackern, zwei Personen), Hailo-Dekodierung und Fahrlogik: 45 Prüfungen bestanden | `Marlon/interaktion/test_gesten.py` |
 
 ---
 
@@ -164,6 +183,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 | Drehung ungenau | Gyro-Bias/-Vorzeichen, theta im Server ≈ 0 | Erkunder dreht nach Zeit; Gyro-Korrektur offen |
 | Roboter auf dem Tisch | Lidar sieht keine Kanten | Autonomes Fahren nur am Boden |
 | USB-Ausfälle bei Hitze | Pi über 80 °C (Kompilieren), Drosselung auf 1,5 GHz | Während Builds nicht fahren; `check_hardware.py` zeigt Temperatur und Drosselung |
+| Winken löste „Weggehen“ aus | Schulterbreite bricht beim seitlichen Drehen ein, Maße in Schulterbreiten werden riesig | Median der Schulterbreite über das Fenster (28.10.) |
 | Push aus dem Laptop hängt | Git Credential Manager wartet auf Login-Fenster | Nutzer pusht selbst, der Pi zieht nur (`git pull`) |
 
 ---
@@ -172,7 +192,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 
 - Bodentest des Erkunders mit Hindernissen.
 - Hardware-Fix der USB-Versorgung.
-- Interaktion, Stufen 2–5: Gesten, Folgen, Sprache, Geist.
+- Interaktion: Hailo-Pose am Pi prüfen, Fahrtest Folgen/Herkommen am Boden; danach Stufen 4–5 (Sprache, Geist).
 - Später: lokales LLM auf dem Hailo, Gesichter wiedererkennen, Orbbec-Tiefe für niedrige Hindernisse.
 - Akkuspannung im Server anzeigen.
 

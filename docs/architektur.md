@@ -56,9 +56,9 @@ Menschen aus. Es bewertet keinen Gesundheitszustand.
 | `protocol.py`  | Nachrichtenformat — die gemeinsame Sprache aller Beteiligten |
 | `drive/`       | Fahren. `base.py` = Schnittstelle, dazu echter Treiber + Mock |
 | `safety/`      | Watchdog, Not-Aus, Geschwindigkeitsbegrenzung               |
-| `sensors/`     | Lidar, Kamera, Personenerkennung; geplant: Körperpose (Hailo) |
+| `sensors/`     | Lidar, Kamera, Personenerkennung, Körperpose (Hailo)        |
 | `navigation/`  | Odometrie, Lidar-Ortung, Heimfahrt, Erkunder, Hindernis-Benennung |
-| `interaktion/` | *(geplant)* Gesten, Sprache, Stimme, Verhalten, Geist — siehe [`interaktion.md`](interaktion.md) |
+| `interaktion/` | Gesten und Verhalten (Folgen, Herkommen, Weggehen); geplant: Sprache, Stimme, Geist — siehe [`interaktion.md`](interaktion.md) |
 | `box/`         | Motor/Servo der Transportbox *(noch leer)*                  |
 | `api/`         | WebSocket-Server, liefert auch die Web-App aus              |
 | `main.py`      | Startpunkt, baut alles zusammen                             |
@@ -89,3 +89,10 @@ Gesten, Sprache und eine „Geist“-Schicht sitzen als eigene Ebene über den
 Verhalten und fahren ebenfalls nur über den Watchdog. Aufbau, Gesten und
 Stufenplan beschreibt [`interaktion.md`](interaktion.md), die Begründung
 steht in E5 und E6 in [`entscheidungen.md`](entscheidungen.md).
+
+**Stand 28.10.:** Stufen 2 und 3 laufen im Server. `sensors/pose.py`
+rechnet die Körperpose auf dem Hailo, `interaktion/gesten.py` erkennt die
+Handzeichen, `interaktion/verhalten.py` fährt danach. Die Verdrahtung in
+`api/server.py` folgt genau dem Erkunder: bauen in `create_app`, Abbruch
+bei Not-Stopp, Handsteuerung, Heimfahrt, Verbindungsverlust und
+Antriebsausfall, Meldungen über `_status_loop`.

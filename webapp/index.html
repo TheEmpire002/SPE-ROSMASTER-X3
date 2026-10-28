@@ -22,7 +22,8 @@
     <div class="cam-wrap">
       <!-- MJPEG: der Browser zeigt den Stream direkt an, ohne JavaScript. -->
       <img id="cam" class="cam" alt="Kamerabild">
-      <!-- Rahmen um erkannte Personen beim autonomen Fahren. -->
+      <!-- Rahmen um erkannte Personen beim autonomen Fahren, Skelette bei
+           der Interaktion. -->
       <canvas id="cam-overlay" class="cam-overlay"></canvas>
       <p id="cam-error" class="cam-error" hidden>
         Kein Bild. <button type="button" id="cam-retry">Erneut versuchen</button>
@@ -111,6 +112,36 @@
       Test 1: Der Roboter fährt zufällig herum und weicht allem aus, was der
       Lidar sieht. Vor Menschen wartet er kurz. Jede Fahreingabe, der
       Not-Stopp oder dieser Knopf beenden die Fahrt.
+    </p>
+  </section>
+
+  <section class="panel">
+    <h2>Interaktion</h2>
+
+    <dl class="readout">
+      <dt>Modus</dt>    <dd id="val-ia-modus">—</dd>
+      <dt>Person</dt>   <dd id="val-ia-person">—</dd>
+      <dt>Geste</dt>    <dd id="val-ia-geste">—</dd>
+    </dl>
+
+    <div class="home-buttons">
+      <button type="button" id="btn-interaktion" class="btn btn-primary">
+        Interaktion an
+      </button>
+      <button type="button" id="btn-folgen" class="btn">
+        Folge mir
+      </button>
+    </div>
+
+    <p class="hint" id="ia-text">—</p>
+
+    <p class="hint">
+      Handzeichen vor der Kamera: <strong>Folgen</strong> – einen Arm über
+      den Kopf halten · <strong>Stopp</strong> – beide Hände über die
+      Schultern halten · <strong>Herkommen</strong> – vor dem Körper auf und
+      ab winken · <strong>Weggehen</strong> – Hand seitlich wegwischen.
+      Nur am Boden benutzen. Jede Fahreingabe und der Not-Stopp beenden
+      die Interaktion.
     </p>
   </section>
 

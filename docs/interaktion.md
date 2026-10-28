@@ -1,8 +1,8 @@
 # Interaktion: Gesten, Sprache, „Geist“
 
-> **Stand:** Konzept vom 2026-10-28, freigegeben. Die Umsetzung läuft in
-> Stufen (siehe unten), und jede Stufe trägt hier ein, was fertig ist. Den
-> Projektverlauf dazu beschreibt `Marlon/PROJEKTDOKU.md`.
+> **Stand 2026-10-28:** Stufen 1–3 umgesetzt (Pose auf dem Hailo, Gesten,
+> Folgen/Herkommen/Weggehen/Stopp). Sprache und Geist sind noch Konzept.
+> Den Projektverlauf dazu beschreibt `Marlon/PROJEKTDOKU.md`.
 
 Der Roboter soll Menschen wahrnehmen, auf Handzeichen und Zurufe reagieren
 und dabei wirken, als hätte er ein eigenes Innenleben. Alles läuft **im
@@ -51,27 +51,32 @@ Ohne Hailo gibt es keine Gesten, ohne Mikrofon oder Vosk keine Sprache, ohne
 Lautsprecher nur Text, ohne Internet antworten Vorlagen statt Claude. Kein fehlendes Teil darf den Server
 anhalten.
 
-## Module (geplant in `robot/src/rosmaster_assist/`)
+## Module (in `robot/src/rosmaster_assist/`)
 
 | Modul | Verantwortung |
 |---|---|
-| `sensors/pose.py` | Körperpose auf dem Hailo-10H (`yolov8s_pose_h10.hef`, 17 Punkte nach COCO). Läuft als Thread wie `sensors/personen.py` mit ~10–15 Hz. Liefert Personen mit Box, Keypoints und Winkel zur Bildmitte. Im Mock gibt es simulierte Personen. |
-| `interaktion/gesten.py` | Reine Funktionen über eine kurze Keypoint-Historie (~1,5 s). Ohne Hardware testbar. |
-| `interaktion/sprache.py` | USB-Mikrofon über Vosk (offline, deutsch). Erkennt eine feste Befehlsgrammatik plus freien Text nach dem Weckwort. |
-| `interaktion/stimme.py` | Sprachausgabe über Piper auf dem USB-Lautsprecher, in einem eigenen Thread mit Warteschlange. |
-| `interaktion/verhalten.py` | `Folgen`, `Herkommen`, `Weggehen` im Muster von `navigation/explorer.py` (`start`, `abbrechen`, `aktiv`, `letzter_grund`, `zustand`). |
-| `interaktion/geist.py` | Innerer Zustand, Gedächtnis, Absichtswahl, Ausdrucksbewegungen, Gedankenstrom. Takt ~2 Hz. |
-| `interaktion/denken.py` | Hybrider Sprachkern mit derselben Schnittstelle für alle Stufen: Claude-API, später lokales LLM auf dem Hailo, Vorlagen. |
+| `sensors/pose.py` | **fertig.** Körperpose auf dem Hailo-10H (`POSE_HEF`, 17 Punkte nach COCO). Thread wie `sensors/personen.py`, `POSE_HZ` (10 Hz). Das Hailo-Gerät wird nur geöffnet, solange die Interaktion läuft, und nach Fehlern neu geöffnet. Liefert Personen mit Box, Keypoints und Winkel zur Bildmitte. Im Mock spielt eine simulierte Person die Gesten der Reihe nach vor. |
+| `interaktion/gesten.py` | **fertig.** `Gestenerkennung` über eine kurze Keypoint-Historie (`GESTE_FENSTER_S`, 1,5 s). Ohne Hardware testbar. |
+| `interaktion/sprache.py` | *geplant.* USB-Mikrofon über Vosk (offline, deutsch). Erkennt eine feste Befehlsgrammatik plus freien Text nach dem Weckwort. |
+| `interaktion/stimme.py` | *geplant.* Sprachausgabe über Piper auf dem USB-Lautsprecher, in einem eigenen Thread mit Warteschlange. |
+| `interaktion/verhalten.py` | **fertig.** Klasse `Interaktion` mit den Modi `bereit`, `folgen`, `herkommen`, `weggehen`, `sucht`; Bedienung wie `navigation/explorer.py` (`start`, `folgen`, `folgen_stop`, `abbrechen`, `aktiv`, `letzter_grund`, `zustand`, `meldungen_abholen`). |
+| `interaktion/geist.py` | *geplant.* Innerer Zustand, Gedächtnis, Absichtswahl, Ausdrucksbewegungen, Gedankenstrom. Takt ~2 Hz. |
+| `interaktion/denken.py` | *geplant.* Hybrider Sprachkern mit derselben Schnittstelle für alle Stufen: Claude-API, später lokales LLM auf dem Hailo, Vorlagen. |
 
 ## Gesten (Version 1)
 
 Die Gesten werden aus den Körperpunkten bestimmt (Schultern, Ellbogen,
-Handgelenke, Nase). Bildkoordinaten: y wächst nach unten.
+Handgelenke, Nase). Bildkoordinaten: y wächst nach unten. Alle Maße sind in
+**Schulterbreiten** gerechnet und auf die Schultermitte bezogen, damit der
+Abstand der Person keine Rolle spielt. Die Schulterbreite ist der Median
+über das Fenster: Dreht sich die Person beim Winken kurz seitlich, wird
+die Breite in einem Bild winzig, und ohne Median würde jede kleine
+Handbewegung riesig wirken.
 
 | Geste | Erkennung | Wirkung |
 |---|---|---|
 | **Folgen** | Ein Handgelenk über dem Kopf, ≥ 1 s gehalten | Verhalten *Folgen* startet |
-| **Stopp** | Beide Handgelenke über den Schultern, *oder* ein Arm waagerecht nach vorn (Handgelenk ≈ Schulterhöhe) | Jedes Verhalten endet sofort |
+| **Stopp** | Beide Handgelenke über den Schultern, ≥ 0,4 s gehalten. (Der „Arm waagerecht nach vorn“ aus dem Konzept ist in 2D von hängenden Armen kaum zu unterscheiden und entfällt.) | Jedes Verhalten endet sofort |
 | **Herkommen** | Ein Handgelenk bewegt sich mehrmals auf und ab (Winken zum Körper) | Auf die Person zu bis 0,7 m |
 | **Weggehen** | Ein Handgelenk wischt seitlich vom Körper weg | ~1 m zurück, dann stehen |
 
@@ -92,6 +97,10 @@ mindestens Schultern und Handgelenke im Bild.
 - **Herkommen:** fährt auf die Person zu bis 0,7 m und bleibt stehen.
 - **Weggehen:** weicht ~1 m zurück und bleibt stehen.
 - Es ist immer nur **ein** Verhalten aktiv. Erkunder, Heimfahrt und Interaktion brechen sich gegenseitig ab.
+- Sicherheit wie beim Erkunder: vorwärts nur bei freiem Fahrschlauch (`frei_in_richtung`), rückwärts nur bei freiem Raum hinten, ohne frische Lidar-Daten oder bei etwas sehr Nahem steht er. Im Modus `bereit` schickt er keine Befehle.
+- Springt die Kamera auf eine andere Person (Winkel ändert sich um mehr als `INTERAKTION_SPRUNG_GRAD`), wechselt er nicht auf die neue, sondern behandelt die bisherige als kurz verloren.
+- `herkommen` und `weggehen` enden spätestens nach `INTERAKTION_VERHALTEN_MAX_S`.
+- Alle Werte: `FOLGEN_*`, `HERKOMMEN_*`, `WEGGEHEN_*` in `config.py`.
 
 ## Sprache
 
@@ -129,25 +138,23 @@ API-Kosten klein.
 Der API-Schlüssel kommt aus der Umgebungsvariable `ANTHROPIC_API_KEY` und
 **nie** ins Repo.
 
-## Schnittstelle (geplant, wird bei Umsetzung in `docs/api.md` übernommen)
+## Schnittstelle
 
-- **Befehle:**
-  - `interaction_start` / `interaction_stop`: Modus an/aus.
-  - `follow` / `follow_stop`: Folgen direkt aus der App.
-  - `chat` mit `{text}`: Text an den Roboter.
-- **Zustand:** `state.interaktion` mit den Feldern `modus`, `verhalten`, `person{winkel, abstand}`, `geste`, `stimmung`, `aufmerksamkeit`, `gedanke`, `letzte_antwort`.
-- **Neue Nachricht:** `type: "gedanke"` für den Gedankenstrom.
-- **Endpunkte:**
-  - `GET /interaktion/status`
-  - `GET /interaktion/pose` mit den Keypoints zum Einblenden des Skeletts.
+Umgesetzt und in [`api.md`](api.md) beschrieben („Interaktion im Detail“):
+
+- Befehle `interaction_start` / `interaction_stop`, `follow` / `follow_stop`.
+- `state.interaktion` mit `aktiv`, `verfuegbar`, `modus`, `text`, `person{winkel, abstand}`, `personen`, `geste`, `grund`.
+- `GET /interaktion/status` und `GET /interaktion/pose` (Skelett zum Einblenden; die Web-App zeichnet es über das Kamerabild).
+
+Für Stufe 4/5 geplant (nur ergänzen): Befehl `chat {text}`, Felder `stimmung`, `aufmerksamkeit`, `gedanke`, `letzte_antwort`, Nachricht `type: "gedanke"`.
 
 ## Stufen
 
 | Stufe | Inhalt | Stand |
 |---|---|---|
 | 1 | Doku (diese Datei, Projektdoku, Entscheidungen E5/E6) | erledigt |
-| 2 | Wahrnehmung: `pose.py`, `gesten.py`, Skelett in der App, **ohne Fahren** | offen |
-| 3 | Verhalten: Folgen/Stopp, Herkommen/Weggehen, **nur am Boden** | offen |
+| 2 | Wahrnehmung: `pose.py`, `gesten.py`, Skelett in der App, **ohne Fahren** | erledigt (Mock + Tests), Hailo am Pi zu prüfen |
+| 3 | Verhalten: Folgen/Stopp, Herkommen/Weggehen, **nur am Boden** | erledigt (Mock), Fahrtest am Boden offen |
 | 4 | Sprache: Vosk-Befehle, Stimme (Piper), Chat in der App | offen |
 | 5 | Geist und Denken: Zustand, Gedankenstrom, Claude/Vorlagen, Ausdruck | offen |
 | 6 | Später: lokales LLM auf dem Hailo, Gesichter, Orbbec-Tiefe | – |
@@ -155,7 +162,7 @@ Der API-Schlüssel kommt aus der Umgebungsvariable `ANTHROPIC_API_KEY` und
 ## Testen
 
 - Die Gestenlogik wird ohne Hardware geprüft, mit synthetischen Keypoint-Folgen pro Geste plus Negativfällen: `python Marlon/interaktion/test_gesten.py`. Das Muster ist dasselbe wie in `test_hindernisse.py`.
-- `python main.py --mock` liefert simulierte Personen und Gesten.
+- `python main.py --mock` liefert eine simulierte Person, die nacheinander Herkommen, Weggehen, Folgen und Stopp vormacht. In der App „Interaktion an“ drücken und die Meldungen ansehen.
 - Am Pi:
   - `/interaktion/status` zeigt, ob der Hailo verfügbar ist, und die Pose-Rate.
   - Dabei auf CPU-Last und `dmesg` achten, damit keine USB-Resets auftreten (siehe [`hardware.md`](hardware.md)).
