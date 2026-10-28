@@ -342,6 +342,20 @@ ausgelöst durch einen hängenden `dpkg --configure -a`. Die nvidia-Pakete sind
 seitdem entfernt. Wer am Pi etwas mit `apt` installiert, tut das bitte nicht
 während eines Tests und prüft hinterher `dpkg --audit` (leer = gut).
 
+**Stresstest am 28.10. (Akku voll mit 12,0 V, Orbbec abgezogen).** In Ruhe
+(Lidar, Board, Lautsprecher) kam minutenlang keine Meldung. Beim Fahren
+kamen in 4,5 min 160 Over-Current-Meldungen und 83 USB-Abmeldungen, und
+**jede begann 0–5 s nach dem Start einer Drehung** (omega ±0,6, alle vier
+Motoren laufen gleichzeitig an). Geradeaus mit 0,1 m/s blieb ruhig.
+Temperatur 55–62 °C, keine Drosselung. Der Auslöser ist also der
+Anlaufstrom der Motoren. Er zieht die 5-V-Versorgung herunter, an der Pi
+bzw. Hub hängen. Punkte 1 und 2 unten reichen deshalb nicht, **Punkt 4 ist
+nötig**.
+
+Die Software übersteht die Aussetzer (Board und Lidar verbinden sich neu,
+das Board immer über `/dev/myserial`, nie über den Lidar-Port), aber
+zuverlässig fährt der Roboter so nicht.
+
 ### Was am Roboter tun (Hardware)
 
 Nach Wirkung sortiert, das Einfachste zuerst:
@@ -351,9 +365,11 @@ Nach Wirkung sortiert, das Einfachste zuerst:
    dem Akku versorgt. Sackt diese Schiene ab, holen sich die Geräte den Strom
    über das USB-Kabel vom Pi, und der 1,6-A-Schalter löst aus. Das ist eine
    Vermutung, sie lässt sich aber leicht prüfen: mit vollem Akku testen.
+   *Am 28.10. geprüft: Mit vollem Akku bleiben die Resets beim Drehen.*
 2. **Orbbec abziehen, solange sie niemand nutzt.** Sie ist der größte
    Verbraucher am Hub (Tiefensensor mit Projektor, eigener interner Hub),
-   und unser Code verwendet sie nicht.
+   und unser Code verwendet sie nicht. *Seit 28.10. abgezogen, reicht
+   allein nicht.*
 3. **Nur nötige Geräte direkt am Pi.** Alles an den vier Pi-Buchsen teilt
    sich 1,6 A. Momentan sind es C270, Lautsprecher, USB-Mikrofon und der Hub.
    Die C270 hat selbst ein Mikrofon. Treten die Resets weiter auf, testweise

@@ -46,7 +46,8 @@ ab. Alle Endpunkte verhalten sich wie am Roboter.
 ## Am Roboter
 
 - Board und Lidar hängen beide an USB-Seriell. Der Lidar hat den festen
-  Pfad `/dev/rplidar`; das Board wird über `/dev/serial/by-id/` gefunden.
+  Pfad `/dev/rplidar`, das Board `/dev/myserial` (udev-Regeln von Yahboom);
+  fehlt der, sucht der Treiber unter `/dev/serial/by-id/`.
 - Nur **ein** Programm darf gleichzeitig an Board bzw. Lidar. ROS2-Knoten
   (`sllidar_node`, `yahboomcar_bringup`) und alte Server-Instanzen vorher
   beenden: `pkill -f rosmaster_assist; sudo pkill -f sllidar_node`.

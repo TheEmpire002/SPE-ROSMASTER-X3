@@ -76,6 +76,12 @@ PORT = 8000
 # Takt, in dem der Roboter von sich aus Statusmeldungen an die App schickt.
 STATUS_INTERVAL_S = 0.5
 
+# So lange wartet der Server beim Beenden (Strg+C) auf offene Verbindungen.
+# Der Kamera-Stream endet von selbst nie: Ohne Grenze wartete uvicorn am
+# 28.10. ewig darauf, und das Aufräumen (Motoren aus, Lidar stoppen) lief
+# gar nicht erst an.
+SHUTDOWN_TIMEOUT_S = 3
+
 # --- Lidar ---------------------------------------------------------------------
 
 LIDAR_ENABLED = True
