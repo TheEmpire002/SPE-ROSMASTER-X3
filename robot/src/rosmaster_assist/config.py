@@ -174,6 +174,13 @@ CAMERA_ENABLED = True
 # ist /dev/video0 oft ein Encoder und nicht die Kamera.
 CAMERA_INDEX = 0
 
+# Teil des Gerätenamens (/sys/class/video4linux/videoN/name), dessen Kamera
+# vor allen anderen probiert wird. Die Indizes hängen von der
+# Einsteckreihenfolge ab und tauschen nach USB-Resets -- dann wäre die Orbbec
+# /dev/video0 und die Posenerkennung schaute in die falsche Richtung. Die
+# C270 ist vorn montiert und für die Interaktion gedacht. None = nur Index.
+CAMERA_NAME: str | None = "C270"
+
 CAMERA_WIDTH = 640
 CAMERA_HEIGHT = 480
 
@@ -386,3 +393,49 @@ INTERAKTION_VERHALTEN_MAX_S = 20.0
 # Wechselt die verfolgte Person um mehr als diesen Winkel in einem Bild,
 # ist es vermutlich eine andere -- dann beginnt die Gestenerkennung neu.
 INTERAKTION_SPRUNG_GRAD = 15.0
+
+
+# --- Stimme (USB-Lautsprecher) ------------------------------------------------
+# Sprachausgabe über den USB-Lautsprecher „UACDemoV1.0“. Siehe
+# docs/interaktion.md und docs/hardware.md (Einrichtung).
+
+# Abschaltbar, z.B. in der Vorlesung, ohne den Code anzufassen.
+STIMME_ENABLED = True
+
+# Piper spricht offline und klingt deutlich natürlicher als espeak-ng.
+# Fehlt Piper oder das Modell, weicht die Stimme auf espeak-ng aus und
+# zuletzt auf reine Log-Ausgabe -- der Server startet in jedem Fall.
+STIMME_PIPER = "piper"
+STIMME_MODELL = "~/piper/de_DE-thorsten-medium.onnx"
+STIMME_ESPEAK = "espeak-ng"
+
+# ALSA-Gerät über den Kartennamen statt der Nummer: die Nummer ändert sich,
+# wenn sich USB-Geräte nach einem Spannungseinbruch neu anmelden.
+# „plughw“ wandelt Abtastrate und Kanäle passend um.
+STIMME_GERAET = "plughw:CARD=UACDemoV10,DEV=0"
+
+# Lautstärke in Prozent; wird beim Start per amixer gesetzt (falls möglich).
+STIMME_LAUTSTAERKE = 80
+
+# Sprechtempo für Piper: >1 langsamer. Etwas langsamer ist im Raum mit
+# Motorgeräusch besser zu verstehen.
+STIMME_TEMPO = 1.1
+
+# Mehr Sätze warten nicht -- sonst redet der Roboter noch über etwas, das
+# längst vorbei ist. Ältere fallen dann weg.
+STIMME_MAX_WARTESCHLANGE = 3
+
+# Derselbe Satz wird innerhalb dieser Zeit nicht wiederholt (z.B. wenn die
+# Person mehrmals hintereinander verloren und wiedergefunden wird).
+STIMME_WIEDERHOLUNG_S = 4.0
+
+# Längere Texte werden abgeschnitten; die App soll keine Romane vorlesen.
+STIMME_MAX_ZEICHEN = 300
+
+# Kein Satz darf den Sprech-Thread länger blockieren.
+STIMME_TIMEOUT_S = 20.0
+
+# So lange nach dem Satzende gilt die Stimme noch als "spricht": Nachhall
+# im Raum und Puffer im Lautsprecher -- die Spracherkennung soll das nicht
+# als Eingabe verstehen.
+STIMME_NACHLAUF_S = 0.4

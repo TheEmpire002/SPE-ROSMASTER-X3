@@ -158,6 +158,8 @@ Reihenfolge:
 | `interaction_stop` | – | Interaktionsmodus aus und anhalten. | `alert` an alle |
 | `follow` | – | „Folge mir“ ohne Geste. Schaltet den Interaktionsmodus bei Bedarf mit ein. | `alert` an alle |
 | `follow_stop` | – | Folgen beenden, anhalten; der Interaktionsmodus bleibt an. | `alert` an alle |
+| `say` | `text` (string, höchstens 300 Zeichen), `vorrang` (bool, optional) | Über den Lautsprecher sprechen (siehe „Stimme im Detail“). `vorrang: true` bricht den laufenden Satz ab und leert die Warteschlange. | keine; ohne `text` `error`, ohne Lautsprecher/Synthese `alert` (warning) |
+| `say_stop` | – | Sofort verstummen, Warteschlange leeren. | keine |
 | `set_home` | – | Aktuelle Stelle wird neuer Startpunkt (0, 0, 0°), Lidar-Referenz wird neu aufgenommen. | `alert` an alle |
 | `collision` | `enabled` (bool, optional), `distance` (m, optional) | Kollisionsvermeidung ein/aus, Mindestabstand. `distance` wird auf 0,15–1,5 m begrenzt. | `collision` an alle |
 | `beep` | `ms` (int, Standard 100) | Buzzer. | keine |
@@ -187,7 +189,8 @@ Ein unbekannter `type` liefert `{"type": "error", "text": "Unbekannter Nachricht
   "pose": {"x": 1.234, "y": -0.05, "winkel": 12.5, "gemessen": true},
   "collision": {"enabled": false, "distance": 0.35, "verfuegbar": true, "blockiert": false},
   "autonomie": {"aktiv": false, "verfuegbar": true, "zustand": null, "...": "siehe unten"},
-  "interaktion": {"aktiv": false, "verfuegbar": true, "modus": null, "...": "siehe unten"}
+  "interaktion": {"aktiv": false, "verfuegbar": true, "modus": null, "...": "siehe unten"},
+  "stimme": {"verfuegbar": true, "spricht": false, "text": "Ich bin bereit."}
 }
 ```
 
@@ -202,6 +205,7 @@ Ein unbekannter `type` liefert `{"type": "error", "text": "Unbekannter Nachricht
 | `collision.blockiert` | die Kollisionsvermeidung hält gerade eine Fahrt zurück |
 | `autonomie` | autonomes Fahren und erkannte Hindernisse, siehe „Autonomes Fahren im Detail“ |
 | `interaktion` | Interaktionsmodus (Handzeichen, Folgen), siehe „Interaktion im Detail“. Fehlt bei älteren Servern. |
+| `stimme` | Sprachausgabe: `verfuegbar` (es kommt Ton heraus), `spricht` (gerade ein Satz), `text` (zuletzt gesagter Satz oder `null`). Siehe „Stimme im Detail“. Fehlt bei älteren Servern. |
 
 **`collision`**: beim Verbinden und nach jeder Änderung, Felder wie
 `state.collision`.
@@ -354,6 +358,23 @@ der Modus an ist. **Nur am Boden benutzen.**
 | `geste` | zuletzt erkannte Geste (`folgen`, `stopp`, `herkommen`, `weggehen`), wenige Sekunden lang, sonst `null` |
 | `grund` | warum der Modus zuletzt endete |
 
+### Stimme im Detail
+
+Am Roboter hängt ein USB-Lautsprecher. Der Roboter sagt von selbst kurz,
+was er tut: „Ich bin bereit.“ beim Start, „Ich folge dir.“, „Ich komme.“,
+„Da bin ich.“, „Wo bist du?“, „Okay, ich halte an.“, beim `stop` „Halt.“.
+Mit `say` lässt sich beliebiger Text vorlesen.
+
+- Gesprochen wird mit Piper (offline, deutsche Stimme). Fehlt Piper, spricht
+  espeak-ng, fehlt auch das, landet der Text nur im Log (`verfuegbar: false`).
+  In der Simulation (`--mock`) wird nur geloggt, `spricht` verhält sich aber
+  wie echt.
+- Sätze stellen sich in eine kleine Warteschlange (`STIMME_MAX_WARTESCHLANGE`,
+  3). Ist sie voll, fällt der älteste Satz weg. Derselbe Satz innerhalb von
+  `STIMME_WIEDERHOLUNG_S` (4 s) wird verschluckt.
+- `spricht` bleibt nach jedem Satz noch `STIMME_NACHLAUF_S` (0,4 s) wahr.
+  Eine Spracherkennung sollte in dieser Zeit nicht zuhören.
+
 ---
 
 ## HTTP
@@ -433,6 +454,12 @@ vom Startpunkt passt. Unter 0,05 ist gut.
 |---|---|
 | `GET /interaktion/status` | dasselbe wie `state.interaktion`, dazu `pose`: `verfuegbar`, `simuliert`, `aktiv`, `fehler`, `fps`, `bilder`, `letzte_erkennung_vor_s` |
 | `GET /interaktion/pose` | `personen`: erkannte Menschen, größter zuerst, je `box` [x1, y1, x2, y2] und `kp` (17 × [x, y, Sicherheit], COCO-Reihenfolge), relativ zur Bildgröße (0..1), dazu `score`, `winkel`; `skelett`: Punktpaare zum Verbinden. Leer, solange der Modus aus ist. |
+
+### Stimme
+
+| Endpunkt | Liefert |
+|---|---|
+| `GET /stimme/status` | `aktiviert`, `verfuegbar`, `simuliert`, `ausgabe` (`piper`, `espeak`, `text`, `simuliert`), `geraet` (ALSA-Name), `spricht`, `warteschlange`, `zuletzt`, `gesagt`, `verworfen`, `fehler` (z. B. Meldung von aplay, wenn der Lautsprecher fehlt) |
 
 ### Sonstiges
 

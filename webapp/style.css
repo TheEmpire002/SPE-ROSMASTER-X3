@@ -181,6 +181,19 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 
 .home-buttons { display: grid; gap: 0.5rem; margin-top: 0.3rem; }
 
+.say-form { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
+.say-form input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.45rem 0.6rem;
+}
+.say-form input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
 .btn {
   font: inherit;
   color: var(--text);

@@ -50,7 +50,8 @@ ab. Alle Endpunkte verhalten sich wie am Roboter.
 - Nur **ein** Programm darf gleichzeitig an Board bzw. Lidar. ROS2-Knoten
   (`sllidar_node`, `yahboomcar_bringup`) und alte Server-Instanzen vorher
   beenden: `pkill -f rosmaster_assist; sudo pkill -f sllidar_node`.
-- Diagnose ohne Log-Suche: `/lidar/status` und `/camera/status`.
+- Diagnose ohne Log-Suche: `/lidar/status`, `/camera/status` und
+  `/stimme/status` (Lautsprecher).
 
 ## Dokumentieren
 

@@ -232,6 +232,12 @@ class OpenCVCamera(CameraBase):
             if any(wort in bezeichnung for wort in KEINE_KAMERA):
                 continue
             indizes.append(idx)
+
+        # Die Kamera mit passendem Namen nach vorn, ohne die übrige
+        # Reihenfolge zu ändern. Ist sie nicht da, gilt der Index wie bisher.
+        if config.CAMERA_NAME:
+            gesucht = config.CAMERA_NAME.lower()
+            indizes.sort(key=lambda i: gesucht not in _geraetename(i).lower())
         return indizes or [0]
 
     def _open(self) -> None:

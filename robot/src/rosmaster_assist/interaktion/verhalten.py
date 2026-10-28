@@ -46,6 +46,7 @@ from . import gesten as gs
 if TYPE_CHECKING:  # nur für die Typangaben -- vermeidet Ringimporte
     from ..sensors.lidar import LidarService
     from ..sensors.pose import Posenerkennung
+    from .stimme import Stimme
 
 log = logging.getLogger(__name__)
 
@@ -72,6 +73,15 @@ _GESTE_TEXT = {
     gs.WEGGEHEN: "Weggehen",
 }
 
+#: Was der Roboter laut sagt, wenn er eine Geste verstanden hat. Kurz und in
+#: der Ich-Form -- die Person soll sofort hören, dass er sie meint.
+_GESTE_SAGEN = {
+    gs.FOLGEN: "Ich folge dir.",
+    gs.STOPP: "Okay, ich halte an.",
+    gs.HERKOMMEN: "Ich komme.",
+    gs.WEGGEHEN: "Ich fahre zurück.",
+}
+
 #: So lange (s) bleibt die letzte Geste in der Anzeige stehen.
 _GESTE_ANZEIGE_S = 3.0
 
@@ -87,10 +97,12 @@ class Interaktion:
         watchdog: SafetyWatchdog,
         lidar: "LidarService | None",
         pose: "Posenerkennung | None",
+        stimme: "Stimme | None" = None,
     ) -> None:
         self._watchdog = watchdog
         self._lidar = lidar
         self._pose = pose
+        self._stimme = stimme
         self._gesten = gs.Gestenerkennung()
         self._task: asyncio.Task[None] | None = None
         self._grund: str | None = None
@@ -144,6 +156,7 @@ class Interaktion:
             self._task.cancel()
             self._grund = grund
             log.info("Interaktion %s", grund)
+            self._sagen("Interaktion beendet.")
         self._task = None
 
     def folgen(self) -> bool:
@@ -153,13 +166,13 @@ class Interaktion:
             # nächsten Durchlauf des Event-Loops und würde ihn sonst auf
             # BEREIT zurücksetzen.
             return self.start(FOLGEN)
-        self._wechseln(FOLGEN, "folgt (per App)", time.monotonic())
+        self._wechseln(FOLGEN, "folgt (per App)", time.monotonic(), sagen="Ich folge dir.")
         return True
 
     def folgen_stop(self) -> None:
         """Verhalten beenden, Interaktionsmodus bleibt an."""
         if self.aktiv and self._modus != BEREIT:
-            self._wechseln(BEREIT, "angehalten (per App)", time.monotonic())
+            self._wechseln(BEREIT, "angehalten (per App)", time.monotonic(), sagen="Okay, ich bleibe stehen.")
 
     def meldungen_abholen(self) -> list[str]:
         """Ereignisse seit dem letzten Aufruf -- für Hinweise in der App."""
@@ -204,7 +217,10 @@ class Interaktion:
         self._ohne_lidar_seit = None
         self._modus = BEREIT
         self._wechseln(
-            modus, "folgt (per App)" if modus == FOLGEN else "wartet auf ein Handzeichen", time.monotonic()
+            modus,
+            "folgt (per App)" if modus == FOLGEN else "wartet auf ein Handzeichen",
+            time.monotonic(),
+            sagen="Ich folge dir." if modus == FOLGEN else "Hallo! Zeig mir ein Handzeichen.",
         )
         if self._pose is not None:
             self._pose.aktivieren(True)
@@ -248,7 +264,8 @@ class Interaktion:
             return None
 
         if self._modus in (HERKOMMEN, WEGGEHEN) and jetzt - self._modus_seit > config.INTERAKTION_VERHALTEN_MAX_S:
-            return self._wechseln(BEREIT, f"{self._modus}: Zeit abgelaufen", jetzt, melden=True)
+            return self._wechseln(BEREIT, f"{self._modus}: Zeit abgelaufen", jetzt, melden=True,
+                                 sagen="Das dauert zu lange. Ich bleibe stehen.")
 
         # Ohne frische Lidar-Runde wird nicht gefahren. Kurze Aussetzer
         # (USB-Reset) abwarten, bei längeren das Verhalten beenden.
@@ -258,7 +275,8 @@ class Interaktion:
                 self._ohne_lidar_seit = jetzt
                 log.warning("Interaktion: keine frischen Lidar-Daten -- halte an")
             if jetzt - self._ohne_lidar_seit > config.EXPLORE_LIDAR_WAIT_S:
-                return self._wechseln(BEREIT, "Lidar liefert keine Daten", jetzt, melden=True)
+                return self._wechseln(BEREIT, "Lidar liefert keine Daten", jetzt, melden=True,
+                                     sagen="Ich sehe nichts mehr und halte an.")
             self._text = "keine frischen Lidar-Daten"
             return halt
         self._ohne_lidar_seit = None
@@ -282,7 +300,8 @@ class Interaktion:
         if ziel is None:
             if jetzt - self._gesehen > config.FOLGEN_VERLOREN_S:
                 self._suchen_fuer = self._modus
-                return self._wechseln(SUCHEN, "Person verloren -- suche", jetzt, melden=True)
+                return self._wechseln(SUCHEN, "Person verloren -- suche", jetzt, melden=True,
+                                     sagen="Wo bist du?")
             self._text = "Person kurz nicht zu sehen -- warte"
             return halt
 
@@ -293,7 +312,7 @@ class Interaktion:
             and self._abstand <= soll + config.FOLGEN_TOTZONE_M
             and abs(self._winkel) < _ZIEL_WINKEL
         ):
-            return self._wechseln(BEREIT, "bin da", jetzt, melden=True)
+            return self._wechseln(BEREIT, "bin da", jetzt, melden=True, sagen="Da bin ich.")
         return self._annaehern(punkte, soll, rueckwaerts=self._modus == FOLGEN)
 
     # --- Verhalten ---------------------------------------------------------------
@@ -335,13 +354,14 @@ class Interaktion:
     def _weggehen(self, jetzt: float, ziel: dict | None, punkte) -> DriveCommand:
         dauer = config.WEGGEHEN_STRECKE_M / max(0.01, config.WEGGEHEN_SPEED)
         if jetzt - self._modus_seit >= dauer:
-            self._wechseln(BEREIT, "Abstand genommen", jetzt, melden=True)
+            self._wechseln(BEREIT, "Abstand genommen", jetzt, melden=True, sagen="So, genug Abstand.")
             return DriveCommand(0.0, 0.0, 0.0)
         # Rückwärts zählt nur, was hinten ist -- vorn steht ja gerade der
         # Mensch, der ihn weggeschickt hat.
         hinten = frei_in_richtung(punkte, 180.0, config.EXPLORE_HALF_WIDTH_M)
         if hinten <= config.EXPLORE_STOP_M or self._nah(punkte, nur_hinten=True):
-            self._wechseln(BEREIT, "hinten kein Platz -- bleibe stehen", jetzt, melden=True)
+            self._wechseln(BEREIT, "hinten kein Platz -- bleibe stehen", jetzt, melden=True,
+                          sagen="Hinter mir ist kein Platz.")
             return DriveCommand(0.0, 0.0, 0.0)
         # Dabei die Person im Blick behalten (sanft, ohne Ausrichtungszwang).
         omega = 0.0
@@ -353,10 +373,12 @@ class Interaktion:
 
     def _suchen(self, jetzt: float, ziel: dict | None) -> DriveCommand:
         if ziel is not None:
-            self._wechseln(self._suchen_fuer, "Person wiedergefunden", jetzt, melden=True)
+            self._wechseln(self._suchen_fuer, "Person wiedergefunden", jetzt, melden=True,
+                          sagen="Da bist du ja.")
             return DriveCommand(0.0, 0.0, 0.0)
         if jetzt - self._modus_seit > config.FOLGEN_SUCHEN_S:
-            self._wechseln(BEREIT, "Person nicht wiedergefunden", jetzt, melden=True)
+            self._wechseln(BEREIT, "Person nicht wiedergefunden", jetzt, melden=True,
+                          sagen="Ich habe dich verloren.")
             return DriveCommand(0.0, 0.0, 0.0)
         # Zur Seite drehen, auf der die Person zuletzt war -- dort ist sie
         # meist aus dem Bild gelaufen.
@@ -407,6 +429,8 @@ class Interaktion:
             WEGGEHEN: "fährt zurück",
         }
         self._wechseln(modus, texte[modus], jetzt)
+        # Stopp hat Vorrang: was davor in der Schlange stand, stimmt nicht mehr.
+        self._sagen(_GESTE_SAGEN[geste], vorrang=geste == gs.STOPP)
 
     def _abstand_zu(self, ziel: dict | None, scan=None) -> float | None:
         """Lidar-Abstand in Richtung der Person (über die Breite ihrer Box)."""
@@ -435,7 +459,13 @@ class Interaktion:
             nah &= punkte[:, 0] < 0.0
         return int(nah.sum()) >= 3
 
-    def _wechseln(self, modus: str, text: str, jetzt: float, melden: bool = False) -> None:
+    def _sagen(self, text: str, vorrang: bool = False) -> None:
+        if self._stimme is not None:
+            self._stimme.sagen(text, vorrang=vorrang)
+
+    def _wechseln(
+        self, modus: str, text: str, jetzt: float, melden: bool = False, sagen: str | None = None
+    ) -> None:
         if modus == BEREIT and self._modus != BEREIT:
             # Beim Wechsel nach BEREIT einmal ausdrücklich anhalten -- danach
             # schickt die Schleife nichts mehr.
@@ -451,4 +481,6 @@ class Interaktion:
         self._text = text
         if melden:
             self._meldungen.append(text)
+        if sagen:
+            self._sagen(sagen)
         return None

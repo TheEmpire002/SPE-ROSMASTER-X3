@@ -18,3 +18,7 @@ numpy
 # RPLIDAR A1. Paketname beim Installieren: rplidar-roboticia (gepflegter
 # Fork), importiert wird es als `rplidar`.
 rplidar-roboticia
+
+# Sprachausgabe: keine pip-Pakete. Piper (Programm + Stimme), aplay
+# (alsa-utils) und notfalls espeak-ng sind Systemprogramme -- Einrichtung
+# in docs/hardware.md. Fehlen sie, spricht der Roboter nicht, läuft aber.

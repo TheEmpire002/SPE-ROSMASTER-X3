@@ -158,6 +158,47 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
   - Ablauf im Mock: Herkommen → „bin da“, Weggehen → „Abstand genommen“, Folgen, Stopp. Abbruch durch Handsteuerung und durch „Autonom fahren“ funktioniert.
 - **Offen:** am Pi prüfen, ob der Hailo die Pose liefert (`/interaktion/status`, fps). Danach der Fahrtest **am Boden**.
 
+### 28.10.2026 – Sprachausgabe über den USB-Lautsprecher (Marlon)
+- **Was:**
+  - `interaktion/stimme.py`: Der Roboter spricht über den USB-Lautsprecher (ALSA „UACDemoV10“). Kette: Piper (offline, Stimme `de_DE-thorsten-medium`) → `aplay`. Fehlt Piper, spricht espeak-ng, sonst wird nur geloggt.
+  - Das Verhalten sagt an, was es tut: „Ich folge dir.“, „Ich komme.“, „Da bin ich.“, „Wo bist du?“, „Da bist du ja.“, „Okay, ich halte an.“. Beim Not-Stopp kommt „Halt.“, beim Serverstart „Ich bin bereit.“ (hörbarer Selbsttest).
+  - Server: neue Befehle `say {text, vorrang}` und `say_stop`, Feld `state.stimme`, Endpunkt `/stimme/status`. Einstellungen `STIMME_*` in `config.py`.
+  - Web-App: Anzeige „Stimme“ (was er gerade sagt) und ein Feld „Sagen“ im Interaktionsbereich.
+  - Doku: `docs/api.md`, `interaktion.md`, `hardware.md` (Einrichtung von Piper), `architektur.md`, neue Entscheidung E7.
+- **Warum so:**
+  - Offline, damit Ansagen und „Halt.“ auch ohne Internet gehen, wie die Reflexe (E6).
+  - Ein eigener Thread mit Warteschlange: Ein Satz dauert 1–2 s, so lange dürfen Server und Fahrschleife nicht warten.
+  - Piper und aplay laufen als eigene Prozesse. Stürzt einer ab oder fehlt der Lautsprecher, läuft der Server weiter, und ein Stopp kann den laufenden Satz sofort abbrechen.
+  - Der Lautsprecher wird über seinen Namen statt über die Kartennummer angesprochen und übersteht damit USB-Resets.
+  - Gleiche Sätze innerhalb von 4 s werden verschluckt, die Warteschlange hält höchstens 3. Sonst redet er beim Folgen ununterbrochen „Wo bist du? Da bist du ja.“
+- **Problem und Lösung:**
+  - Wer im neuen Textfeld tippte, hätte den Roboter gesteuert: Die Web-App fährt mit den Pfeil-/WASD-Tasten, und die Leertaste ist der Not-Stopp. Lösung: Tastatursteuerung ignoriert Tasten, solange ein Textfeld den Fokus hat.
+  - Ohne Lautsprecher meldete die Stimme `spricht = true`, obwohl nichts zu hören war. Später hätte das die Spracherkennung grundlos taub geschaltet. Jetzt gilt `spricht` nur, wenn wirklich Ton herauskommt.
+- **Ergebnis (lokal, ohne Lautsprecher):**
+  - `Marlon/interaktion/test_stimme.py`: 17 Prüfungen bestanden (Warteschlange, Vorrang, Ausweichen auf Text, Sätze bei Gesten). `test_gesten.py` weiter bestanden.
+  - Smoke-Test des Servers im Mock: „Ich bin bereit.“ beim Start, `say`, Begrüßung bei „Interaktion an“, Ansagen zu den Gesten, „Halt.“ beim Stopp.
+- **Offen:** am Pi Piper und das Modell installieren (Anleitung in `docs/hardware.md`). Dann prüfen, ob man den Lautsprecher hört, wie lang die Verzögerung bis zum Ton ist und ob die Lautstärke passt.
+
+### 28.10.2026 – Gesamtprüfung am Pi, Kamera fest auf die C270 (Marlon)
+- **Was:** Alles am Pi geprüft, mit `robot-protokolle/` als Referenz. Dazu ein Test der Bildkette Kamera → Hailo-Pose ohne Server und ohne Antrieb.
+- **Befund vorheriger Start:**
+  - Die C270 fehlte, nur die Orbbec war da.
+  - In 9 Minuten 299 Over-Current-Meldungen. Board, Lidar und Hub fielen immer wieder ab, und der Server bekam kein Bild.
+  - Nach dem Neustart mit wieder eingesteckter C270 war das weg.
+- **Befund jetzt:**
+  - Takt 2,0 GHz aktiv, nicht gedrosselt, ~51 °C.
+  - Alle Geräte da: C270 (`video0`/`video1`), Orbbec RGB (`video2`), Board (CH340), Lidar (CP2102, `/dev/rplidar`), Mikrofon FongLun, Lautsprecher UACDemoV10.
+  - Over-Current nur beim Hochfahren, plus einmal bei s 241 auf allen Ports gleichzeitig. Das passt zum Backfeed des Hubs.
+  - Danach haben `ttyUSB0`/`ttyUSB1` die Plätze getauscht. Der Treiber findet das Board trotzdem, weil er über `/dev/serial/by-id` sucht und den Lidar über `/dev/rplidar` ausschließt.
+  - espeak-ng ist installiert, Piper fehlt noch. Die Stimme spricht also vorerst mit der Ersatzstimme.
+- **Ergebnis Pose-Test:**
+  - Die C270 wurde automatisch gewählt (V4L2, MJPG 640×480).
+  - Hailo bereit, stabil **10 fps** (393 Bilder in 40 s), 1–2 Personen erkannt.
+  - **Keine einzige neue Over-Current-Meldung unter Hailo-Last.**
+- **Problem und Lösung:**
+  - Die Kamera wurde bisher nur über den Index gewählt (`CAMERA_INDEX = 0`). Meldet sich nach einem Reset die Orbbec zuerst an, wäre sie `video0`, und die Gesten würden in der falschen Kamera gesucht.
+  - Neu: `CAMERA_NAME = "C270"` in `config.py`. Die Kamera mit diesem Namen wird zuerst probiert. Fehlt sie, gilt die alte Reihenfolge.
+
 ---
 
 ## 3. Ergebnisse und Messwerte
@@ -171,6 +212,8 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 | Hinderniserkennung | Wand, Stuhl, Tisch und Mensch in der Simulation korrekt | `test_hindernisse.py` |
 | Autonomes Fahren | startet und fährt am echten Roboter; Bodentest steht noch aus | 28.10. |
 | Gestenerkennung und Verhalten | 4 Gesten, Negativfälle (Zittern, Hallo-Winken, Flackern, zwei Personen), Hailo-Dekodierung und Fahrlogik: 45 Prüfungen bestanden | `Marlon/interaktion/test_gesten.py` |
+| Hailo-Pose am Pi | C270, 10 fps, 1–2 Personen erkannt, keine Over-Current-Meldung unter Last | Gesamtprüfung 28.10. |
+| Sprachausgabe | Warteschlange, Vorrang/Verstummen, Ausweichen ohne Piper, Ansagen des Verhaltens: 17 Prüfungen bestanden; am Lautsprecher noch nicht gehört | `Marlon/interaktion/test_stimme.py` |
 
 ---
 
@@ -184,6 +227,8 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 | Roboter auf dem Tisch | Lidar sieht keine Kanten | Autonomes Fahren nur am Boden |
 | USB-Ausfälle bei Hitze | Pi über 80 °C (Kompilieren), Drosselung auf 1,5 GHz | Während Builds nicht fahren; `check_hardware.py` zeigt Temperatur und Drosselung |
 | Winken löste „Weggehen“ aus | Schulterbreite bricht beim seitlichen Drehen ein, Maße in Schulterbreiten werden riesig | Median der Schulterbreite über das Fenster (28.10.) |
+| Tippen im „Sagen“-Feld hätte den Roboter gefahren | Tastatursteuerung der App reagiert auf alle Tasten, Leertaste = Not-Stopp | Tasten in Textfeldern werden ignoriert (28.10.) |
+| Falsche Kamera möglich | `/dev/video*`-Nummern tauschen nach USB-Resets, Orbbec könnte `video0` werden | Kamera über den Namen wählen, `CAMERA_NAME = "C270"` (28.10.) |
 | Push aus dem Laptop hängt | Git Credential Manager wartet auf Login-Fenster | Nutzer pusht selbst, der Pi zieht nur (`git pull`) |
 
 ---
@@ -193,6 +238,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - Bodentest des Erkunders mit Hindernissen.
 - Hardware-Fix der USB-Versorgung.
 - Interaktion: Hailo-Pose am Pi prüfen, Fahrtest Folgen/Herkommen am Boden; danach Stufen 4–5 (Sprache, Geist).
+- Stimme: Piper am Pi installieren, Lautsprecher und Lautstärke prüfen. Bei der Spracherkennung (Vosk) `Stimme.spricht` nutzen, damit er sich nicht selbst zuhört.
 - Später: lokales LLM auf dem Hailo, Gesichter wiedererkennen, Orbbec-Tiefe für niedrige Hindernisse.
 - Akkuspannung im Server anzeigen.
 

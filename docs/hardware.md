@@ -8,10 +8,10 @@
 | Fahrgestell     | Yahboom ROSMASTER X3  | USB-Serial       | vorhanden   |
 | Expansion Board | Yahboom (STM32)       | USB-Serial       | vorhanden   |
 | Lidar           | Slamtec RPLIDAR A1    | USB-Seriell      | eingebunden (Ortung + Hindernisse) |
-| Kamera          | Logitech C270 (vorn, leicht nach oben) | USB, eigener Bus | eingebunden (`CAMERA_INDEX = 0`) |
+| Kamera          | Logitech C270 (vorn, leicht nach oben) | USB, eigener Bus | eingebunden (über den Namen, `CAMERA_NAME = "C270"`) |
 | Tiefenkamera    | Orbbec (RGB + Tiefe)  | USB              | vorhanden, derzeit ungenutzt |
 | Mikrofon        | USB-Mikrofon (FongLun, C-Media `0d8c:0016`); weitere in C270 und Orbbec | USB-Audio, eigener Bus | für Sprache geplant |
-| Lautsprecher    | USB-Lautsprecher „UACDemoV1.0“ | USB-Audio, direkt am Pi | für Sprachausgabe geplant |
+| Lautsprecher    | USB-Lautsprecher „UACDemoV1.0“ | USB-Audio, direkt am Pi | eingebunden (Sprachausgabe, `STIMME_GERAET`) |
 | ESP32           | *(Modell eintragen)*  | WLAN             | geplant     |
 | Pulssensor      | *(Modell eintragen)*  | ESP32            | geplant     |
 | Box-Motor       | *(Modell eintragen)*  | Servo am X3      | geplant     |
@@ -50,8 +50,13 @@ hinterlegen. Der Lidar hat mit `/dev/rplidar` bereits einen festen Namen.
 
 Ursprünglich war nur die **Orbbec-Tiefenkamera** verbaut. Seit dem 28.10.
 ist zusätzlich eine **Logitech C270** vorn montiert, die der Server als
-Kamera nutzt (`/dev/video0`). Die `/dev/video*`-Nummern hängen von der
-Einsteckreihenfolge ab. Im Zweifel `v4l2-ctl --list-devices` prüfen. Der Tiefenkanal wäre für die
+Kamera nutzt. Die `/dev/video*`-Nummern hängen von der Einsteckreihenfolge
+ab und tauschen nach USB-Resets. Deshalb sucht der Server die Kamera über
+ihren Namen (`CAMERA_NAME = "C270"` in `config.py`, verglichen mit
+`/sys/class/video4linux/videoN/name`). Erst wenn keine passt, gilt
+`CAMERA_INDEX` und danach jede andere Kamera. Welche gewählt wurde, steht
+beim Start im Log („Kamera (USB, /dev/video0, Logi C270 HD WebCam…) bereit“)
+und unter `/camera/status`. Im Zweifel `v4l2-ctl --list-devices` prüfen. Der Tiefenkanal wäre für die
 Hinderniserkennung interessant, braucht aber das Orbbec-SDK.
 
 ## Antrieb
@@ -234,6 +239,44 @@ rpicam-hello --list-cameras
 
 Der Stream liegt unter `/camera/stream` (MJPEG) und ein Einzelbild unter
 `/camera/snapshot` — beides direkt im Browser aufrufbar, auch ohne die App.
+
+## Lautsprecher und Sprachausgabe
+
+Der USB-Lautsprecher meldet sich als ALSA-Karte **„UACDemoV10“**. Der Server
+spricht ihn über den Namen an (`STIMME_GERAET =
+"plughw:CARD=UACDemoV10,DEV=0"`), nicht über die Kartennummer. Die Nummer
+ändert sich, wenn sich Geräte nach einem USB-Reset neu anmelden, der Name
+bleibt gleich. `plughw` rechnet Abtastrate und Format passend um.
+
+Einrichtung am Pi (einmalig):
+
+```bash
+sudo apt install alsa-utils espeak-ng      # aplay/amixer, Ersatzstimme
+aplay -L | grep UACDemo                    # Lautsprecher da?
+
+# Piper: Programm von github.com/rhasspy/piper (Release für aarch64)
+# entpacken und `piper` in den PATH legen (z. B. ~/.local/bin).
+# Stimme: beide Dateien nach ~/piper/
+#   de_DE-thorsten-medium.onnx  und  de_DE-thorsten-medium.onnx.json
+# (huggingface.co/rhasspy/piper-voices, de/de_DE/thorsten/medium)
+
+# Test ohne Server:
+echo "Hallo, ich bin der Rosmaster." \
+  | piper --model ~/piper/de_DE-thorsten-medium.onnx --output-raw \
+  | aplay -D plughw:CARD=UACDemoV10,DEV=0 -r 22050 -f S16_LE -c 1 -t raw
+```
+
+- Piper ist ein Systemprogramm, keine pip-Abhängigkeit. Fehlt es (oder das
+  Modell), weicht der Server auf espeak-ng aus und meldet das im Log. Fehlt
+  auch das, spricht er nicht, läuft aber normal weiter.
+- Beim Start stellt der Server die Lautstärke per `amixer` auf
+  `STIMME_LAUTSTAERKE` (80 %) und sagt „Ich bin bereit.“. Hört man das,
+  funktioniert die ganze Kette.
+- Diagnose: `curl localhost:8000/stimme/status`. `ausgabe` zeigt, welche
+  Stimme benutzt wird, und `fehler` die letzte Meldung von aplay (z. B.
+  „No such device“, wenn der Lautsprecher fehlt).
+- Nach einem USB-Aussetzer geht höchstens der Satz verloren, der gerade
+  lief. Der nächste findet den Lautsprecher unter demselben Namen wieder.
 
 ## AI HAT+
 
