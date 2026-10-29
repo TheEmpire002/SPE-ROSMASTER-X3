@@ -326,6 +326,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
   - **Sprachbefehl „La da da“** (`ladada`, auch „la la la“, ohne Weckwort): spielt das Lied aus `SPRACHE_LADADA_URL` über MUKKE. Läuft es schon, passiert nichts.
 - **Warum:** Das ALSA-Gerät des Lautsprechers lässt sich nur einmal öffnen: Lief Musik, fiel die Stimme mit „Device or resource busy“ aus. Pausieren reicht nicht, mpv hält das Gerät auch in der Pause offen.
 - **Probleme und Lösungen:** Das Mikrofon hört die Musik mit; enthält das Lied selbst „la la la“, finge es immer wieder von vorn an. Deshalb wird „La da da“ ignoriert, solange genau dieses Lied läuft.
+- **Nachtrag – „Robi, Beatbox“:** spielt das Lied aus `SPRACHE_BEATBOX_URL` (mit Weckwort). Die Lied-Befehle laufen im Server jetzt über einen gemeinsamen Zweig. „Beatbox“ steht vermutlich nicht im Vosk-Modell; Varianten („beat box“, „bit box“ …) sind hinterlegt, unbekannte fallen weg.
 - **Offen:** Am Pi testen: Musik an, „Robi, hallo“ → Musik pausiert, Antwort, Musik läuft weiter. „La da da“ ohne Robi. Ob Vosk „la da da“ zuverlässig hört, zeigt `/sprache/status` (`zuletzt_gehoert`).
 
 ---

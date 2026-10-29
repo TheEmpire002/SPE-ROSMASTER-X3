@@ -56,6 +56,7 @@ NACH_HAUSE = "nach_hause"
 ERKUNDEN = "erkunden"
 MUSIK_AUS = "musik_aus"
 LADADA = "ladada"
+BEATBOX = "beatbox"
 
 #: Befehl -> Wendungen. Die Reihenfolge zählt: Kommen in einem Satz
 #: mehrere vor, gewinnt der weiter oben -- Stopp also vor allem, was fährt.
@@ -73,6 +74,9 @@ BEFEHLE: dict[str, tuple[str, ...]] = {
     # Vosk kennt "ladada" nicht als Wort, hört aber "la da da"; "ladada"
     # selbst bleibt für Getipptes (Befehl speech, --mock).
     LADADA: ("la da da", "ladada", "la la la", "lalala"),
+    # "Beatbox" steht vermutlich nicht im Vosk-Modell; die Varianten fängt
+    # die Wortschatz-Prüfung auf -- was das Modell nicht kennt, fällt weg.
+    BEATBOX: ("beatbox", "beat box", "bit box", "biet box", "beet box"),
 }
 
 # Zustände der Erkennung (status()["zustand"])

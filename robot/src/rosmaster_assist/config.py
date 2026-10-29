@@ -658,6 +658,9 @@ SPRACHE_STOPP_OHNE_WECKWORT = True
 SPRACHE_LADADA_URL = "https://www.youtube.com/watch?v=j-S_w3tK3dw"
 SPRACHE_LADADA_OHNE_WECKWORT = True
 
+# "Robi, Beatbox" spielt dieses Lied (mit Weckwort, wie die anderen Befehle).
+SPRACHE_BEATBOX_URL = "https://www.youtube.com/watch?v=EfSp8EjZikE"
+
 # Vosk-Modelle sind auf 16 kHz trainiert. Kann das Mikrofon das nicht,
 # wird seine eigene Rate genommen und Vosk rechnet um.
 SPRACHE_ABTASTRATE = 16000

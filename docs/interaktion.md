@@ -186,6 +186,7 @@ Antrieb“, und die Interaktion war sofort wieder aus. Zwei Ursachen:
 | „Robi, erkunde“, „Robi, schau dich um“ | `erkunden` | wie `explore` |
 | „Robi, Musik aus“, „Robi, Ruhe“ | `musik_aus` | MUKKE stoppen |
 | „La da da“, „La la la“ (ohne Robi) | `ladada` | spielt das Lied aus `SPRACHE_LADADA_URL` über MUKKE; läuft es schon, passiert nichts |
+| „Robi, Beatbox“ | `beatbox` | spielt das Lied aus `SPRACHE_BEATBOX_URL` über MUKKE; läuft es schon, passiert nichts |
 | „Hallo Robi“, „Robi, wach auf“ | `start` | Interaktion an (ohne Fahren); ist sie schon an: „Ja? Ich bin da.“ |
 | „Robi, gute Nacht“, „Robi, Feierabend“ | `aus` | Heimfahrt/Erkunder abbrechen, Interaktion aus, „Gute Nacht.“ |
 

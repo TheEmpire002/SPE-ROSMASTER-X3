@@ -55,6 +55,9 @@ for text, erwartet in [
     ("ladada", sp.LADADA),
     ("la la la", sp.LADADA),
     ("da", None),
+    ("robi beatbox", sp.BEATBOX),
+    ("robbie beat box", sp.BEATBOX),
+    ("beatbox", None),  # ohne Weckwort nicht
     ("Robi, Straße", None),
     ("stopp", sp.STOPP),  # ohne Weckwort
     ("halt", sp.STOPP),

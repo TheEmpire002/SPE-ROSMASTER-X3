@@ -715,16 +715,21 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             except MukkeFehler as exc:
                 await hub.broadcast(alert_message("warning", str(exc)))
             stimme.sagen("Musik ist aus.")
-        elif befehl == sp.LADADA:
+        elif befehl in (sp.LADADA, sp.BEATBOX):
+            # Erst beim Befehl nachschlagen: so gilt eine geänderte config.
+            url = {
+                sp.LADADA: config.SPRACHE_LADADA_URL,
+                sp.BEATBOX: config.SPRACHE_BEATBOX_URL,
+            }[befehl]
             # Nichts ansagen: Die Stimme würde das Lied gleich wieder
             # unterbrechen.
             laufend = await asyncio.to_thread(mukke.status)
-            if laufend["laeuft"] and laufend["url"] == config.SPRACHE_LADADA_URL:
+            if laufend["laeuft"] and laufend["url"] == url:
                 # Das Mikrofon hört das Lied mit -- singt es selbst "la la
                 # la", finge es sonst immer wieder von vorn an.
                 return
             try:
-                await asyncio.to_thread(mukke.abspielen, config.SPRACHE_LADADA_URL)
+                await asyncio.to_thread(mukke.abspielen, url)
             except MukkeFehler as exc:
                 await hub.broadcast(alert_message("warning", str(exc)))
                 stimme.sagen("Das geht gerade nicht.")

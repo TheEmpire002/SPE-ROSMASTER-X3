@@ -395,6 +395,7 @@ nur mit dem Weckwort **„Robi“** im selben Satz oder bis zu 5 s
 | `erkunden` | „Robi, erkunde“ | `explore` |
 | `musik_aus` | „Robi, Musik aus“, „Robi, Ruhe“ | `POST /mukke/stop` |
 | `ladada` | „La da da“ (ohne Weckwort) | `POST /mukke/play` mit `SPRACHE_LADADA_URL` |
+| `beatbox` | „Robi, Beatbox“ | `POST /mukke/play` mit `SPRACHE_BEATBOX_URL` |
 | `start` | „Hallo Robi“ | `interaction_start` |
 | `aus` | „Robi, gute Nacht“ | `interaction_stop`, Heimfahrt/Erkunder abbrechen |
 
