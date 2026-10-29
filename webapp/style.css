@@ -455,3 +455,45 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
   padding: 0.1rem 0.4rem;
   pointer-events: none;
 }
+
+/* --- Einstellungsknopf links in der Kopfzeile --- */
+
+.header-start { display: flex; align-items: center; gap: 0.8rem; }
+
+.einst-knopf {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #cfe4ff;
+  background: linear-gradient(180deg, #23436a, #1b3554);
+  border: 1px solid #2d5a8c;
+  border-radius: 999px;
+  padding: 0.4rem 0.85rem 0.4rem 0.6rem;
+  cursor: pointer;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 2px 6px rgba(0, 0, 0, 0.25);
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+.einst-knopf:hover {
+  background: linear-gradient(180deg, #2a5182, #203f65);
+  border-color: var(--accent);
+}
+.einst-knopf:active { transform: translateY(1px); }
+.einst-knopf:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Das Zahnrad dreht sich beim Darüberfahren ein Stück -- zeigt, dass es
+   ein Knopf ist, ohne aufdringlich zu sein. */
+.einst-knopf svg { transition: transform 0.4s ease; }
+.einst-knopf:hover svg { transform: rotate(60deg); }
+
+/* Auf dem Handy nur das Symbol, sonst drängt es den Titel weg. */
+@media (max-width: 520px) {
+  .einst-knopf span { display: none; }
+  .einst-knopf { padding: 0.45rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .einst-knopf svg { transition: none; }
+}

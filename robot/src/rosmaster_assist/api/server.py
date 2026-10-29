@@ -43,6 +43,20 @@ log = logging.getLogger(__name__)
 # robot/src/rosmaster_assist/api/server.py -> Projektwurzel -> webapp/
 WEBAPP_DIR = Path(__file__).resolve().parents[4] / "webapp"
 
+# Die Web-App vor jeder Verwendung beim Roboter nachfragen lassen (bei
+# unveränderter Datei nur eine kurze 304-Antwort). Ohne diese Angabe darf
+# der Browser Dateien nach eigenem Ermessen weiterverwenden -- nach einem
+# Update passten dann eine neue index.html und eine alte app.js nicht
+# zusammen, das Skript brach ab, und die App blieb auf "getrennt".
+_KEIN_CACHE = {"Cache-Control": "no-cache"}
+
+
+class _OhneVeraltetenCache(StaticFiles):
+    async def get_response(self, path, scope):
+        antwort = await super().get_response(path, scope)
+        antwort.headers.update(_KEIN_CACHE)
+        return antwort
+
 
 class ConnectionHub:
     """Hält alle offenen Verbindungen und verteilt Nachrichten an sie."""
@@ -432,15 +446,15 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
 
     # Die Web-App direkt mitausliefern, damit eine Adresse genügt.
     if WEBAPP_DIR.is_dir():
-        app.mount("/static", StaticFiles(directory=WEBAPP_DIR), name="static")
+        app.mount("/static", _OhneVeraltetenCache(directory=WEBAPP_DIR), name="static")
 
         @app.get("/")
         async def index() -> FileResponse:
-            return FileResponse(WEBAPP_DIR / "index.html")
+            return FileResponse(WEBAPP_DIR / "index.html", headers=_KEIN_CACHE)
 
         @app.get("/einstellungen")
         async def einstellungen_seite() -> FileResponse:
-            return FileResponse(WEBAPP_DIR / "einstellungen.html")
+            return FileResponse(WEBAPP_DIR / "einstellungen.html", headers=_KEIN_CACHE)
     else:
         log.warning("webapp/ nicht gefunden unter %s -- nur /ws verfügbar", WEBAPP_DIR)
 

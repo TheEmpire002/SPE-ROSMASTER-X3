@@ -954,8 +954,15 @@ ui.einstDialog.addEventListener("close", () => ladeKameras());
 
 // --- Start ----------------------------------------------------------------
 
-zeigeKameras(); // sofort die gewählte Ansicht, die Liste kommt hinterher
-ladeKameras();
+// Steuerverbindung zuerst: sie ist das Wichtigste, und ein Fehler in der
+// Kameraanzeige darf sie nicht verhindern.
 applyLimits();
 sendTimer = setInterval(sendDrive, 1000 / SEND_HZ);
 connect();
+
+try {
+  zeigeKameras(); // sofort die gewählte Ansicht, die Liste kommt hinterher
+} catch (err) {
+  logLine(`Kameraanzeige gestört: ${err.message}`, "error");
+}
+ladeKameras();
