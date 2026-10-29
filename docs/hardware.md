@@ -362,6 +362,21 @@ der Lidar kurz nach dem Neu-Verbinden wieder ausfällt (`LIDAR_STABIL_S`).
 Meldet sich der Lidar gar nicht mehr an (`dmesg`: immer wieder „new
 full-speed USB device“ an 1-1.4), Lidar-Kabel neu stecken.
 
+**Gegenprobe am 29.10. mit Labornetzteil statt Akku** (Orbbec wieder
+angesteckt, C270 nicht). Gleicher Test, 5 min, davon 210 s Fahren mit
+denselben Drehungen: **0 Over-Current-Meldungen, 0 USB-Abmeldungen**,
+Lidar ohne ein einziges Neu-Verbinden, 51 °C, keine Drosselung. Damit ist
+belegt, dass der Akku-Zweig die Ursache ist: Unter dem Anlaufstrom der
+Motoren bricht die Spannung des Akkus bzw. seiner Zuleitung ein, das
+stabile Netzteil hält sie. Für den Fahrbetrieb mit Akku bleibt Punkt 4
+nötig; am Tisch und für Tests ist das Netzteil eine saubere Lösung.
+
+Einmal löste es trotzdem aus: Beim Ein- und Ausstecken von C270 und
+Lautsprecher im laufenden Betrieb fielen alle Geräte für 3 s ab (18
+Meldungen auf einmal). Der Einschaltstrom eines frisch gesteckten Geräts
+reicht für den gemeinsamen 1,6-A-Schalter des Pi. **USB-Geräte nur bei
+gestopptem Server und stehendem Roboter umstecken.**
+
 ### Was am Roboter tun (Hardware)
 
 Nach Wirkung sortiert, das Einfachste zuerst:
