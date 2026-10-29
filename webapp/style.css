@@ -714,3 +714,79 @@ a.einst-knopf { text-decoration: none; }
 @media (prefers-reduced-motion: reduce) {
   .diag-gesamt.kritisch .diag-ampel { animation: none; }
 }
+
+/* --- MUKKE --- */
+
+/* Eigene Farbe, damit man die beiden Knöpfe nicht verwechselt. */
+.mukke-knopf {
+  color: #f3dcff;
+  background: linear-gradient(180deg, #4b2a63, #3a2050);
+  border-color: #6d3f8f;
+}
+.mukke-knopf:hover {
+  background: linear-gradient(180deg, #5a3377, #46275f);
+  border-color: #c58af9;
+}
+/* Die Note dreht sich nicht wie das Zahnrad, sie hüpft. */
+.mukke-knopf:hover svg { transform: translateY(-2px); }
+
+/* Spielt etwas, leuchtet der Knopf grün und die Note wippt. */
+.mukke-knopf.spielt {
+  color: #d6ffe9;
+  background: linear-gradient(180deg, #1f5a3f, #174631);
+  border-color: var(--ok);
+}
+.mukke-knopf.spielt svg { animation: mukke-wippen 1.2s ease-in-out infinite; }
+
+@keyframes mukke-wippen {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  50% { transform: translateY(-2px) rotate(-8deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mukke-knopf.spielt svg { animation: none; }
+}
+
+.mukke-dialog { width: min(560px, 96vw); }
+
+.mukke-inhalt { display: grid; gap: 1rem; padding: 1rem 1.2rem 1.4rem; }
+
+.mukke-form { display: flex; gap: 0.5rem; }
+.mukke-url {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--text);
+  background: #0d0f13;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+}
+.mukke-url:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.mukke-jetzt {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.7rem 0.8rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.mukke-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.mukke-titel-jetzt { font-size: 0.95rem; overflow-wrap: anywhere; }
+
+.mukke-steuerung { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
+.mukke-steuerung .btn:disabled { opacity: 0.45; cursor: default; }
+
+.mukke-laut {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 200px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.mukke-laut input { flex: 1; accent-color: #c58af9; }
+.mukke-laut output { min-width: 2.8rem; text-align: right; color: var(--text); }

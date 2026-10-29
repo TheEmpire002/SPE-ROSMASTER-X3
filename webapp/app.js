@@ -262,9 +262,12 @@ const KEYS_UP = {
 
 window.addEventListener("keydown", (e) => {
   if (e.repeat) return;
-  // Im Einstellungs-Modal wird getippt -- ein "e" im Zahlenfeld darf den
-  // Roboter nicht drehen lassen.
-  if (ui.einstDialog.open) return;
+  // In einem offenen Fenster (Einstellungen, MUKKE) wird getippt -- ein
+  // "e" im Zahlenfeld oder ein "w" im YouTube-Link darf den Roboter nicht
+  // bewegen. Ebenso in Textfeldern (Schieberegler ausgenommen, mit denen
+  // man nebenbei das Tempo stellt).
+  if (document.querySelector("dialog[open]")) return;
+  if (e.target.closest?.("input:not([type=range]):not([type=checkbox]), textarea, select")) return;
   if (e.code === "Space") {
     e.preventDefault();
     stopAll();

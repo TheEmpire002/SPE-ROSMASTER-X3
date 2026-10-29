@@ -170,6 +170,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
   - Direkt nach dem Start meldete die Seite Lidar und Kamera als ausgefallen, weil sie noch hochfuhren. Lösung: 15 s Anlaufzeit (`DIAGNOSE_ANLAUF_S`).
   - Nach einem Server-Neustart hätte der Browser keine neuen Log-Zeilen mehr geholt (Zeilennummern beginnen wieder bei 1). Lösung: Der Server meldet immer seine letzte Nummer; ist sie kleiner als die bekannte, lädt der Browser neu.
 - **Ergebnis (lokal, Mock):** `Marlon/diagnose/test_diagnose.py` 9 von 9 bestanden (Akku, Quittieren, Vorfälle, Kernel-Log, Unterspannung, Log-Puffer); Smoke-Test 19 von 19; alle Seiten antworten.
+- **Zusammenführen mit main:** Ben hatte parallel die Musikfunktion „MUKKE“ eingebaut, an denselben Stellen (Server-Endpunkte, `config.py`, Knopf oben links, CSS, `docs/api.md`). Die Konflikte waren nur „beide haben etwas angehängt“; beide Teile bleiben erhalten, die Knöpfe Diagnose und MUKKE stehen nebeneinander. Danach erneut: Tests 9/9, Smoke-Test 19/19, `/diagnose` und `/mukke/status` antworten.
 - **Offen:** am Pi prüfen, ob Kernel-Log, Überlast-Zähler und `vcgencmd` gelesen werden. Für das Kernel-Log muss `pi` in der Gruppe `systemd-journal` sein (`sudo usermod -aG systemd-journal pi`, danach neu anmelden).
 
 ---

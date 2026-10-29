@@ -11,7 +11,7 @@
 | Tiefenkamera    | Orbbec (Farb- + Tiefenkanal) | USB (über Hub) | Farbbild eingebunden (Kamera `orientierung`), Tiefe noch nicht |
 | Webcam          | Logitech C270 (vorn, leicht nach oben) | USB, eigener Bus (direkt am Pi) | eingebunden (Kamera `personen`: Personenerkennung, Gesten) |
 | Mikrofon        | USB-Mikrofon (FongLun, C-Media `0d8c:0016`); weitere in C270 und Orbbec | USB-Audio, eigener Bus | für Sprache geplant |
-| Lautsprecher    | USB-Lautsprecher „UACDemoV1.0“ | USB-Audio, direkt am Pi | für Sprachausgabe geplant |
+| Lautsprecher    | USB-Lautsprecher „UACDemoV1.0“ | USB-Audio, direkt am Pi | eingebunden (MUKKE: Musik von YouTube), Sprachausgabe geplant |
 | ESP32           | *(Modell eintragen)*  | WLAN             | geplant     |
 | Pulssensor      | *(Modell eintragen)*  | ESP32            | geplant     |
 | Box-Motor       | *(Modell eintragen)*  | Servo am X3      | geplant     |
@@ -256,6 +256,25 @@ Der Stream liegt unter `/camera/<name>/stream` (MJPEG) und ein Einzelbild
 unter `/camera/<name>/snapshot`, z. B. `/camera/personen/stream`. Beides ist
 direkt im Browser aufrufbar, auch ohne die App. `/camera/stream` ohne Namen
 zeigt die Standardkamera (`orientierung`).
+
+## Lautsprecher und Musik („MUKKE“)
+
+Der USB-Lautsprecher heißt bei ALSA `UACDemoV10`. Die App spielt darüber
+YouTube-Links ab (Knopf „MUKKE“). Einmalig auf dem Pi einrichten:
+
+```bash
+sudo apt install mpv
+robot/.venv/bin/pip install -U yt-dlp
+aplay -l                      # der Lautsprecher muss als "UACDemoV10" auftauchen
+speaker-test -D plughw:CARD=UACDemoV10,DEV=0 -c 2 -t sine -l 1   # Testton
+```
+
+yt-dlp aus pip, nicht aus apt: YouTube ändert laufend etwas, und die
+Version aus den Paketquellen ist meist zu alt. Spielt plötzlich nichts mehr,
+hilft fast immer `robot/.venv/bin/pip install -U yt-dlp`.
+
+Das Ausgabegerät steht in `config.py` bei `MUKKE_AUDIO_DEVICE`. Kommt kein
+Ton, zeigt das MUKKE-Fenster die letzte Meldung von mpv an.
 
 ## AI HAT+
 

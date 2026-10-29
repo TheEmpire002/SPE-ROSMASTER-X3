@@ -470,3 +470,21 @@ DIAGNOSE_AKKU_PUNKTE = 1800
 # Beim Start so weit im Kernel-Log zurückschauen (USB-Abmeldungen, die vor
 # dem Serverstart passiert sind, z. B. beim Booten).
 DIAGNOSE_KERNEL_RUECKBLICK_S = 3600.0
+
+# --- Musik ("MUKKE") ----------------------------------------------------------------
+
+# YouTube-Links aus der App werden mit mpv auf dem USB-Lautsprecher
+# abgespielt, nur der Ton. Voraussetzung auf dem Pi:
+#   sudo apt install mpv
+#   robot/.venv/bin/pip install -U yt-dlp
+# yt-dlp aus pip statt apt: YouTube ändert laufend etwas, und die Version aus
+# den Paketquellen ist meist zu alt, um noch abzuspielen.
+MUKKE_ENABLED = True
+
+# Ausgabegerät für mpv. Der USB-Lautsprecher heißt bei ALSA "UACDemoV10"
+# (siehe `aplay -l`). plughw statt hw: wandelt Abtastrate und Format um,
+# die der Lautsprecher nicht selbst kann. "auto" nimmt das Standardgerät.
+MUKKE_AUDIO_DEVICE = "alsa/plughw:CARD=UACDemoV10,DEV=0"
+
+# Lautstärke beim Start in Prozent (0..100). In der App verstellbar.
+MUKKE_LAUTSTAERKE = 60
