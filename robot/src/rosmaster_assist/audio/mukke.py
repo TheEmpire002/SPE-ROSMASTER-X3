@@ -1,9 +1,10 @@
 """Musik von YouTube auf dem USB-Lautsprecher ("MUKKE" in der App).
 
-Abgespielt wird mit ``mpv`` als eigenem Prozess, nur der Ton. mpv holt sich
-die Tonspur über ``yt-dlp`` selbst -- wir müssen weder herunterladen noch
-dekodieren. Gesteuert wird mpv über seine IPC-Schnittstelle (ein
-Unix-Socket, JSON pro Zeile): Pause, Lautstärke, Titel abfragen.
+Erst fragt ``yt-dlp`` (als Python-Bibliothek) YouTube nach der direkten
+Adresse der Tonspur, dann spielt ``mpv`` als eigener Prozess sie ab, nur
+den Ton -- wir müssen weder herunterladen noch dekodieren. Gesteuert wird
+mpv über seine IPC-Schnittstelle (ein Unix-Socket, JSON pro Zeile): Pause,
+Lautstärke, Titel abfragen.
 
 Ein eigener Prozess statt einer Python-Bibliothek, weil:
 - ein hängender oder abstürzender Player den Server nicht mitreißt,
@@ -20,14 +21,13 @@ import collections
 import json
 import logging
 import os
+import re
 import shutil
 import socket
 import subprocess
-import sys
 import tempfile
 import threading
 import time
-from pathlib import Path
 from urllib.parse import urlparse
 
 from .. import config
@@ -46,13 +46,60 @@ class MukkeFehler(ValueError):
     """Text geht so an die App."""
 
 
-def _yt_dlp_pfad() -> str | None:
-    """yt-dlp suchen -- auch in der venv, die beim Start nicht im PATH liegt."""
-    gefunden = shutil.which("yt-dlp")
-    if gefunden:
-        return gefunden
-    neben_python = Path(sys.executable).parent / "yt-dlp"
-    return str(neben_python) if neben_python.exists() else None
+def _yt_dlp_da() -> bool:
+    try:
+        import yt_dlp  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def _tonspur_finden(url: str) -> tuple[str, str | None, dict[str, str]]:
+    """Fragt yt-dlp nach der direkten Adresse der Tonspur.
+
+    Selbst gefragt statt mpv das über sein ytdl-Skript machen zu lassen:
+    das findet yt-dlp in der venv oft nicht, und scheitert es, sagt mpv nur
+    "Failed to recognize file format". So steht der echte Grund in der App.
+    """
+    import yt_dlp
+
+    optionen = {
+        "format": "bestaudio/best",
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,  # Link aus einer Playlist: nur dieses Lied
+        "logger": _StillerLogger(),
+    }
+    try:
+        with yt_dlp.YoutubeDL(optionen) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except Exception as exc:  # DownloadError, aber auch Netzwerkfehler
+        text = re.sub(r"\x1b\[[0-9;]*m", "", str(exc)).replace("ERROR: ", "").strip()
+        raise MukkeFehler(f"YouTube: {text[:300]}") from None
+
+    # Bei Playlists trotz noplaylist manchmal ein Eintrag darunter.
+    if info.get("entries"):
+        info = next((e for e in info["entries"] if e), info)
+    quelle = info.get("url")
+    if not quelle:
+        raise MukkeFehler("YouTube: keine abspielbare Tonspur gefunden")
+    return quelle, info.get("title"), dict(info.get("http_headers") or {})
+
+
+class _StillerLogger:
+    """yt-dlp soll nicht ins Server-Log schreiben -- Fehler kommen als Ausnahme."""
+
+    def debug(self, msg: str) -> None:
+        pass
+
+    def info(self, msg: str) -> None:
+        pass
+
+    def warning(self, msg: str) -> None:
+        log.debug("yt-dlp: %s", msg)
+
+    def error(self, msg: str) -> None:
+        log.debug("yt-dlp: %s", msg)
 
 
 def link_pruefen(url: str) -> str:
@@ -83,7 +130,7 @@ class Mukke:
             return "abgeschaltet (config.MUKKE_ENABLED)"
         if shutil.which("mpv") is None:
             return "mpv fehlt -- sudo apt install mpv"
-        if _yt_dlp_pfad() is None:
+        if not _yt_dlp_da():
             return "yt-dlp fehlt -- robot/.venv/bin/pip install -U yt-dlp"
         if not hasattr(socket, "AF_UNIX"):
             return "nur auf Linux"
@@ -127,27 +174,39 @@ class Mukke:
         if fehlt:
             raise MukkeFehler(f"Abspielen geht nicht: {fehlt}")
 
+        # Außerhalb der Sperre: das Nachfragen bei YouTube dauert Sekunden,
+        # und so lange soll /mukke/status nicht hängen.
+        quelle, titel, kopfzeilen = _tonspur_finden(url)
+
         with self._lock:
             self._beenden()
             self._ausgabe.clear()
-            self._url, self._titel, self._fehler = url, None, None
+            self._url, self._titel, self._fehler = url, titel, None
             befehl = [
                 "mpv",
                 "--no-video",
                 "--input-terminal=no",
                 "--msg-level=all=warn",
+                # Die Tonspur haben wir schon -- mpv soll nicht selbst noch
+                # einmal bei YouTube nachfragen.
+                "--ytdl=no",
                 f"--audio-device={config.MUKKE_AUDIO_DEVICE}",
                 f"--volume={self._lautstaerke}",
                 f"--input-ipc-server={self._socket}",
-                # Nur die Tonspur laden: spart WLAN und CPU.
-                "--ytdl-format=bestaudio/best",
-                f"--script-opts=ytdl_hook-ytdl_path={_yt_dlp_pfad()}",
-                # "--" davor: ein Link, der mit "-" beginnt, wäre sonst
-                # eine mpv-Option. link_pruefen() schließt das schon aus,
-                # doppelt hält besser.
-                "--",
-                url,
             ]
+            if titel:
+                befehl.append(f"--force-media-title={titel}")
+            # YouTube liefert die Tonspur nur mit demselben User-Agent, mit
+            # dem yt-dlp gefragt hat. Einzeln übergeben statt als
+            # --http-header-fields: dort trennt mpv an Kommas, und die
+            # stecken in anderen Kopfzeilen (Accept) drin.
+            if kopfzeilen.get("User-Agent"):
+                befehl.append(f"--user-agent={kopfzeilen['User-Agent']}")
+            if kopfzeilen.get("Referer"):
+                befehl.append(f"--referrer={kopfzeilen['Referer']}")
+            # "--" davor: eine Adresse, die mit "-" beginnt, wäre sonst eine
+            # mpv-Option.
+            befehl += ["--", quelle]
             self._proc = subprocess.Popen(
                 befehl,
                 stdin=subprocess.DEVNULL,

@@ -274,7 +274,9 @@ Version aus den Paketquellen ist meist zu alt. Spielt plötzlich nichts mehr,
 hilft fast immer `robot/.venv/bin/pip install -U yt-dlp`.
 
 Das Ausgabegerät steht in `config.py` bei `MUKKE_AUDIO_DEVICE`. Kommt kein
-Ton, zeigt das MUKKE-Fenster die letzte Meldung von mpv an.
+Ton, zeigt das MUKKE-Fenster den Grund an: die Fehlermeldung von YouTube
+(yt-dlp), wenn der Link nicht aufgelöst werden kann, sonst die letzte Meldung
+von mpv. Gegenprobe am Pi: `robot/.venv/bin/yt-dlp -f bestaudio -g "<Link>"`.
 
 ## AI HAT+
 
