@@ -50,6 +50,11 @@ for text, erwartet in [
     ("hallo robi", sp.START),
     ("robi musik aus", sp.MUSIK_AUS),
     ("robi musik stopp", sp.MUSIK_AUS),  # nicht Anhalten
+    ("la da da", sp.LADADA),  # ohne Weckwort
+    ("La-da-da!", sp.LADADA),
+    ("ladada", sp.LADADA),
+    ("la la la", sp.LADADA),
+    ("da", None),
     ("Robi, Straße", None),
     ("stopp", sp.STOPP),  # ohne Weckwort
     ("halt", sp.STOPP),

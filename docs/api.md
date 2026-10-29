@@ -383,7 +383,7 @@ Mit `say` lässt sich beliebiger Text vorlesen.
 Der Roboter hört über das USB-Mikrofon zu (Vosk, offline). Befehle gelten
 nur mit dem Weckwort **„Robi“** im selben Satz oder bis zu 5 s
 (`SPRACHE_WECK_FENSTER_S`), nachdem „Robi“ allein gesagt wurde. „Stopp“,
-„Halt“ und „Bleib stehen“ gelten auch ohne Weckwort.
+„Halt“ und „Bleib stehen“ gelten auch ohne Weckwort, ebenso „La da da“.
 
 | Befehl | Beispiele | wirkt wie |
 |---|---|---|
@@ -394,6 +394,7 @@ nur mit dem Weckwort **„Robi“** im selben Satz oder bis zu 5 s
 | `nach_hause` | „Robi, fahr nach Hause“ | `home` |
 | `erkunden` | „Robi, erkunde“ | `explore` |
 | `musik_aus` | „Robi, Musik aus“, „Robi, Ruhe“ | `POST /mukke/stop` |
+| `ladada` | „La da da“ (ohne Weckwort) | `POST /mukke/play` mit `SPRACHE_LADADA_URL` |
 | `start` | „Hallo Robi“ | `interaction_start` |
 | `aus` | „Robi, gute Nacht“ | `interaction_stop`, Heimfahrt/Erkunder abbrechen |
 

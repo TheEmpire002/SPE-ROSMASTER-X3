@@ -45,8 +45,13 @@ SIMULIERT = "simuliert"
 
 
 class Stimme:
-    def __init__(self, mock: bool = False) -> None:
+    def __init__(self, mock: bool = False, vor_sprechen=None, nach_sprechen=None) -> None:
         self._mock = mock
+        # Rückrufe vor dem ersten und nach dem letzten Satz einer Folge: Der
+        # Server räumt damit den Lautsprecher (MUKKE pausiert), denn das
+        # ALSA-Gerät lässt sich nur einmal öffnen.
+        self._vor_sprechen = vor_sprechen
+        self._nach_sprechen = nach_sprechen
         self._lock = threading.Lock()
         self._neu = threading.Event()
         self._stop = threading.Event()
@@ -167,6 +172,10 @@ class Stimme:
         while not self._stop.is_set():
             self._neu.wait(timeout=1.0)
             self._neu.clear()
+            # Lautsprecher einmal pro Folge von Sätzen räumen, nicht vor
+            # jedem Satz: Musik zwischen zwei Sätzen kurz anzuspielen klänge
+            # nach Störung.
+            geraeumt = False
             while not self._stop.is_set():
                 with self._lock:
                     if not self._warteschlange:
@@ -174,6 +183,9 @@ class Stimme:
                     text = self._warteschlange.popleft()
                 # Nur-Text ist nicht hörbar -- dann muss auch niemand weghören.
                 hoerbar = self._ausgabe != TEXT
+                if hoerbar and not geraeumt:
+                    geraeumt = True
+                    self._rufen(self._vor_sprechen)
                 self._sprechend = hoerbar
                 try:
                     self._sprechen(text)
@@ -184,6 +196,17 @@ class Stimme:
                     if hoerbar:
                         self._spricht_bis = time.monotonic() + config.STIMME_NACHLAUF_S
                     self._sprechend = False
+            if geraeumt:
+                self._rufen(self._nach_sprechen)
+
+    @staticmethod
+    def _rufen(rueckruf) -> None:
+        if rueckruf is None:
+            return
+        try:
+            rueckruf()
+        except Exception:  # Musik darf die Stimme nicht abschalten
+            log.exception("Stimme: Rückruf fehlgeschlagen")
 
     def _sprechen(self, text: str) -> None:
         log.info("Stimme sagt: %s", text)

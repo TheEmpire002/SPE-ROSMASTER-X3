@@ -185,6 +185,7 @@ Antrieb“, und die Interaktion war sofort wieder aus. Zwei Ursachen:
 | „Robi, fahr nach Hause“, „Robi, heim“ | `nach_hause` | wie `home` |
 | „Robi, erkunde“, „Robi, schau dich um“ | `erkunden` | wie `explore` |
 | „Robi, Musik aus“, „Robi, Ruhe“ | `musik_aus` | MUKKE stoppen |
+| „La da da“, „La la la“ (ohne Robi) | `ladada` | spielt das Lied aus `SPRACHE_LADADA_URL` über MUKKE; läuft es schon, passiert nichts |
 | „Hallo Robi“, „Robi, wach auf“ | `start` | Interaktion an (ohne Fahren); ist sie schon an: „Ja? Ich bin da.“ |
 | „Robi, gute Nacht“, „Robi, Feierabend“ | `aus` | Heimfahrt/Erkunder abbrechen, Interaktion aus, „Gute Nacht.“ |
 
@@ -200,8 +201,10 @@ Zuruf). Die Totmannschaltung des Watchdogs gilt für Handsteuerung; die
 Verhalten fahren mit eigenem Takt und Lidar-Stopp, wie beim Erkunder.
 
 **Mikrofon und Lautsprecher:** MUKKE (mpv) und Stimme (aplay) nutzen
-denselben Lautsprecher exklusiv. Läuft Musik, kann die Stimme ausfallen, und
-das Mikrofon hört die Musik. „Robi, Musik aus“ hilft.
+denselben Lautsprecher, und das ALSA-Gerät lässt sich nur einmal öffnen.
+Spricht der Roboter, beendet MUKKE mpv kurz und spielt nach dem letzten Satz
+an derselben Stelle weiter (Pause allein gibt das Gerät nicht frei). Das
+Mikrofon hört die Musik mit; „Robi, Musik aus“ hilft.
 
 - **Freier Text** geht später nur nach dem Weckwort an `denken.py`.
 - **Ausgabe (umgesetzt):** über den USB-Lautsprecher mit **Piper** (offline, Stimme `de_DE-thorsten-medium`). Fehlt Piper, spricht espeak-ng, fehlt auch das, bleibt es beim Log. Der zuletzt gesagte Satz steht in `state.stimme` und in der App. Einrichtung: [`hardware.md`](hardware.md).

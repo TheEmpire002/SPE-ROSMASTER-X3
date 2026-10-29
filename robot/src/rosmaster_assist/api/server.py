@@ -170,11 +170,15 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     personen = Personenerkennung(personen_kamera)
     erkunder = Erkunder(watchdog, lidar, erkennung, personen)
     pose = Posenerkennung(personen_kamera, mock=use_mock_camera)
-    stimme = Stimme(mock=use_mock_camera)
+    mukke = Mukke()
+    # Stimme und Musik teilen sich den Lautsprecher: Solange der Roboter
+    # spricht, pausiert die Musik und läuft danach an derselben Stelle weiter.
+    stimme = Stimme(
+        mock=use_mock_camera, vor_sprechen=mukke.unterbrechen, nach_sprechen=mukke.fortsetzen
+    )
     # Der Antrieb wird gefragt, damit die Interaktion ohne Board gar nicht
     # erst losfährt (und nach dem Neuverbinden nicht von selbst).
     interaktion = Interaktion(watchdog, lidar, pose, stimme, antrieb=lambda: driver.connected)
-    mukke = Mukke()
     # Bekommt die Stimme, um wegzuhören, solange der Roboter selbst spricht
     # (sonst versteht er sich selbst).
     sprache = Spracherkennung(mock=use_mock_camera, stimme=stimme)
@@ -711,6 +715,19 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             except MukkeFehler as exc:
                 await hub.broadcast(alert_message("warning", str(exc)))
             stimme.sagen("Musik ist aus.")
+        elif befehl == sp.LADADA:
+            # Nichts ansagen: Die Stimme würde das Lied gleich wieder
+            # unterbrechen.
+            laufend = await asyncio.to_thread(mukke.status)
+            if laufend["laeuft"] and laufend["url"] == config.SPRACHE_LADADA_URL:
+                # Das Mikrofon hört das Lied mit -- singt es selbst "la la
+                # la", finge es sonst immer wieder von vorn an.
+                return
+            try:
+                await asyncio.to_thread(mukke.abspielen, config.SPRACHE_LADADA_URL)
+            except MukkeFehler as exc:
+                await hub.broadcast(alert_message("warning", str(exc)))
+                stimme.sagen("Das geht gerade nicht.")
 
     # Die Web-App direkt mitausliefern, damit eine Adresse genügt.
     if WEBAPP_DIR.is_dir():

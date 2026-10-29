@@ -652,6 +652,12 @@ SPRACHE_WECK_FENSTER_S = 5.0
 # dass der Name überhört wurde. Ein falscher Stopp schadet nicht.
 SPRACHE_STOPP_OHNE_WECKWORT = True
 
+# "La-da-da" spielt dieses Lied über MUKKE. Ohne Weckwort: Wer "la da da"
+# singt, will Musik -- und ein Fehlalarm fährt nirgends hin. Nur die
+# Video-Adresse, ohne &list=...: das Lied, nicht die ganze Playlist.
+SPRACHE_LADADA_URL = "https://www.youtube.com/watch?v=j-S_w3tK3dw"
+SPRACHE_LADADA_OHNE_WECKWORT = True
+
 # Vosk-Modelle sind auf 16 kHz trainiert. Kann das Mikrofon das nicht,
 # wird seine eigene Rate genommen und Vosk rechnet um.
 SPRACHE_ABTASTRATE = 16000

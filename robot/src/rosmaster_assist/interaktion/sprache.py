@@ -12,6 +12,8 @@ Ablauf:
   ("Robi folgen", "folgen Robi") oder bis ``SPRACHE_WECK_FENSTER_S``
   nach einem einzelnen "Robi". Sonst führe der Roboter los, sobald im Raum
   jemand "komm mit" sagt.
+* Ausnahme "La-da-da" (``SPRACHE_LADADA_OHNE_WECKWORT``): spielt das Lied
+  aus ``SPRACHE_LADADA_URL`` -- ein Fehlalarm ist nur Musik.
 * Ausnahme Stopp (``SPRACHE_STOPP_OHNE_WECKWORT``): Anhalten darf nie an
   einem überhörten Namen scheitern.
 * Während die eigene Stimme spricht, wird nicht zugehört, sonst versteht
@@ -53,6 +55,7 @@ AUS = "aus"
 NACH_HAUSE = "nach_hause"
 ERKUNDEN = "erkunden"
 MUSIK_AUS = "musik_aus"
+LADADA = "ladada"
 
 #: Befehl -> Wendungen. Die Reihenfolge zählt: Kommen in einem Satz
 #: mehrere vor, gewinnt der weiter oben -- Stopp also vor allem, was fährt.
@@ -67,6 +70,9 @@ BEFEHLE: dict[str, tuple[str, ...]] = {
     ERKUNDEN: ("erkunde", "erkunden", "schau dich um"),
     AUS: ("schlafen", "schlaf", "gute nacht", "feierabend"),
     START: ("hallo", "wach auf", "aufwachen", "guten morgen"),
+    # Vosk kennt "ladada" nicht als Wort, hört aber "la da da"; "ladada"
+    # selbst bleibt für Getipptes (Befehl speech, --mock).
+    LADADA: ("la da da", "ladada", "la la la", "lalala"),
 }
 
 # Zustände der Erkennung (status()["zustand"])
@@ -101,10 +107,19 @@ def erkennen(text: str, geweckt: bool = False) -> tuple[str | None, bool]:
     for befehl, wendungen in BEFEHLE.items():
         if not any(_enthaelt(rest, w.replace("ß", "ss").split()) for w in wendungen):
             continue
-        if weckwort or geweckt or (befehl == STOPP and config.SPRACHE_STOPP_OHNE_WECKWORT):
+        if weckwort or geweckt or _ohne_weckwort(befehl):
             return befehl, weckwort
         return None, weckwort
     return None, weckwort
+
+
+def _ohne_weckwort(befehl: str) -> bool:
+    """Befehle, die auch ohne "Robi" gelten (siehe config)."""
+    if befehl == STOPP:
+        return config.SPRACHE_STOPP_OHNE_WECKWORT
+    if befehl == LADADA:
+        return config.SPRACHE_LADADA_OHNE_WECKWORT
+    return False
 
 
 def befehl_aus_text(text: str) -> str | None:

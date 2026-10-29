@@ -11,6 +11,10 @@ Ein eigener Prozess statt einer Python-Bibliothek, weil:
 - mpv Netzwerkaussetzer, Puffern und Formatwechsel schon alles kann,
 - Stoppen einfach "Prozess beenden" ist.
 
+Spricht die Stimme (interaktion/stimme.py), räumt MUKKE den Lautsprecher
+und spielt danach an derselben Stelle weiter -- beide zugleich gehen
+nicht, das Gerät lässt sich nur einmal öffnen.
+
 Fehlt mpv oder yt-dlp, meldet ``status()`` das, und alles andere läuft
 weiter.
 """
@@ -120,6 +124,10 @@ class Mukke:
         self._lautstaerke = int(config.MUKKE_LAUTSTAERKE)
         # Letzte Ausgabezeilen von mpv: damit "spielt nicht" eine Ursache hat.
         self._ausgabe: collections.deque[str] = collections.deque(maxlen=20)
+        # Womit mpv zuletzt gestartet wurde, und -- solange die Stimme
+        # spricht -- wo es weitergehen soll (siehe unterbrechen()).
+        self._gestartet: dict | None = None
+        self._unterbrochen: dict | None = None
         self._socket = os.path.join(tempfile.gettempdir(), f"rosmaster-mukke-{os.getpid()}.sock")
 
     # --- Zustand --------------------------------------------------------------------
@@ -150,6 +158,9 @@ class Mukke:
                 if code not in (0, None, -15):
                     self._fehler = self._letzte_meldung() or f"mpv beendet mit Code {code}"
             pausiert = bool(self._ipc(["get_property", "pause"])) if laeuft else False
+            if self._unterbrochen is not None:
+                # Die Stimme spricht gerade -- für die App läuft das Lied weiter.
+                laeuft, pausiert = True, self._unterbrochen["pausiert"]
             if laeuft and not self._titel:
                 titel = self._ipc(["get_property", "media-title"])
                 # Bis yt-dlp fertig ist, nennt mpv nur die Adresse.
@@ -180,55 +191,102 @@ class Mukke:
 
         with self._lock:
             self._beenden()
-            self._ausgabe.clear()
+            self._unterbrochen = None
             self._url, self._titel, self._fehler = url, titel, None
-            befehl = [
-                "mpv",
-                "--no-video",
-                "--input-terminal=no",
-                "--msg-level=all=warn",
-                # Die Tonspur haben wir schon -- mpv soll nicht selbst noch
-                # einmal bei YouTube nachfragen.
-                "--ytdl=no",
-                f"--audio-device={config.MUKKE_AUDIO_DEVICE}",
-                f"--volume={self._lautstaerke}",
-                f"--input-ipc-server={self._socket}",
-            ]
-            if titel:
-                befehl.append(f"--force-media-title={titel}")
-            # YouTube liefert die Tonspur nur mit demselben User-Agent, mit
-            # dem yt-dlp gefragt hat. Einzeln übergeben statt als
-            # --http-header-fields: dort trennt mpv an Kommas, und die
-            # stecken in anderen Kopfzeilen (Accept) drin.
-            if kopfzeilen.get("User-Agent"):
-                befehl.append(f"--user-agent={kopfzeilen['User-Agent']}")
-            if kopfzeilen.get("Referer"):
-                befehl.append(f"--referrer={kopfzeilen['Referer']}")
-            # "--" davor: eine Adresse, die mit "-" beginnt, wäre sonst eine
-            # mpv-Option.
-            befehl += ["--", quelle]
-            self._proc = subprocess.Popen(
-                befehl,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                errors="replace",
-            )
-            threading.Thread(
-                target=self._mitlesen, args=(self._proc,), name="mukke-ausgabe", daemon=True
-            ).start()
+            self._starten(quelle, titel, kopfzeilen)
         log.info("MUKKE: spiele %s", url)
+
+    def unterbrechen(self) -> None:
+        """Lautsprecher freigeben, solange die Stimme spricht.
+
+        Pausieren allein reicht nicht: mpv hält das ALSA-Gerät auch in der
+        Pause offen, und aplay bekäme "Device or resource busy". Deshalb
+        mpv beenden und Stelle merken; ``fortsetzen()`` startet dort neu.
+        """
+        with self._lock:
+            if not self.laeuft or self._gestartet is None:
+                return
+            stelle = self._ipc(["get_property", "time-pos"])
+            self._unterbrochen = {
+                **self._gestartet,
+                "start": float(stelle) if isinstance(stelle, (int, float)) else None,
+                "pausiert": bool(self._ipc(["get_property", "pause"])),
+            }
+            self._beenden(leise=True)
+
+    def fortsetzen(self) -> None:
+        """Nach dem Sprechen an der gemerkten Stelle weiterspielen."""
+        with self._lock:
+            weiter, self._unterbrochen = self._unterbrochen, None
+            if weiter is None or self.laeuft:
+                return
+            self._starten(**weiter)
+
+    def _starten(
+        self,
+        quelle: str,
+        titel: str | None,
+        kopfzeilen: dict[str, str],
+        start: float | None = None,
+        pausiert: bool = False,
+    ) -> None:
+        """mpv mit der Tonspur starten. Nur mit gehaltener Sperre aufrufen."""
+        self._ausgabe.clear()
+        self._gestartet = {"quelle": quelle, "titel": titel, "kopfzeilen": kopfzeilen}
+        befehl = [
+            "mpv",
+            "--no-video",
+            "--input-terminal=no",
+            "--msg-level=all=warn",
+            # Die Tonspur haben wir schon -- mpv soll nicht selbst noch
+            # einmal bei YouTube nachfragen.
+            "--ytdl=no",
+            f"--audio-device={config.MUKKE_AUDIO_DEVICE}",
+            f"--volume={self._lautstaerke}",
+            f"--input-ipc-server={self._socket}",
+        ]
+        if titel:
+            befehl.append(f"--force-media-title={titel}")
+        # YouTube liefert die Tonspur nur mit demselben User-Agent, mit
+        # dem yt-dlp gefragt hat. Einzeln übergeben statt als
+        # --http-header-fields: dort trennt mpv an Kommas, und die
+        # stecken in anderen Kopfzeilen (Accept) drin.
+        if kopfzeilen.get("User-Agent"):
+            befehl.append(f"--user-agent={kopfzeilen['User-Agent']}")
+        if kopfzeilen.get("Referer"):
+            befehl.append(f"--referrer={kopfzeilen['Referer']}")
+        if start:
+            befehl.append(f"--start={start:.1f}")
+        if pausiert:
+            befehl.append("--pause")
+        # "--" davor: eine Adresse, die mit "-" beginnt, wäre sonst eine
+        # mpv-Option.
+        befehl += ["--", quelle]
+        self._proc = subprocess.Popen(
+            befehl,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            errors="replace",
+        )
+        threading.Thread(
+            target=self._mitlesen, args=(self._proc,), name="mukke-ausgabe", daemon=True
+        ).start()
 
     def stoppen(self) -> None:
         with self._lock:
             self._beenden()
+            self._unterbrochen = self._gestartet = None
             self._url = self._titel = None
 
     def pause_umschalten(self) -> None:
         with self._lock:
             if self.laeuft:
                 self._ipc(["cycle", "pause"])
+            elif self._unterbrochen is not None:
+                # Während die Stimme spricht: gilt dann beim Fortsetzen.
+                self._unterbrochen["pausiert"] = not self._unterbrochen["pausiert"]
 
     def lautstaerke_setzen(self, wert: float) -> None:
         try:
@@ -242,7 +300,7 @@ class Mukke:
 
     # --- intern ---------------------------------------------------------------------
 
-    def _beenden(self) -> None:
+    def _beenden(self, leise: bool = False) -> None:
         proc, self._proc = self._proc, None
         if proc is None or proc.poll() is not None:
             return
@@ -251,7 +309,8 @@ class Mukke:
             proc.wait(timeout=2.0)
         except subprocess.TimeoutExpired:
             proc.kill()
-        log.info("MUKKE: gestoppt")
+        if not leise:
+            log.info("MUKKE: gestoppt")
 
     def _mitlesen(self, proc: subprocess.Popen) -> None:
         # Ohne Mitlesen liefe der Ausgabepuffer voll, und mpv bliebe stehen.

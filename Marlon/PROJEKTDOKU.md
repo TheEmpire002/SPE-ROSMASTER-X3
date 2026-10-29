@@ -311,11 +311,22 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Probleme und Lösungen:**
   - „Musik stopp“ wurde als Stopp erkannt: Die Befehle haben jetzt eine Rangfolge, Musik aus steht vor Stopp.
   - Wörter, die das Vosk-Modell nicht kennt, würden die Grammatik ungültig machen. Sie werden gegen `graph/words.txt` gefiltert; für „Robi“ gibt es Varianten („robbie“, „ruby“ …).
-  - Musik (mpv) und Stimme (aplay) teilen sich den Lautsprecher exklusiv, und das Mikrofon hört die Musik mit. „Robi, Musik aus“ hilft; eine saubere Lösung (gemeinsamer Mixer) ist offen.
+  - Musik (mpv) und Stimme (aplay) teilen sich den Lautsprecher exklusiv, und das Mikrofon hört die Musik mit. „Robi, Musik aus“ hilft; eine saubere Lösung (gemeinsamer Mixer) ist offen.  *Nachtrag: gelöst, Musik pausiert beim Sprechen (siehe unten).*
   - Smoke-Test „Heimfahrt startet“ wackelt weiter wie am 29.10. beschrieben (wiederholte Läufe gegen denselben Mock-Server); nicht durch diese Änderung.
 - **Nachtrag – „Sanft fahren“ in den Einstellungen:** Die Anfahrrampe lässt sich jetzt in der App unter Einstellungen → „Fahren & Motoren“ abschalten („Sanft fahren“) und einstellen (Anfahren, Bremsen, Andrehen, Drehung stoppen). Bisher ging das nur in `config.py` mit Neustart. Der Watchdog liest die Werte bei jedem Takt, die Änderung wirkt also sofort und übersteht über `robot/settings.json` einen Neustart. Geprüft: Sprung auf 0,3 m/s kommt mit Rampe als 0,08 an, ohne sofort als 0,3; Werte außerhalb der Grenzen werden abgelehnt.
 - **Nachtrag – „Mikrofon wird nicht erkannt“:** Am Pi zeigte `/sprache/status` den Fehler „sounddevice fehlt“: `main.py` installierte nur die Pflichtpakete, die Sprach-Pakete nicht. Jetzt richtet `main.py` beim Start mit echter Hardware die Sprachbefehle selbst ein (`vosk`, `sounddevice`, Modell nach `~`; ohne Internet startet der Server einfach ohne Sprache). Nur `libportaudio2` braucht weiter einmal `sudo apt`, darauf weist `main.py` hin; fehlt es, meldet `/sprache/status` das jetzt verständlich, statt dass der Hör-Thread still stirbt. Beim Test mit dem echten Modell fiel ein zweiter Fehler auf: Das kleine Modell hat keine `graph/words.txt`, der Filter für unbekannte Wörter griff nie (316 Vosk-Warnungen, der Test hatte die Datei selbst angelegt). Jetzt fragt der Server Vosk direkt (`vosk_model_find_word`); als Weckwort bleiben „robbie“, „ruby“, „robin“, alle Befehlswendungen sind im Modell. Am Laptop geprüft: Installation, Download, Entpacken, zweiter Start ohne Download (1,6 s), Grammatik ohne Warnungen.
 - **Offen:** Am Pi Vosk und Modell installieren (`docs/hardware.md`, „Mikrofon und Sprachbefehle“), `/sprache/status` prüfen, „Robi, folgen“ am Boden testen. Beim Einschalten der Gesten `dmesg -w` mitlaufen lassen: Bleibt der Reset aus?
+
+---
+
+### 29.10.2026 – `sprache` in `main`, Musik pausiert beim Sprechen, „La da da“
+- **Was:**
+  - Branch `sprache` in `main` gemergt (ohne Konflikte; MUKKE, Diagnoseseite und Kamerarollen aus `main` bleiben).
+  - **Musik und Stimme teilen sich den Lautsprecher:** Spricht der Roboter, beendet MUKKE mpv vor dem ersten Satz, merkt sich die Stelle und startet nach dem letzten Satz dort neu (`Mukke.unterbrechen()`/`fortsetzen()`, Rückrufe `vor_sprechen`/`nach_sprechen` der Stimme). In der App läuft das Lied in der Zeit weiter.
+  - **Sprachbefehl „La da da“** (`ladada`, auch „la la la“, ohne Weckwort): spielt das Lied aus `SPRACHE_LADADA_URL` über MUKKE. Läuft es schon, passiert nichts.
+- **Warum:** Das ALSA-Gerät des Lautsprechers lässt sich nur einmal öffnen: Lief Musik, fiel die Stimme mit „Device or resource busy“ aus. Pausieren reicht nicht, mpv hält das Gerät auch in der Pause offen.
+- **Probleme und Lösungen:** Das Mikrofon hört die Musik mit; enthält das Lied selbst „la la la“, finge es immer wieder von vorn an. Deshalb wird „La da da“ ignoriert, solange genau dieses Lied läuft.
+- **Offen:** Am Pi testen: Musik an, „Robi, hallo“ → Musik pausiert, Antwort, Musik läuft weiter. „La da da“ ohne Robi. Ob Vosk „la da da“ zuverlässig hört, zeigt `/sprache/status` (`zuletzt_gehoert`).
 
 ---
 
