@@ -19,6 +19,16 @@
       </svg>
       <span>Einstellungen</span>
     </button>
+    <button type="button" id="btn-mukke" class="einst-knopf mukke-knopf"
+            title="Musik auf dem Lautsprecher" aria-label="MUKKE">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9 18V5l12-2v13"/>
+        <circle cx="6" cy="18" r="3"/>
+        <circle cx="18" cy="16" r="3"/>
+      </svg>
+      <span>MUKKE</span>
+    </button>
     <h1>ROSMASTER X3</h1>
   </div>
   <div id="status" class="status offline">
@@ -44,6 +54,40 @@
       <button type="button" id="alle-zurueck" class="btn">Alles auf Standard</button>
       <p id="einst-meldung" class="einst-meldung" hidden></p>
     </section>
+  </div>
+</dialog>
+
+<!-- Musik auf dem Lautsprecher des Roboters (POST /mukke/...). -->
+<dialog id="mukke-dialog" class="einst-dialog mukke-dialog" aria-labelledby="mukke-titel">
+  <div class="einst-dialog-kopf">
+    <h1 id="mukke-titel">MUKKE</h1>
+    <button type="button" id="mukke-schliessen" class="header-icon"
+            title="Schließen" aria-label="Schließen">✕</button>
+  </div>
+  <div class="mukke-inhalt">
+    <form id="mukke-form" class="mukke-form">
+      <input type="url" id="mukke-url" class="mukke-url" required
+             placeholder="YouTube-Link einfügen, z. B. https://youtu.be/…"
+             autocomplete="off">
+      <button type="submit" class="btn btn-primary">Abspielen</button>
+    </form>
+
+    <div class="mukke-jetzt">
+      <span class="mukke-label">Läuft gerade</span>
+      <span id="mukke-titel-jetzt" class="mukke-titel-jetzt">nichts</span>
+    </div>
+
+    <div class="mukke-steuerung">
+      <button type="button" id="mukke-pause" class="btn" disabled>Pause</button>
+      <button type="button" id="mukke-stop" class="btn" disabled>Stopp</button>
+      <label class="mukke-laut">
+        <span>Lautstärke</span>
+        <input type="range" id="mukke-lautstaerke" min="0" max="100" step="5">
+        <output id="mukke-lautstaerke-out">–</output>
+      </label>
+    </div>
+
+    <p id="mukke-meldung" class="einst-meldung" hidden></p>
   </div>
 </dialog>
 
@@ -229,5 +273,6 @@
 
 <script src="/static/einstellungen.js"></script>
 <script src="/static/app.js"></script>
+<script src="/static/mukke.js"></script>
 </body>
 </html>

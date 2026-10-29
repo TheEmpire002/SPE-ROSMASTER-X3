@@ -18,3 +18,8 @@ numpy
 # RPLIDAR A1. Paketname beim Installieren: rplidar-roboticia (gepflegter
 # Fork), importiert wird es als `rplidar`.
 rplidar-roboticia
+
+# MUKKE: YouTube-Ton auf dem Lautsprecher. Bewusst ohne feste Version und
+# regelmäßig mit `pip install -U yt-dlp` erneuern -- YouTube ändert laufend
+# etwas. Braucht dazu mpv aus apt (sudo apt install mpv).
+yt-dlp

@@ -520,6 +520,25 @@ erlaubt fremden Seiten nur `GET`.
 | `GET /interaktion/status` | dasselbe wie `state.interaktion`, dazu `pose`: `verfuegbar`, `simuliert`, `aktiv`, `fehler`, `fps`, `bilder`, `letzte_erkennung_vor_s`, `kamera` (auf welchem Kamerabild die Punkte liegen, Name wie in `/cameras`) |
 | `GET /interaktion/pose` | `personen`: erkannte Menschen, größter zuerst, je `box` [x1, y1, x2, y2] und `kp` (17 × [x, y, Sicherheit], COCO-Reihenfolge), relativ zur Bildgröße (0..1), dazu `score`, `winkel`; `skelett`: Punktpaare zum Verbinden. Leer, solange der Modus aus ist. |
 
+### Musik („MUKKE“)
+
+Spielt den Ton eines YouTube-Links auf dem USB-Lautsprecher des Roboters
+ab. Abgespielt wird auf dem Roboter, nicht im Browser. In der Web-App öffnet
+der Knopf „MUKKE“ oben links das Fenster dafür.
+
+| Endpunkt | Liefert |
+|---|---|
+| `GET /mukke/status` | `laeuft`, `pausiert`, `titel`, `url`, `lautstaerke` (0–100), `fehler` (warum zuletzt nichts lief), `verfuegbar` und `hinweis` (was fehlt, z. B. „mpv fehlt“) |
+| `POST /mukke/play` | Body `{"url": "https://youtu.be/…"}`. Ersetzt, was gerade läuft. Nur Links von youtube.com, music.youtube.com und youtu.be, sonst `400` mit `{"fehler": "…"}`. |
+| `POST /mukke/pause` | Pause an/aus |
+| `POST /mukke/stop` | anhalten |
+| `POST /mukke/volume` | Body `{"lautstaerke": 70}` |
+
+Alle `POST` antworten mit dem neuen Zustand wie `/mukke/status`. Bis der
+Titel bekannt ist, vergehen ein paar Sekunden (yt-dlp muss die Tonspur erst
+finden). Voraussetzungen auf dem Pi: `mpv` und `yt-dlp`, siehe
+`docs/hardware.md`.
+
 ### Sonstiges
 
 | Endpunkt | Liefert |

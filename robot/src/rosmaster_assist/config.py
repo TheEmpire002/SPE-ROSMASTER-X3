@@ -427,3 +427,21 @@ INTERAKTION_VERHALTEN_MAX_S = 20.0
 # Wechselt die verfolgte Person um mehr als diesen Winkel in einem Bild,
 # ist es vermutlich eine andere -- dann beginnt die Gestenerkennung neu.
 INTERAKTION_SPRUNG_GRAD = 15.0
+
+# --- Musik ("MUKKE") ----------------------------------------------------------------
+
+# YouTube-Links aus der App werden mit mpv auf dem USB-Lautsprecher
+# abgespielt, nur der Ton. Voraussetzung auf dem Pi:
+#   sudo apt install mpv
+#   robot/.venv/bin/pip install -U yt-dlp
+# yt-dlp aus pip statt apt: YouTube ändert laufend etwas, und die Version aus
+# den Paketquellen ist meist zu alt, um noch abzuspielen.
+MUKKE_ENABLED = True
+
+# Ausgabegerät für mpv. Der USB-Lautsprecher heißt bei ALSA "UACDemoV10"
+# (siehe `aplay -l`). plughw statt hw: wandelt Abtastrate und Format um,
+# die der Lautsprecher nicht selbst kann. "auto" nimmt das Standardgerät.
+MUKKE_AUDIO_DEVICE = "alsa/plughw:CARD=UACDemoV10,DEV=0"
+
+# Lautstärke beim Start in Prozent (0..100). In der App verstellbar.
+MUKKE_LAUTSTAERKE = 60

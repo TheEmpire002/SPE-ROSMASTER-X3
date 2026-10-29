@@ -28,6 +28,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .. import config, settings
 from ..drive.base import DriveBase
+from ..audio.mukke import Mukke, MukkeFehler
 from ..interaktion.verhalten import Interaktion
 from ..protocol import (
     DriveCommand,
@@ -165,6 +166,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     erkunder = Erkunder(watchdog, lidar, erkennung, personen)
     pose = Posenerkennung(personen_kamera, mock=use_mock_camera)
     interaktion = Interaktion(watchdog, lidar, pose)
+    mukke = Mukke()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -212,6 +214,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             await watchdog.shutdown()
             personen.stop()
             pose.stop()
+            mukke.stoppen()
             for kamera in kameras.values():
                 kamera.stop()
             if lidar is not None:
@@ -497,6 +500,57 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         Leer, solange die Interaktion aus ist -- dann rechnet der Hailo nicht.
         """
         return {"personen": pose.personen(), "skelett": SKELETT}
+
+    # --- Musik ("MUKKE") ---
+    #
+    # HTTP wie die Einstellungen: Ändern per POST, damit fremde Webseiten
+    # (CORS erlaubt ihnen nur GET) nichts auf dem Lautsprecher abspielen.
+
+    async def _mukke_json(request: Request) -> dict:
+        try:
+            daten = await request.json()
+        except ValueError:
+            return {}
+        return daten if isinstance(daten, dict) else {}
+
+    async def _mukke(aktion) -> Any:
+        """Aktion ausführen, Fehler als 400, sonst den neuen Zustand."""
+        try:
+            # mpv starten und per Socket fragen dauert kurz -- nicht in der
+            # Ereignisschleife, sonst stockt die Steuerung.
+            await asyncio.to_thread(aktion)
+        except MukkeFehler as exc:
+            return JSONResponse({"fehler": str(exc)}, status_code=400)
+        return await asyncio.to_thread(mukke.status)
+
+    @app.get("/mukke/status")
+    async def mukke_status():
+        """Läuft etwas, welcher Titel, Lautstärke, und ob mpv/yt-dlp da sind."""
+        return await asyncio.to_thread(mukke.status)
+
+    @app.post("/mukke/play")
+    async def mukke_play(request: Request):
+        """Body: {"url": "https://youtu.be/..."}. Ersetzt, was gerade läuft."""
+        url = (await _mukke_json(request)).get("url", "")
+        antwort = await _mukke(lambda: mukke.abspielen(url))
+        if not isinstance(antwort, JSONResponse):
+            await hub.broadcast(alert_message("info", "MUKKE: spielt ab"))
+        return antwort
+
+    @app.post("/mukke/stop")
+    async def mukke_stop():
+        return await _mukke(mukke.stoppen)
+
+    @app.post("/mukke/pause")
+    async def mukke_pause():
+        """Pause an/aus."""
+        return await _mukke(mukke.pause_umschalten)
+
+    @app.post("/mukke/volume")
+    async def mukke_volume(request: Request):
+        """Body: {"lautstaerke": 0..100}."""
+        wert = (await _mukke_json(request)).get("lautstaerke")
+        return await _mukke(lambda: mukke.lautstaerke_setzen(wert))
 
     # Die Web-App direkt mitausliefern, damit eine Adresse genügt.
     if WEBAPP_DIR.is_dir():
