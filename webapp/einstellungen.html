@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ROSMASTER X3 — Einstellungen</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header>
+  <h1>ROSMASTER X3 · Einstellungen</h1>
+  <nav class="header-nav">
+    <a href="/" class="header-link">← Steuerung</a>
+  </nav>
+</header>
+
+<!-- Wird aus GET /settings aufgebaut: ein Block je Gruppe. -->
+<main id="einstellungen">
+  <section class="panel wide-panel einst-kopf">
+    <p>
+      Änderungen gelten sofort und werden auf dem Roboter gespeichert
+      (<code>robot/settings.json</code>). Standardwerte stehen in
+      <code>config.py</code>. Mit <span class="einst-neustart">Neustart</span>
+      markierte Werte wirken erst nach einem Neustart des Servers.
+    </p>
+    <button type="button" id="alle-zurueck" class="btn">Alles auf Standard</button>
+    <p id="einst-meldung" class="einst-meldung" hidden></p>
+  </section>
+</main>
+
+<script src="/static/einstellungen.js"></script>
+</body>
+</html>

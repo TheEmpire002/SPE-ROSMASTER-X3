@@ -41,9 +41,10 @@ class Personenerkennung:
         self._hog = None
         self._cv2 = None
         self._np = None
-        if not config.PERSON_DETECTION_ENABLED:
-            self._fehler = "abgeschaltet (config.PERSON_DETECTION_ENABLED)"
-        elif camera is None:
+        # Der Detektor wird auch geladen, wenn die Erkennung gerade
+        # abgeschaltet ist: sie lässt sich auf der Einstellungsseite
+        # zur Laufzeit einschalten (PERSON_DETECTION_ENABLED).
+        if camera is None:
             self._fehler = "keine Kamera"
         else:
             try:
@@ -59,10 +60,10 @@ class Personenerkennung:
 
     @property
     def verfuegbar(self) -> bool:
-        return self._hog is not None
+        return self._hog is not None and config.PERSON_DETECTION_ENABLED
 
     def start(self) -> None:
-        if not self.verfuegbar or self._thread is not None:
+        if self._hog is None or self._thread is not None:
             return
         self._stop.clear()
         self._thread = threading.Thread(target=self._loop, name="personen", daemon=True)
@@ -97,7 +98,9 @@ class Personenerkennung:
         Bildmitte = 0°, links im Bild = positive Winkel (wie beim Lidar).
         Setzt voraus, dass die Kamera nach vorn schaut.
         """
-        fov = config.CAMERA_FOV_DEG
+        # Der Bildwinkel gehört zur Kamera, nicht zur Erkennung: die C270
+        # sieht deutlich schmaler als die Orbbec.
+        fov = self._camera.fov_deg if self._camera is not None else config.CAMERA_FOV_DEG
         return [((0.5 - b["x2"]) * fov, (0.5 - b["x1"]) * fov) for b in self.boxen()]
 
     def status(self) -> dict:
@@ -105,15 +108,28 @@ class Personenerkennung:
             return {
                 "verfuegbar": self.verfuegbar,
                 "aktiv": self._aktiv.is_set() and self.verfuegbar,
-                "fehler": self._fehler,
+                "fehler": (
+                    "abgeschaltet (Einstellungen)"
+                    if self._hog is not None and not config.PERSON_DETECTION_ENABLED
+                    else self._fehler
+                ),
+                # Auf welchem Bild die Rahmen liegen -- die App zeichnet sie
+                # nur über diese Kamera.
+                "kamera": self._camera.name if self._camera is not None else None,
                 "letzte_erkennung_vor_s": round(time.monotonic() - self._zeit, 1) if self._zeit else None,
             }
 
     def _loop(self) -> None:
-        takt = 1.0 / max(0.1, config.PERSON_DETECT_HZ)
         while not self._stop.is_set():
             if not self._aktiv.wait(timeout=1.0):
                 continue
+            if not config.PERSON_DETECTION_ENABLED:
+                with self._lock:
+                    self._boxen = []
+                self._stop.wait(1.0)
+                continue
+            # Jedes Mal neu lesen: zur Laufzeit verstellbar.
+            takt = 1.0 / max(0.1, config.PERSON_DETECT_HZ)
             beginn = time.monotonic()
             try:
                 self._erkennen()

@@ -256,8 +256,8 @@ Beine 0,6–1,8 m auseinander), `Mensch` (zwei dicke Beine oder Kamera-Treffer),
 `Bein (Mensch?)`, `Bein (Stuhl/Tisch?)`, `Objekt`. Das ist eine Faustregel
 auf einer Lidar-Ebene, keine Objekterkennung.
 
-Ist OpenCV installiert, sucht die Kamera während der Fahrt nach Personen
-(HOG-Detektor, 2 Bilder/s). Lidar-Hindernisse in deren Richtung heißen dann
+Ist OpenCV installiert, sucht die Personenkamera (Logitech C270, siehe
+[Kamera](#kamera)) während der Fahrt nach Personen (HOG-Detektor, 2 Bilder/s). Lidar-Hindernisse in deren Richtung heißen dann
 `Mensch` mit `quelle: "Kamera+Lidar"`. Ohne OpenCV läuft alles andere weiter.
 
 `state.autonomie`:
@@ -279,7 +279,7 @@ Ist OpenCV installiert, sucht die Kamera während der Fahrt nach Personen
   ],
   "personen": [{"x1": 0.41, "y1": 0.1, "x2": 0.62, "y2": 0.95, "score": 1.2}],
   "personenerkennung": {"verfuegbar": true, "aktiv": true, "fehler": null,
-                        "letzte_erkennung_vor_s": 0.3}
+                        "kamera": "personen", "letzte_erkennung_vor_s": 0.3}
 }
 ```
 
@@ -292,8 +292,8 @@ Ist OpenCV installiert, sucht die Kamera während der Fahrt nach Personen
 | `ausweichen`, `menschen` | Zähler dieser Fahrt |
 | `grund` | warum die letzte Fahrt endete |
 | `hindernisse` | die 12 nächsten, nächstes zuerst. `winkel` in Grad wie beim Lidar, `x`/`y` Mitte in Roboterkoordinaten (m) |
-| `personen` | Personenrahmen im Kamerabild, relativ zur Bildgröße (0..1) |
-| `personenerkennung` | ob die Kamera-Erkennung geht; `fehler` z. B. „opencv fehlt“ |
+| `personen` | Personenrahmen im Bild der Personenkamera, relativ zur Bildgröße (0..1) |
+| `personenerkennung` | ob die Kamera-Erkennung geht; `fehler` z. B. „opencv fehlt“; `kamera`: auf welchem Kamerabild die Rahmen liegen (Name wie in `/cameras`) |
 
 ---
 
@@ -301,26 +301,71 @@ Ist OpenCV installiert, sucht die Kamera während der Fahrt nach Personen
 
 ### Kamera
 
+Der Roboter betreibt alle Kameras, die er findet, jede mit eigenem Bild.
+Jede hat einen Namen:
+
+| Name | Kamera | Wofür |
+|---|---|---|
+| `orientierung` | Orbbec, Farbbild | Orientierung, Fahren. **Standardkamera.** |
+| `personen` | Logitech C270 | Personenerkennung |
+| `usb1`, `usb2`, … | weitere USB-Kameras | nichts Festes |
+| `csi` | Kamera am Flachbandkabel, falls vorhanden | nichts Festes |
+
+`orientierung` und `personen` sind immer aufgeführt, auch wenn die Kamera
+gerade fehlt (dann `geoeffnet: false`). Der Roboter sucht sie im Hintergrund
+weiter. Zugeordnet wird über die USB-Kennung (`config.CAMERA_ROLES`).
+
 | Endpunkt | Liefert |
 |---|---|
-| `GET /camera/stream` | MJPEG-Strom (`multipart/x-mixed-replace`). Direkt in `<img src>` verwendbar, bis zu `CAMERA_FPS` (15) Bilder/s. |
-| `GET /camera/snapshot` | ein Einzelbild (meist `image/jpeg`). `503`, solange noch keines da ist. Gut für Bildverarbeitung: einfach im gewünschten Takt abholen. |
-| `GET /camera/status` | Diagnose, siehe unten |
+| `GET /cameras` | alle Kameras mit Zustand und Adressen, siehe unten |
+| `GET /camera/<name>/stream` | MJPEG-Strom (`multipart/x-mixed-replace`) dieser Kamera. Direkt in `<img src>` verwendbar, bis zu `CAMERA_FPS` Bilder/s (Standard 15, höchstens 30, auf der Einstellungsseite verstellbar). |
+| `GET /camera/<name>/snapshot` | ein Einzelbild (meist `image/jpeg`). `503`, solange noch keines da ist. Gut für Bildverarbeitung: einfach im gewünschten Takt abholen. |
+| `GET /camera/<name>/status` | Diagnose dieser Kamera, siehe unten |
+| `GET /camera/stream`, `/camera/snapshot`, `/camera/status` | dasselbe für die Standardkamera (`config.CAMERA_DEFAULT`) |
 
-Auflösung standardmäßig 640×480. Wird die Kamera abgeschaltet
-(`CAMERA_ENABLED = False`), antworten `stream` und `snapshot` mit `503`. Im
-Simulationsmodus kommt ein bewegtes Testbild als `image/png`.
+Ein unbekannter Name gibt `404`. Auflösung standardmäßig 640×480. Wird die
+Kamera abgeschaltet (`CAMERA_ENABLED = False`), antworten `stream` und
+`snapshot` mit `503`. Im Simulationsmodus liefert jede Kamera ein bewegtes
+Testbild als `image/png`, mit eigener Balkenfarbe.
 
-`/camera/status`:
+`/cameras`:
 
 ```json
 {
-  "kamera": "USB-Kamera", "geoeffnet": true, "thread_laeuft": true,
-  "bilder_gesamt": 5321, "letztes_bild_vor_s": 0.1,
-  "bildgroesse_bytes": 41230, "format": "image/jpeg",
-  "letzter_fehler": null, "neu_geoeffnet": 0
+  "standard": "orientierung",
+  "personen": "personen",
+  "kameras": [
+    {"name": "orientierung", "kamera": "Orbbec (Farbbild)", "geoeffnet": true,
+     "stream": "/camera/orientierung/stream",
+     "snapshot": "/camera/orientierung/snapshot", "...": "wie /camera/status"},
+    {"name": "personen", "kamera": "Logitech C270", "geoeffnet": false,
+     "letzter_fehler": "Öffnen fehlgeschlagen: nicht angeschlossen (USB 046d)",
+     "...": "..."}
+  ]
 }
 ```
+
+`personen` ist der Name der Kamera, auf deren Bild die Personenrahmen aus
+`state.autonomie.personen` liegen.
+
+`/camera/status` bzw. `/camera/<name>/status`:
+
+```json
+{
+  "kamera": "Orbbec (Farbbild)", "geoeffnet": true, "thread_laeuft": true,
+  "bilder_gesamt": 5321, "letztes_bild_vor_s": 0.1,
+  "bildgroesse_bytes": 41230, "format": "image/jpeg",
+  "letzter_fehler": null, "neu_geoeffnet": 0,
+  "name": "orientierung", "geraet": "/dev/video0", "fov_deg": 66.0,
+  "fps_ist": 14.8, "fps_soll": 15
+}
+```
+
+`geraet` ist das gerade benutzte Gerät. Es kann sich nach einem
+USB-Aussetzer ändern. `fov_deg` ist der horizontale Bildwinkel in Grad. `fps_soll` ist die
+eingestellte Bildrate (`CAMERA_FPS`), `fps_ist` die tatsächlich erreichte.
+Die Kameras schaffen höchstens 30 fps, die Logitech bei wenig Licht nur
+etwa 15.
 
 ### Lidar
 
@@ -368,11 +413,53 @@ vom Startpunkt passt. Unter 0,05 ist gut.
 |---|---|
 | `GET /autonomie/status` | dasselbe wie `state.autonomie`, zum Nachsehen ohne WebSocket |
 
+### Einstellungen
+
+Die Einstellungen aus `config.py`, die sich zur Laufzeit verstellen lassen
+(Tempo, Kamera-Bildrate, Lidar, Autonomie …). Die Web-App hat dafür eine
+eigene Seite unter `/einstellungen`.
+
+| Endpunkt | Liefert |
+|---|---|
+| `GET /settings` | alle Einstellungen nach Blöcken, mit Wert, Standard und Grenzen |
+| `POST /settings` | Body `{"CAMERA_FPS": 20, "EXPLORE_SPEED": 0.15}`: setzt die Werte. Alle oder keiner: Ist einer ungültig, kommt `400` mit `{"fehler": "…"}`, und nichts wird geändert. |
+| `POST /settings/reset` | Body `{"keys": ["CAMERA_FPS"]}` für einzelne Werte, `{}` für alle: zurück auf die Werte aus `config.py` |
+
+`GET /settings`:
+
+```json
+{
+  "gruppen": [
+    {"id": "kamera", "titel": "Kameras", "text": "…", "einstellungen": [
+      {"key": "CAMERA_FPS", "label": "Bilder pro Sekunde", "typ": "int",
+       "wert": 15, "standard": 15, "min": 1, "max": 30, "schritt": 1,
+       "einheit": "fps", "optionen": null, "hilfe": "…", "neustart": false}
+    ]}
+  ]
+}
+```
+
+- `typ`: `bool`, `int`, `float` oder `auswahl` (dann stehen die erlaubten
+  Werte in `optionen`).
+- `neustart: true`: wirkt erst nach einem Neustart des Servers.
+- Die Antwort auf beide `POST` ist dieselbe Liste, dazu `geaendert` (welche
+  Werte sich wirklich geändert haben) und `neustart_noetig`.
+
+Änderungen gelten sofort und werden in `robot/settings.json` gespeichert.
+Die Datei enthält nur Abweichungen vom Standard. Wer sie löscht, hat wieder
+die Werte aus `config.py`. Ändern sich die Tempo-Grenzen, schickt der
+Roboter allen Clients ein neues `limits`. Jede Änderung meldet er außerdem
+als `alert` (`info`).
+
+Ändern geht nur von einer Seite, die vom Roboter selbst geladen wurde: CORS
+erlaubt fremden Seiten nur `GET`.
+
 ### Sonstiges
 
 | Endpunkt | Liefert |
 |---|---|
 | `GET /` | die mitgelieferte Web-App |
+| `GET /einstellungen` | die Einstellungsseite der Web-App |
 | `GET /static/...` | deren Dateien (`webapp/`) |
 | `GET /docs` | automatisch erzeugte HTTP-Übersicht (FastAPI) |
 
@@ -392,7 +479,7 @@ Alle Endpunkte und Nachrichten verhalten sich wie am Roboter:
 - **Lidar:** tastet einen gedachten Raum ab (8 × 6 m mit einer Säule), der
   sich passend zur Fahrt bewegt. Ortung, Heimfahrt und Kollisionsvermeidung
   lassen sich damit vollständig ausprobieren.
-- **Kamera:** bewegtes Testbild.
+- **Kamera:** je Kamera (`orientierung`, `personen`) ein bewegtes Testbild.
 
 `driver: "mock"` in der `state`-Nachricht zeigt, dass man in der Simulation
 ist.

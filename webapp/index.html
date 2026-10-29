@@ -10,15 +10,20 @@
 
 <header>
   <h1>ROSMASTER X3</h1>
-  <div id="status" class="status offline">
-    <span class="dot"></span><span id="status-text">getrennt</span>
-  </div>
+  <nav class="header-nav">
+    <a href="/einstellungen" class="header-link">Einstellungen</a>
+    <div id="status" class="status offline">
+      <span class="dot"></span><span id="status-text">getrennt</span>
+    </div>
+  </nav>
 </header>
 
 <main>
 
   <section class="panel">
     <h2>Kamera</h2>
+    <!-- Umschalter, wird aus /cameras gefüllt. Bei nur einer Kamera leer. -->
+    <div id="cam-wahl" class="cam-wahl" hidden></div>
     <div class="cam-wrap">
       <!-- MJPEG: der Browser zeigt den Stream direkt an, ohne JavaScript. -->
       <img id="cam" class="cam" alt="Kamerabild">

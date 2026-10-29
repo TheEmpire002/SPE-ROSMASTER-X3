@@ -53,6 +53,7 @@ Menschen aus. Es bewertet keinen Gesundheitszustand.
 | Modul          | Verantwortung                                              |
 |----------------|------------------------------------------------------------|
 | `config.py`    | Alle Einstellungen an einer Stelle (Tempo, Ports, Timeouts) |
+| `settings.py`  | Welche davon die Einstellungsseite zur Laufzeit ändern darf; speichert Änderungen in `robot/settings.json` |
 | `protocol.py`  | Nachrichtenformat — die gemeinsame Sprache aller Beteiligten |
 | `drive/`       | Fahren. `base.py` = Schnittstelle, dazu echter Treiber + Mock |
 | `safety/`      | Watchdog, Not-Aus, Geschwindigkeitsbegrenzung               |

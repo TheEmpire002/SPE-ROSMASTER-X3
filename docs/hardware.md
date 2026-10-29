@@ -8,7 +8,8 @@
 | Fahrgestell     | Yahboom ROSMASTER X3  | USB-Serial       | vorhanden   |
 | Expansion Board | Yahboom (STM32)       | USB-Serial       | vorhanden   |
 | Lidar           | Slamtec RPLIDAR A1    | USB-Seriell      | eingebunden (Ortung + Hindernisse) |
-| Kamera          | *(Modell eintragen)*  | USB / CSI        | eingebunden (CSI, USB oder Testbild) |
+| Tiefenkamera    | Orbbec (Farb- + Tiefenkanal) | USB (über Hub) | Farbbild eingebunden (Orientierung), Tiefe noch nicht |
+| Webcam          | Logitech C270         | USB (direkt am Pi) | eingebunden (Personenerkennung) |
 | ESP32           | *(Modell eintragen)*  | WLAN             | geplant     |
 | Pulssensor      | *(Modell eintragen)*  | ESP32            | geplant     |
 | Box-Motor       | *(Modell eintragen)*  | Servo am X3      | geplant     |
@@ -24,8 +25,11 @@ Ausgabe von `lsusb` auf diesem Roboter, übersetzt:
 |---|---|---|
 | `1a86:7523` | QinHeng CH340 | **Expansion Board** — Antrieb |
 | `10c4:ea60` | Silicon Labs CP210x | **RPLIDAR A1** |
-| `2bc5:050f` | Orbbec „USB 2.0 Camera" | RGB-Bild → `/dev/video0` |
+| `2bc5:050f` | Orbbec „USB 2.0 Camera" | RGB-Bild, Kamera `orientierung` |
 | `2bc5:060f` | Orbbec Depth Sensor | Tiefenkanal derselben Kamera |
+| `046d:0825` | Logitech C270 HD WebCam | Kamera `personen` |
+| `4c4a:4155` | Jieli UACDemoV1.0 | USB-Audio (Lautsprecher), keine Kamera |
+| `0d8c:0016` | C-Media USB Microphone | Mikrofon |
 
 **Daraus folgt das Wichtigste:** Es gibt **zwei** USB-Seriell-Adapter. Board
 und Lidar erscheinen beide als `/dev/ttyUSB*`, und welcher welche Nummer
@@ -42,9 +46,17 @@ ls -l /dev/serial/by-id/
 Den Eintrag mit `1a86` bzw. `CH340` in `config.py` bei `SERIAL_PORT`
 hinterlegen. Der Lidar hat mit `/dev/rplidar` bereits einen festen Namen.
 
-Die Kamera ist eine **Orbbec-Tiefenkamera**. Genutzt wird aktuell nur ihr
-RGB-Kanal als gewöhnliche USB-Kamera. Der Tiefenkanal wäre für die
-Hinderniserkennung interessant, braucht aber das Orbbec-SDK.
+Die **Orbbec-Tiefenkamera** meldet sich als zwei USB-Geräte. Genutzt wird
+aktuell nur ihr RGB-Kanal als gewöhnliche USB-Kamera. Der Tiefenkanal ist
+für Orientierung und Kollisionsvermeidung gedacht, ist aber kein
+Videogerät (taucht in `v4l2-ctl --list-devices` nicht auf) und braucht das
+Orbbec-SDK.
+
+Die **Logitech C270** hängt direkt am Pi, nicht am Hub: Am Hub hängen
+schon Board, Lidar und Orbbec, und eine weitere Kamera dort macht
+Spannungseinbrüche wahrscheinlicher. Beim Einstecken meldet der Kernel
+einige `Failed to query (GET_INFO) UVC control …` und `cannot get freq`.
+Das ist bei der C270 normal und harmlos.
 
 ## Antrieb
 
@@ -194,27 +206,36 @@ in `robot/src/rosmaster_assist/sensors/__init__.py`.
 
 ## Kamera
 
-Die Software probiert beim Start drei Wege in dieser Reihenfolge durch und
-nimmt den ersten, der funktioniert:
+Die Software betreibt **alle** Kameras, die sie findet, jede mit eigenem
+Bild:
 
-| Reihenfolge | Variante | Voraussetzung |
-|---|---|---|
-| 1 | CSI-Kamera am Flachbandkabel | `picamera2` (bei Raspberry Pi OS dabei) |
-| 2 | USB-Kamera | `pip install opencv-python` |
-| 3 | Testbild | nichts — läuft überall |
+| Variante | Voraussetzung |
+|---|---|
+| USB-Kameras | `pip install opencv-python` |
+| CSI-Kamera am Flachbandkabel | `picamera2` (bei Raspberry Pi OS dabei) |
+| Testbild, wenn gar keine da ist | nichts, läuft überall |
 
-Es ist also nichts zu konfigurieren, solange eine Kamera erkannt wird. Welche
-genommen wurde, steht beim Start im Log („Kamera (CSI) bereit" bzw. „Kamera
-(USB, Index 0) bereit"). Steht dort „Testbild", wurde keine gefunden.
+Welche USB-Kamera wofür da ist, steht in `config.py` bei `CAMERA_ROLES`:
+`orientierung` ist die Orbbec (USB-Kennung `2bc5`), `personen` die Logitech
+(`046d`). Zugeordnet wird über die USB-Kennung, nicht über `/dev/videoN`,
+denn die Nummern vertauschen sich nach Neustart oder Neu-Einstecken. Fehlt
+eine dieser Kameras, sucht der Server sie im Hintergrund weiter. Weitere
+USB-Kameras laufen als `usb1`, `usb2`, …
 
-Auflösung, Bildrate und JPEG-Qualität stehen in
+Beim Start steht im Log, was gefunden wurde („Kameras: orientierung (…),
+personen (…)“ und je Kamera „Kamera '…' (USB …, /dev/videoN) bereit“).
+Ohne Log: `/cameras` im Browser aufrufen.
+
+Auflösung, Bildrate und JPEG-Qualität lassen sich auf der Einstellungsseite
+(`/einstellungen`) verstellen; die Standardwerte stehen in
 `robot/src/rosmaster_assist/config.py`. Bei ruckelndem Bild über WLAN zuerst
 `CAMERA_FPS` senken, erst danach die Auflösung.
 
 **USB-Kamera prüfen:**
 
 ```bash
-ls /dev/video*          # taucht hier nichts auf, wird sie nicht erkannt
+v4l2-ctl --list-devices # je Kamera ein Block; fehlt sie hier, wird sie nicht erkannt
+lsusb                   # USB-Kennung, muss zu CAMERA_ROLES passen
 pip install opencv-python
 ```
 
@@ -224,8 +245,10 @@ pip install opencv-python
 rpicam-hello --list-cameras
 ```
 
-Der Stream liegt unter `/camera/stream` (MJPEG) und ein Einzelbild unter
-`/camera/snapshot` — beides direkt im Browser aufrufbar, auch ohne die App.
+Der Stream liegt unter `/camera/<name>/stream` (MJPEG) und ein Einzelbild
+unter `/camera/<name>/snapshot`, z. B. `/camera/personen/stream`. Beides ist
+direkt im Browser aufrufbar, auch ohne die App. `/camera/stream` ohne Namen
+zeigt die Standardkamera (`orientierung`).
 
 ## AI HAT+
 

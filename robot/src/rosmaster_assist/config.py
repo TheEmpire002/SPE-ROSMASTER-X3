@@ -169,10 +169,34 @@ HOME_CONE_DEG = 35.0
 
 CAMERA_ENABLED = True
 
-# Welcher /dev/videoN-Index bei einer USB-Kamera zuerst probiert wird.
-# Scheitert er, werden alle vorhandenen Geräte durchprobiert -- auf dem Pi
-# ist /dev/video0 oft ein Encoder und nicht die Kamera.
-CAMERA_INDEX = 0
+# Welche USB-Kamera wofür da ist. Es laufen immer alle gefundenen Kameras;
+# hier wird nur festgelegt, welche welchen Namen trägt und wer ihr Bild
+# auswertet.
+#
+# Gefunden wird jede über ihre USB-Kennung wie in `lsusb` -- "vvvv" passt auf
+# jedes Modell des Herstellers, "vvvv:pppp" nur auf genau eines. Nicht über
+# /dev/videoN: die Nummern vertauschen sich nach Neustart oder
+# Neu-Einstecken, und die Personenerkennung bekäme still das falsche Bild.
+#
+# Eine Rolle, deren Kamera fehlt, wird im Hintergrund weiter gesucht --
+# meldet sich die Kamera nach einem USB-Aussetzer wieder, läuft sie weiter.
+# Weitere USB-Kameras ohne Rolle laufen zusätzlich als "usb1", "usb2", ...
+#
+# fov_deg: horizontaler Bildwinkel bei 640x480 laut Datenblatt. Damit wird
+# eine Person im Bild einer Richtung im Lidar zugeordnet -- bei Bedarf
+# nachmessen.
+CAMERA_ROLES = {
+    # Orbbec-Tiefenkamera, Farbkanal. Für Orientierung und Fahren. Der
+    # Tiefenkanal (2bc5:060f) ist kein Videogerät und braucht das Orbbec-SDK.
+    "orientierung": {"usb_id": "2bc5", "label": "Orbbec (Farbbild)", "fov_deg": 66.0},
+    # Logitech C270: Personenerkennung.
+    "personen": {"usb_id": "046d", "label": "Logitech C270", "fov_deg": 45.0},
+}
+
+# Welche Kamera unter /camera/stream, /camera/snapshot und /camera/status
+# antwortet (die Endpunkte ohne Kameranamen) und in der App zuerst zu sehen
+# ist.
+CAMERA_DEFAULT = "orientierung"
 
 CAMERA_WIDTH = 640
 CAMERA_HEIGHT = 480
@@ -180,6 +204,12 @@ CAMERA_HEIGHT = 480
 # Bilder pro Sekunde im Stream. Höher kostet WLAN-Bandbreite und CPU; bei
 # ruckelndem Bild über WLAN eher hier heruntergehen als die Auflösung senken.
 CAMERA_FPS = 15
+
+# Was die Kameras selbst höchstens liefern: Logitech C270 und Orbbec
+# (Farbbild) schaffen bei 640x480 je 30 fps -- bei wenig Licht verlängert
+# die C270 die Belichtung und kommt nur noch auf ~15. Mit dieser Rate läuft
+# die Kamera; CAMERA_FPS drosselt nur das Abholen.
+CAMERA_MAX_FPS = 30
 
 # JPEG-Qualität 1..100. Darunter wird das Bild matschig, darüber groß.
 CAMERA_QUALITY = 70
@@ -285,6 +315,10 @@ PERSON_DETECT_WIDTH = 320
 # Personen von der Seite werden eher übersehen.
 PERSON_MIN_SCORE = 0.5
 
-# Horizontaler Bildwinkel der Kamera in Grad. Damit wird eine Person im
-# Bild einer Richtung im Lidar zugeordnet.
+# Welche Kamera aus CAMERA_ROLES nach Personen sucht. Fehlt die Rolle in
+# CAMERA_ROLES, nimmt die Erkennung die Standardkamera.
+PERSON_CAMERA = "personen"
+
+# Horizontaler Bildwinkel in Grad für Kameras ohne eigene Angabe in
+# CAMERA_ROLES (CSI-Kamera, zusätzliche USB-Kameras).
 CAMERA_FOV_DEG = 60.0

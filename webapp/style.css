@@ -57,6 +57,29 @@ main {
 
 .cam-wrap { position: relative; }
 
+/* Siehe .cam-error[hidden]: eigene display-Angabe schlägt sonst hidden. */
+.cam-wahl[hidden] { display: none; }
+
+.cam-wahl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+
+.cam-wahl button {
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--muted);
+  background: #1b1e25;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.25rem 0.7rem;
+  cursor: pointer;
+}
+.cam-wahl button:hover { background: #272b34; }
+.cam-wahl button.aktiv { color: var(--text); background: #30353f; }
+
 .cam {
   display: block;
   width: 100%;
@@ -250,3 +273,112 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 .hindernisse li .art { display: flex; align-items: center; gap: 0.4rem; }
 .hindernisse li .farbe { width: 9px; height: 9px; border-radius: 50%; }
 .hindernisse li .wo { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* --- Kopfzeile: Verweis auf die Einstellungen --- */
+
+.header-nav { display: flex; align-items: center; gap: 1rem; }
+
+.header-link {
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-decoration: none;
+}
+.header-link:hover { color: var(--text); }
+
+/* --- Einstellungsseite --- */
+
+.einst-kopf p { margin: 0 0 0.7rem; font-size: 0.85rem; color: var(--muted); }
+.einst-kopf code { color: var(--text); }
+
+/* Siehe .cam-error[hidden]. */
+.einst-meldung[hidden] { display: none; }
+.einst-meldung { margin: 0.7rem 0 0; font-size: 0.85rem; color: var(--ok); }
+.einst-meldung.fehler { color: var(--danger); }
+
+.einst-text { margin: -0.3rem 0 0.8rem; font-size: 0.8rem; color: var(--muted); }
+
+.einst-zeile {
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.einst-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+  margin-bottom: 0.35rem;
+}
+
+/* Abweichung vom Standard auf einen Blick: farbiger Punkt vor dem Namen. */
+.einst-zeile.geaendert .einst-label::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.einst-neustart {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--warn);
+  border: 1px solid var(--warn);
+  border-radius: 4px;
+  padding: 0 0.3rem;
+}
+
+.einst-steuerung { display: flex; align-items: center; gap: 0.5rem; }
+.einst-steuerung input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }
+
+.einst-steuerung input[type="number"],
+.einst-steuerung select {
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: #15171c;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.25rem 0.4rem;
+}
+.einst-steuerung input[type="number"] { width: 5.5rem; }
+.einst-steuerung select { flex: 1; }
+
+.einst-schalter { width: 1.2rem; height: 1.2rem; accent-color: var(--accent); }
+
+.einst-einheit { min-width: 2.6rem; font-size: 0.8rem; color: var(--muted); }
+
+/* Siehe .cam-error[hidden]. */
+.einst-zurueck[hidden] { display: none; }
+.einst-zurueck {
+  font: inherit;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.1rem 0.45rem;
+  cursor: pointer;
+}
+.einst-zurueck:hover { color: var(--text); background: #272b34; }
+
+.einst-hilfe,
+.einst-standard { margin: 0.3rem 0 0; font-size: 0.75rem; color: var(--muted); }
+.einst-standard { opacity: 0.7; }
+
+.einst-unter {
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-weight: 600;
+  margin: 0.9rem 0 0.4rem;
+}
+
+.einst-kameras { list-style: none; margin: 0; padding: 0; font-size: 0.8rem; }
+.einst-kameras li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+.einst-kameras .ok { color: var(--ok); }
+.einst-kameras .fehlt { color: var(--warn); }

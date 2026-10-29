@@ -38,3 +38,7 @@ sdkconfig.*.old
 *.swp
 *.swo
 *~
+
+# Auf der Einstellungsseite geänderte Werte (je Roboter verschieden)
+robot/settings.json
+robot/settings.tmp

@@ -81,6 +81,7 @@ const ui = {
   autoText: el("auto-text"),
   hindernisse: el("hindernisse"),
   camOverlay: el("cam-overlay"),
+  camWahl: el("cam-wahl"),
 };
 
 function logLine(text, level = "info") {
@@ -468,6 +469,9 @@ if (lidarCtx) setInterval(lidarHolen, 1000 / LIDAR_HZ);
 let autonomAktiv = false;
 let hindernisse = [];
 let personenBoxen = [];
+// Auf welchem Kamerabild die Personenrahmen liegen (vom Server gemeldet).
+// null = unbekannt, etwa bei einem älteren Server -- dann wie bisher immer.
+let personenKamera = null;
 
 /** Farbe je Hindernisart, gleich in Liste, Lidar-Bild und Kamera. */
 const ART_FARBE = {
@@ -512,6 +516,7 @@ function zeigeAutonomie(a) {
   ui.autoMenschen.textContent = `${menschen} im Lidar · ${personenBoxen.length} im Bild`;
 
   const pe = a.personenerkennung;
+  if (pe && pe.kamera) personenKamera = pe.kamera;
   ui.autoKamera.textContent = !pe ? "—"
     : !pe.verfuegbar ? (pe.fehler || "nicht verfügbar")
     : pe.aktiv ? "erkennt Personen" : "bereit (läuft beim Fahren)";
@@ -585,6 +590,9 @@ function personenZeichnen() {
   const ctx = c.getContext("2d");
   ctx.clearRect(0, 0, w, h);
   if (!personenBoxen.length || !ui.cam.naturalWidth) return;
+  // Die Rahmen gehören zum Bild der Personenkamera. Über einer anderen
+  // Kamera stünden sie an der falschen Stelle.
+  if (personenKamera && personenKamera !== aktuelleKamera()) return;
 
   const bildVerh = ui.cam.naturalWidth / ui.cam.naturalHeight;
   let bw = w, bh = w / bildVerh;
@@ -675,6 +683,62 @@ let camModus = "mjpeg";
 let camTimer = null;
 let camPruefung = null;
 
+/*
+ * Mehrere Kameras: /cameras sagt, welche es gibt. camName = null heißt
+ * Standardkamera über /camera/stream -- das funktioniert auch mit einem
+ * Server, der /cameras noch nicht kennt.
+ */
+let camName = null;
+let camStandard = null;
+
+const camBasis = () => (camName ? `/camera/${encodeURIComponent(camName)}` : "/camera");
+const aktuelleKamera = () => camName ?? camStandard;
+
+function markiereKamera() {
+  for (const b of ui.camWahl.children) {
+    b.classList.toggle("aktiv", b.dataset.name === aktuelleKamera());
+  }
+}
+
+async function ladeKameras() {
+  let daten;
+  try {
+    const antwort = await fetch("/cameras", { cache: "no-store" });
+    if (!antwort.ok) return;
+    daten = await antwort.json();
+  } catch {
+    return; // Server nicht erreichbar -- beim nächsten Verbinden erneut
+  }
+  const liste = daten.kameras || [];
+  camStandard = daten.standard;
+  if (daten.personen) personenKamera = daten.personen;
+  // Nach einem Neustart des Roboters kann die gewählte Kamera fehlen.
+  if (camName && !liste.some((k) => k.name === camName)) {
+    camName = null;
+    startCamera();
+  }
+
+  ui.camWahl.hidden = liste.length < 2;
+  ui.camWahl.replaceChildren(...liste.map((k) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.name = k.name;
+    let text = k.kamera || k.name;
+    if (k.name === daten.personen) text += " · Personen";
+    if (!k.geoeffnet) text += " (kein Bild)";
+    b.textContent = text;
+    b.title = k.geoeffnet ? (k.geraet || k.name) : (k.letzter_fehler || "nicht geöffnet");
+    b.addEventListener("click", () => {
+      camName = k.name;
+      markiereKamera();
+      personenZeichnen();
+      startCamera();
+    });
+    return b;
+  }));
+  markiereKamera();
+}
+
 function stopCamera() {
   if (camTimer !== null) {
     clearTimeout(camTimer);
@@ -698,7 +762,7 @@ function startCamera() {
   // geladene Bild dort die nächste Anfrage aus.
   ui.cam.onload = null;
   ui.cam.onerror = null;
-  ui.cam.src = `/camera/stream?t=${Date.now()}`;
+  ui.cam.src = `${camBasis()}/stream?t=${Date.now()}`;
 
   // naturalWidth > 0 heißt: mindestens ein Bild wurde dekodiert. Das
   // load-Ereignis taugt hier nicht -- bei einem Dauerstrom feuert es
@@ -721,7 +785,7 @@ function starteEinzelbilder() {
   const naechstes = () => {
     if (camModus !== "einzelbild") return;
     camTimer = setTimeout(() => {
-      ui.cam.src = `/camera/snapshot?t=${Date.now()}`;
+      ui.cam.src = `${camBasis()}/snapshot?t=${Date.now()}`;
     }, 1000 / EINZELBILD_FPS);
   };
 
@@ -730,7 +794,7 @@ function starteEinzelbilder() {
     ui.camError.hidden = false;
     naechstes();
   };
-  ui.cam.src = `/camera/snapshot?t=${Date.now()}`;
+  ui.cam.src = `${camBasis()}/snapshot?t=${Date.now()}`;
 }
 
 ui.cam.addEventListener("error", () => {
@@ -739,7 +803,10 @@ ui.cam.addEventListener("error", () => {
   logLine("Kamerabild abgerissen", "warning");
 });
 
-ui.camRetry.addEventListener("click", startCamera);
+ui.camRetry.addEventListener("click", () => {
+  ladeKameras(); // vielleicht ist die Kamera inzwischen da
+  startCamera();
+});
 
 // Der Stream reißt ab, wenn der Roboter neu startet oder das WLAN kurz
 // weg war. Sobald die Steuerverbindung wieder steht, lohnt ein neuer
@@ -749,12 +816,16 @@ ui.camRetry.addEventListener("click", startCamera);
 let camWasConnected = true;
 
 function onConnectionChange(connected) {
-  if (connected && !camWasConnected) startCamera();
+  if (connected && !camWasConnected) {
+    ladeKameras();
+    startCamera();
+  }
   camWasConnected = connected;
 }
 
 // --- Start ----------------------------------------------------------------
 
+ladeKameras();
 startCamera();
 applyLimits();
 sendTimer = setInterval(sendDrive, 1000 / SEND_HZ);

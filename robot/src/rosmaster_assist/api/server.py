@@ -15,12 +15,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from .. import config
+from .. import config, settings
 from ..drive.base import DriveBase
 from ..protocol import (
     DriveCommand,
@@ -34,7 +34,7 @@ from ..protocol import (
 )
 from ..navigation import Erkunder, Hinderniserkennung, Homing, Localizer, Odometry
 from ..safety import CollisionGuard, SafetyWatchdog
-from ..sensors.camera import CameraService, create_camera
+from ..sensors.camera import CameraService, create_cameras
 from ..sensors.lidar import LidarService, create_lidar
 from ..sensors.personen import Personenerkennung
 
@@ -84,12 +84,22 @@ class ConnectionHub:
 def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     """Baut die Server-Anwendung um einen Antrieb herum."""
 
+    # Zuerst: einige Dienste lesen ihre Werte nur beim Anlegen (etwa der
+    # Startzustand des Hindernisstopps).
+    settings.laden()
+
     watchdog = SafetyWatchdog(driver)
     odometry = Odometry(driver)
     hub = ConnectionHub()
-    camera = (
-        CameraService(create_camera(use_mock_camera)) if config.CAMERA_ENABLED else None
+    kameras: dict[str, CameraService] = (
+        {name: CameraService(k) for name, k in create_cameras(use_mock_camera).items()}
+        if config.CAMERA_ENABLED
+        else {}
     )
+    # Die Standardkamera antwortet unter den Endpunkten ohne Kameranamen
+    # (/camera/stream usw.) -- so laufen Clients, die nur eine Kamera
+    # kennen, unverändert weiter.
+    camera = kameras.get(config.CAMERA_DEFAULT) or next(iter(kameras.values()), None)
 
     # Der simulierte Lidar braucht die wahre Position, um den gedachten Raum
     # abzutasten. Die kennt nur der Mock-Antrieb -- die echte Hardware
@@ -104,7 +114,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     homing = Homing(watchdog, odometry, localizer)
     guard = CollisionGuard(localizer)
     erkennung = Hinderniserkennung()
-    personen = Personenerkennung(camera)
+    personen = Personenerkennung(kameras.get(config.PERSON_CAMERA, camera))
     erkunder = Erkunder(watchdog, lidar, erkennung, personen)
 
     @asynccontextmanager
@@ -115,8 +125,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         else:
             log.warning("Antrieb: %s — der Roboter kann sich bewegen", driver.name)
         watchdog.start()
-        if camera is not None:
-            camera.start()
+        for kamera in kameras.values():
+            kamera.start()
         personen.start()
         if lidar is not None:
             lidar.start()
@@ -150,8 +160,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             erkunder.abbrechen("Server wird beendet")
             await watchdog.shutdown()
             personen.stop()
-            if camera is not None:
-                camera.stop()
+            for kamera in kameras.values():
+                kamera.stop()
             if lidar is not None:
                 lidar.stop()
             driver.disconnect()
@@ -205,13 +215,11 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
 
     GRENZE = "frame"
 
-    @app.get("/camera/stream")
-    async def camera_stream():
+    def _stream(camera: CameraService | None):
         if camera is None:
             return Response("Kamera abgeschaltet", status_code=503)
 
         async def bilder():
-            interval = 1.0 / max(1, config.CAMERA_FPS)
             zuletzt = None
             while True:
                 frame = camera.latest()
@@ -226,7 +234,10 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                         + data
                         + b"\r\n"
                     )
-                await asyncio.sleep(interval)
+                # Doppelt so oft nachsehen wie Bilder kommen: sonst liegt
+                # jedes neue Bild im Mittel eine halbe Periode herum. Jedes
+                # Mal neu gelesen, weil die Bildrate verstellbar ist.
+                await asyncio.sleep(0.5 / max(1, config.CAMERA_FPS))
 
         return StreamingResponse(
             bilder(),
@@ -235,6 +246,27 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             # ankommt -- das Bild bliebe dann einfach schwarz.
             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
         )
+
+    def _snapshot(camera: CameraService | None):
+        if camera is None:
+            return Response("Kamera abgeschaltet", status_code=503)
+        frame = camera.latest()
+        if frame is None:
+            return Response("Noch kein Bild", status_code=503)
+        data, mime = frame
+        return Response(data, media_type=mime, headers={"Cache-Control": "no-store"})
+
+    def _unbekannt(name: str):
+        return Response(
+            f"Keine Kamera {name!r} -- vorhanden: {', '.join(kameras) or 'keine'}",
+            status_code=404,
+        )
+
+    # Ohne Kameranamen: die Standardkamera (config.CAMERA_DEFAULT).
+
+    @app.get("/camera/stream")
+    async def camera_stream():
+        return _stream(camera)
 
     @app.get("/camera/status")
     async def camera_status():
@@ -250,13 +282,43 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     @app.get("/camera/snapshot")
     async def camera_snapshot():
         """Ein einzelnes Bild -- nützlich zum Testen per curl."""
-        if camera is None:
-            return Response("Kamera abgeschaltet", status_code=503)
-        frame = camera.latest()
-        if frame is None:
-            return Response("Noch kein Bild", status_code=503)
-        data, mime = frame
-        return Response(data, media_type=mime, headers={"Cache-Control": "no-store"})
+        return _snapshot(camera)
+
+    # Mit Kameranamen: jede Kamera einzeln.
+
+    @app.get("/cameras")
+    async def cameras_liste():
+        """Alle Kameras mit Rolle, Zustand und Adressen ihrer Bilder."""
+        return {
+            "standard": camera.name if camera is not None else None,
+            "personen": personen.status().get("kamera"),
+            "kameras": [
+                {
+                    **k.status(),
+                    "stream": f"/camera/{name}/stream",
+                    "snapshot": f"/camera/{name}/snapshot",
+                }
+                for name, k in kameras.items()
+            ],
+        }
+
+    @app.get("/camera/{name}/stream")
+    async def camera_stream_name(name: str):
+        if name not in kameras:
+            return _unbekannt(name)
+        return _stream(kameras[name])
+
+    @app.get("/camera/{name}/snapshot")
+    async def camera_snapshot_name(name: str):
+        if name not in kameras:
+            return _unbekannt(name)
+        return _snapshot(kameras[name])
+
+    @app.get("/camera/{name}/status")
+    async def camera_status_name(name: str):
+        if name not in kameras:
+            return _unbekannt(name)
+        return kameras[name].status()
 
     # --- Lidar ---
 
@@ -298,6 +360,76 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         """Erkunder, erkannte Hindernisse und Personenerkennung auf einen Blick."""
         return _autonomie(erkunder, erkennung, lidar, personen)
 
+    # --- Einstellungen ---
+    #
+    # Lesen per GET wie alles andere; Ändern per POST, weil es Zustand auf
+    # dem Roboter verändert (und gespeichert wird). Das CORS-Setup oben
+    # erlaubt nur GET -- ändern kann also nur, wer die Seite vom Roboter
+    # selbst geladen hat, nicht jede beliebige Webseite im Browser.
+
+    async def _einstellungen_wirken(geaendert: list[str]) -> None:
+        """Was nicht von selbst bei der nächsten Verwendung greift, anstoßen."""
+        if any(k.startswith("MAX_SPEED_") for k in geaendert):
+            # Die App rechnet ihre Regler auf die Grenzen um.
+            await hub.broadcast(
+                limits_message(config.MAX_SPEED_X, config.MAX_SPEED_Y, config.MAX_SPEED_OMEGA)
+            )
+        if "COLLISION_ENABLED" in geaendert or "COLLISION_DISTANCE_M" in geaendert:
+            # Der Wächter hält seinen Zustand selbst (der Schalter in der
+            # App ändert ihn ohne config) -- deshalb ausdrücklich übergeben.
+            guard.einstellen(
+                config.COLLISION_ENABLED if "COLLISION_ENABLED" in geaendert else None,
+                config.COLLISION_DISTANCE_M if "COLLISION_DISTANCE_M" in geaendert else None,
+            )
+            await hub.broadcast(collision_message(guard.zustand()))
+        if "CAMERA_RESOLUTION" in geaendert:
+            for kamera in kameras.values():
+                kamera.neu_oeffnen()
+
+    async def _einstellungen_antwort(geaendert: list[str]) -> dict[str, Any]:
+        await _einstellungen_wirken(geaendert)
+        neustart = settings.neustart_noetig(geaendert)
+        if geaendert:
+            text = f"Einstellungen geändert: {', '.join(geaendert)}"
+            if neustart:
+                text += " (wirkt nach Neustart)"
+            await hub.broadcast(alert_message("info", text))
+        return {**settings.liste(), "geaendert": geaendert, "neustart_noetig": neustart}
+
+    @app.get("/settings")
+    async def settings_lesen():
+        """Alle verstellbaren Einstellungen nach Blöcken, mit Grenzen."""
+        return settings.liste()
+
+    @app.post("/settings")
+    async def settings_setzen(request: Request):
+        """Body: {"KEY": wert, ...}. Alle oder keiner werden übernommen."""
+        try:
+            neu = await request.json()
+        except ValueError:
+            return JSONResponse({"fehler": "JSON erwartet"}, status_code=400)
+        if not isinstance(neu, dict):
+            return JSONResponse({"fehler": "Objekt {KEY: wert} erwartet"}, status_code=400)
+        try:
+            geaendert = settings.setzen(neu)
+        except settings.EinstellungsFehler as exc:
+            return JSONResponse({"fehler": str(exc)}, status_code=400)
+        return await _einstellungen_antwort(geaendert)
+
+    @app.post("/settings/reset")
+    async def settings_zuruecksetzen(request: Request):
+        """Body: {"keys": [...]} für einzelne, leer oder {} für alle."""
+        try:
+            daten = await request.json()
+        except ValueError:
+            daten = {}
+        keys = daten.get("keys") if isinstance(daten, dict) else None
+        try:
+            geaendert = settings.zuruecksetzen(keys)
+        except settings.EinstellungsFehler as exc:
+            return JSONResponse({"fehler": str(exc)}, status_code=400)
+        return await _einstellungen_antwort(geaendert)
+
     # Die Web-App direkt mitausliefern, damit eine Adresse genügt.
     if WEBAPP_DIR.is_dir():
         app.mount("/static", StaticFiles(directory=WEBAPP_DIR), name="static")
@@ -305,6 +437,10 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         @app.get("/")
         async def index() -> FileResponse:
             return FileResponse(WEBAPP_DIR / "index.html")
+
+        @app.get("/einstellungen")
+        async def einstellungen_seite() -> FileResponse:
+            return FileResponse(WEBAPP_DIR / "einstellungen.html")
     else:
         log.warning("webapp/ nicht gefunden unter %s -- nur /ws verfügbar", WEBAPP_DIR)
 
@@ -478,10 +614,10 @@ async def _match_loop(localizer: Localizer) -> None:
     """Gleicht die Position regelmäßig mit der Referenzaufnahme ab."""
     if not localizer.verfuegbar:
         return
-    takt = 1.0 / max(0.1, config.MATCH_HZ)
     try:
         while True:
-            await asyncio.sleep(takt)
+            # Jedes Mal neu lesen: auf der Einstellungsseite verstellbar.
+            await asyncio.sleep(1.0 / max(0.1, config.MATCH_HZ))
             # Der Abgleich rechnet mit einigen hundert Punkten und würde
             # die Ereignisschleife sonst kurz blockieren -- das macht sich
             # in ruckelnder Steuerung bemerkbar.

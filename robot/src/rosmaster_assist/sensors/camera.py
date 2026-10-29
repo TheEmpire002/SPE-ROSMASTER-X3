@@ -1,11 +1,17 @@
-"""Kamerabild für die Web-App.
+"""Kamerabilder für die Web-App und die Bildauswertung.
 
-Drei Varianten derselben Schnittstelle, in dieser Reihenfolge versucht:
+Es laufen alle Kameras, die gefunden werden, jede mit eigenem
+Hintergrund-Thread. Drei Varianten derselben Schnittstelle:
 
-1. ``Picamera2``  -- Kamera am CSI-Anschluss des Pi (Standard beim Pi 5)
+1. ``Picamera2``  -- Kamera am CSI-Anschluss des Pi
 2. ``OpenCV``     -- USB-Kamera
 3. ``Mock``       -- erzeugtes Testbild, damit die App auch ohne Kamera
                      entwickelt werden kann
+
+Welche USB-Kamera wofür da ist (Personenerkennung, Orientierung), steht in
+``config.CAMERA_ROLES``. Zugeordnet wird über die USB-Kennung, nicht über
+``/dev/videoN``: die Nummern vertauschen sich nach einem Neustart oder
+Neu-Einstecken.
 
 Ausgeliefert wird als MJPEG: eine endlose Folge einzelner Bilder in einer
 HTTP-Antwort. Das kann jeder Browser ohne JavaScript und ohne zusätzliche
@@ -18,11 +24,13 @@ from __future__ import annotations
 import io
 import logging
 import math
+import os
 import struct
 import threading
 import time
 import zlib
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 from .. import config
 
@@ -44,9 +52,30 @@ class CameraBase(ABC):
     name: str = "base"
     #: Klartextname für Logmeldungen.
     label: str = "Kamera"
+    #: Horizontaler Bildwinkel in Grad -- ordnet Bildpositionen dem Lidar zu.
+    fov_deg: float = config.CAMERA_FOV_DEG
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        name: str | None = None,
+        label: str | None = None,
+        fov_deg: float | None = None,
+    ) -> None:
         self._opened = False
+        # Je Instanz überschreibbar: bei mehreren Kameras braucht jede einen
+        # eigenen Namen, sonst sind Endpunkte und Logmeldungen nicht
+        # auseinanderzuhalten.
+        if name is not None:
+            self.name = name
+        if label is not None:
+            self.label = label
+        if fov_deg is not None:
+            self.fov_deg = fov_deg
+
+    @property
+    def geraet(self) -> str | None:
+        """Welches Gerät gerade benutzt wird -- für /camera/status."""
+        return None
 
     @property
     def opened(self) -> bool:
@@ -122,10 +151,15 @@ class Picamera2Camera(CameraBase):
     #: Taucht in Logmeldungen auf -- deutsch, damit man danach suchen kann.
     label = "CSI-Kamera"
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, nummer: int = 0, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._nummer = nummer
         self._cam = None
         self._sink: _JpegSink | None = None
+
+    @property
+    def geraet(self) -> str | None:
+        return f"CSI {self._nummer}"
 
     def _open(self) -> None:
         # Alles nur auf dem Pi vorhanden.
@@ -133,7 +167,7 @@ class Picamera2Camera(CameraBase):
         from picamera2.encoders import JpegEncoder
         from picamera2.outputs import FileOutput
 
-        self._cam = Picamera2()
+        self._cam = Picamera2(self._nummer)
         self._cam.configure(
             self._cam.create_video_configuration(
                 main={"size": (config.CAMERA_WIDTH, config.CAMERA_HEIGHT)}
@@ -157,7 +191,7 @@ class Picamera2Camera(CameraBase):
                 raise RuntimeError("Kamera liefert kein Bild (5 s gewartet)")
             time.sleep(0.1)
 
-        log.info("Kamera (CSI) bereit")
+        log.info("Kamera '%s' (CSI %d) bereit", self.name, self._nummer)
 
     def _close(self) -> None:
         if self._cam is None:
@@ -190,59 +224,118 @@ class Picamera2Camera(CameraBase):
 KEINE_KAMERA = ("pispbe", "hevc", "codec", "isp", "cfe", "rpivid")
 
 
-def _geraetename(idx: int) -> str:
-    """Was der Kernel zu /dev/videoN sagt, z.B. 'USB 2.0 Camera'."""
+def _lesen(pfad: str) -> str:
     try:
-        with open(f"/sys/class/video4linux/video{idx}/name") as f:
+        with open(pfad) as f:
             return f.read().strip()
     except OSError:
         return ""
 
 
+def _geraetename(idx: int) -> str:
+    """Was der Kernel zu /dev/videoN sagt, z.B. 'USB 2.0 Camera'."""
+    return _lesen(f"/sys/class/video4linux/video{idx}/name")
+
+
+@dataclass(frozen=True)
+class UsbGeraet:
+    """Eine angeschlossene USB-Kamera, wie sie der Kernel gerade sieht."""
+
+    index: int       # /dev/videoN -- ändert sich nach Neu-Einstecken
+    usb_id: str      # "046d:0825", wie in lsusb
+    anschluss: str   # USB-Port, z.B. "1-1.1.2" -- fest, solange sie dort steckt
+    name: str        # z.B. "Logi C270 HD WebCam"
+
+
+def usb_kameras() -> list[UsbGeraet]:
+    """Alle USB-Kameras, die gerade Bilder liefern können.
+
+    Ein Pi 5 bringt rund zwanzig ``/dev/video*`` mit, von denen die meisten
+    Codec- und Bildverarbeitungs-Einheiten sind -- die werden aussortiert,
+    ebenso alles ohne USB-Kennung.
+    """
+    import glob
+    import re
+
+    gefunden: list[UsbGeraet] = []
+    for pfad in glob.glob("/sys/class/video4linux/video*"):
+        treffer = re.search(r"video(\d+)$", pfad)
+        if not treffer:
+            continue
+        idx = int(treffer.group(1))
+        name = _geraetename(idx)
+        if any(wort in name.lower() for wort in KEINE_KAMERA):
+            continue
+        # UVC legt je Kamera zwei Knoten an: index 0 liefert Bilder, index 1
+        # nur Metadaten. Der zweite lässt sich öffnen, liefert aber nie ein
+        # Bild -- und sähe sonst aus wie eine zweite, defekte Kamera.
+        if _lesen(f"{pfad}/index") not in ("", "0"):
+            continue
+        # "device" zeigt auf die USB-Schnittstelle (z.B. 1-1.1.2:1.0);
+        # Hersteller und Produkt stehen eine Ebene höher beim Gerät selbst.
+        usb = os.path.dirname(os.path.realpath(f"{pfad}/device"))
+        hersteller = _lesen(f"{usb}/idVendor")
+        if not hersteller:
+            continue
+        produkt = _lesen(f"{usb}/idProduct")
+        gefunden.append(
+            UsbGeraet(idx, f"{hersteller}:{produkt}".lower(), os.path.basename(usb), name)
+        )
+    return sorted(gefunden, key=lambda g: g.index)
+
+
 class OpenCVCamera(CameraBase):
+    """USB-Kamera, gefunden über USB-Kennung und/oder Anschluss.
+
+    Ohne beides nimmt sie die erste USB-Kamera, die sich öffnen lässt.
+    """
+
     name = "usb"
     label = "USB-Kamera"
 
-    def __init__(self, index: int | None = None) -> None:
-        super().__init__()
-        self._index = config.CAMERA_INDEX if index is None else index
+    def __init__(
+        self, usb_id: str | None = None, anschluss: str | None = None, **kwargs
+    ) -> None:
+        super().__init__(**kwargs)
+        self._usb_id = usb_id.lower() if usb_id else None
+        self._anschluss = anschluss
+        self._index: int | None = None
         self._cap = None
 
-    def _kandidaten(self) -> list[int]:
-        """Welche Geräte-Indizes probiert werden.
+    @property
+    def geraet(self) -> str | None:
+        return f"/dev/video{self._index}" if self._index is not None else None
 
-        Auf dem Raspberry Pi ist ``/dev/video0`` nicht zwangsläufig die
-        Kamera, deshalb wird nicht darauf beharrt. Umgekehrt dürfen auch
-        nicht blind alle Geräte probiert werden: ein Pi 5 bringt rund zwanzig
-        ``/dev/video*`` mit, von denen die meisten Codec- und
-        Bildverarbeitungs-Einheiten sind.
-        """
-        import glob
-        import re
+    def passt(self, geraet: UsbGeraet) -> bool:
+        if self._usb_id and not geraet.usb_id.startswith(self._usb_id):
+            return False
+        if self._anschluss and geraet.anschluss != self._anschluss:
+            return False
+        return True
 
-        indizes = [self._index] if self._index is not None else []
-        for pfad in sorted(glob.glob("/dev/video*")):
-            treffer = re.search(r"(\d+)$", pfad)
-            if not treffer:
-                continue
-            idx = int(treffer.group(1))
-            if idx in indizes:
-                continue
-            bezeichnung = _geraetename(idx).lower()
-            if any(wort in bezeichnung for wort in KEINE_KAMERA):
-                continue
-            indizes.append(idx)
-        return indizes or [0]
+    def _gesucht(self) -> str:
+        teile = []
+        if self._usb_id:
+            teile.append(f"USB {self._usb_id}")
+        if self._anschluss:
+            teile.append(f"Anschluss {self._anschluss}")
+        return ", ".join(teile) or "beliebige USB-Kamera"
 
     def _open(self) -> None:
         import cv2
 
+        # Bei jedem Öffnen neu suchen: nach einem USB-Aussetzer bekommt die
+        # Kamera oft eine andere /dev/videoN-Nummer.
+        kandidaten = [g for g in usb_kameras() if self.passt(g)]
+        if not kandidaten:
+            raise RuntimeError(f"nicht angeschlossen ({self._gesucht()})")
+
         versucht: list[str] = []
-        for idx in self._kandidaten():
+        for geraet in kandidaten:
+            idx = geraet.index
             cap, api = self._oeffnen(cv2, idx)
             if cap is None:
-                name = _geraetename(idx)
-                versucht.append(f"video{idx}{f' ({name})' if name else ''}: öffnet nicht")
+                versucht.append(f"video{idx} ({geraet.name}): öffnet nicht")
                 continue
 
             gewaehlt = self._einstellung_finden(cv2, cap, idx, versucht)
@@ -253,16 +346,16 @@ class OpenCVCamera(CameraBase):
             self._cap = cap
             self._index = idx
             log.info(
-                "Kamera (USB, /dev/video%d%s) bereit -- %s, %s",
+                "Kamera '%s' (USB %s, /dev/video%d, %s) bereit -- %s, %s",
+                self.name,
+                geraet.usb_id,
                 idx,
-                f", {_geraetename(idx)}" if _geraetename(idx) else "",
+                geraet.name,
                 api,
                 gewaehlt,
             )
             return
 
-        if not versucht:
-            raise RuntimeError("keine /dev/video*-Geräte vorhanden")
         raise RuntimeError("keine brauchbare Kamera unter " + "; ".join(versucht))
 
     @staticmethod
@@ -302,6 +395,13 @@ class OpenCVCamera(CameraBase):
                 cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*fourcc))
             cap.set(cv2.CAP_PROP_FRAME_WIDTH, breite)
             cap.set(cv2.CAP_PROP_FRAME_HEIGHT, hoehe)
+            # Die Kamera läuft immer mit voller Rate; gedrosselt wird beim
+            # Abholen (CAMERA_FPS). So wirkt eine geänderte Bildrate sofort,
+            # ohne die Kamera neu zu öffnen.
+            cap.set(cv2.CAP_PROP_FPS, config.CAMERA_MAX_FPS)
+            # Nur ein Bild puffern: sonst liefert read() bei gedrosseltem
+            # Abholen das älteste von mehreren, und das Bild hinkt hinterher.
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
             frame = self._warmlaufen(cap)
             if frame is not None:
@@ -392,12 +492,15 @@ class MockCamera(CameraBase):
     WIDTH = 320
     HEIGHT = 240
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, farbe: tuple[int, int, int] = (0x4D, 0xA3, 0xFF), **kwargs) -> None:
+        super().__init__(**kwargs)
+        # Bei mehreren Testbildern eine eigene Farbe je Kamera -- sonst sieht
+        # man in der App nicht, ob das Umschalten überhaupt etwas tut.
+        self._farbe = farbe
         self._frame = 0
 
     def _open(self) -> None:
-        log.info("Kamera: Testbild (keine echte Kamera)")
+        log.info("Kamera '%s': Testbild (keine echte Kamera)", self.name)
 
     def _close(self) -> None:
         pass
@@ -416,7 +519,7 @@ class MockCamera(CameraBase):
             for x in range(self.WIDTH):
                 i = x * 3
                 if abs(x - pos) < 14:
-                    row[i], row[i + 1], row[i + 2] = 0x4D, 0xA3, 0xFF  # blau
+                    row[i], row[i + 1], row[i + 2] = self._farbe
                 else:
                     grau = 0x22 + (y * 24 // self.HEIGHT)
                     row[i] = row[i + 1] = row[i + 2] = grau
@@ -428,39 +531,95 @@ class MockCamera(CameraBase):
 # --- Auswahl und Hintergrundbetrieb ---------------------------------------------------
 
 
-def create_camera(use_mock: bool = False) -> CameraBase:
-    """Nimmt die erste Kamera, die sich öffnen lässt -- und lässt sie offen.
+#: Balkenfarben der Testbilder, eine je Kamera.
+_TESTFARBEN = [(0x4D, 0xA3, 0xFF), (0x3F, 0xD0, 0x7A), (0xF5, 0xA5, 0x24)]
 
-    Wichtig: die geöffnete Instanz wird zurückgegeben, nicht eine frische.
-    Wer zum Prüfen öffnet und danach eine zweite Instanz anlegt, bekommt
-    "Device or resource busy" -- entweder weil der Treiber das Gerät noch
-    nicht freigegeben hat, oder weil das Schließen es gar nicht freigibt
-    (so bei picamera2: ``stop()`` reicht nicht, es braucht ``close()``).
+
+def _csi_nummern() -> list[int]:
+    """Nummern der Kameras am CSI-Anschluss, leer ohne picamera2.
+
+    Nur echte CSI-Kameras: libcamera listet auf dem Pi auch USB-Kameras
+    auf. Würde picamera2 eine davon belegen, bekäme OpenCV sie nicht mehr
+    -- "Device or resource busy", und die Rolle bliebe ohne Bild.
     """
+    try:
+        from picamera2 import Picamera2
+
+        infos = Picamera2.global_camera_info()
+    except Exception:
+        return []
+    return [
+        info.get("Num", n)
+        for n, info in enumerate(infos)
+        if "usb" not in str(info.get("Id", "")).lower()
+    ]
+
+
+def create_cameras(use_mock: bool = False) -> dict[str, CameraBase]:
+    """Alle Kameras, nach Namen. Geöffnet wird erst in ``CameraService``.
+
+    Die Rollen aus ``config.CAMERA_ROLES`` sind immer dabei, auch wenn ihre
+    Kamera gerade fehlt: sie wird dann im Hintergrund weiter gesucht. Ein
+    USB-Aussetzer beim Start soll die Personenerkennung nicht bis zum
+    nächsten Neustart abschalten.
+    """
+    rollen = config.CAMERA_ROLES
+
     if use_mock:
-        kamera: CameraBase = MockCamera()
-        kamera.open()
-        return kamera
+        # Je Rolle ein eigenes Testbild, damit sich die App mit mehreren
+        # Kameras auch ohne Roboter entwickeln lässt.
+        namen = list(rollen) or ["kamera"]
+        return {
+            name: MockCamera(
+                farbe=_TESTFARBEN[i % len(_TESTFARBEN)],
+                name=name,
+                label=f"Testbild ({rollen[name]['label']})" if name in rollen else "Testbild",
+                fov_deg=rollen.get(name, {}).get("fov_deg"),
+            )
+            for i, name in enumerate(namen)
+        }
 
-    for kandidat in (Picamera2Camera, OpenCVCamera):
-        kamera = kandidat()
-        try:
-            kamera.open()
-            return kamera
-        except Exception as exc:
-            log.warning("Kamera: %s nicht nutzbar -- %s", kamera.label, exc)
-            # Auch nach einem Fehlschlag aufräumen: ein halb geöffnetes
-            # Gerät würde den nächsten Kandidaten blockieren.
-            try:
-                kamera.close()
-            except Exception:
-                pass
+    kameras: dict[str, CameraBase] = {}
+    gefunden = usb_kameras()
+    vergeben: set[str] = set()
 
-    log.warning("Keine Kamera gefunden -- es wird ein Testbild angezeigt")
-    log.warning("Ursache finden: python scripts/check_camera.py")
-    ersatz = MockCamera()
-    ersatz.open()
-    return ersatz
+    for name, rolle in rollen.items():
+        kamera = OpenCVCamera(
+            usb_id=rolle["usb_id"],
+            name=name,
+            label=rolle.get("label"),
+            fov_deg=rolle.get("fov_deg"),
+        )
+        kameras[name] = kamera
+        treffer = next(
+            (g for g in gefunden if kamera.passt(g) and g.anschluss not in vergeben), None
+        )
+        if treffer is None:
+            log.warning(
+                "Kamera '%s' (%s, USB %s) nicht angeschlossen -- wird weiter gesucht",
+                name, kamera.label, rolle["usb_id"],
+            )
+        else:
+            vergeben.add(treffer.anschluss)
+
+    # Alles ohne Rolle läuft trotzdem mit -- fest an seinem USB-Port, damit
+    # es nach einem Aussetzer nicht einer Rolle ihre Kamera wegschnappt.
+    for nr, geraet in enumerate((g for g in gefunden if g.anschluss not in vergeben), 1):
+        kameras[f"usb{nr}"] = OpenCVCamera(
+            anschluss=geraet.anschluss, name=f"usb{nr}", label=geraet.name
+        )
+
+    for nr in _csi_nummern():
+        name = "csi" if nr == 0 else f"csi{nr}"
+        kameras[name] = Picamera2Camera(nr, name=name)
+
+    if not kameras:
+        log.warning("Keine Kamera gefunden -- es wird ein Testbild angezeigt")
+        log.warning("Ursache finden: python scripts/check_camera.py")
+        kameras["kamera"] = MockCamera(name="kamera")
+
+    log.info("Kameras: %s", ", ".join(f"{n} ({k.label})" for n, k in kameras.items()))
+    return kameras
 
 
 class CameraService:
@@ -484,6 +643,19 @@ class CameraService:
         self._letztes_bild = 0.0
         self._letzter_fehler: str | None = None
         self._neu_geoeffnet = 0
+        # Tatsächlich erreichte Bildrate, geglättet. Zeigt, was Kamera und
+        # Pi wirklich schaffen -- CAMERA_FPS ist nur der Wunsch.
+        self._fps_ist = 0.0
+        self._neu_oeffnen_angefordert = threading.Event()
+
+    def neu_oeffnen(self) -> None:
+        """Kamera beim nächsten Durchlauf neu öffnen, z. B. für eine neue Auflösung.
+
+        Nur anfordern statt selbst öffnen: das Öffnen dauert und gehört in
+        den Kamera-Thread, nicht in den Aufrufer (meist die Ereignisschleife
+        des Servers).
+        """
+        self._neu_oeffnen_angefordert.set()
 
     def status(self) -> dict:
         """Kurzbericht, warum ein Bild kommt oder eben nicht."""
@@ -506,27 +678,44 @@ class CameraService:
             "format": frame[1] if frame else None,
             "letzter_fehler": fehler,
             "neu_geoeffnet": self._neu_geoeffnet,
+            "name": self._camera.name,
+            "geraet": self._camera.geraet,
+            "fov_deg": self._camera.fov_deg,
+            "fps_ist": round(self._fps_ist, 1) if laeuft and self._camera.opened else 0.0,
+            "fps_soll": config.CAMERA_FPS,
         }
 
     @property
     def name(self) -> str:
         return self._camera.name
 
+    @property
+    def label(self) -> str:
+        return self._camera.label
+
+    @property
+    def fov_deg(self) -> float:
+        return self._camera.fov_deg
+
     def start(self) -> None:
         if self._thread is not None:
             return
         try:
-            # Normalerweise schon offen (create_camera lässt sie offen);
-            # open() ist absichtlich wiederholbar und tut dann nichts.
+            # open() ist absichtlich wiederholbar und tut nichts, wenn die
+            # Kamera schon offen ist.
             self._camera.open()
         except Exception as exc:
-            log.exception("Kamera lässt sich nicht öffnen -- kein Bild")
+            log.warning("Kamera '%s' lässt sich nicht öffnen -- %s", self.name, exc)
             with self._lock:
                 self._letzter_fehler = f"Öffnen fehlgeschlagen: {exc}"
-            return
+            # Der Thread startet trotzdem: er öffnet die Kamera in größer
+            # werdenden Abständen neu. So kommt eine Kamera, die beim Start
+            # fehlte oder belegt war, ohne Neustart des Servers dazu.
 
         self._stop.clear()
-        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread = threading.Thread(
+            target=self._loop, name=f"kamera-{self.name}", daemon=True
+        )
         self._thread.start()
 
     def stop(self) -> None:
@@ -540,8 +729,8 @@ class CameraService:
         with self._lock:
             return self._latest
 
-    def _neu_oeffnen(self) -> None:
-        log.warning("Kamera liefert nichts mehr -- öffne sie neu")
+    def _neu_oeffnen(self, grund: str = "liefert nichts") -> None:
+        log.warning("Kamera '%s' %s -- öffne sie neu", self.name, grund)
         try:
             self._camera.close()
         except Exception:
@@ -551,13 +740,12 @@ class CameraService:
         except Exception as exc:
             with self._lock:
                 self._letzter_fehler = f"Neu öffnen: {type(exc).__name__}: {exc}"
-            log.warning("Kamera lässt sich noch nicht wieder öffnen -- %s", exc)
+            log.warning("Kamera '%s' lässt sich noch nicht öffnen -- %s", self.name, exc)
             return
         self._neu_geoeffnet += 1
-        log.warning("Kamera wieder geöffnet")
+        log.warning("Kamera '%s' geöffnet", self.name)
 
     def _loop(self) -> None:
-        interval = 1.0 / max(1, config.CAMERA_FPS)
         fehler = 0
         letzte_aenderung = time.monotonic()
         eingefroren_gemeldet = False
@@ -569,7 +757,10 @@ class CameraService:
                 frame = self._camera.read()
                 if frame is None:
                     with self._lock:
-                        if self._bilder == 0:
+                        # Bei einer geschlossenen Kamera steht der Grund
+                        # (z.B. "nicht angeschlossen") schon da -- nicht
+                        # mit einem nichtssagenden "None" überschreiben.
+                        if self._bilder == 0 and self._camera.opened:
                             self._letzter_fehler = "Kamera liefert None (kein Bild)"
                 else:
                     with self._lock:
@@ -585,10 +776,13 @@ class CameraService:
                             self._letzter_fehler = None
                     fehler = 0
                     if neu:
+                        abstand = begin - letzte_aenderung
+                        if 0 < abstand < 2.0:
+                            self._fps_ist += 0.1 * (1.0 / abstand - self._fps_ist)
                         letzte_aenderung = begin
                         reopen_wartezeit = config.CAMERA_REOPEN_S
                         if eingefroren_gemeldet:
-                            log.info("Kamera liefert wieder Bilder")
+                            log.info("Kamera '%s' liefert wieder Bilder", self.name)
                             eingefroren_gemeldet = False
             except Exception as exc:
                 fehler += 1
@@ -597,13 +791,21 @@ class CameraService:
                 # Einzelne Aussetzer sind normal. Die ersten paar trotzdem
                 # melden -- sonst sucht man bei einem stehenden Bild lange.
                 if fehler <= 3 or fehler % 100 == 0:
-                    log.exception("Kamera liefert kein Bild (%d. Versuch)", fehler)
+                    log.exception(
+                        "Kamera '%s' liefert kein Bild (%d. Versuch)", self.name, fehler
+                    )
 
             # Ein stehendes Bild sieht im Browser aus wie ein laufender
             # Stream. Ohne diese Meldung merkt man den Stillstand nicht.
-            if not eingefroren_gemeldet and begin - letzte_aenderung > 5.0:
+            # Eine gar nicht geöffnete Kamera hat ihre eigene Meldung.
+            if (
+                not eingefroren_gemeldet
+                and self._camera.opened
+                and begin - letzte_aenderung > 5.0
+            ):
                 log.warning(
-                    "Kamera seit %.0f s ohne neues Bild -- Stream steht",
+                    "Kamera '%s' seit %.0f s ohne neues Bild -- Stream steht",
+                    self.name,
                     begin - letzte_aenderung,
                 )
                 eingefroren_gemeldet = True
@@ -615,7 +817,13 @@ class CameraService:
                 self._neu_oeffnen()
                 letzte_aenderung = time.monotonic()
                 reopen_wartezeit = min(reopen_wartezeit * 2, config.CAMERA_REOPEN_MAX_S)
+            elif self._neu_oeffnen_angefordert.is_set():
+                self._neu_oeffnen_angefordert.clear()
+                self._neu_oeffnen("hat neue Einstellungen")
+                letzte_aenderung = time.monotonic()
 
+            # Jedes Mal neu lesen: die Bildrate ist zur Laufzeit verstellbar.
+            interval = 1.0 / max(1, config.CAMERA_FPS)
             rest = interval - (time.monotonic() - begin)
             if rest > 0:
                 self._stop.wait(rest)
