@@ -55,7 +55,15 @@ def main(argv: list[str] | None = None) -> int:
     log.info("Web-App: http://%s:%d", "localhost" if args.host == "0.0.0.0" else args.host, args.port)
 
     # log_config=None: uvicorn soll unser Logging-Format nicht überschreiben.
-    uvicorn.run(app, host=args.host, port=args.port, log_config=None)
+    # timeout_graceful_shutdown: offene Streams nach kurzer Zeit kappen,
+    # damit Strg+C immer beendet und die Motoren sicher stoppen.
+    uvicorn.run(
+        app,
+        host=args.host,
+        port=args.port,
+        log_config=None,
+        timeout_graceful_shutdown=config.SHUTDOWN_TIMEOUT_S,
+    )
     return 0
 
 

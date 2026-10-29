@@ -87,6 +87,9 @@ const ui = {
   iaPerson: el("val-ia-person"),
   iaGeste: el("val-ia-geste"),
   iaText: el("ia-text"),
+  stimme: el("val-stimme"),
+  sayForm: el("say-form"),
+  sayText: el("say-text"),
 };
 
 function logLine(text, level = "info") {
@@ -149,6 +152,7 @@ function handleMessage(msg) {
       zeigeKollision(msg.collision);
       zeigeAutonomie(msg.autonomie);
       zeigeInteraktion(msg.interaktion);
+      zeigeStimme(msg.stimme);
       break;
 
     case "collision":
@@ -717,6 +721,32 @@ function zeigeInteraktion(ia) {
   if (!ia.aktiv && skelette.length) {
     skelette = [];
     personenZeichnen();
+  }
+}
+
+// --- Stimme -----------------------------------------------------------------
+
+/*
+ * Der Roboter spricht selbst (Gesten, Moduswechsel); hier lässt sich
+ * zusätzlich ein eigener Satz vorlesen. Ohne Lautsprecher landet er nur im
+ * Log des Roboters -- das zeigt die Anzeige an.
+ */
+ui.sayForm.addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const text = ui.sayText.value.trim();
+  if (!text) return;
+  send({ type: "say", text });
+  ui.sayText.value = "";
+});
+
+function zeigeStimme(st) {
+  if (!st) return;
+  if (st.verfuegbar === false) {
+    ui.stimme.textContent = "kein Lautsprecher (/stimme/status)";
+  } else if (st.spricht) {
+    ui.stimme.textContent = `spricht: „${st.text || ""}“`;
+  } else {
+    ui.stimme.textContent = st.text ? `zuletzt: „${st.text}“` : "bereit";
   }
 }
 

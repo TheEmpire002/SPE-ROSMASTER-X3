@@ -1,7 +1,9 @@
 # Interaktion: Gesten, Sprache, „Geist“
 
 > **Stand 2026-10-28:** Stufen 1–3 umgesetzt (Pose auf dem Hailo, Gesten,
-> Folgen/Herkommen/Weggehen/Stopp). Sprache und Geist sind noch Konzept.
+> Folgen/Herkommen/Weggehen/Stopp). Aus Stufe 4 ist die **Sprachausgabe**
+> fertig (`stimme.py`, USB-Lautsprecher). Spracherkennung und Geist sind
+> noch Konzept.
 > Den Projektverlauf dazu beschreibt `Marlon/PROJEKTDOKU.md`.
 
 Der Roboter soll Menschen wahrnehmen, auf Handzeichen und Zurufe reagieren
@@ -58,7 +60,7 @@ anhalten.
 | `sensors/pose.py` | **fertig.** Körperpose auf dem Hailo-10H (`POSE_HEF`, 17 Punkte nach COCO). Thread wie `sensors/personen.py`, `POSE_HZ` (10 Hz). Das Hailo-Gerät wird nur geöffnet, solange die Interaktion läuft, und nach Fehlern neu geöffnet. Liefert Personen mit Box, Keypoints und Winkel zur Bildmitte. Im Mock spielt eine simulierte Person die Gesten der Reihe nach vor. |
 | `interaktion/gesten.py` | **fertig.** `Gestenerkennung` über eine kurze Keypoint-Historie (`GESTE_FENSTER_S`, 1,5 s). Ohne Hardware testbar. |
 | `interaktion/sprache.py` | *geplant.* USB-Mikrofon über Vosk (offline, deutsch). Erkennt eine feste Befehlsgrammatik plus freien Text nach dem Weckwort. |
-| `interaktion/stimme.py` | *geplant.* Sprachausgabe über Piper auf dem USB-Lautsprecher, in einem eigenen Thread mit Warteschlange. |
+| `interaktion/stimme.py` | **fertig.** Sprachausgabe auf dem USB-Lautsprecher (ALSA `UACDemoV10`): Piper → `aplay`, Ersatz espeak-ng, sonst nur Text. Eigener Thread mit kleiner Warteschlange (`STIMME_*` in `config.py`). `spricht` sagt der künftigen Spracherkennung, wann sie weghören muss. Im Mock wird nur geloggt. |
 | `interaktion/verhalten.py` | **fertig.** Klasse `Interaktion` mit den Modi `bereit`, `folgen`, `herkommen`, `weggehen`, `sucht`; Bedienung wie `navigation/explorer.py` (`start`, `folgen`, `folgen_stop`, `abbrechen`, `aktiv`, `letzter_grund`, `zustand`, `meldungen_abholen`). |
 | `interaktion/geist.py` | *geplant.* Innerer Zustand, Gedächtnis, Absichtswahl, Ausdrucksbewegungen, Gedankenstrom. Takt ~2 Hz. |
 | `interaktion/denken.py` | *geplant.* Hybrider Sprachkern mit derselben Schnittstelle für alle Stufen: Claude-API, später lokales LLM auf dem Hailo, Vorlagen. |
@@ -151,8 +153,12 @@ etwa 2 cm). Die Bremsrampe ist bewusst deutlich steiler als die Anfahrrampe.
 - **Eingang:** das USB-Mikrofon (ALSA „Microphone“, `sounddevice`; Ersatz: Mikrofon der C270), erkannt mit **Vosk** und dem kleinen deutschen Modell auf der CPU.
 - **Befehle mit fester Grammatik** sind schnell und robust: „folge mir“, „stopp“, „komm her“, „geh weg“, „hallo“.
 - **Freier Text** geht nur nach dem Weckwort an `denken.py`. Der Name ist noch offen.
-- **Ausgabe:** über den USB-Lautsprecher mit **Piper** (offline, deutsche Stimme). Antworten und Gedanken erscheinen zusätzlich als Text in der App. Ohne Lautsprecher oder Piper bleibt es beim Text.
-- Während er spricht, ignoriert die Erkennung das Mikrofon, damit er sich nicht selbst zuhört.
+- **Ausgabe (umgesetzt):** über den USB-Lautsprecher mit **Piper** (offline, Stimme `de_DE-thorsten-medium`). Fehlt Piper, spricht espeak-ng, fehlt auch das, bleibt es beim Log. Der zuletzt gesagte Satz steht in `state.stimme` und in der App. Einrichtung: [`hardware.md`](hardware.md).
+  - Er sagt kurz, was er tut: „Ich folge dir.“, „Ich komme.“, „Da bin ich.“, „Wo bist du?“, „Okay, ich halte an.“ und beim Not-Stopp „Halt.“. Die Sätze stehen in `verhalten.py` (`_GESTE_SAGEN` und die Aufrufe von `_wechseln(..., sagen=…)`).
+  - Beim Start sagt er „Ich bin bereit.“. So hört man sofort, ob der Lautsprecher geht.
+  - Aus der App: Feld „Sagen“ im Interaktionsbereich (Befehl `say`).
+  - Gleiche Sätze innerhalb von `STIMME_WIEDERHOLUNG_S` werden verschluckt. Die Schlange hält höchstens `STIMME_MAX_WARTESCHLANGE` Sätze, das Älteste fällt weg. Stopp hat Vorrang und schneidet den laufenden Satz ab.
+- Während er spricht (`Stimme.spricht`, plus `STIMME_NACHLAUF_S`), soll die Erkennung das Mikrofon ignorieren, damit er sich nicht selbst zuhört.
 
 ## Geist: Wie der Roboter „bewusst“ wirkt
 
@@ -189,6 +195,7 @@ Umgesetzt und in [`api.md`](api.md) beschrieben („Interaktion im Detail“):
 - Befehle `interaction_start` / `interaction_stop`, `follow` / `follow_stop`.
 - `state.interaktion` mit `aktiv`, `verfuegbar`, `modus`, `text`, `person{winkel, abstand}`, `personen`, `geste`, `grund`.
 - `GET /interaktion/status` und `GET /interaktion/pose` (Skelett zum Einblenden; die Web-App zeichnet es über das Kamerabild).
+- Stimme: Befehle `say {text, vorrang}` und `say_stop`, `state.stimme` mit `verfuegbar`, `spricht`, `text`, Diagnose unter `GET /stimme/status`.
 
 Für Stufe 4/5 geplant (nur ergänzen): Befehl `chat {text}`, Felder `stimmung`, `aufmerksamkeit`, `gedanke`, `letzte_antwort`, Nachricht `type: "gedanke"`.
 
@@ -199,13 +206,14 @@ Für Stufe 4/5 geplant (nur ergänzen): Befehl `chat {text}`, Felder `stimmung`,
 | 1 | Doku (diese Datei, Projektdoku, Entscheidungen E5/E6) | erledigt |
 | 2 | Wahrnehmung: `pose.py`, `gesten.py`, Skelett in der App, **ohne Fahren** | erledigt (Mock + Tests), Hailo am Pi zu prüfen |
 | 3 | Verhalten: Folgen/Stopp, Herkommen/Weggehen, **nur am Boden** | erledigt (Mock), Fahrtest am Boden offen |
-| 4 | Sprache: Vosk-Befehle, Stimme (Piper), Chat in der App | offen |
+| 4 | Sprache: Vosk-Befehle, Stimme (Piper), Chat in der App | Stimme erledigt (Mock + Tests), am Pi zu prüfen; Vosk und Chat offen |
 | 5 | Geist und Denken: Zustand, Gedankenstrom, Claude/Vorlagen, Ausdruck | offen |
 | 6 | Später: lokales LLM auf dem Hailo, Gesichter, Orbbec-Tiefe | – |
 
 ## Testen
 
 - Die Gestenlogik wird ohne Hardware geprüft, mit synthetischen Keypoint-Folgen pro Geste plus Negativfällen: `python Marlon/interaktion/test_gesten.py`. Das Muster ist dasselbe wie in `test_hindernisse.py`.
+- Die Sprachausgabe (Warteschlange, Vorrang, Ausweichen auf Text, Sätze des Verhaltens) prüft `python Marlon/interaktion/test_stimme.py`, ebenfalls ohne Lautsprecher.
 - `python main.py --mock` liefert eine simulierte Person, die nacheinander Herkommen, Weggehen, Folgen und Stopp vormacht. In der App „Interaktion an“ drücken und die Meldungen ansehen.
 - Am Pi:
   - `/interaktion/status` zeigt, ob der Hailo verfügbar ist, und die Pose-Rate.

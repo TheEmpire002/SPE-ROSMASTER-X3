@@ -222,3 +222,34 @@ Gesten und Sprachbefehle („stopp“) wirken ohne Sprachmodell.
 
 **Neu bewerten, wenn:** das lokale LLM auf dem Hailo gut genug antwortet,
 dass die Cloud verzichtbar wird.
+
+## E7 — Sprachausgabe offline mit Piper, über aplay, im eigenen Thread
+
+**Datum:** 2026-10-28
+**Status:** umgesetzt (`interaktion/stimme.py`), am Roboter noch zu prüfen
+
+**Kontext.** Am Pi hängt jetzt ein USB-Lautsprecher. Der Roboter soll
+ansagen, was er tut, und später Antworten sprechen. Die Stimme muss
+deutsch und verständlich sein und auch ohne Internet gehen, genau wie die
+Reflexe. Sie darf den Server nicht ausbremsen: Ein Satz dauert ein, zwei
+Sekunden, die Fahrschleife läuft mit 10 Hz.
+
+**Entscheidung.**
+- Gesprochen wird mit **Piper** (offline, Stimme `de_DE-thorsten-medium`). Die Ausgabe geht über **`aplay`** an den Lautsprecher, der über seinen ALSA-Namen angesprochen wird.
+- Piper und aplay laufen als **Unterprozesse**, gesteuert aus einem eigenen Thread mit kleiner Warteschlange.
+- Fehlt Piper, spricht espeak-ng, fehlt auch das, bleibt es beim Log.
+- Cloud-Stimmen wurden nicht genommen, weil sie Internet brauchen. Eine Python-Audiobibliothek (`sounddevice`, `pyaudio`) wurde auch nicht genommen: Sie wäre eine zusätzliche Abhängigkeit, und `aplay` ist ohnehin da.
+
+**Konsequenzen.**
+- *Gut:*
+  - Es geht ohne Internet und ohne neue pip-Pakete.
+  - Ein abgestürzter Piper oder ein abgezogener Lautsprecher reißt den Server nicht mit.
+  - Ein Not-Stopp kann den laufenden Satz einfach beenden: `kill` auf den Unterprozess.
+  - Über den Kartennamen übersteht die Ausgabe USB-Resets.
+- *Schlecht:*
+  - Piper muss von Hand installiert werden, Programm plus Modell.
+  - Jeder Satz startet Piper neu. Das Modell zu laden kostet am Pi 5 einen Moment, bevor der Ton kommt.
+- *Abgefedert durch:* Die Sätze sind kurz und selten. Gleiche Sätze innerhalb weniger Sekunden werden verschluckt. Wird die Verzögerung störend, kann Piper dauerhaft laufen und Sätze über stdin bekommen. Das wäre eine Änderung nur in `stimme.py`.
+
+**Neu bewerten, wenn:** die Verzögerung im Gespräch (Stufe 5) stört, oder
+wenn Spracherkennung und Ausgabe gemeinsam ein Audio-Framework brauchen.

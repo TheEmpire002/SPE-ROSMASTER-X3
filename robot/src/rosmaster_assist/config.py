@@ -37,6 +37,11 @@ RECONNECT_CHECK_S = 1.0
 RECONNECT_MIN_S = 1.0
 RECONNECT_MAX_S = 30.0
 
+# Fällt der Lidar innerhalb dieser Zeit nach dem Neu-Verbinden wieder aus,
+# beginnt die Wartezeit nicht von vorn, sondern wächst weiter. Sonst startet
+# sein Motor alle paar Sekunden neu und hält die USB-Ausfälle am Laufen.
+LIDAR_STABIL_S = 60.0
+
 # Kommt so lange kein neues Kamerabild, wird die Kamera neu geöffnet.
 # Die Wartezeit dazwischen wächst bei jedem Fehlschlag: ist das Anlaufen der
 # Kamera selbst der Auslöser des Spannungseinbruchs, würde ein schnelles
@@ -95,6 +100,12 @@ PORT = 8000
 
 # Takt, in dem der Roboter von sich aus Statusmeldungen an die App schickt.
 STATUS_INTERVAL_S = 0.5
+
+# So lange wartet der Server beim Beenden (Strg+C) auf offene Verbindungen.
+# Der Kamera-Stream endet von selbst nie: Ohne Grenze wartete uvicorn am
+# 28.10. ewig darauf, und das Aufräumen (Motoren aus, Lidar stoppen) lief
+# gar nicht erst an.
+SHUTDOWN_TIMEOUT_S = 3
 
 # --- Lidar ---------------------------------------------------------------------
 
@@ -557,3 +568,48 @@ MUKKE_AUDIO_DEVICE = "alsa/plughw:CARD=UACDemoV10,DEV=0"
 
 # Lautstärke beim Start in Prozent (0..100). In der App verstellbar.
 MUKKE_LAUTSTAERKE = 60
+
+# --- Stimme (USB-Lautsprecher) ------------------------------------------------
+# Sprachausgabe über den USB-Lautsprecher „UACDemoV1.0“. Siehe
+# docs/interaktion.md und docs/hardware.md (Einrichtung).
+
+# Abschaltbar, z.B. in der Vorlesung, ohne den Code anzufassen.
+STIMME_ENABLED = True
+
+# Piper spricht offline und klingt deutlich natürlicher als espeak-ng.
+# Fehlt Piper oder das Modell, weicht die Stimme auf espeak-ng aus und
+# zuletzt auf reine Log-Ausgabe -- der Server startet in jedem Fall.
+STIMME_PIPER = "piper"
+STIMME_MODELL = "~/piper/de_DE-thorsten-medium.onnx"
+STIMME_ESPEAK = "espeak-ng"
+
+# ALSA-Gerät über den Kartennamen statt der Nummer: die Nummer ändert sich,
+# wenn sich USB-Geräte nach einem Spannungseinbruch neu anmelden.
+# „plughw“ wandelt Abtastrate und Kanäle passend um.
+STIMME_GERAET = "plughw:CARD=UACDemoV10,DEV=0"
+
+# Lautstärke in Prozent; wird beim Start per amixer gesetzt (falls möglich).
+STIMME_LAUTSTAERKE = 80
+
+# Sprechtempo für Piper: >1 langsamer. Etwas langsamer ist im Raum mit
+# Motorgeräusch besser zu verstehen.
+STIMME_TEMPO = 1.1
+
+# Mehr Sätze warten nicht -- sonst redet der Roboter noch über etwas, das
+# längst vorbei ist. Ältere fallen dann weg.
+STIMME_MAX_WARTESCHLANGE = 3
+
+# Derselbe Satz wird innerhalb dieser Zeit nicht wiederholt (z.B. wenn die
+# Person mehrmals hintereinander verloren und wiedergefunden wird).
+STIMME_WIEDERHOLUNG_S = 4.0
+
+# Längere Texte werden abgeschnitten; die App soll keine Romane vorlesen.
+STIMME_MAX_ZEICHEN = 300
+
+# Kein Satz darf den Sprech-Thread länger blockieren.
+STIMME_TIMEOUT_S = 20.0
+
+# So lange nach dem Satzende gilt die Stimme noch als "spricht": Nachhall
+# im Raum und Puffer im Lautsprecher -- die Spracherkennung soll das nicht
+# als Eingabe verstehen.
+STIMME_NACHLAUF_S = 0.4

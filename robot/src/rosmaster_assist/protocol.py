@@ -25,6 +25,9 @@ Von der App / vom ESP an den Roboter
 {"type": "follow"}                                        der Person vor der Kamera folgen
                                                           (schaltet Interaktion mit ein)
 {"type": "follow_stop"}                                   nicht mehr folgen, Interaktion bleibt an
+{"type": "say", "text": "Hallo", "vorrang": false}       über den Lautsprecher sprechen
+                                                          (vorrang: Laufendes abbrechen)
+{"type": "say_stop"}                                      sofort verstummen, Schlange leeren
 {"type": "ping"}                                          Verbindung am Leben halten
 
 Vom Roboter an die App
@@ -34,7 +37,9 @@ Vom Roboter an die App
                    (mit Lidar zusätzlich "autonomie": {"aktiv":…, "zustand":…,
                     "hindernisse": […], "personen": […], …};
                     mit Kamera-Pose zusätzlich "interaktion": {"aktiv":…,
-                    "modus":…, "text":…, "person":…, "geste":…, …})
+                    "modus":…, "text":…, "person":…, "geste":…, …};
+                    mit Stimme zusätzlich "stimme": {"verfuegbar":…,
+                    "spricht":…, "text":…})
 {"type": "vitals", "bpm":…, "motion":…}                   weitergereichte ESP-Daten
 {"type": "alert",  "level": "info"|"warning"|"emergency", "text": "…"}
 {"type": "error",  "text": "…"}                           ungültige Nachricht o.Ä.
@@ -111,6 +116,7 @@ def state_message(
     collision: dict[str, Any] | None = None,
     autonomie: dict[str, Any] | None = None,
     interaktion: dict[str, Any] | None = None,
+    stimme: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     msg: dict[str, Any] = {
         "type": "state",
@@ -125,6 +131,8 @@ def state_message(
         msg["autonomie"] = autonomie
     if interaktion is not None:
         msg["interaktion"] = interaktion
+    if stimme is not None:
+        msg["stimme"] = stimme
     if pose is not None:
         x, y, winkel = pose
         msg["pose"] = {

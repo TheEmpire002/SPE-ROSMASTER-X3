@@ -30,6 +30,7 @@ from .. import config, settings
 from ..diagnose import Diagnose, LogPuffer
 from ..drive.base import DriveBase
 from ..audio.mukke import Mukke, MukkeFehler
+from ..interaktion.stimme import Stimme
 from ..interaktion.verhalten import Interaktion
 from ..protocol import (
     DriveCommand,
@@ -166,7 +167,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     personen = Personenerkennung(personen_kamera)
     erkunder = Erkunder(watchdog, lidar, erkennung, personen)
     pose = Posenerkennung(personen_kamera, mock=use_mock_camera)
-    interaktion = Interaktion(watchdog, lidar, pose)
+    stimme = Stimme(mock=use_mock_camera)
+    interaktion = Interaktion(watchdog, lidar, pose, stimme)
     mukke = Mukke()
 
     # Die Diagnoseseite zeigt auch die Server-Meldungen. Ein alter Puffer
@@ -193,6 +195,10 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             kamera.start()
         personen.start()
         pose.start()  # rechnet erst, wenn die Interaktion läuft
+        stimme.start()
+        # Hörbarer Selbsttest: Wer den Roboter einschaltet, weiß sofort,
+        # ob der Lautsprecher geht.
+        stimme.sagen("Ich bin bereit.")
         if lidar is not None:
             lidar.start()
             # Dem Lidar eine Umdrehung Zeit geben, dann den Startpunkt
@@ -205,7 +211,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         status_task = asyncio.create_task(
             _status_loop(
                 hub, watchdog, driver, odometry, homing, localizer, guard,
-                erkunder, erkennung, lidar, personen, interaktion,
+                erkunder, erkennung, lidar, personen, interaktion, stimme,
             )
         )
         odo_task = asyncio.create_task(_odometry_loop(watchdog, odometry))
@@ -229,6 +235,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             personen.stop()
             pose.stop()
             mukke.stoppen()
+            stimme.stop()
             for kamera in kameras.values():
                 kamera.stop()
             if lidar is not None:
@@ -262,7 +269,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                 msg = await ws.receive_json()
                 reply = await _handle(
                     msg, watchdog, driver, hub, odometry, homing, localizer, guard,
-                    erkunder, interaktion,
+                    erkunder, interaktion, stimme,
                 )
                 if reply is not None:
                     await ws.send_json(reply)
@@ -595,6 +602,13 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         wert = (await _mukke_json(request)).get("lautstaerke")
         return await _mukke(lambda: mukke.lautstaerke_setzen(wert))
 
+    # --- Stimme ---
+
+    @app.get("/stimme/status")
+    async def stimme_status():
+        """Welche Sprachausgabe läuft (Piper, espeak-ng, nur Text), letzter Satz, Fehler."""
+        return stimme.status()
+
     # Die Web-App direkt mitausliefern, damit eine Adresse genügt.
     if WEBAPP_DIR.is_dir():
         app.mount("/static", _OhneVeraltetenCache(directory=WEBAPP_DIR), name="static")
@@ -629,6 +643,7 @@ async def _handle(
     guard: CollisionGuard,
     erkunder: Erkunder | None = None,
     interaktion: Interaktion | None = None,
+    stimme: Stimme | None = None,
 ) -> dict[str, Any] | None:
     """Eine eingehende Nachricht verarbeiten.
 
@@ -688,6 +703,9 @@ async def _handle(
         if interaktion is not None:
             interaktion.abbrechen("Not-Stopp")
         watchdog.stop()
+        if stimme is not None:
+            # Vorrang: alles, was noch in der Schlange stand, ist überholt.
+            stimme.sagen("Halt.", vorrang=True)
         return None
 
     if kind == "explore":
@@ -782,6 +800,24 @@ async def _handle(
             else "Startpunkt gesetzt (ohne Lidar -- Position wird nur geschätzt)"
         )
         await hub.broadcast(alert_message("info", text))
+        return None
+
+    if kind == "say":
+        if stimme is None:
+            return alert_message("warning", "Keine Sprachausgabe")
+        text = msg.get("text")
+        if not isinstance(text, str) or not text.strip():
+            return error_message("say braucht ein Feld text")
+        stimme.sagen(text, vorrang=bool(msg.get("vorrang", False)))
+        if not stimme.verfuegbar:
+            return alert_message(
+                "warning", "Kein Lautsprecher oder keine Sprachsynthese (siehe /stimme/status)"
+            )
+        return None
+
+    if kind == "say_stop":
+        if stimme is not None:
+            stimme.verstummen()
         return None
 
     if kind == "ping":
@@ -924,6 +960,7 @@ async def _status_loop(
     lidar: LidarService | None = None,
     personen: Personenerkennung | None = None,
     interaktion: Interaktion | None = None,
+    stimme: Stimme | None = None,
 ) -> None:
     """Schickt regelmäßig den Zustand an alle Clients."""
     zuletzt_aktiv = False
@@ -979,6 +1016,7 @@ async def _status_loop(
                         collision=guard.zustand(),
                         autonomie=autonomie,
                         interaktion=interaktion.zustand() if interaktion is not None else None,
+                        stimme=stimme.zustand() if stimme is not None else None,
                     )
                 )
     except asyncio.CancelledError:

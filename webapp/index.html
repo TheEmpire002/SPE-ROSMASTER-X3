@@ -201,6 +201,7 @@
       <dt>Modus</dt>    <dd id="val-ia-modus">—</dd>
       <dt>Person</dt>   <dd id="val-ia-person">—</dd>
       <dt>Geste</dt>    <dd id="val-ia-geste">—</dd>
+      <dt>Stimme</dt>   <dd id="val-stimme">—</dd>
     </dl>
 
     <div class="home-buttons">
@@ -213,6 +214,13 @@
     </div>
 
     <p class="hint" id="ia-text">—</p>
+
+    <!-- Text über den Lautsprecher des Roboters ausgeben (say). -->
+    <form id="say-form" class="say-form">
+      <input type="text" id="say-text" maxlength="300"
+             placeholder="Etwas sagen lassen …" autocomplete="off">
+      <button type="submit" class="btn">Sagen</button>
+    </form>
 
     <p class="hint">
       Handzeichen vor der Kamera: <strong>Folgen</strong> – einen Arm über
