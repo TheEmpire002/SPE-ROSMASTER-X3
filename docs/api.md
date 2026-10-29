@@ -201,7 +201,7 @@ Ein unbekannter `type` liefert `{"type": "error", "text": "Unbekannter Nachricht
 | `driver` | `"rosmaster"` = echte Motoren, `"mock"` = Simulation |
 | `connected` | Verbindung zum Motorboard steht. `false` nach einem USB-Aussetzer; der Server verbindet selbst neu. |
 | `homing` | Heimfahrt läuft |
-| `vx`, `vy`, `omega` | was der Roboter **gerade ausführt**, nach Begrenzung und Kollisionsvermeidung. Seit der Anfahrrampe im Watchdog (29.10.) steigt der Wert nach einem Fahrbefehl allmählich an (`RAMPE_*` in `config.py`); ein Stopp gilt sofort. |
+| `vx`, `vy`, `omega` | was der Roboter **gerade ausführt**, nach Begrenzung und Kollisionsvermeidung. Seit der Anfahrrampe im Watchdog (29.10.) steigt der Wert nach einem Fahrbefehl allmählich an (`RAMPE_*` in `config.py`, unter Einstellungen → „Fahren & Motoren“ abschalt- und verstellbar); ein Stopp gilt sofort. |
 | `pose` | geschätzte Position, siehe Konventionen. `gemessen: false` heißt: nur aus den Befehlen gerechnet, deutlich ungenauer. |
 | `collision.verfuegbar` | ob ein Lidar da ist, der Hindernisse sehen kann |
 | `collision.blockiert` | die Kollisionsvermeidung hält gerade eine Fahrt zurück |

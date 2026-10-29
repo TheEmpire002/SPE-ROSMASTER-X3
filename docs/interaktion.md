@@ -135,7 +135,7 @@ der `omega` hin und her riss. Jede dieser Stufen erzeugt eine Stromspitze.
 
 | Maßnahme | Wirkung | Einstellung |
 |---|---|---|
-| Anfahrrampe im Watchdog | kein Befehl springt mehr auf die Motoren, gilt für alles | `RAMPE_*` |
+| Anfahrrampe im Watchdog | kein Befehl springt mehr auf die Motoren, gilt für alles; in der App unter Einstellungen → „Sanft fahren“ abschaltbar | `RAMPE_*` |
 | Winkel glätten | gleitender Mittelwert über die Bilder, kleine Ruckler fallen weg | `FOLGEN_WINKEL_GLAETTUNG` |
 | Totzone | unter wenigen Grad wird nicht nachgedreht | `FOLGEN_WINKEL_TOTZONE` |
 | weicher Übergang Drehen/Fahren | zwischen `FOLGEN_VOLL_WINKEL` und `FOLGEN_MAX_WINKEL_FAHREN` wird das Vorwärtstempo allmählich kleiner, statt hart auf 0 zu fallen | `FOLGEN_VOLL_WINKEL` |

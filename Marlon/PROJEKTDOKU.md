@@ -313,6 +313,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
   - Wörter, die das Vosk-Modell nicht kennt, würden die Grammatik ungültig machen. Sie werden gegen `graph/words.txt` gefiltert; für „Robi“ gibt es Varianten („robbie“, „ruby“ …).
   - Musik (mpv) und Stimme (aplay) teilen sich den Lautsprecher exklusiv, und das Mikrofon hört die Musik mit. „Robi, Musik aus“ hilft; eine saubere Lösung (gemeinsamer Mixer) ist offen.
   - Smoke-Test „Heimfahrt startet“ wackelt weiter wie am 29.10. beschrieben (wiederholte Läufe gegen denselben Mock-Server); nicht durch diese Änderung.
+- **Nachtrag – „Sanft fahren“ in den Einstellungen:** Die Anfahrrampe lässt sich jetzt in der App unter Einstellungen → „Fahren & Motoren“ abschalten („Sanft fahren“) und einstellen (Anfahren, Bremsen, Andrehen, Drehung stoppen). Bisher ging das nur in `config.py` mit Neustart. Der Watchdog liest die Werte bei jedem Takt, die Änderung wirkt also sofort und übersteht über `robot/settings.json` einen Neustart. Geprüft: Sprung auf 0,3 m/s kommt mit Rampe als 0,08 an, ohne sofort als 0,3; Werte außerhalb der Grenzen werden abgelehnt.
 - **Offen:** Am Pi Vosk und Modell installieren (`docs/hardware.md`, „Mikrofon und Sprachbefehle“), `/sprache/status` prüfen, „Robi, folgen“ am Boden testen. Beim Einschalten der Gesten `dmesg -w` mitlaufen lassen: Bleibt der Reset aus?
 
 ---
