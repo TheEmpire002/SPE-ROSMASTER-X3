@@ -17,7 +17,7 @@ Pakete importieren, die erst dort installiert werden.
 Nützliche Optionen:
 
     python main.py --mock          Hardware erzwungen simulieren
-    python main.py --real          Hardware erzwingen (Fehler wenn sie fehlt)
+    python main.py --real          Hardware erzwingen (Fehler ohne Rosmaster_Lib)
     python main.py --no-browser    Browser nicht öffnen
     python main.py --setup-only    nur einrichten, nicht starten
 """
@@ -321,19 +321,31 @@ def main() -> int:
     # --- Antrieb wählen ---
     available, reason = detect_hardware(py)
 
-    if args.real and not available:
+    # Ist die Rosmaster_Lib installiert, laufen wir auf dem Roboter -- auch
+    # wenn das Board gerade fehlt. Am 29.10. verschwand /dev/myserial bei
+    # einer USB-Überlast immer wieder für Sekunden; ob der Server echt oder
+    # simuliert startete, war dann Glückssache. Der Treiber verbindet sich
+    # selbst neu, sobald das Board wieder da ist.
+    am_roboter = available or reason.startswith(("Board nicht erreichbar", "Hardware-Prüfung hängt"))
+
+    if args.real and not am_roboter:
         fail(f"Hardware angefordert, aber nicht verfügbar: {reason}")
         info("Zur Diagnose: python scripts/check_hardware.py")
         return 1
 
-    use_mock = args.mock or (not available and not args.real)
+    use_mock = args.mock or not am_roboter
 
     step("Antrieb")
     if use_mock:
         info("Simulation " + ("(erzwungen mit --mock)" if args.mock else f"({reason})"))
         info("Es bewegt sich nichts.")
     else:
-        info(f"Echte Hardware ({reason})")
+        if available:
+            info(f"Echte Hardware ({reason})")
+        else:
+            info(f"Echte Hardware -- Achtung: {reason}.")
+            info("Der Server verbindet sich, sobald das Board wieder da ist "
+                 "(USB-Überlast? siehe /diagnose).")
         info("Der Roboter kann sich bewegen. Freie Fläche sicherstellen!")
         # Nur am Roboter: Im Mock werden Sprachbefehle simuliert, dort
         # braucht es weder Mikrofon noch Modell.
