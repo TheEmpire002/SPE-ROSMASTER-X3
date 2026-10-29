@@ -427,3 +427,46 @@ INTERAKTION_VERHALTEN_MAX_S = 20.0
 # Wechselt die verfolgte Person um mehr als diesen Winkel in einem Bild,
 # ist es vermutlich eine andere -- dann beginnt die Gestenerkennung neu.
 INTERAKTION_SPRUNG_GRAD = 15.0
+
+# --- Diagnose (Seite /diagnose) ------------------------------------------------
+# Wie oft die schnellen Messungen laufen (Akku, USB-Überlastzähler, Geräte-
+# zustand) und wie oft die langsamen (Temperatur, vcgencmd, Kernel-Log,
+# Prozessliste). Die langsamen starten Unterprozesse -- jede Sekunde wäre
+# unnötige Last auf einem Pi, dessen USB ohnehin unter Lastsprüngen leidet.
+DIAGNOSE_INTERVAL_S = 1.0
+DIAGNOSE_LANGSAM_S = 5.0
+
+# Akkuschwellen für den 3S-Akku des X3 (voll 12,6 V). Unter 11,1 V reicht
+# der Anlaufstrom der Motoren, um die 5 V kurz einbrechen zu lassen; unter
+# 10,5 V nimmt der Akku Schaden und das Board meldet sich ständig ab.
+AKKU_WARN_V = 11.1
+AKKU_KRITISCH_V = 10.5
+
+# Fällt die Spannung so weit unter das Maximum der letzten Minute, zählt
+# das als Spannungseinbruch (typisch: Motoren laufen gleichzeitig an).
+SPANNUNGSEINBRUCH_V = 0.6
+
+# Ab dieser CPU-Temperatur warnt die Seite. Der Pi 5 drosselt selbst bei
+# 85 °C -- vorher soll man es sehen (am 28.10. lief ein Build bis 83 °C).
+TEMP_WARN_C = 75.0
+
+# Über diesem Takt traten am X3 USB-Resets auf, siehe docs/hardware.md.
+CPU_MAX_MHZ = 2000
+
+# Ein Problem gilt als vorbei, wenn es so lange nicht mehr aufgetreten ist.
+PROBLEM_FENSTER_S = 600.0
+
+# Nach dem Serverstart brauchen Lidar und Kameras ein paar Sekunden bis zu
+# den ersten Daten. So lange gilt "liefert nichts" noch nicht als Problem.
+DIAGNOSE_ANLAUF_S = 15.0
+
+# So viele Log-Zeilen und Ereignisse hält der Server im Speicher.
+DIAGNOSE_LOG_ZEILEN = 1000
+DIAGNOSE_EREIGNISSE = 300
+
+# Akkuverlauf: ein Punkt je schnelle Messung, so viele Punkte (30 min).
+DIAGNOSE_AKKU_PUNKTE = 1800
+
+# Beim Start so weit im Kernel-Log zurückschauen (USB-Abmeldungen, die vor
+# dem Serverstart passiert sind, z. B. beim Booten).
+DIAGNOSE_KERNEL_RUECKBLICK_S = 3600.0

@@ -60,6 +60,7 @@ Menschen aus. Es bewertet keinen Gesundheitszustand.
 | `sensors/`     | Lidar, Kamera, Personenerkennung, Körperpose (Hailo)        |
 | `navigation/`  | Odometrie, Lidar-Ortung, Heimfahrt, Erkunder, Hindernis-Benennung |
 | `interaktion/` | Gesten und Verhalten (Folgen, Herkommen, Weggehen); geplant: Sprache, Stimme, Geist — siehe [`interaktion.md`](interaktion.md) |
+| `diagnose.py`  | Sammelt Ausfälle (Akku, USB, Unterspannung, Temperatur, Geräte, Log) und macht daraus verständliche Probleme für die Seite `/diagnose` |
 | `box/`         | Motor/Servo der Transportbox *(noch leer)*                  |
 | `api/`         | WebSocket-Server, liefert auch die Web-App aus              |
 | `main.py`      | Startpunkt, baut alles zusammen                             |

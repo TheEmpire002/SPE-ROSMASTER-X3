@@ -158,6 +158,20 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
   - Ablauf im Mock: Herkommen → „bin da“, Weggehen → „Abstand genommen“, Folgen, Stopp. Abbruch durch Handsteuerung und durch „Autonom fahren“ funktioniert.
 - **Offen:** am Pi prüfen, ob der Hailo die Pose liefert (`/interaktion/status`, fps). Danach der Fahrtest **am Boden**.
 
+### 29.10.2026 – Diagnoseseite: alle Ausfälle an einer Stelle (Marlon)
+- **Was:**
+  - Neue Seite `/diagnose` (auch `/logs`), erreichbar über den Knopf „Diagnose“ oben auf der Hauptseite; von dort führt „Steuerung“ zurück. Ein Punkt am Knopf zeigt schon auf der Hauptseite, wenn etwas nicht stimmt (gelb = Warnung, rot blinkend = kritisch).
+  - `diagnose.py` sammelt im Hintergrund: Akkuspannung (neu: `read_battery()` im Treiber) mit Verlauf und Spannungseinbrüchen, USB-Überlast-Zähler des Pi, Unterspannung und Drosselung (`vcgencmd get_throttled`), Temperatur und Takt, USB-Abmeldungen aus dem Kernel-Log, Zustand von Antrieb, Lidar, Kameras und Hailo, Fehler aus dem Server-Log, hängende Build-Prozesse (`dpkg`, `cc1` …).
+  - Daraus entstehen **Probleme in Alltagssprache**: was ist passiert, was bedeutet es, „Was tun?“ als Schritte. Probleme lassen sich als gesehen markieren; tritt eins danach erneut auf, erscheint es wieder.
+  - Dazu eine Zeitleiste (was ist wann passiert – zum Erkennen von Zusammenhängen wie „Spannungseinbruch beim Fahren → USB-Abmeldung“), das Server-Log mit Filter und Suche und „Bericht kopieren“ (alles als Text für Chat oder Protokoll).
+  - Die Warnschwellen (Akku, Spannungseinbruch, Temperatur) stehen auf der Einstellungsseite im Block „Diagnose & Warnschwellen“ und wirken sofort.
+- **Warum:** Bei jedem Aussetzer mussten wir per SSH in `dmesg`, `vcgencmd` und die Serverausgabe schauen und die Zeiten selbst zusammensuchen (siehe Akku- und Netzteiltests). Jetzt sieht jeder im Team auf einen Blick, was los ist und was zu tun ist.
+- **Probleme und Lösungen:**
+  - Direkt nach dem Start meldete die Seite Lidar und Kamera als ausgefallen, weil sie noch hochfuhren. Lösung: 15 s Anlaufzeit (`DIAGNOSE_ANLAUF_S`).
+  - Nach einem Server-Neustart hätte der Browser keine neuen Log-Zeilen mehr geholt (Zeilennummern beginnen wieder bei 1). Lösung: Der Server meldet immer seine letzte Nummer; ist sie kleiner als die bekannte, lädt der Browser neu.
+- **Ergebnis (lokal, Mock):** `Marlon/diagnose/test_diagnose.py` 9 von 9 bestanden (Akku, Quittieren, Vorfälle, Kernel-Log, Unterspannung, Log-Puffer); Smoke-Test 19 von 19; alle Seiten antworten.
+- **Offen:** am Pi prüfen, ob Kernel-Log, Überlast-Zähler und `vcgencmd` gelesen werden. Für das Kernel-Log muss `pi` in der Gruppe `systemd-journal` sein (`sudo usermod -aG systemd-journal pi`, danach neu anmelden).
+
 ---
 
 ## 3. Ergebnisse und Messwerte
@@ -184,6 +198,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 | Roboter auf dem Tisch | Lidar sieht keine Kanten | Autonomes Fahren nur am Boden |
 | USB-Ausfälle bei Hitze | Pi über 80 °C (Kompilieren), Drosselung auf 1,5 GHz | Während Builds nicht fahren; `check_hardware.py` zeigt Temperatur und Drosselung |
 | Winken löste „Weggehen“ aus | Schulterbreite bricht beim seitlichen Drehen ein, Maße in Schulterbreiten werden riesig | Median der Schulterbreite über das Fenster (28.10.) |
+| Ausfälle nur per SSH auffindbar | Kernel-Log, vcgencmd und Serverlog getrennt | Diagnoseseite `/diagnose` mit Problemen, Zeitleiste und Log (29.10.) |
 | Push aus dem Laptop hängt | Git Credential Manager wartet auf Login-Fenster | Nutzer pusht selbst, der Pi zieht nur (`git pull`) |
 
 ---
@@ -194,7 +209,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - Hardware-Fix der USB-Versorgung.
 - Interaktion: Hailo-Pose am Pi prüfen, Fahrtest Folgen/Herkommen am Boden; danach Stufen 4–5 (Sprache, Geist).
 - Später: lokales LLM auf dem Hailo, Gesichter wiedererkennen, Orbbec-Tiefe für niedrige Hindernisse.
-- Akkuspannung im Server anzeigen.
+- Diagnoseseite am Pi prüfen (Kernel-Log-Berechtigung, echte Akku- und Überlastwerte).
 
 ---
 

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ROSMASTER X3 — Diagnose</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-start">
+    <a href="/" class="einst-knopf diag-zurueck" title="Zurück zur Steuerung">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="15 18 9 12 15 6"/>
+      </svg>
+      <span>Steuerung</span>
+    </a>
+    <h1>ROSMASTER X3 · Diagnose</h1>
+  </div>
+  <nav class="header-nav">
+    <span id="diag-aktualisiert" class="diag-aktualisiert">verbinde …</span>
+    <a href="/einstellungen" class="header-link" title="Warnschwellen einstellen">Einstellungen</a>
+  </nav>
+</header>
+
+<main id="diagnose">
+
+  <!-- Gesamtzustand: das Erste, was man sieht. -->
+  <section id="diag-gesamt" class="panel wide-panel diag-gesamt unbekannt">
+    <div class="diag-ampel" aria-hidden="true"></div>
+    <div class="diag-gesamt-text">
+      <strong id="diag-gesamt-titel">Lade Diagnose …</strong>
+      <span id="diag-gesamt-unter"></span>
+    </div>
+    <div class="diag-gesamt-knoepfe">
+      <button type="button" id="diag-alle-quittieren" class="btn" hidden>Alle als gesehen markieren</button>
+      <button type="button" id="diag-pause" class="btn">Pause</button>
+    </div>
+  </section>
+
+  <!-- Probleme mit Erklärung und "Was tun". -->
+  <section class="panel wide-panel">
+    <h2>Probleme</h2>
+    <p id="diag-keine-probleme" class="diag-leer" hidden>
+      Keine Probleme in den letzten Minuten. 👍
+    </p>
+    <div id="diag-probleme" class="diag-probleme"></div>
+    <details id="diag-gesehen" class="diag-gesehen" hidden>
+      <summary>Bereits gesehene Probleme (<span id="diag-gesehen-anzahl">0</span>)</summary>
+      <div id="diag-probleme-gesehen" class="diag-probleme"></div>
+    </details>
+  </section>
+
+  <section class="panel">
+    <h2>Akku &amp; Pi</h2>
+    <div class="diag-akku">
+      <div class="diag-akku-wert">
+        <span id="diag-akku-v">–</span>
+        <small id="diag-akku-prozent"></small>
+      </div>
+      <canvas id="diag-akku-kurve" width="320" height="90"
+              aria-label="Akkuspannung der letzten Minuten"></canvas>
+    </div>
+    <dl id="diag-messwerte" class="diag-messwerte"></dl>
+  </section>
+
+  <section class="panel">
+    <h2>Geräte</h2>
+    <ul id="diag-geraete" class="diag-geraete"></ul>
+    <p class="diag-fussnote" id="diag-quellen"></p>
+  </section>
+
+  <!-- Zeitleiste: was ist wann passiert -- zum Zusammenhänge erkennen. -->
+  <section class="panel wide-panel">
+    <h2>Zeitleiste</h2>
+    <div class="diag-filter">
+      <label><input type="checkbox" id="diag-zeit-info"> auch Unkritisches</label>
+    </div>
+    <p id="diag-keine-ereignisse" class="diag-leer" hidden>Noch nichts passiert.</p>
+    <ol id="diag-ereignisse" class="diag-ereignisse"></ol>
+  </section>
+
+  <!-- Server-Log für die, die es genau wissen wollen. -->
+  <section class="panel wide-panel">
+    <h2>Server-Log</h2>
+    <div class="diag-filter">
+      <select id="diag-log-stufe" aria-label="Stufe">
+        <option value="INFO">alles</option>
+        <option value="WARNING" selected>Warnungen und Fehler</option>
+        <option value="ERROR">nur Fehler</option>
+      </select>
+      <input type="search" id="diag-log-suche" placeholder="Suchen …" aria-label="Suchen">
+      <label><input type="checkbox" id="diag-log-folgen" checked> neueste unten mitlaufen</label>
+      <button type="button" id="diag-bericht" class="btn"
+              title="Zustand, Probleme, Zeitleiste und Log als Text in die Zwischenablage">
+        Bericht kopieren
+      </button>
+    </div>
+    <div id="diag-log" class="diag-log" role="log"></div>
+    <p id="diag-meldung" class="einst-meldung" hidden></p>
+  </section>
+
+</main>
+
+<script src="/static/diagnose.js"></script>
+</body>
+</html>

@@ -105,6 +105,7 @@ GRUPPEN = [
     ("hindernisse", "Hinderniserkennung", "Benennt, was der Lidar sieht (Wand, Stuhl, Mensch …)."),
     ("autonom", "Autonomes Fahren", "Zufälliges Erkunden mit Ausweichen."),
     ("heimfahrt", "Heimfahrt", "Automatische Rückkehr zum Startpunkt."),
+    ("diagnose", "Diagnose & Warnschwellen", "Ab wann die Diagnoseseite (/diagnose) warnt."),
     ("system", "System", "Server und Verbindung zum Board."),
 ]
 
@@ -254,6 +255,17 @@ EINSTELLUNGEN: list[Einstellung] = [
     Einstellung("HOME_TIMEOUT_S", "heimfahrt", "Abbruch nach", "s", 10, 600, 10,
                 hilfe="Gilt ab der nächsten Heimfahrt."),
 
+    # --- Diagnose & Warnschwellen
+    Einstellung("AKKU_WARN_V", "diagnose", "Akku schwach unter", "V", 10.0, 12.6, 0.1,
+                hilfe="3S-Akku: voll 12,6 V. Darunter reicht der Anlaufstrom der Motoren, "
+                      "um die USB-Geräte kurz abstürzen zu lassen."),
+    Einstellung("AKKU_KRITISCH_V", "diagnose", "Akku fast leer unter", "V", 9.5, 12.0, 0.1,
+                hilfe="Spätestens jetzt laden -- tiefer entladen schadet dem Akku."),
+    Einstellung("SPANNUNGSEINBRUCH_V", "diagnose", "Spannungseinbruch ab", "V", 0.2, 2.0, 0.1,
+                hilfe="So weit unter dem Höchstwert der letzten Minute zählt als Einbruch."),
+    Einstellung("TEMP_WARN_C", "diagnose", "Pi zu warm ab", "°C", 50, 85, 1,
+                hilfe="Der Pi 5 drosselt selbst ab 85 °C."),
+
     # --- System
     Einstellung("STATUS_INTERVAL_S", "system", "Statusmeldungen alle", "s", 0.1, 2.0, 0.1),
     Einstellung("TELEMETRY_ENABLED", "system", "Rückkanal vom Board (Akku, IMU)", neustart=True,
@@ -277,6 +289,7 @@ _REGELN = [
     ("GESTE_HALTEN_S", "GESTE_FENSTER_S", "„Folgen“ halten muss kürzer sein als der Rückblick"),
     ("GESTE_STOPP_HALTEN_S", "GESTE_FENSTER_S", "„Stopp“ halten muss kürzer sein als der Rückblick"),
     ("FOLGEN_TOTZONE_M", "FOLGEN_ABSTAND_M", "Totzone muss kleiner sein als der Wunschabstand"),
+    ("AKKU_KRITISCH_V", "AKKU_WARN_V", "„Akku fast leer“ muss unter „Akku schwach“ liegen"),
 ]
 
 _lock = threading.Lock()

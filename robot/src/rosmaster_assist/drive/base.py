@@ -72,6 +72,14 @@ class DriveBase(ABC):
         """
         return None
 
+    def read_battery(self) -> float | None:
+        """Akkuspannung in Volt, falls messbar.
+
+        Für die Diagnoseseite: ein schwacher Akku ist am X3 die häufigste
+        Ursache für Abmeldungen des Boards. ``None`` heißt "nicht messbar".
+        """
+        return None
+
     @property
     @abstractmethod
     def connected(self) -> bool:
