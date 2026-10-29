@@ -67,6 +67,26 @@ COMMAND_TIMEOUT_S = 0.5
 # Takt, in dem der Watchdog prüft. Muss deutlich kleiner als das Timeout sein.
 WATCHDOG_INTERVAL_S = 0.1
 
+# Anfahr- und Bremsrampe. Ohne sie springt jeder Fahrbefehl ungebremst auf die
+# Motoren: bei Folgen und Gesten wechselt der Befehl im 20-Hz-Takt zwischen
+# Fahren und Halten, die Motoren ziehen jedes Mal einen Stromstoß, die
+# Spannung bricht ein und der USB-Hub setzt sich zurück (siehe Sensor-Check
+# 28.10.: Resets nur unter Motorlast). Die Rampe begrenzt, wie schnell sich
+# vx/vy/omega pro Sekunde ändern dürfen.
+#
+# Bremsen darf schneller sein als Anfahren -- Anhalten vor einem Hindernis ist
+# wichtiger als sanftes Anfahren. watchdog.stop() (Not-Stopp, Timeout,
+# Abbruch) umgeht die Rampe immer und steht sofort.
+RAMPE_AKTIV = True
+RAMPE_ANFAHREN_XY = 0.8       # m/s²   0 -> 0,3 m/s in knapp 0,4 s
+RAMPE_BREMSEN_XY = 2.0        # m/s²   0,3 m/s -> 0 in 0,15 s (rund 2 cm Weg)
+RAMPE_ANFAHREN_OMEGA = 3.0    # rad/s²
+RAMPE_BREMSEN_OMEGA = 6.0     # rad/s²
+# Längster Zeitschritt, den die Rampe auf einmal macht. Nach einer Pause
+# (Roboter stand, erster Befehl seit Langem) würde sonst die ganze Pause als
+# "Zeit zum Beschleunigen" zählen und der Befehl doch wieder springen.
+RAMPE_DT_MAX_S = 0.1
+
 # --- Server --------------------------------------------------------------------
 
 # 0.0.0.0 = aus dem ganzen WLAN erreichbar (nötig, damit das Handy rankommt).
@@ -381,6 +401,28 @@ GESTE_WISCH_STRECKE = 1.0
 # soll nicht jede Sekunde neu auslösen.
 GESTE_PAUSE_S = 2.0
 
+# Entprellen der bewegten Gesten (Herkommen, Weggehen). Beim Gehen schwingen
+# die Arme mit, und von hinten oder im Laufen wechselt die Größe der Person
+# -- das sah der Erkennung zu oft nach Winken oder Wischen aus (beim Folgen
+# wechselte er ohne klares Zeichen). Deshalb zählen sie nur, wenn ...
+#
+# ... die Person ungefähr am Platz steht: Größe (Schulterbreite) zwischen
+# Anfang und Ende des Fensters höchstens um diesen Faktor verschieden ...
+GESTE_RUHE_GROESSE = 1.2
+# ... und die Schultermitte höchstens so viele Schulterbreiten gewandert;
+GESTE_RUHE_WEG = 0.8
+# ... der Roboter selbst steht (eigene Fahrt und Drehung verwackeln das
+# Bild und verschieben die Person): Grenzen für den gerade gefahrenen
+# Befehl in m/s bzw. rad/s;
+GESTE_ROBOTER_RUHIG_V = 0.05
+GESTE_ROBOTER_RUHIG_W = 0.3
+# ... und die Geste in so vielen Auswertungen hintereinander erkannt wurde.
+GESTE_BESTAETIGEN = 2
+# Außerdem muss das Gesicht (Nase) in GESTE_ANTEIL der Bilder zu sehen
+# sein: Wer dem Roboter den Rücken zuwendet, gibt ihm kein Zeichen.
+# STOPP und FOLGEN (gehaltene Haltungen) sind davon ausgenommen -- STOPP
+# muss immer wirken.
+
 # --- Interaktion (Folgen, Herkommen, Weggehen) -------------------------------------
 
 # Wunschabstand beim Folgen. 1 m: nah genug, um die Person nicht zu
@@ -397,8 +439,19 @@ FOLGEN_RUECK_SPEED = 0.12
 # Regler: Geschwindigkeit pro Meter Abstandsfehler bzw. Drehrate pro
 # Radiant Winkelfehler.
 FOLGEN_KP_V = 0.6
-FOLGEN_KP_W = 1.5
+# 1,2 statt 1,5: Die Kamera liefert den Winkel mit ~0,1-0,2 s Verzug; zu
+# scharf eingestellt überdreht er und pendelt (29.10.2026).
+FOLGEN_KP_W = 1.2
 FOLGEN_MAX_OMEGA = 0.8
+
+# Glättung des Kamerawinkels (0..1, Anteil des neuen Werts je Bild). Die
+# Körperpunkte zittern von Bild zu Bild um einige Grad; ungeglättet wird
+# daraus ein Zappeln der Drehrate.
+FOLGEN_WINKEL_GLAETTUNG = 0.4
+
+# Unter diesem Winkelfehler (Grad) dreht er nicht nach -- der Übergang ist
+# stetig (Regler rechnet ab dem Rand der Totzone), damit es nicht ruckt.
+FOLGEN_WINKEL_TOTZONE = 3.0
 
 # Innerhalb dieses Abstandsfehlers bleibt er stehen -- sonst ruckelt er
 # bei jedem Atemzug der Person vor und zurück.
@@ -407,6 +460,22 @@ FOLGEN_TOTZONE_M = 0.10
 # Erst geradeaus fahren, wenn die Person ungefähr vorn ist; sonst zuerst
 # drehen (sonst fährt er schräg an ihr vorbei).
 FOLGEN_MAX_WINKEL_FAHREN = 25.0
+# Bis zu diesem Winkel volle Fahrt, darüber bis FOLGEN_MAX_WINKEL_FAHREN
+# gleitend weniger -- früher sprang vx an der Grenze hart zwischen 0 und
+# voll, das ruckte und belastete die Stromversorgung.
+FOLGEN_VOLL_WINKEL = 10.0
+
+# Verschwindet die Person nur kurz (ein, zwei Bilder ohne Erkennung),
+# rollt er so lange mit dem letzten Befehl weiter aus, statt hart zu
+# bremsen und gleich wieder anzufahren. Danach hält er an. Ebenso lange
+# gilt der letzte gute Lidar-Abstand, wenn in Richtung der Person kurz
+# kein Punkt liegt.
+FOLGEN_HALTEN_S = 0.5
+
+# War etwas sehr nah (EXPLORE_NAH_M), bleibt er noch so lange stehen,
+# nachdem es frei ist -- sonst flackert er an der Grenze zwischen Halt
+# und Fahrt.
+FOLGEN_NAH_HALTEN_S = 0.5
 
 # So lange darf die Person aus dem Bild sein, bevor er sucht, und so lange
 # sucht er (langsam drehen in die Richtung, in der sie verschwand).

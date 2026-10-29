@@ -22,6 +22,12 @@ nur, wenn hinten frei ist; rückt etwas ganz nah heran, steht er; ohne
 frische Lidar-Daten steht er. Bleibt diese Schleife hängen, hält der
 Watchdog nach 0,5 s an.
 
+Sanft fahren (29.10.2026): Sprünge im Fahrbefehl ziehen Stromspitzen, die
+am X3 USB-Resets auslösen. Daher wird der Kamerawinkel geglättet, Drehrate
+und Geschwindigkeit wachsen stetig mit dem Fehler (keine harten Grenzen),
+kurze Aussetzer der Erkennung rollt er aus, statt hart zu bremsen, und der
+Watchdog begrenzt zusätzlich die Beschleunigung (``RAMPE_*``).
+
 In BEREIT schickt die Schleife **keine** Befehle -- der Roboter steht, und
 nichts hält den Antrieb unnötig wach. Handsteuerung aus der App beendet den
 ganzen Interaktionsmodus (wie beim Erkunder): Wer selbst lenkt, will nicht,
@@ -110,6 +116,14 @@ class Interaktion:
         self._suchen_fuer = FOLGEN  # in diesen Modus nach erfolgreicher Suche
         self._letztes_bild = -1.0
         self._ohne_lidar_seit: float | None = None
+
+        # Sanft fahren
+        self._winkel_glatt: float | None = None
+        self._glatt_bild = -1.0
+        self._letzter_befehl: DriveCommand | None = None
+        self._abstand_gut: float | None = None
+        self._abstand_gut_zeit = -1e9
+        self._nah_zuletzt = -1e9
 
     # --- Bedienung ---------------------------------------------------------------
 
@@ -202,6 +216,9 @@ class Interaktion:
         self._winkel = self._abstand = None
         self._letztes_bild = -1.0
         self._ohne_lidar_seit = None
+        self._winkel_glatt, self._glatt_bild = None, -1.0
+        self._abstand_gut, self._abstand_gut_zeit = None, -1e9
+        self._nah_zuletzt = -1e9
         self._modus = BEREIT
         self._wechseln(
             modus, "folgt (per App)" if modus == FOLGEN else "wartet auf ein Handzeichen", time.monotonic()
@@ -238,6 +255,7 @@ class Interaktion:
         self._geste_pruefen(ziel, jetzt)
 
         if ziel is not None:
+            self._glaetten(ziel, jetzt)
             self._gesehen = jetzt
             self._winkel = ziel["winkel"]
             if abs(self._winkel) > 2.0:
@@ -260,11 +278,19 @@ class Interaktion:
             if jetzt - self._ohne_lidar_seit > config.EXPLORE_LIDAR_WAIT_S:
                 return self._wechseln(BEREIT, "Lidar liefert keine Daten", jetzt, melden=True)
             self._text = "keine frischen Lidar-Daten"
+            self._letzter_befehl = None
             return halt
         self._ohne_lidar_seit = None
 
         punkte = scan.punkte()
         self._abstand = self._abstand_zu(ziel, scan)
+        if self._abstand is not None and math.isfinite(self._abstand):
+            self._abstand_gut, self._abstand_gut_zeit = self._abstand, jetzt
+        elif ziel is not None and jetzt - self._abstand_gut_zeit < config.FOLGEN_HALTEN_S:
+            # In Richtung der Person kurz kein Lidar-Punkt (Beine zwischen
+            # zwei Strahlen) -- den letzten guten Wert nehmen, statt
+            # stehenzubleiben und gleich wieder anzufahren.
+            self._abstand = self._abstand_gut
 
         if self._modus == WEGGEHEN:
             return self._weggehen(jetzt, ziel, punkte)
@@ -272,8 +298,13 @@ class Interaktion:
         # Folgen, Herkommen, Suchen: alles, was nach vorn oder im Stand
         # dreht. Ganz nah etwas -> gar nicht bewegen (die Ecken schwenken
         # beim Drehen aus). Erst ab drei Punkten, ein Fehlstrahl zählt nicht.
+        # Nach "nah" noch kurz stehen bleiben, damit er an der Grenze nicht
+        # zwischen Halt und Fahrt flackert.
         if self._nah(punkte):
+            self._nah_zuletzt = jetzt
+        if jetzt - self._nah_zuletzt < config.FOLGEN_NAH_HALTEN_S:
             self._text = "etwas sehr nah -- warte"
+            self._letzter_befehl = None
             return halt
 
         if self._modus == SUCHEN:
@@ -283,6 +314,9 @@ class Interaktion:
             if jetzt - self._gesehen > config.FOLGEN_VERLOREN_S:
                 self._suchen_fuer = self._modus
                 return self._wechseln(SUCHEN, "Person verloren -- suche", jetzt, melden=True)
+            auslauf = self._ausrollen(jetzt, punkte)
+            if auslauf is not None:
+                return auslauf
             self._text = "Person kurz nicht zu sehen -- warte"
             return halt
 
@@ -294,33 +328,51 @@ class Interaktion:
             and abs(self._winkel) < _ZIEL_WINKEL
         ):
             return self._wechseln(BEREIT, "bin da", jetzt, melden=True)
-        return self._annaehern(punkte, soll, rueckwaerts=self._modus == FOLGEN)
+        befehl = self._annaehern(punkte, soll, rueckwaerts=self._modus == FOLGEN)
+        self._letzter_befehl = befehl
+        return befehl
 
     # --- Verhalten ---------------------------------------------------------------
 
     def _annaehern(self, punkte, soll: float, rueckwaerts: bool) -> DriveCommand:
         """P-Regler: zur Person drehen und den Abstand ``soll`` halten."""
-        winkel = self._winkel or 0.0
-        omega = config.FOLGEN_KP_W * math.radians(winkel)
+        winkel = self._winkel_glatt if self._winkel_glatt is not None else (self._winkel or 0.0)
+        # Kleine Winkel nicht nachregeln: das Bildrauschen der Pose (ein bis
+        # zwei Grad) ließe ihn sonst ständig hin- und herzucken. Abgezogen
+        # statt abgeschnitten, damit omega an der Grenze bei 0 beginnt.
+        rest = max(0.0, abs(winkel) - config.FOLGEN_WINKEL_TOTZONE)
+        omega = math.copysign(config.FOLGEN_KP_W * math.radians(rest), winkel)
         omega = max(-config.FOLGEN_MAX_OMEGA, min(config.FOLGEN_MAX_OMEGA, omega))
+
+        # Erst ausrichten, dann fahren: schräg losfahren schiebt ihn an der
+        # Person vorbei, und der Fahrschlauch geradeaus sagt nichts über den
+        # Weg zur Person. Statt hart bei MAX_WINKEL abzuschalten, nimmt die
+        # Geschwindigkeit ab VOLL_WINKEL stetig ab -- ein Ein/Aus an der
+        # Grenze war einer der Rucke.
+        betrag = abs(winkel)
+        if betrag <= config.FOLGEN_VOLL_WINKEL:
+            anteil = 1.0
+        else:
+            spanne = max(1e-6, config.FOLGEN_MAX_WINKEL_FAHREN - config.FOLGEN_VOLL_WINKEL)
+            anteil = max(0.0, (config.FOLGEN_MAX_WINKEL_FAHREN - betrag) / spanne)
 
         vx = 0.0
         abstand = self._abstand
-        # Erst ausrichten, dann fahren: schräg losfahren schiebt ihn an der
-        # Person vorbei, und der Fahrschlauch geradeaus sagt nichts über den
-        # Weg zur Person.
-        if abstand is not None and math.isfinite(abstand) and abs(winkel) < config.FOLGEN_MAX_WINKEL_FAHREN:
+        if abstand is not None and math.isfinite(abstand) and anteil > 0.0:
             fehler = abstand - soll
+            tot = config.FOLGEN_TOTZONE_M
             breite = config.EXPLORE_HALF_WIDTH_M
-            if fehler > config.FOLGEN_TOTZONE_M:
+            # Auch hier ab der Totzone gerechnet, damit vx dort bei 0 anfängt.
+            if fehler > tot:
                 vorn = frei_in_richtung(punkte, 0.0, breite)
                 # Nie näher als die Stoppgrenze an irgendetwas im Fahrschlauch.
                 platz = vorn - config.EXPLORE_STOP_M
-                vx = min(config.FOLGEN_MAX_SPEED, config.FOLGEN_KP_V * fehler, max(0.0, platz))
-            elif fehler < -config.FOLGEN_TOTZONE_M and rueckwaerts:
+                vx = min(config.FOLGEN_MAX_SPEED, config.FOLGEN_KP_V * (fehler - tot)) * anteil
+                vx = min(vx, max(0.0, platz))
+            elif fehler < -tot and rueckwaerts:
                 hinten = frei_in_richtung(punkte, 180.0, breite)
                 if hinten > config.EXPLORE_STOP_M:
-                    vx = -min(config.FOLGEN_RUECK_SPEED, config.FOLGEN_KP_V * -fehler)
+                    vx = -min(config.FOLGEN_RUECK_SPEED, config.FOLGEN_KP_V * (-fehler - tot)) * anteil
 
         if vx > 0:
             self._text = f"fährt zur Person ({abstand:.2f} m)"
@@ -331,6 +383,31 @@ class Interaktion:
         else:
             self._text = f"hält Abstand ({abstand:.2f} m)"
         return DriveCommand(vx, 0.0, omega)
+
+    def _ausrollen(self, jetzt: float, punkte) -> DriveCommand | None:
+        """Person für einen Moment weg: den letzten Befehl auslaufen lassen.
+
+        Die Pose verliert die Person oft für ein, zwei Bilder (Bewegungs-
+        unschärfe, Verdeckung). Jedes Mal hart anzuhalten und gleich wieder
+        anzufahren war der Hauptgrund für das Ruckeln. Der Fahrschlauch
+        wird dabei weiter geprüft.
+        """
+        if self._letzter_befehl is None:
+            return None
+        seit = jetzt - self._gesehen
+        if seit >= config.FOLGEN_HALTEN_S:
+            return None
+        anteil = 1.0 - seit / config.FOLGEN_HALTEN_S
+        letzter = self._letzter_befehl
+        breite = config.EXPLORE_HALF_WIDTH_M
+        vx = letzter.vx * anteil
+        if vx > 0:
+            platz = frei_in_richtung(punkte, 0.0, breite) - config.EXPLORE_STOP_M
+            vx = min(vx, max(0.0, platz))
+        elif vx < 0 and frei_in_richtung(punkte, 180.0, breite) <= config.EXPLORE_STOP_M:
+            vx = 0.0
+        self._text = "Person kurz nicht zu sehen -- rollt aus"
+        return DriveCommand(vx, 0.0, letzter.omega * anteil)
 
     def _weggehen(self, jetzt: float, ziel: dict | None, punkte) -> DriveCommand:
         dauer = config.WEGGEHEN_STRECKE_M / max(0.01, config.WEGGEHEN_SPEED)
@@ -394,7 +471,7 @@ class Interaktion:
         if ziel["zeit"] == self._letztes_bild:
             return
         self._letztes_bild = ziel["zeit"]
-        geste = self._gesten.update(ziel, ziel["zeit"])
+        geste = self._gesten.update(ziel, ziel["zeit"], ruhig=self._roboter_ruhig())
         if geste is None:
             return
         log.info("Interaktion: Geste %s erkannt", geste)
@@ -407,6 +484,37 @@ class Interaktion:
             WEGGEHEN: "fährt zurück",
         }
         self._wechseln(modus, texte[modus], jetzt)
+
+    def _glaetten(self, ziel: dict, jetzt: float) -> None:
+        """Kamerawinkel tiefpassfiltern -- einmal pro neuem Kamerabild.
+
+        Die Box der Pose springt von Bild zu Bild um ein paar Grad; ungefiltert
+        wird daraus ein zappelndes omega. Nach einer Lücke fängt der Filter
+        neu an, sonst zöge er einen veralteten Winkel nach.
+        """
+        if ziel["zeit"] == self._glatt_bild:
+            return
+        self._glatt_bild = ziel["zeit"]
+        roh = ziel["winkel"]
+        if self._winkel_glatt is None or jetzt - self._gesehen > config.FOLGEN_HALTEN_S:
+            self._winkel_glatt = roh
+        else:
+            self._winkel_glatt += config.FOLGEN_WINKEL_GLAETTUNG * (roh - self._winkel_glatt)
+
+    def _roboter_ruhig(self) -> bool:
+        """Steht der Roboter (fast)? Nur dann zählen bewegte Gesten.
+
+        Fährt er, wackelt die Kamera, und die Person wandert durchs Bild --
+        das sah für die Erkennung wie Winken aus.
+        """
+        befehl = getattr(self._watchdog, "current_command", None)
+        if befehl is None:
+            return True
+        return (
+            abs(befehl.vx) <= config.GESTE_ROBOTER_RUHIG_V
+            and abs(befehl.vy) <= config.GESTE_ROBOTER_RUHIG_V
+            and abs(befehl.omega) <= config.GESTE_ROBOTER_RUHIG_W
+        )
 
     def _abstand_zu(self, ziel: dict | None, scan=None) -> float | None:
         """Lidar-Abstand in Richtung der Person (über die Breite ihrer Box)."""
@@ -442,6 +550,8 @@ class Interaktion:
             self._watchdog.stop()
         if modus != self._modus:
             log.info("Interaktion: %s -> %s (%s)", self._modus, modus, text)
+            # Ausrollen gilt nur innerhalb eines Verhaltens.
+            self._letzter_befehl = None
         if modus in (FOLGEN, HERKOMMEN):
             # Frist fürs Verlorengehen ab jetzt -- sonst sucht er nach einem
             # Knopfdruck sofort, wenn die Person gerade nicht im Bild ist.

@@ -18,6 +18,12 @@ Gegen Fehlauslöser: Eine gehaltene Geste zählt erst, wenn sie über
 brauchen mehrere Richtungswechsel bzw. eine lange Strecke. Nach jeder
 erkannten Geste gibt es eine Pause, nur STOPP geht immer.
 
+Bewegte Gesten sind zusätzlich entprellt, weil beim Gehen die Arme
+mitschwingen (sah beim Folgen wie Winken/Wischen aus). Sie zählen nur, wenn
+die Person am Platz steht (Größe und Schultermitte ändern sich kaum), ihr
+Gesicht zu sehen ist (nicht von hinten), der Roboter selbst steht und die
+Geste in ``GESTE_BESTAETIGEN`` Auswertungen hintereinander erkannt wurde.
+
 Das Modul kennt weder Kamera noch Hailo -- es bekommt Personen-Dicts aus
 ``sensors/pose.py`` und ist so ohne Hardware testbar
 (``Marlon/interaktion/test_gesten.py``).
@@ -68,6 +74,13 @@ class Bild:
     haende: tuple[tuple[float, float] | None, tuple[float, float] | None]
     kopf_v: float
     huefte_v: float
+    # Für das Entprellen: Schultermitte und gemessene (nicht geglättete)
+    # Schulterbreite in Bildeinheiten, ob das Gesicht zu sehen ist und ob
+    # der Roboter beim Bild stand.
+    mitte: tuple[float, float] | None = None
+    breite: float | None = None
+    frontal: bool = False
+    ruhig: bool = True
 
 
 def _punkt_lesen(person: dict):
@@ -124,7 +137,13 @@ def koerpermass(person: dict, zeit: float, breite: float | None = None) -> Bild 
     hueften = [h for h in (rel(punkt(_HUEFTE[0])), rel(punkt(_HUEFTE[1]))) if h is not None]
     huefte_v = sum(h[1] for h in hueften) / len(hueften) if hueften else _HUEFTE_ERSATZ
 
-    return Bild(zeit, haltung(haende, kopf_v), haende, kopf_v, huefte_v)
+    # Nur die Nase, nicht die Reihenfolge der Schultern: Die Kamera kann per
+    # CAMERA_ROLES gespiegelt sein, die Nase bleibt in jedem Fall eine Nase.
+    frontal = nase is not None
+    return Bild(
+        zeit, haltung(haende, kopf_v), haende, kopf_v, huefte_v,
+        mitte=(mx, my), breite=gemessen, frontal=frontal,
+    )
 
 
 def haltung(haende, kopf_v: float) -> str | None:
@@ -221,17 +240,22 @@ class Gestenerkennung:
         self._letzte_zeit = -1e9
         self.zuletzt: str | None = None  # für die Anzeige
         self.zuletzt_zeit: float | None = None
+        # Bewegte Geste der letzten Auswertungen (Kandidat, wie oft in Folge)
+        self._kandidat: str | None = None
+        self._kandidat_anzahl = 0
 
     def zuruecksetzen(self) -> None:
         self._bilder.clear()
         self._breiten.clear()
         self._winkel = None
+        self._kandidat, self._kandidat_anzahl = None, 0
 
-    def update(self, person: dict | None, zeit: float) -> str | None:
+    def update(self, person: dict | None, zeit: float, ruhig: bool = True) -> str | None:
         """Neue Pose der verfolgten Person. Gibt eine bestätigte Geste zurück.
 
         Nur einmal pro neuem Kamerabild aufrufen -- dasselbe Bild doppelt
-        würde Haltedauern verfälschen.
+        würde Haltedauern verfälschen. ``ruhig``: Der Roboter stand bei
+        diesem Bild (fährt er, zählen nur STOPP und FOLGEN).
         """
         if person is None:
             self.zuruecksetzen()
@@ -245,6 +269,7 @@ class Gestenerkennung:
             # dürfen nicht mit den Armen der vorigen verrechnet werden.
             self._bilder.clear()
             self._breiten.clear()
+            self._kandidat, self._kandidat_anzahl = None, 0
         self._winkel = winkel
 
         # Die Schulterbreite ist der Maßstab für alles. Zittern die Schultern
@@ -260,6 +285,7 @@ class Gestenerkennung:
             # Unvollständiges Bild zählt als "keine Geste", damit es die
             # Haltedauer unterbricht statt übersprungen zu werden.
             bild = Bild(zeit, None, (None, None), -_KOPF_ERSATZ, _HUEFTE_ERSATZ)
+        bild.ruhig = ruhig
         self._bilder.append(bild)
         while self._bilder and zeit - self._bilder[0].zeit > config.GESTE_FENSTER_S:
             self._bilder.popleft()
@@ -275,6 +301,7 @@ class Gestenerkennung:
         self._letzte, self._letzte_zeit = geste, zeit
         self.zuletzt, self.zuletzt_zeit = geste, zeit
         self._bilder.clear()
+        self._kandidat, self._kandidat_anzahl = None, 0
         return geste
 
     def _erkennen(self, zeit: float) -> str | None:
@@ -285,13 +312,51 @@ class Gestenerkennung:
         if self._gehalten(bilder, zeit, FOLGEN, config.GESTE_HALTEN_S):
             return FOLGEN
         # Bewegte Gesten brauchen ein fast volles Fenster.
-        if not bilder or zeit - bilder[0].zeit < 0.7 * config.GESTE_FENSTER_S:
-            return None
-        if any(winkt(bilder, h) for h in (0, 1)):
-            return HERKOMMEN
-        if any(wischt(bilder, h) for h in (0, 1)):
-            return WEGGEHEN
+        kandidat = None
+        if (
+            bilder and zeit - bilder[0].zeit >= 0.7 * config.GESTE_FENSTER_S
+            and self._steht_still(bilder)
+        ):
+            if any(winkt(bilder, h) for h in (0, 1)):
+                kandidat = HERKOMMEN
+            elif any(wischt(bilder, h) for h in (0, 1)):
+                kandidat = WEGGEHEN
+        # Erst melden, wenn mehrere Auswertungen hintereinander dasselbe
+        # sehen -- ein einzelnes Fenster, das zufällig passt, reicht nicht.
+        if kandidat is not None and kandidat == self._kandidat:
+            self._kandidat_anzahl += 1
+        else:
+            self._kandidat = kandidat
+            self._kandidat_anzahl = 1 if kandidat is not None else 0
+        if kandidat is not None and self._kandidat_anzahl >= config.GESTE_BESTAETIGEN:
+            return kandidat
         return None
+
+    @staticmethod
+    def _steht_still(bilder: list[Bild]) -> bool:
+        """Ruhige Szene für bewegte Gesten: Roboter steht, Person steht, schaut her."""
+        anteil = config.GESTE_ANTEIL
+        if sum(b.ruhig for b in bilder) < anteil * len(bilder):
+            return False
+        if sum(b.frontal for b in bilder) < anteil * len(bilder):
+            return False
+        gut = [b for b in bilder if b.mitte is not None and b.breite]
+        if len(gut) < 6:
+            return False
+        # Median des ersten und letzten Drittels -- einzelne Ausreißer der
+        # Körperpunkte sollen nicht als Gehen gelten.
+        n = max(2, len(gut) // 3)
+        anfang, ende = gut[:n], gut[-n:]
+        b0 = statistics.median(b.breite for b in anfang)
+        b1 = statistics.median(b.breite for b in ende)
+        if max(b0, b1) > config.GESTE_RUHE_GROESSE * min(b0, b1):
+            return False  # kommt näher oder entfernt sich
+        x0 = statistics.median(b.mitte[0] for b in anfang)
+        y0 = statistics.median(b.mitte[1] for b in anfang)
+        x1 = statistics.median(b.mitte[0] for b in ende)
+        y1 = statistics.median(b.mitte[1] for b in ende)
+        weg = math.hypot(x1 - x0, y1 - y0) / statistics.median(b.breite for b in gut)
+        return weg <= config.GESTE_RUHE_WEG  # sonst geht sie seitlich
 
     @staticmethod
     def _gehalten(bilder: list[Bild], zeit: float, geste: str, dauer: float) -> bool:

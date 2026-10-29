@@ -84,6 +84,26 @@ Eine Geste zählt erst, wenn sie über mehrere aufeinanderfolgende Bilder
 stabil erkannt wurde (`GESTE_*` in `config.py`). Ein einzelnes Fehlbild löst
 also nichts aus. **Stopp** hat Vorrang vor allem anderen.
 
+**Entprellt (29.10.):** Beim Folgen wechselte der Roboter manchmal in ein
+anderes Verhalten, ohne dass jemand ein Zeichen gegeben hatte. Wer läuft,
+schwingt die Arme, und das sah nach Herkommen oder Weggehen aus. Deshalb
+gilt für **Herkommen** und **Weggehen** zusätzlich:
+
+- Die Person muss stillstehen: Schultermitte und Schulterbreite dürfen sich
+  über das Fenster kaum ändern (`GESTE_RUHE_WEG`, `GESTE_RUHE_GROESSE`, in
+  Schulterbreiten). Wer auf den Roboter zu- oder an ihm vorbeiläuft, zählt
+  nicht.
+- Die Person muss zur Kamera schauen (Nase sichtbar). Von hinten gibt es
+  keine Geste.
+- Der Roboter selbst muss annähernd stehen (`GESTE_ROBOTER_RUHIG_V`,
+  `GESTE_ROBOTER_RUHIG_W`, gelesen aus `watchdog.current_command`). Fährt er,
+  bewegt sich das ganze Bild, und Armbewegungen sind nicht zu trennen.
+- Dieselbe Geste muss `GESTE_BESTAETIGEN`-mal hintereinander erkannt werden.
+
+**Stopp** und **Folgen** sind davon ausgenommen. Stopp muss immer sofort
+wirken, und Folgen (Arm über dem Kopf, gehalten) wird beim Laufen nicht
+zufällig ausgelöst.
+
 Weil die C270 nur leicht nach oben geneigt ist, sieht sie eine stehende
 Person erst ab etwa 1,5–2 m Abstand vollständig. Die Gesten brauchen
 mindestens Schultern und Handgelenke im Bild.
@@ -101,6 +121,30 @@ mindestens Schultern und Handgelenke im Bild.
 - Springt die Kamera auf eine andere Person (Winkel ändert sich um mehr als `INTERAKTION_SPRUNG_GRAD`), wechselt er nicht auf die neue, sondern behandelt die bisherige als kurz verloren.
 - `herkommen` und `weggehen` enden spätestens nach `INTERAKTION_VERHALTEN_MAX_S`.
 - Alle Werte: `FOLGEN_*`, `HERKOMMEN_*`, `WEGGEHEN_*` in `config.py`.
+
+### Sanft fahren (29.10.)
+
+Beim Folgen fuhr der Roboter ruckartig, und gleichzeitig traten USB-Resets
+auf. Ursache waren harte Sprünge im Fahrbefehl: Person kurz nicht erkannt →
+sofort 0, wieder da → sofort volle Fahrt; dazu ein zitternder Kamerawinkel,
+der `omega` hin und her riss. Jede dieser Stufen erzeugt eine Stromspitze.
+
+| Maßnahme | Wirkung | Einstellung |
+|---|---|---|
+| Anfahrrampe im Watchdog | kein Befehl springt mehr auf die Motoren, gilt für alles | `RAMPE_*` |
+| Winkel glätten | gleitender Mittelwert über die Bilder, kleine Ruckler fallen weg | `FOLGEN_WINKEL_GLAETTUNG` |
+| Totzone | unter wenigen Grad wird nicht nachgedreht | `FOLGEN_WINKEL_TOTZONE` |
+| weicher Übergang Drehen/Fahren | zwischen `FOLGEN_VOLL_WINKEL` und `FOLGEN_MAX_WINKEL_FAHREN` wird das Vorwärtstempo allmählich kleiner, statt hart auf 0 zu fallen | `FOLGEN_VOLL_WINKEL` |
+| sanftere Drehung | kleinerer P-Anteil auf `omega` | `FOLGEN_KP_W` |
+| Ausrollen | ist die Person kurz weg, läuft der letzte Befehl über `FOLGEN_HALTEN_S` linear aus, mit Prüfung des freien Raums | `FOLGEN_HALTEN_S` |
+| Lidar-Abstand halten | fehlt der Lidar-Abstand in einem Takt, gilt kurz der letzte gute Wert | `FOLGEN_HALTEN_S` |
+| Hysterese „nah“ | der Zustand „Person sehr nah“ endet erst nach `FOLGEN_NAH_HALTEN_S`, damit er nicht im Takt hin und her schaltet | `FOLGEN_NAH_HALTEN_S` |
+
+Not-Stopp, Stopp-Geste und das Ende eines Verhaltens rufen `watchdog.stop()`
+und stehen sofort, ohne Rampe. Bei einem Hindernis oder fehlenden
+Lidar-Daten schickt das Verhalten einen Haltbefehl; der läuft über die
+Bremsrampe (`RAMPE_BREMSEN_XY` = 2 m/s², von 0,3 m/s also in 0,15 s auf
+etwa 2 cm). Die Bremsrampe ist bewusst deutlich steiler als die Anfahrrampe.
 
 ## Sprache
 

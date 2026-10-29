@@ -173,6 +173,21 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Zusammenführen mit main:** Ben hatte parallel die Musikfunktion „MUKKE“ eingebaut, an denselben Stellen (Server-Endpunkte, `config.py`, Knopf oben links, CSS, `docs/api.md`). Die Konflikte waren nur „beide haben etwas angehängt“; beide Teile bleiben erhalten, die Knöpfe Diagnose und MUKKE stehen nebeneinander. Danach erneut: Tests 9/9, Smoke-Test 19/19, `/diagnose` und `/mukke/status` antworten.
 - **Offen:** am Pi prüfen, ob Kernel-Log, Überlast-Zähler und `vcgencmd` gelesen werden. Für das Kernel-Log muss `pi` in der Gruppe `systemd-journal` sein (`sudo usermod -aG systemd-journal pi`, danach neu anmelden).
 
+### 29.10.2026 – Sanftes Fahren und entprellte Gesten (Marlon)
+- **Was:**
+  - **Anfahrrampe im Watchdog:** Fahrbefehle springen nicht mehr auf die Motoren, sondern werden mit begrenzter Beschleunigung angefahren (0,8 m/s², Drehen 3 rad/s²) und schneller gebremst (2 m/s², 6 rad/s²). Ein Richtungswechsel bremst erst auf null. `stop()` (Not-Stopp, Stopp-Geste, Totmann) bleibt sofort. Einstellungen `RAMPE_*` in `config.py`, mit `RAMPE_AKTIV = False` abschaltbar.
+  - **Folgen ruhiger:** Kamerawinkel geglättet, Totzone von 3°, weicher Übergang zwischen Drehen und Fahren statt hartem Umschalten, kleinerer Drehanteil (`FOLGEN_KP_W` 1,2). Ist die Person kurz weg, rollt der letzte Befehl über 0,5 s aus, statt auf null zu springen (mit Prüfung, ob vorn bzw. hinten frei ist). Fehlt der Lidar-Abstand in einem Takt, gilt kurz der letzte gute Wert. Der Zustand „Person sehr nah“ hat eine Hysterese.
+  - **Gesten entprellt:** Herkommen und Weggehen zählen nur noch, wenn die Person stillsteht (Schultern wandern kaum, Größe ändert sich kaum), zur Kamera schaut und der Roboter selbst steht; dazu zweimal hintereinander bestätigt. Stopp und Folgen sind ausgenommen.
+- **Warum:**
+  - Beim Steuern per Geste und beim Folgen fiel der USB-Hub aus, und die Motoren liefen ruckelig. Beides hat dieselbe Ursache: harte Sprünge im Fahrbefehl (Person kurz nicht erkannt → sofort 0, wieder da → sofort volle Fahrt; zitternder Winkel → `omega` springt hin und her). Jede Stufe zieht eine Stromspitze aus dem Akku, die Spannung bricht ein, der Hub setzt zurück (siehe Sensor-Check und Diagnoseseite).
+  - Beim Folgen wechselte der Roboter manchmal das Verhalten, ohne dass jemand ein Zeichen gegeben hatte: Wer läuft, schwingt die Arme, und das sah nach Herkommen/Weggehen aus. Fährt der Roboter, wackelt außerdem das ganze Bild.
+- **Ergebnis (lokal, Mock):** `Marlon/interaktion/test_gesten.py` 69 Prüfungen bestanden (neu: Ausrollen, Ausrollen vor Hindernis, weicher Übergang, Totzone, Glättung, Hysterese, Laufen mit schwingenden Armen, Vorbeigehen, von hinten, fahrender Roboter, Rampe im Watchdog); `test_diagnose.py` 9/9; Smoke-Test 19/19.
+- **Probleme und Lösungen:**
+  - Der Gestentest stürzte schon vor der Änderung ab (`'Pose' object has no attribute 'fov_deg'`): Seit dem Kamerawechsel fragt das Verhalten die Posenerkennung nach dem Bildwinkel, die Test-Attrappe kannte ihn noch nicht. Attrappe ergänzt; der echte Code war in Ordnung.
+  - Der Smoke-Test (Bens `scripts/smoke_test.py`) prüfte das Tempolimit, indem er auf `vx = 5,0` im Status wartete. Mit der Rampe dauert das gut 6 s. Angepasst: In der Simulation wartet er bis zu 10 s und fährt dabei im Kreis (geradeaus kämen 15 m zusammen und der Roboter stünde außerhalb des gedachten Raums); am echten Roboter prüft er nur 1 s lang, dass das Limit nie überschritten wird, statt Vollgas durch den Raum.
+  - „Heimfahrt startet“ im Smoke-Test schlägt gelegentlich fehl, wenn derselbe Mock-Server mehrmals hintereinander getestet wird: Der simulierte Roboter fährt durch die gedachten Wände, die Ortung landet dann nahe am Startpunkt, und die Heimfahrt ist fertig, bevor der nächste Status sie zeigt. Zum Vergleich ohne Rampe: 3 von 5 Läufen fehlgeschlagen, mit Rampe 1 von 4. Das lag also schon vorher vor; mit frisch gestartetem Server läuft der Test durch.
+- **Offen:** am Pi am Boden testen, ob Folgen ruhiger läuft und die USB-Resets beim Folgen ausbleiben (`dmesg -w` mitlaufen lassen, `/diagnose` beobachten). Falls das Anfahren zu träge wirkt: `RAMPE_ANFAHREN_XY` erhöhen.
+
 ---
 
 ## 3. Ergebnisse und Messwerte
@@ -186,6 +201,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 | Hinderniserkennung | Wand, Stuhl, Tisch und Mensch in der Simulation korrekt | `test_hindernisse.py` |
 | Autonomes Fahren | startet und fährt am echten Roboter; Bodentest steht noch aus | 28.10. |
 | Gestenerkennung und Verhalten | 4 Gesten, Negativfälle (Zittern, Hallo-Winken, Flackern, zwei Personen), Hailo-Dekodierung und Fahrlogik: 45 Prüfungen bestanden | `Marlon/interaktion/test_gesten.py` |
+| Sanftes Fahren und entprellte Gesten | Rampe, Ausrollen, Glättung, Laufen/Vorbeigehen ohne Fehlauslösung: 69 Prüfungen bestanden (29.10.) | `Marlon/interaktion/test_gesten.py` |
 
 ---
 
@@ -199,6 +215,8 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 | Roboter auf dem Tisch | Lidar sieht keine Kanten | Autonomes Fahren nur am Boden |
 | USB-Ausfälle bei Hitze | Pi über 80 °C (Kompilieren), Drosselung auf 1,5 GHz | Während Builds nicht fahren; `check_hardware.py` zeigt Temperatur und Drosselung |
 | Winken löste „Weggehen“ aus | Schulterbreite bricht beim seitlichen Drehen ein, Maße in Schulterbreiten werden riesig | Median der Schulterbreite über das Fenster (28.10.) |
+| USB-Resets und Ruckeln beim Folgen | harte Sprünge im Fahrbefehl → Stromspitzen → Spannungseinbruch | Anfahrrampe im Watchdog, geglättetes Folgen mit Ausrollen (29.10.). **Offen:** Bodentest am Pi |
+| Verhalten wechselt beim Folgen ohne Zeichen | schwingende Arme beim Laufen sehen wie Herkommen/Weggehen aus | Herkommen/Weggehen nur bei stillstehender, zugewandter Person und stehendem Roboter (29.10.) |
 | Ausfälle nur per SSH auffindbar | Kernel-Log, vcgencmd und Serverlog getrennt | Diagnoseseite `/diagnose` mit Problemen, Zeitleiste und Log (29.10.) |
 | Push aus dem Laptop hängt | Git Credential Manager wartet auf Login-Fenster | Nutzer pusht selbst, der Pi zieht nur (`git pull`) |
 | MUKKE: mpv meldet „Failed to recognize file format“ | mpvs ytdl-Skript findet yt-dlp in der venv nicht und gibt den YouTube-Link roh weiter | Server löst den Link selbst mit der yt-dlp-Bibliothek auf, mpv bekommt nur noch die direkte Tonspur; YouTube-Fehler erscheinen im Fenster |
@@ -212,6 +230,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - Interaktion: Hailo-Pose am Pi prüfen, Fahrtest Folgen/Herkommen am Boden; danach Stufen 4–5 (Sprache, Geist).
 - Später: lokales LLM auf dem Hailo, Gesichter wiedererkennen, Orbbec-Tiefe für niedrige Hindernisse.
 - Diagnoseseite am Pi prüfen (Kernel-Log-Berechtigung, echte Akku- und Überlastwerte).
+- Sanftes Fahren am Boden prüfen: Folgen ohne USB-Resets, Rampe nicht zu träge.
 
 ---
 

@@ -44,6 +44,14 @@ passiert — abgestürzte App, WLAN weg, Browser-Tab zu — der Roboter bleibt
 nach kurzer Zeit von selbst stehen. Das darf keine Funktion sein, an die
 die App denken muss.
 
+Seit dem 29.10. sitzt dort auch eine **Anfahrrampe**: Fahrbefehle werden mit
+begrenzter Beschleunigung angefahren und gebremst (`RAMPE_*` in
+`config.py`), statt auf die Motoren zu springen. Sprünge zwischen Fahren und
+Halten erzeugten Stromspitzen, die am X3 den USB-Hub zurücksetzten. Weil
+die Rampe im Watchdog liegt, gilt sie für Handsteuerung, Erkunder,
+Heimfahrt und Interaktion gleichermaßen. `stop()` umgeht sie und hält
+sofort an.
+
 **4. Die Notfall-Logik entscheidet nicht, sie meldet.**
 Erkennt das System einen möglichen Notfall, löst es einen Alarm an einen
 Menschen aus. Es bewertet keinen Gesundheitszustand.
