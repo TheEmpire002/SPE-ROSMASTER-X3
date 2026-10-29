@@ -1,0 +1,19 @@
+#!/bin/zsh
+# Startet die CSI-Pipeline immer mit der bereits eingerichteten Python-3.13-IDF-Umgebung.
+set -e
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PY="$HOME/.espressif/python_env/idf6.1_py3.13_env/bin/python3"
+
+if [[ ! -x "$PY" ]]; then
+    echo "Fehler: Die bekannte Python-3.13-Umgebung fehlt: $PY" >&2
+    echo "Bitte zuerst die ESP-IDF-Python-Umgebung reparieren/einrichten." >&2
+    exit 1
+fi
+
+if ! "$PY" -c 'import sys, serial; assert sys.version_info[:2] == (3, 13)' >/dev/null 2>&1; then
+    echo "Fehler: Python 3.13 oder pyserial fehlt in $PY" >&2
+    echo "Bitte Python-Umgebung prüfen; pyserial kann dort per -m pip installiert werden." >&2
+    exit 1
+fi
+
+exec "$PY" "$SCRIPT_DIR/csi_test.py" "$@"
