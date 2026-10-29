@@ -296,6 +296,18 @@ class RosmasterDriver(DriveBase):
         except Exception:
             return None
 
+    def read_battery(self) -> float | None:
+        bot = self._bot
+        if bot is None or not config.TELEMETRY_ENABLED or not self._lebt():
+            return None
+        try:
+            volt = float(bot.get_battery_voltage())
+        except Exception:
+            return None
+        # Vor dem ersten Datenpaket des Boards liefert die Bibliothek 0 --
+        # das ist kein leerer Akku, sondern noch kein Messwert.
+        return volt if volt > 1.0 else None
+
     @property
     def connected(self) -> bool:
         return self._bot is not None

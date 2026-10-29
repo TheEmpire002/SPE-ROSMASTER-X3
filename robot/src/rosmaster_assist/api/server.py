@@ -27,6 +27,7 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 
 from .. import config, settings
+from ..diagnose import Diagnose, LogPuffer
 from ..drive.base import DriveBase
 from ..audio.mukke import Mukke, MukkeFehler
 from ..interaktion.verhalten import Interaktion
@@ -168,6 +169,18 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     interaktion = Interaktion(watchdog, lidar, pose)
     mukke = Mukke()
 
+    # Die Diagnoseseite zeigt auch die Server-Meldungen. Ein alter Puffer
+    # (create_app ein zweites Mal, etwa in Tests) wird ersetzt, sonst
+    # käme jede Zeile doppelt an.
+    paket_log = logging.getLogger("rosmaster_assist")
+    for h in [h for h in paket_log.handlers if isinstance(h, LogPuffer)]:
+        paket_log.removeHandler(h)
+    log_puffer = LogPuffer(config.DIAGNOSE_LOG_ZEILEN)
+    paket_log.addHandler(log_puffer)
+    diagnose = Diagnose(
+        driver, watchdog, lidar, kameras, pose, log_puffer, mock=use_mock_camera
+    )
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         driver.connect()
@@ -187,6 +200,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             # keine Korrektur -- und den Knopf drückt erfahrungsgemäß
             # niemand, bevor etwas schiefgeht.
             asyncio.create_task(_referenz_nachholen(localizer, odometry))
+        diagnose.start()
 
         status_task = asyncio.create_task(
             _status_loop(
@@ -219,6 +233,9 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                 kamera.stop()
             if lidar is not None:
                 lidar.stop()
+            # Vor dem Trennen beenden, sonst meldete sie das Abschalten
+            # noch als "Antrieb verloren".
+            diagnose.stop()
             driver.disconnect()
 
     app = FastAPI(title="ROSMASTER X3 Hilfsroboter", lifespan=lifespan)
@@ -501,6 +518,32 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         """
         return {"personen": pose.personen(), "skelett": SKELETT}
 
+    # --- Diagnose ---
+
+    @app.get("/diagnose/status")
+    async def diagnose_status():
+        """Gesamtzustand, Probleme mit Lösungsvorschlag, Messwerte, Zeitleiste."""
+        return diagnose.status()
+
+    @app.get("/diagnose/protokoll")
+    async def diagnose_protokoll(nach: int = 0):
+        """Server-Log ab Zeile ``nach`` (exklusiv), damit nur Neues kommt."""
+        zeilen, letzte_id = log_puffer.zeilen(nach)
+        return {"zeilen": zeilen, "letzte_id": letzte_id}
+
+    @app.post("/diagnose/quittieren")
+    async def diagnose_quittieren(request: Request):
+        """Body: {"id": "..."} für ein Problem oder {"alle": true}."""
+        try:
+            daten = await request.json()
+        except ValueError:
+            daten = None
+        if not isinstance(daten, dict) or not (daten.get("alle") or daten.get("id")):
+            return JSONResponse({"fehler": '{"id": ...} oder {"alle": true} erwartet'},
+                                status_code=400)
+        n = diagnose.quittieren(None if daten.get("alle") else str(daten["id"]))
+        return {"quittiert": n}
+
     # --- Musik ("MUKKE") ---
     #
     # HTTP wie die Einstellungen: Ändern per POST, damit fremde Webseiten
@@ -563,6 +606,12 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         @app.get("/einstellungen")
         async def einstellungen_seite() -> HTMLResponse:
             return _seite("einstellungen.html")
+
+        # /logs als Zweitname -- danach sucht man, wenn etwas schiefgeht.
+        @app.get("/diagnose")
+        @app.get("/logs")
+        async def diagnose_seite() -> HTMLResponse:
+            return _seite("diagnose.html")
     else:
         log.warning("webapp/ nicht gefunden unter %s -- nur /ws verfügbar", WEBAPP_DIR)
 

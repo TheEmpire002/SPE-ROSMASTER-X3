@@ -124,6 +124,18 @@ class MockDriver(DriveBase):
             self._last.omega * self.SCHLUPF,
         )
 
+    def read_battery(self) -> float | None:
+        """Gedachter 3S-Akku: knapp voll, sackt beim Fahren etwas ab.
+
+        So zeigt die Diagnoseseite auch in der Simulation eine lebendige
+        Kurve und man sieht, wie Spannungseinbrüche dort aussehen.
+        """
+        if not self._connected:
+            return None
+        last = abs(self._last.vx) + abs(self._last.vy) + 0.3 * abs(self._last.omega)
+        wackeln = 0.02 * math.sin(time.monotonic() * 0.7)
+        return round(12.2 - 0.6 * min(last, 1.0) + wackeln, 2)
+
     @property
     def connected(self) -> bool:
         return self._connected

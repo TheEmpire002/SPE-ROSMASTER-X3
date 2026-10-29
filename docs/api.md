@@ -520,6 +520,54 @@ erlaubt fremden Seiten nur `GET`.
 | `GET /interaktion/status` | dasselbe wie `state.interaktion`, dazu `pose`: `verfuegbar`, `simuliert`, `aktiv`, `fehler`, `fps`, `bilder`, `letzte_erkennung_vor_s`, `kamera` (auf welchem Kamerabild die Punkte liegen, Name wie in `/cameras`) |
 | `GET /interaktion/pose` | `personen`: erkannte Menschen, größter zuerst, je `box` [x1, y1, x2, y2] und `kp` (17 × [x, y, Sicherheit], COCO-Reihenfolge), relativ zur Bildgröße (0..1), dazu `score`, `winkel`; `skelett`: Punktpaare zum Verbinden. Leer, solange der Modus aus ist. |
 
+### Diagnose
+
+Sammelt alles, was am X3 schiefgehen kann (Akku, Spannungseinbrüche,
+USB-Überlast und -Abmeldungen, Unterspannung, Temperatur, Geräteausfälle,
+Fehler im Log), und macht daraus Probleme mit Erklärung und Handlungs-
+schritten. Die Seite dazu ist `/diagnose`.
+
+| Endpunkt | Liefert |
+|---|---|
+| `GET /diagnose/status` | Gesamtzustand, Probleme, Messwerte, Geräte, Zeitleiste, Akkuverlauf (siehe unten) |
+| `GET /diagnose/protokoll?nach=N` | Server-Log-Zeilen mit Nummer > `N`: `{"zeilen": [{"id", "zeit", "stufe", "quelle", "text"}], "letzte_id"}`. `letzte_id` ist immer die letzte Nummer des Servers; ist sie kleiner als `N`, wurde er neu gestartet. |
+| `POST /diagnose/quittieren` | Body `{"id": "akku_schwach"}` oder `{"alle": true}`: als gesehen markieren. Ohne beides `400`. |
+
+`GET /diagnose/status` (gekürzt):
+
+```json
+{
+  "zeit": 1793260800.0,
+  "simulation": false,
+  "gesamt": {"stufe": "warnung", "text": "Läuft, aber etwas stimmt nicht."},
+  "probleme": [
+    {"id": "akku_schwach", "schwere": "warnung", "titel": "Akku schwach (11.0 V)",
+     "was": "…", "tun": ["Bald laden.", "…"], "seit": 1793260700.0,
+     "zuletzt": 1793260800.0, "anzahl": 1, "besteht": true, "zustand": true,
+     "quittiert": false, "vor_s": 0.0}
+  ],
+  "messwerte": {"akku_v": 11.0, "akku_prozent": 23, "temp_c": 61.2, "…": "…"},
+  "geraete": [{"name": "Lidar", "ok": true, "text": "7.6 Hz", "neu": 0}],
+  "ereignisse": [{"id": 3, "zeit": 1793260790.0, "art": "spannung",
+                  "schwere": "warnung", "text": "Spannungseinbruch: 12.1 V → 11.3 V (beim Fahren)"}],
+  "akku_verlauf": [[1793260700.0, 11.4]],
+  "schwellen": {"akku_warn_v": 11.1, "akku_kritisch_v": 10.5, "temp_warn_c": 75.0, "cpu_max_mhz": 2000},
+  "quellen": {"kernel_log": "ok", "usb_zaehler": true, "vcgencmd": true, "akku": true}
+}
+```
+
+- `gesamt.stufe`: `kritisch`, `warnung` oder `ok`; zählt nur nicht
+  quittierte Probleme.
+- `schwere`: `kritisch`, `warnung` oder `hinweis`.
+- `zustand: true`: eine Bedingung (Akku, Lidar weg …), `besteht` sagt, ob
+  sie gerade gilt. `zustand: false`: ein einmaliger Vorfall (USB-Überlast),
+  sichtbar für `PROBLEM_FENSTER_S` Sekunden.
+- Quittiert gilt bis zum nächsten *neuen* Auftreten.
+- `quellen.kernel_log`: `ok`, `keine Berechtigung` (Benutzer in die Gruppe
+  `systemd-journal`), `nicht vorhanden` (Windows, Simulation) oder
+  `Fehler beim Lesen`.
+- Die Warnschwellen sind über `/settings` (Block `diagnose`) einstellbar.
+
 ### Musik („MUKKE“)
 
 Spielt den Ton eines YouTube-Links auf dem USB-Lautsprecher des Roboters
@@ -545,6 +593,7 @@ finden). Voraussetzungen auf dem Pi: `mpv` und `yt-dlp`, siehe
 |---|---|
 | `GET /` | die mitgelieferte Web-App |
 | `GET /einstellungen` | die Einstellungsseite der Web-App |
+| `GET /diagnose`, `GET /logs` | die Diagnoseseite der Web-App |
 | `GET /static/...` | deren Dateien (`webapp/`) |
 | `GET /docs` | automatisch erzeugte HTTP-Übersicht (FastAPI) |
 

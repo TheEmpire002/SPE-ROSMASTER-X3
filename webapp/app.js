@@ -1106,3 +1106,26 @@ try {
   logLine(`Kameraanzeige gestört: ${err.message}`, "error");
 }
 ladeKameras();
+
+// --- Diagnose-Punkt -------------------------------------------------------
+
+// Ein farbiger Punkt am Diagnoseknopf, solange es offene Probleme gibt --
+// so merkt man USB-Ausfälle oder schwachen Akku auch ohne die Seite zu
+// öffnen. Selten abfragen: die Steuerung hat Vorrang.
+async function diagnosePunkt() {
+  const punkt = document.getElementById("diag-punkt");
+  if (!punkt) return;
+  try {
+    const antwort = await fetch("/diagnose/status", { cache: "no-store" });
+    if (!antwort.ok) throw new Error(`HTTP ${antwort.status}`);
+    const st = await antwort.json();
+    const stufe = st.gesamt.stufe;
+    punkt.hidden = stufe === "ok";
+    punkt.classList.toggle("kritisch", stufe === "kritisch");
+    el("btn-diagnose").title = `Diagnose & Logs: ${st.gesamt.text}`;
+  } catch {
+    punkt.hidden = true; // keine Verbindung zeigt schon die Statusanzeige
+  }
+}
+diagnosePunkt();
+setInterval(diagnosePunkt, 10000);
