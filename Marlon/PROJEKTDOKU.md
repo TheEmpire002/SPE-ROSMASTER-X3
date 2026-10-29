@@ -344,6 +344,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
   - Fällt das Board beim Start aus, startet der Server trotzdem (Treiber verbindet sich später neu); der serielle Port wird dabei wieder geschlossen.
   - `main.py` erklärt, wie der Server endete (SIGKILL, Segfault, SIGHUP …).
 - **Absturzerfassung** (`absturz.py`, `/diagnose` → „Abstürze & Hänger“): jeder Serverlauf mit Boot-ID, Log als Datei, Segfault-Dump, Puls der Ereignisschleife mit Stack bei Hängern, Speicherverlauf, USB-Überlast pro Minute und pro Port. Beim nächsten Start sagt die Seite, ob der Pi neu gestartet ist, der Server hart beendet wurde oder abgestürzt ist. Die Befunde dieser Fehlersuche stehen fest auf der Seite.
+- **Am Pi geprüft (Branch `fehlersuche-abstuerze`):** Server startet auch ohne Board, `/diagnose` zeigt „Abstürze & Hänger“ und die Befunde. Live gemessen: **247 USB-Überlasten pro Minute im Stand**, alle sechs Root-Ports zählen weiter, Kameras, Lidar und Board melden sich laufend ab. Die Meldung `Rosmaster object has no attribute ser` im Log ist harmlos (Yahboom-Bibliothek räumt nach einem gescheiterten Öffnen nicht sauber auf).
 - **Offen:** Die vier Eingrenzungsschritte am Roboter; Journal dauerhaft machen (Befehl in `docs/hardware.md`); Server in `tmux` starten, damit ein geschlossenes SSH-Fenster ihn nicht beendet.
 
 ---
