@@ -14,6 +14,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import time
 
 
 def headline(text: str) -> None:
@@ -57,6 +58,53 @@ def check_takt() -> None:
         # get_throttled: 0x0 = nie gedrosselt. Bit 0/16 Unterspannung,
         # Bit 3/19 Temperaturgrenze (aktuell/seit dem Start).
         print(f"{name} {wert}")
+
+
+def _overcurrent_summe() -> int | None:
+    """Summe der Over-Current-Zähler an den Root-Ports des Pi (ohne root lesbar).
+
+    Beim Pi 5 hängen alle vier Buchsen an einem gemeinsamen Stromschalter,
+    deshalb zählen bei einer Überlast alle Ports gleichzeitig hoch.
+    """
+    werte = []
+    for pfad in glob.glob("/sys/bus/usb/devices/*-0:1.0/usb*-port*/over_current_count"):
+        try:
+            with open(pfad) as f:
+                werte.append(int(f.read()))
+        except (OSError, ValueError):
+            pass
+    return sum(werte) if werte else None
+
+
+def check_usb_strom() -> None:
+    """Zeigt, ob die USB-Versorgung gerade zusammenbricht und ob der Pi kompiliert.
+
+    Am 28.10. lief zweimal ein DKMS-Build (nvidia) im Hintergrund: 100 % CPU,
+    über 80 °C, danach riss die USB-Versorgung in einer Dauerschleife ab.
+    Beides soll man hier vor einem Test sofort sehen.
+    """
+    vorher = _overcurrent_summe()
+    if vorher is None:
+        return  # kein Linux bzw. kein Pi -- nichts zu prüfen
+    headline("USB-Versorgung")
+    time.sleep(3)
+    nachher = _overcurrent_summe() or 0
+    neu = nachher - vorher
+    hinweis = (
+        f"  [WARNUNG] {neu} neue in 3 s -> Versorgung bricht gerade zusammen, siehe docs/hardware.md"
+        if neu > 0 else "  [ok] keine neuen in 3 s"
+    )
+    print(f"  Over-Current seit dem Start: {nachher}{hinweis}")
+    try:
+        out = subprocess.run(["ps", "-eo", "args"], capture_output=True, text=True, timeout=5)
+    except (subprocess.SubprocessError, OSError):
+        return
+    bauen = [z for z in out.stdout.splitlines()
+             if any(w in z for w in ("dkms", "dpkg ", "apt-get", "apt ", "cc1", "make -j"))]
+    if bauen:
+        print("  [WARNUNG] Der Pi installiert/kompiliert gerade -- nicht fahren, nicht testen:")
+        for zeile in bauen[:5]:
+            print(f"    {zeile[:100]}")
 
 
 def check_serial() -> None:
@@ -147,6 +195,7 @@ def check_cameras() -> None:
 
 def main() -> int:
     check_system()
+    check_usb_strom()
     check_serial()
     check_python_packages()
     check_board()

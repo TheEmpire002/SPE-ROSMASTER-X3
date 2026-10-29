@@ -44,6 +44,14 @@ passiert — abgestürzte App, WLAN weg, Browser-Tab zu — der Roboter bleibt
 nach kurzer Zeit von selbst stehen. Das darf keine Funktion sein, an die
 die App denken muss.
 
+Seit dem 29.10. sitzt dort auch eine **Anfahrrampe**: Fahrbefehle werden mit
+begrenzter Beschleunigung angefahren und gebremst (`RAMPE_*` in
+`config.py`), statt auf die Motoren zu springen. Sprünge zwischen Fahren und
+Halten erzeugten Stromspitzen, die am X3 den USB-Hub zurücksetzten. Weil
+die Rampe im Watchdog liegt, gilt sie für Handsteuerung, Erkunder,
+Heimfahrt und Interaktion gleichermaßen. `stop()` umgeht sie und hält
+sofort an.
+
 **4. Die Notfall-Logik entscheidet nicht, sie meldet.**
 Erkennt das System einen möglichen Notfall, löst es einen Alarm an einen
 Menschen aus. Es bewertet keinen Gesundheitszustand.
@@ -60,7 +68,7 @@ Menschen aus. Es bewertet keinen Gesundheitszustand.
 | `safety/`      | Watchdog, Not-Aus, Geschwindigkeitsbegrenzung               |
 | `sensors/`     | Lidar, Kamera, Personenerkennung, Körperpose (Hailo)        |
 | `navigation/`  | Odometrie, Lidar-Ortung, Heimfahrt, Erkunder, Hindernis-Benennung |
-| `interaktion/` | Gesten und Verhalten (Folgen, Herkommen, Weggehen); geplant: Sprache, Stimme, Geist — siehe [`interaktion.md`](interaktion.md) |
+| `interaktion/` | Gesten, Verhalten (Folgen, Herkommen, Weggehen), Stimme (Sprachausgabe) und Sprachbefehle mit dem Weckwort „Robi“; geplant: Geist — siehe [`interaktion.md`](interaktion.md) |
 | `diagnose.py`  | Sammelt Ausfälle (Akku, USB, Unterspannung, Temperatur, Geräte, Log) und macht daraus verständliche Probleme für die Seite `/diagnose` |
 | `box/`         | Motor/Servo der Transportbox *(noch leer)*                  |
 | `api/`         | WebSocket-Server, liefert auch die Web-App aus              |
@@ -99,3 +107,10 @@ Handzeichen, `interaktion/verhalten.py` fährt danach. Die Verdrahtung in
 `api/server.py` folgt genau dem Erkunder: bauen in `create_app`, Abbruch
 bei Not-Stopp, Handsteuerung, Heimfahrt, Verbindungsverlust und
 Antriebsausfall, Meldungen über `_status_loop`.
+
+Dazu kommt `interaktion/stimme.py`: Sprachausgabe auf dem USB-Lautsprecher
+in einem eigenen Thread. Der Server baut sie in `create_app` und gibt sie
+dem Verhalten mit, das dann seine Moduswechsel ansagt. Fahren kann die
+Stimme nicht, sie bekommt keinen Watchdog. Sie blockiert weder den
+Event-Loop noch die Fahrschleife: `sagen()` stellt den Satz nur in eine
+Warteschlange.

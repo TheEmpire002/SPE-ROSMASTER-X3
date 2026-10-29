@@ -94,7 +94,7 @@ def _flip(rolle: str) -> Einstellung:
 
 #: Reihenfolge und Überschriften der Blöcke auf der Seite.
 GRUPPEN = [
-    ("fahren", "Fahren & Motoren", "Obergrenzen für jeden Fahrbefehl, egal woher er kommt."),
+    ("fahren", "Fahren & Motoren", "Obergrenzen und sanftes Anfahren für jeden Fahrbefehl, egal woher er kommt."),
     ("sicherheit", "Sicherheit", "Totmannschaltung und Hindernisstopp bei Handsteuerung."),
     ("kamera", "Kameras", "Gilt für alle Kameras gemeinsam."),
     ("personen", "Personenerkennung", "Sucht während des autonomen Fahrens im Bild der Personenkamera."),
@@ -117,6 +117,20 @@ EINSTELLUNGEN: list[Einstellung] = [
                 hilfe="Mecanum-Seitwärtsfahrt."),
     Einstellung("MAX_SPEED_OMEGA", "fahren", "Höchste Drehrate", "rad/s", 0.1, 5.0, 0.1,
                 hilfe="1 rad/s ≈ 57°/s."),
+    # Sanftes Fahren: der Watchdog liest RAMPE_* bei jedem Takt neu, also
+    # wirkt das sofort -- auch mitten in einer Fahrt.
+    Einstellung("RAMPE_AKTIV", "fahren", "Sanft fahren (Anfahrrampe)",
+                hilfe="Fahrbefehle werden mit begrenzter Beschleunigung angefahren statt "
+                      "sprunghaft. Schont den Akku und beugt USB-Aussetzern vor. Aus = jeder "
+                      "Befehl wirkt sofort. Not-Stopp und Totmann halten immer sofort an."),
+    Einstellung("RAMPE_ANFAHREN_XY", "fahren", "Sanft fahren: Anfahren", "m/s²", 0.1, 5.0, 0.1,
+                hilfe="Kleiner = weicher, aber träger. 0,8 bringt ihn in knapp 0,4 s auf 0,3 m/s."),
+    Einstellung("RAMPE_BREMSEN_XY", "fahren", "Sanft fahren: Bremsen", "m/s²", 0.5, 10.0, 0.1,
+                hilfe="Bremsen sollte schneller sein als Anfahren, sonst rollt er vor "
+                      "Hindernissen weiter."),
+    Einstellung("RAMPE_ANFAHREN_OMEGA", "fahren", "Sanft fahren: Andrehen", "rad/s²", 0.5, 20.0, 0.5,
+                hilfe="Wie schnell eine Drehung anläuft. Drehen zieht am meisten Strom."),
+    Einstellung("RAMPE_BREMSEN_OMEGA", "fahren", "Sanft fahren: Drehung stoppen", "rad/s²", 1.0, 30.0, 0.5),
 
     # --- Sicherheit
     Einstellung("COMMAND_TIMEOUT_S", "sicherheit", "Totmannschaltung", "s", 0.2, 2.0, 0.05,

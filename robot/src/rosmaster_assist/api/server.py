@@ -30,6 +30,10 @@ from .. import config, settings
 from ..diagnose import Diagnose, LogPuffer
 from ..drive.base import DriveBase
 from ..audio.mukke import Mukke, MukkeFehler
+from ..interaktion import sprache as sp
+from ..interaktion import verhalten as vh
+from ..interaktion.sprache import Spracherkennung
+from ..interaktion.stimme import Stimme
 from ..interaktion.verhalten import Interaktion
 from ..protocol import (
     DriveCommand,
@@ -166,8 +170,14 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     personen = Personenerkennung(personen_kamera)
     erkunder = Erkunder(watchdog, lidar, erkennung, personen)
     pose = Posenerkennung(personen_kamera, mock=use_mock_camera)
-    interaktion = Interaktion(watchdog, lidar, pose)
+    stimme = Stimme(mock=use_mock_camera)
+    # Der Antrieb wird gefragt, damit die Interaktion ohne Board gar nicht
+    # erst losfährt (und nach dem Neuverbinden nicht von selbst).
+    interaktion = Interaktion(watchdog, lidar, pose, stimme, antrieb=lambda: driver.connected)
     mukke = Mukke()
+    # Bekommt die Stimme, um wegzuhören, solange der Roboter selbst spricht
+    # (sonst versteht er sich selbst).
+    sprache = Spracherkennung(mock=use_mock_camera, stimme=stimme)
 
     # Die Diagnoseseite zeigt auch die Server-Meldungen. Ein alter Puffer
     # (create_app ein zweites Mal, etwa in Tests) wird ersetzt, sonst
@@ -193,6 +203,11 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             kamera.start()
         personen.start()
         pose.start()  # rechnet erst, wenn die Interaktion läuft
+        stimme.start()
+        # Hörbarer Selbsttest: Wer den Roboter einschaltet, weiß sofort,
+        # ob der Lautsprecher geht.
+        stimme.sagen("Ich bin bereit.")
+        sprache.start()  # lädt das Modell im eigenen Thread, blockiert nicht
         if lidar is not None:
             lidar.start()
             # Dem Lidar eine Umdrehung Zeit geben, dann den Startpunkt
@@ -205,9 +220,10 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         status_task = asyncio.create_task(
             _status_loop(
                 hub, watchdog, driver, odometry, homing, localizer, guard,
-                erkunder, erkennung, lidar, personen, interaktion,
+                erkunder, erkennung, lidar, personen, interaktion, stimme, sprache,
             )
         )
+        sprach_task = asyncio.create_task(_sprach_loop())
         odo_task = asyncio.create_task(_odometry_loop(watchdog, odometry))
         match_task = asyncio.create_task(_match_loop(localizer))
         hw_task = asyncio.create_task(
@@ -222,6 +238,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             odo_task.cancel()
             match_task.cancel()
             hw_task.cancel()
+            sprach_task.cancel()
             homing.abbrechen("Server wird beendet")
             erkunder.abbrechen("Server wird beendet")
             interaktion.abbrechen("Server wird beendet")
@@ -229,6 +246,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             personen.stop()
             pose.stop()
             mukke.stoppen()
+            sprache.stop()
+            stimme.stop()
             for kamera in kameras.values():
                 kamera.stop()
             if lidar is not None:
@@ -262,7 +281,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                 msg = await ws.receive_json()
                 reply = await _handle(
                     msg, watchdog, driver, hub, odometry, homing, localizer, guard,
-                    erkunder, interaktion,
+                    erkunder, interaktion, stimme, sprache,
                 )
                 if reply is not None:
                     await ws.send_json(reply)
@@ -595,6 +614,104 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         wert = (await _mukke_json(request)).get("lautstaerke")
         return await _mukke(lambda: mukke.lautstaerke_setzen(wert))
 
+    # --- Stimme ---
+
+    @app.get("/stimme/status")
+    async def stimme_status():
+        """Welche Sprachausgabe läuft (Piper, espeak-ng, nur Text), letzter Satz, Fehler."""
+        return stimme.status()
+
+    # --- Sprachbefehle ---
+
+    @app.get("/sprache/status")
+    async def sprache_status():
+        """Mikrofon, Modell, Weckwort, zuletzt Gehörtes und erkannte Befehle."""
+        return sprache.status()
+
+    async def _sprach_loop() -> None:
+        """Erkannte Sprachbefehle abholen und ausführen.
+
+        Die Erkennung läuft im eigenen Thread; gefahren wird aber nur hier
+        im Event-Loop -- über dieselben Wege wie mit den Knöpfen der App.
+        """
+        while True:
+            await asyncio.sleep(0.1)
+            for eintrag in sprache.befehle_abholen():
+                try:
+                    await _sprachbefehl(eintrag["befehl"], eintrag["text"])
+                except Exception:  # ein kaputter Befehl darf das Ohr nicht abschalten
+                    log.exception("Sprachbefehl %s fehlgeschlagen", eintrag["befehl"])
+
+    async def _befehlen(typ: str) -> bool:
+        """App-Befehl ausführen. False, wenn er mit einer Warnung abgelehnt wurde."""
+        antwort = await _handle(
+            {"type": typ}, watchdog, driver, hub, odometry, homing, localizer, guard,
+            erkunder, interaktion, stimme, sprache,
+        )
+        if antwort is None:
+            return True
+        await hub.broadcast(antwort)
+        if antwort.get("level") == "warning":
+            # Wer spricht, schaut nicht unbedingt auf die App.
+            stimme.sagen("Das geht gerade nicht.")
+            return False
+        return True
+
+    async def _interaktion_mit(modus: str, text: str, satz: str) -> None:
+        """Herkommen/Weggehen per Sprache; schaltet die Interaktion nötigenfalls ein."""
+        if interaktion.aktiv:
+            interaktion.wechseln_zu(modus, text, sagen=satz)
+            return
+        if not interaktion.verfuegbar:
+            await _befehlen("interaction_start")  # liefert die passende Warnung
+            return
+        homing.abbrechen("Interaktion gestartet")
+        erkunder.abbrechen("Interaktion gestartet")
+        if interaktion.start(modus):
+            await hub.broadcast(alert_message("info", f"Interaktion an -- {text}"))
+
+    async def _sprachbefehl(befehl: str, text: str) -> None:
+        await hub.broadcast(alert_message("info", f"Sprachbefehl: {text}"))
+        if befehl == sp.STOPP:
+            if interaktion.aktiv:
+                # Anhalten, aber weiter zuhören und zuschauen: "Robi, folgen"
+                # soll danach gleich wieder gehen.
+                homing.abbrechen("Not-Stopp")
+                erkunder.abbrechen("Not-Stopp")
+                interaktion.wechseln_zu(vh.BEREIT, "angehalten (per Sprache)")
+                watchdog.stop()
+                stimme.sagen("Okay, ich halte an.", vorrang=True)
+            else:
+                await _befehlen("stop")
+        elif befehl == sp.FOLGEN:
+            await _befehlen("follow")
+        elif befehl == sp.HERKOMMEN:
+            await _interaktion_mit(vh.HERKOMMEN, "kommt her (per Sprache)", "Ich komme.")
+        elif befehl == sp.WEGGEHEN:
+            await _interaktion_mit(vh.WEGGEHEN, "nimmt Abstand (per Sprache)", "Ich fahre zurück.")
+        elif befehl == sp.START:
+            if interaktion.aktiv:
+                stimme.sagen("Ja? Ich bin da.")
+            else:
+                await _befehlen("interaction_start")
+        elif befehl == sp.AUS:
+            homing.abbrechen("vom Nutzer beendet")
+            erkunder.abbrechen("vom Nutzer beendet")
+            await _befehlen("interaction_stop")
+            stimme.sagen("Gute Nacht.")
+        elif befehl == sp.NACH_HAUSE:
+            if await _befehlen("home") and homing.aktiv:
+                stimme.sagen("Ich fahre nach Hause.")
+        elif befehl == sp.ERKUNDEN:
+            if await _befehlen("explore") and erkunder.aktiv:
+                stimme.sagen("Ich schaue mich mal um.")
+        elif befehl == sp.MUSIK_AUS:
+            try:
+                await asyncio.to_thread(mukke.stoppen)
+            except MukkeFehler as exc:
+                await hub.broadcast(alert_message("warning", str(exc)))
+            stimme.sagen("Musik ist aus.")
+
     # Die Web-App direkt mitausliefern, damit eine Adresse genügt.
     if WEBAPP_DIR.is_dir():
         app.mount("/static", _OhneVeraltetenCache(directory=WEBAPP_DIR), name="static")
@@ -629,6 +746,8 @@ async def _handle(
     guard: CollisionGuard,
     erkunder: Erkunder | None = None,
     interaktion: Interaktion | None = None,
+    stimme: Stimme | None = None,
+    sprache: Spracherkennung | None = None,
 ) -> dict[str, Any] | None:
     """Eine eingehende Nachricht verarbeiten.
 
@@ -688,6 +807,9 @@ async def _handle(
         if interaktion is not None:
             interaktion.abbrechen("Not-Stopp")
         watchdog.stop()
+        if stimme is not None:
+            # Vorrang: alles, was noch in der Schlange stand, ist überholt.
+            stimme.sagen("Halt.", vorrang=True)
         return None
 
     if kind == "explore":
@@ -784,6 +906,38 @@ async def _handle(
         await hub.broadcast(alert_message("info", text))
         return None
 
+    if kind == "say":
+        if stimme is None:
+            return alert_message("warning", "Keine Sprachausgabe")
+        text = msg.get("text")
+        if not isinstance(text, str) or not text.strip():
+            return error_message("say braucht ein Feld text")
+        stimme.sagen(text, vorrang=bool(msg.get("vorrang", False)))
+        if not stimme.verfuegbar:
+            return alert_message(
+                "warning", "Kein Lautsprecher oder keine Sprachsynthese (siehe /stimme/status)"
+            )
+        return None
+
+    if kind == "say_stop":
+        if stimme is not None:
+            stimme.verstummen()
+        return None
+
+    if kind == "speech":
+        # Wie ins Mikrofon gesprochen: zum Ausprobieren ohne Mikrofon und
+        # in --mock. Ausgeführt wird im _sprach_loop, wie beim echten Hören.
+        if sprache is None:
+            return alert_message("warning", "Keine Spracherkennung")
+        text = msg.get("text")
+        if not isinstance(text, str) or not text.strip():
+            return error_message("speech braucht ein Feld text")
+        if sprache.hoeren(text) is None:
+            return alert_message(
+                "info", f"Kein Befehl erkannt in {text!r} (Weckwort: {config.SPRACHE_WECKWORT})"
+            )
+        return None
+
     if kind == "ping":
         return {"type": "pong"}
 
@@ -877,7 +1031,10 @@ async def _hardware_loop(
                 if erkunder is not None:
                     erkunder.abbrechen("Verbindung zum Antrieb verloren")
                 if interaktion is not None:
-                    interaktion.abbrechen("Verbindung zum Antrieb verloren")
+                    # Nicht beenden, nur anhalten: Die Gestensteuerung bleibt
+                    # an und ist nach dem Neuverbinden sofort wieder bereit.
+                    # Früher war sie nach jedem USB-Reset aus.
+                    interaktion.antrieb_verloren()
                 watchdog.stop()
                 await hub.broadcast(
                     alert_message(
@@ -924,6 +1081,8 @@ async def _status_loop(
     lidar: LidarService | None = None,
     personen: Personenerkennung | None = None,
     interaktion: Interaktion | None = None,
+    stimme: Stimme | None = None,
+    sprache: Spracherkennung | None = None,
 ) -> None:
     """Schickt regelmäßig den Zustand an alle Clients."""
     zuletzt_aktiv = False
@@ -979,6 +1138,8 @@ async def _status_loop(
                         collision=guard.zustand(),
                         autonomie=autonomie,
                         interaktion=interaktion.zustand() if interaktion is not None else None,
+                        stimme=stimme.zustand() if stimme is not None else None,
+                        sprache=sprache.zustand() if sprache is not None else None,
                     )
                 )
     except asyncio.CancelledError:

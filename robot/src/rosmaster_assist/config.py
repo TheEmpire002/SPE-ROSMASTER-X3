@@ -37,6 +37,11 @@ RECONNECT_CHECK_S = 1.0
 RECONNECT_MIN_S = 1.0
 RECONNECT_MAX_S = 30.0
 
+# Fällt der Lidar innerhalb dieser Zeit nach dem Neu-Verbinden wieder aus,
+# beginnt die Wartezeit nicht von vorn, sondern wächst weiter. Sonst startet
+# sein Motor alle paar Sekunden neu und hält die USB-Ausfälle am Laufen.
+LIDAR_STABIL_S = 60.0
+
 # Kommt so lange kein neues Kamerabild, wird die Kamera neu geöffnet.
 # Die Wartezeit dazwischen wächst bei jedem Fehlschlag: ist das Anlaufen der
 # Kamera selbst der Auslöser des Spannungseinbruchs, würde ein schnelles
@@ -67,6 +72,26 @@ COMMAND_TIMEOUT_S = 0.5
 # Takt, in dem der Watchdog prüft. Muss deutlich kleiner als das Timeout sein.
 WATCHDOG_INTERVAL_S = 0.1
 
+# Anfahr- und Bremsrampe. Ohne sie springt jeder Fahrbefehl ungebremst auf die
+# Motoren: bei Folgen und Gesten wechselt der Befehl im 20-Hz-Takt zwischen
+# Fahren und Halten, die Motoren ziehen jedes Mal einen Stromstoß, die
+# Spannung bricht ein und der USB-Hub setzt sich zurück (siehe Sensor-Check
+# 28.10.: Resets nur unter Motorlast). Die Rampe begrenzt, wie schnell sich
+# vx/vy/omega pro Sekunde ändern dürfen.
+#
+# Bremsen darf schneller sein als Anfahren -- Anhalten vor einem Hindernis ist
+# wichtiger als sanftes Anfahren. watchdog.stop() (Not-Stopp, Timeout,
+# Abbruch) umgeht die Rampe immer und steht sofort.
+RAMPE_AKTIV = True
+RAMPE_ANFAHREN_XY = 0.8       # m/s²   0 -> 0,3 m/s in knapp 0,4 s
+RAMPE_BREMSEN_XY = 2.0        # m/s²   0,3 m/s -> 0 in 0,15 s (rund 2 cm Weg)
+RAMPE_ANFAHREN_OMEGA = 3.0    # rad/s²
+RAMPE_BREMSEN_OMEGA = 6.0     # rad/s²
+# Längster Zeitschritt, den die Rampe auf einmal macht. Nach einer Pause
+# (Roboter stand, erster Befehl seit Langem) würde sonst die ganze Pause als
+# "Zeit zum Beschleunigen" zählen und der Befehl doch wieder springen.
+RAMPE_DT_MAX_S = 0.1
+
 # --- Server --------------------------------------------------------------------
 
 # 0.0.0.0 = aus dem ganzen WLAN erreichbar (nötig, damit das Handy rankommt).
@@ -75,6 +100,12 @@ PORT = 8000
 
 # Takt, in dem der Roboter von sich aus Statusmeldungen an die App schickt.
 STATUS_INTERVAL_S = 0.5
+
+# So lange wartet der Server beim Beenden (Strg+C) auf offene Verbindungen.
+# Der Kamera-Stream endet von selbst nie: Ohne Grenze wartete uvicorn am
+# 28.10. ewig darauf, und das Aufräumen (Motoren aus, Lidar stoppen) lief
+# gar nicht erst an.
+SHUTDOWN_TIMEOUT_S = 3
 
 # --- Lidar ---------------------------------------------------------------------
 
@@ -351,6 +382,15 @@ POSE_MIN_SCORE = 0.5
 # verdeckte Hände sollen keine Geste auslösen.
 POSE_KP_MIN_CONF = 0.4
 
+# Hailo beim Serverstart öffnen und offen lassen, statt ihn erst beim
+# Start der Gestensteuerung zu öffnen und danach wieder freizugeben. Das
+# Öffnen ist eine Lastspitze, die am X3 den USB-Hub zurücksetzen kann --
+# dann war das Board weg ("Keine Verbindung zum Antrieb"), genau in dem
+# Moment, in dem die Interaktion losgehen sollte. Beim Serverstart steht
+# der Roboter, und es passiert nur einmal. False gibt den Chip frei, wenn
+# die Interaktion aus ist (z. B. für hailo-apps).
+POSE_WARM_HALTEN = True
+
 # --- Gesten ------------------------------------------------------------------------
 
 # So weit reicht der Blick zurück, um Bewegungen (Winken, Wischen) zu sehen.
@@ -381,6 +421,28 @@ GESTE_WISCH_STRECKE = 1.0
 # soll nicht jede Sekunde neu auslösen.
 GESTE_PAUSE_S = 2.0
 
+# Entprellen der bewegten Gesten (Herkommen, Weggehen). Beim Gehen schwingen
+# die Arme mit, und von hinten oder im Laufen wechselt die Größe der Person
+# -- das sah der Erkennung zu oft nach Winken oder Wischen aus (beim Folgen
+# wechselte er ohne klares Zeichen). Deshalb zählen sie nur, wenn ...
+#
+# ... die Person ungefähr am Platz steht: Größe (Schulterbreite) zwischen
+# Anfang und Ende des Fensters höchstens um diesen Faktor verschieden ...
+GESTE_RUHE_GROESSE = 1.2
+# ... und die Schultermitte höchstens so viele Schulterbreiten gewandert;
+GESTE_RUHE_WEG = 0.8
+# ... der Roboter selbst steht (eigene Fahrt und Drehung verwackeln das
+# Bild und verschieben die Person): Grenzen für den gerade gefahrenen
+# Befehl in m/s bzw. rad/s;
+GESTE_ROBOTER_RUHIG_V = 0.05
+GESTE_ROBOTER_RUHIG_W = 0.3
+# ... und die Geste in so vielen Auswertungen hintereinander erkannt wurde.
+GESTE_BESTAETIGEN = 2
+# Außerdem muss das Gesicht (Nase) in GESTE_ANTEIL der Bilder zu sehen
+# sein: Wer dem Roboter den Rücken zuwendet, gibt ihm kein Zeichen.
+# STOPP und FOLGEN (gehaltene Haltungen) sind davon ausgenommen -- STOPP
+# muss immer wirken.
+
 # --- Interaktion (Folgen, Herkommen, Weggehen) -------------------------------------
 
 # Wunschabstand beim Folgen. 1 m: nah genug, um die Person nicht zu
@@ -397,8 +459,19 @@ FOLGEN_RUECK_SPEED = 0.12
 # Regler: Geschwindigkeit pro Meter Abstandsfehler bzw. Drehrate pro
 # Radiant Winkelfehler.
 FOLGEN_KP_V = 0.6
-FOLGEN_KP_W = 1.5
+# 1,2 statt 1,5: Die Kamera liefert den Winkel mit ~0,1-0,2 s Verzug; zu
+# scharf eingestellt überdreht er und pendelt (29.10.2026).
+FOLGEN_KP_W = 1.2
 FOLGEN_MAX_OMEGA = 0.8
+
+# Glättung des Kamerawinkels (0..1, Anteil des neuen Werts je Bild). Die
+# Körperpunkte zittern von Bild zu Bild um einige Grad; ungeglättet wird
+# daraus ein Zappeln der Drehrate.
+FOLGEN_WINKEL_GLAETTUNG = 0.4
+
+# Unter diesem Winkelfehler (Grad) dreht er nicht nach -- der Übergang ist
+# stetig (Regler rechnet ab dem Rand der Totzone), damit es nicht ruckt.
+FOLGEN_WINKEL_TOTZONE = 3.0
 
 # Innerhalb dieses Abstandsfehlers bleibt er stehen -- sonst ruckelt er
 # bei jedem Atemzug der Person vor und zurück.
@@ -407,6 +480,22 @@ FOLGEN_TOTZONE_M = 0.10
 # Erst geradeaus fahren, wenn die Person ungefähr vorn ist; sonst zuerst
 # drehen (sonst fährt er schräg an ihr vorbei).
 FOLGEN_MAX_WINKEL_FAHREN = 25.0
+# Bis zu diesem Winkel volle Fahrt, darüber bis FOLGEN_MAX_WINKEL_FAHREN
+# gleitend weniger -- früher sprang vx an der Grenze hart zwischen 0 und
+# voll, das ruckte und belastete die Stromversorgung.
+FOLGEN_VOLL_WINKEL = 10.0
+
+# Verschwindet die Person nur kurz (ein, zwei Bilder ohne Erkennung),
+# rollt er so lange mit dem letzten Befehl weiter aus, statt hart zu
+# bremsen und gleich wieder anzufahren. Danach hält er an. Ebenso lange
+# gilt der letzte gute Lidar-Abstand, wenn in Richtung der Person kurz
+# kein Punkt liegt.
+FOLGEN_HALTEN_S = 0.5
+
+# War etwas sehr nah (EXPLORE_NAH_M), bleibt er noch so lange stehen,
+# nachdem es frei ist -- sonst flackert er an der Grenze zwischen Halt
+# und Fahrt.
+FOLGEN_NAH_HALTEN_S = 0.5
 
 # So lange darf die Person aus dem Bild sein, bevor er sucht, und so lange
 # sucht er (langsam drehen in die Richtung, in der sie verschwand).
@@ -488,3 +577,84 @@ MUKKE_AUDIO_DEVICE = "alsa/plughw:CARD=UACDemoV10,DEV=0"
 
 # Lautstärke beim Start in Prozent (0..100). In der App verstellbar.
 MUKKE_LAUTSTAERKE = 60
+
+# --- Stimme (USB-Lautsprecher) ------------------------------------------------
+# Sprachausgabe über den USB-Lautsprecher „UACDemoV1.0“. Siehe
+# docs/interaktion.md und docs/hardware.md (Einrichtung).
+
+# Abschaltbar, z.B. in der Vorlesung, ohne den Code anzufassen.
+STIMME_ENABLED = True
+
+# Piper spricht offline und klingt deutlich natürlicher als espeak-ng.
+# Fehlt Piper oder das Modell, weicht die Stimme auf espeak-ng aus und
+# zuletzt auf reine Log-Ausgabe -- der Server startet in jedem Fall.
+STIMME_PIPER = "piper"
+STIMME_MODELL = "~/piper/de_DE-thorsten-medium.onnx"
+STIMME_ESPEAK = "espeak-ng"
+
+# ALSA-Gerät über den Kartennamen statt der Nummer: die Nummer ändert sich,
+# wenn sich USB-Geräte nach einem Spannungseinbruch neu anmelden.
+# „plughw“ wandelt Abtastrate und Kanäle passend um.
+STIMME_GERAET = "plughw:CARD=UACDemoV10,DEV=0"
+
+# Lautstärke in Prozent; wird beim Start per amixer gesetzt (falls möglich).
+STIMME_LAUTSTAERKE = 80
+
+# Sprechtempo für Piper: >1 langsamer. Etwas langsamer ist im Raum mit
+# Motorgeräusch besser zu verstehen.
+STIMME_TEMPO = 1.1
+
+# Mehr Sätze warten nicht -- sonst redet der Roboter noch über etwas, das
+# längst vorbei ist. Ältere fallen dann weg.
+STIMME_MAX_WARTESCHLANGE = 3
+
+# Derselbe Satz wird innerhalb dieser Zeit nicht wiederholt (z.B. wenn die
+# Person mehrmals hintereinander verloren und wiedergefunden wird).
+STIMME_WIEDERHOLUNG_S = 4.0
+
+# Längere Texte werden abgeschnitten; die App soll keine Romane vorlesen.
+STIMME_MAX_ZEICHEN = 300
+
+# Kein Satz darf den Sprech-Thread länger blockieren.
+STIMME_TIMEOUT_S = 20.0
+
+# So lange nach dem Satzende gilt die Stimme noch als "spricht": Nachhall
+# im Raum und Puffer im Lautsprecher -- die Spracherkennung soll das nicht
+# als Eingabe verstehen.
+STIMME_NACHLAUF_S = 0.4
+
+# --- Sprachbefehle (USB-Mikrofon, Vosk) -------------------------------------------
+# Siehe interaktion/sprache.py und docs/interaktion.md. Ohne vosk/sounddevice,
+# Modell oder Mikrofon ist die Erkennung aus; der Server läuft trotzdem.
+SPRACHE_ENABLED = True
+
+# Kleines deutsches Vosk-Modell (~45 MB, läuft auf der CPU des Pi).
+# Herunterladen: siehe docs/hardware.md.
+SPRACHE_MODELL = "~/vosk-model-small-de-0.15"
+
+# None = selbst suchen (nach SPRACHE_MIKROFON_NAMEN), sonst ein Teil des
+# Gerätenamens (str) oder die Gerätenummer von sounddevice (int).
+SPRACHE_MIKROFON = None
+
+# Reihenfolge = Vorliebe: das USB-Mikrofon (C-Media "USB PnP Sound Device")
+# vor den Mikrofonen in C270 und Orbbec, die weiter weg vom Sprecher zeigen.
+SPRACHE_MIKROFON_NAMEN = ("USB PnP", "C-Media", "Microphone", "C270")
+
+# Der Name des Roboters. Vosk kennt "robi" nicht als Wort; es hört je nach
+# Aussprache eine der Varianten. Nur die, die im Modell stehen, werden benutzt.
+SPRACHE_WECKWORT = "robi"
+SPRACHE_WECKWORT_VARIANTEN = ("robbie", "robby", "roby", "robi", "ruby", "rubi", "robin")
+
+# So lange (s) nach einem einzelnen "Robi" reicht der Befehl allein.
+SPRACHE_WECK_FENSTER_S = 5.0
+
+# "Stopp"/"halt" gilt auch ohne Namen: Anhalten darf nie daran scheitern,
+# dass der Name überhört wurde. Ein falscher Stopp schadet nicht.
+SPRACHE_STOPP_OHNE_WECKWORT = True
+
+# Vosk-Modelle sind auf 16 kHz trainiert. Kann das Mikrofon das nicht,
+# wird seine eigene Rate genommen und Vosk rechnet um.
+SPRACHE_ABTASTRATE = 16000
+
+# Wartezeit (s) vor dem nächsten Versuch, wenn das Mikrofon weg ist.
+SPRACHE_NEUVERSUCH_S = 3.0

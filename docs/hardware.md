@@ -10,8 +10,8 @@
 | Lidar           | Slamtec RPLIDAR A1    | USB-Seriell      | eingebunden (Ortung + Hindernisse) |
 | Tiefenkamera    | Orbbec (Farb- + Tiefenkanal) | USB (über Hub) | Farbbild eingebunden (Kamera `orientierung`), Tiefe noch nicht |
 | Webcam          | Logitech C270 (vorn, leicht nach oben) | USB, eigener Bus (direkt am Pi) | eingebunden (Kamera `personen`: Personenerkennung, Gesten) |
-| Mikrofon        | USB-Mikrofon (FongLun, C-Media `0d8c:0016`); weitere in C270 und Orbbec | USB-Audio, eigener Bus | für Sprache geplant |
-| Lautsprecher    | USB-Lautsprecher „UACDemoV1.0“ | USB-Audio, direkt am Pi | eingebunden (MUKKE: Musik von YouTube), Sprachausgabe geplant |
+| Mikrofon        | USB-Mikrofon (FongLun, C-Media `0d8c:0016`); weitere in C270 und Orbbec | USB-Audio, eigener Bus | eingebunden (Sprachbefehle „Robi …“, `SPRACHE_MIKROFON`) |
+| Lautsprecher    | USB-Lautsprecher „UACDemoV1.0“ | USB-Audio, direkt am Pi | eingebunden (MUKKE: Musik von YouTube; Sprachausgabe, `STIMME_GERAET`) |
 | ESP32           | *(Modell eintragen)*  | WLAN             | geplant     |
 | Pulssensor      | *(Modell eintragen)*  | ESP32            | geplant     |
 | Box-Motor       | *(Modell eintragen)*  | Servo am X3      | geplant     |
@@ -278,6 +278,81 @@ Ton, zeigt das MUKKE-Fenster den Grund an: die Fehlermeldung von YouTube
 (yt-dlp), wenn der Link nicht aufgelöst werden kann, sonst die letzte Meldung
 von mpv. Gegenprobe am Pi: `robot/.venv/bin/yt-dlp -f bestaudio -g "<Link>"`.
 
+## Lautsprecher und Sprachausgabe
+
+Der USB-Lautsprecher meldet sich als ALSA-Karte **„UACDemoV10“**. Der Server
+spricht ihn über den Namen an (`STIMME_GERAET =
+"plughw:CARD=UACDemoV10,DEV=0"`), nicht über die Kartennummer. Die Nummer
+ändert sich, wenn sich Geräte nach einem USB-Reset neu anmelden, der Name
+bleibt gleich. `plughw` rechnet Abtastrate und Format passend um.
+
+Einrichtung am Pi (einmalig):
+
+```bash
+sudo apt install alsa-utils espeak-ng      # aplay/amixer, Ersatzstimme
+aplay -L | grep UACDemo                    # Lautsprecher da?
+
+# Piper: Programm von github.com/rhasspy/piper (Release für aarch64)
+# entpacken und `piper` in den PATH legen (z. B. ~/.local/bin).
+# Stimme: beide Dateien nach ~/piper/
+#   de_DE-thorsten-medium.onnx  und  de_DE-thorsten-medium.onnx.json
+# (huggingface.co/rhasspy/piper-voices, de/de_DE/thorsten/medium)
+
+# Test ohne Server:
+echo "Hallo, ich bin der Rosmaster." \
+  | piper --model ~/piper/de_DE-thorsten-medium.onnx --output-raw \
+  | aplay -D plughw:CARD=UACDemoV10,DEV=0 -r 22050 -f S16_LE -c 1 -t raw
+```
+
+- Piper ist ein Systemprogramm, keine pip-Abhängigkeit. Fehlt es (oder das
+  Modell), weicht der Server auf espeak-ng aus und meldet das im Log. Fehlt
+  auch das, spricht er nicht, läuft aber normal weiter.
+- Beim Start stellt der Server die Lautstärke per `amixer` auf
+  `STIMME_LAUTSTAERKE` (80 %) und sagt „Ich bin bereit.“. Hört man das,
+  funktioniert die ganze Kette.
+- Diagnose: `curl localhost:8000/stimme/status`. `ausgabe` zeigt, welche
+  Stimme benutzt wird, und `fehler` die letzte Meldung von aplay (z. B.
+  „No such device“, wenn der Lautsprecher fehlt).
+- Nach einem USB-Aussetzer geht höchstens der Satz verloren, der gerade
+  lief. Der nächste findet den Lautsprecher unter demselben Namen wieder.
+
+## Mikrofon und Sprachbefehle
+
+Gehört wird über das USB-Mikrofon (C-Media `0d8c:0016`). Der Server sucht
+es über den Namen (`SPRACHE_MIKROFON_NAMEN`: „USB PnP“, „C-Media“,
+„Microphone“, „C270“ – in dieser Reihenfolge), nicht über die Nummer.
+Erkannt wird mit Vosk und dem kleinen deutschen Modell (ca. 45 MB, läuft
+auf der CPU).
+
+Einrichtung am Pi: `python main.py` erledigt das beim Start mit echter
+Hardware selbst (Pakete `vosk`/`sounddevice` und Modell nach `~`, braucht
+einmal Internet). Von Hand bleibt nur PortAudio, weil es `sudo` braucht;
+`main.py` weist darauf hin, wenn es fehlt. Zum Nachvollziehen von Hand:
+
+```bash
+sudo apt install libportaudio2             # für sounddevice
+cd ~/gitpipeline/SPE-ROSMASTER-X3
+robot/.venv/bin/pip install -e "robot[sprache]"   # vosk + sounddevice
+
+cd ~ && wget https://alphacephei.com/vosk/models/vosk-model-small-de-0.15.zip
+unzip vosk-model-small-de-0.15.zip         # -> ~/vosk-model-small-de-0.15 (SPRACHE_MODELL)
+
+arecord -l                                 # Mikrofon da?
+arecord -D plughw:CARD=Device,DEV=0 -d 3 -f S16_LE -r 16000 test.wav && aplay test.wav
+```
+
+- Der Kartenname beim `arecord`-Test kann anders heißen; `arecord -l`
+  zeigt ihn. Der Server braucht ihn nicht.
+- Das kleine Modell hat keine `words.txt`; welche Weckwort-Varianten es
+  kennt, fragt der Server Vosk direkt (zurzeit „robbie“, „ruby“, „robin“).
+- Fehlt etwas, läuft der Server ohne Sprachbefehle weiter.
+  `curl localhost:8000/sprache/status` zeigt `zustand` und `fehler`.
+- Nach einem USB-Aussetzer versucht die Erkennung alle
+  `SPRACHE_NEUVERSUCH_S` (3 s), das Mikrofon wieder zu öffnen.
+- Lautsprecher und Mikrofon sitzen nah beieinander. Solange der Roboter
+  spricht, wird das Mikrofon verworfen. Musik (MUKKE) hört er aber mit;
+  „Robi, Musik aus“ geht trotzdem meist durch.
+
 ## AI HAT+
 
 > **Nachtrag 28.10.:** Verbaut ist ein **AI HAT+ 2 mit Hailo-10H** (PCIe,
@@ -316,6 +391,107 @@ Hubs über das Expansion-Board. Ein leerer Akku ist es nicht.
   Roboter nicht fahren lassen.
 - Die eigentliche Lösung liegt in der Hardware: ein Hub ohne Rückspeisung
   oder eine getrennte VBUS-Leitung.
-- Die C270 hängt an einem eigenen Bus und ist nicht betroffen.
+- Die C270 hängt an einem eigenen *Datenbus*, aber **nicht an einer eigenen
+  Stromversorgung**. Beim Pi 5 hängen alle vier Buchsen an einem
+  gemeinsamen Stromschalter (1,6 A gesamt). Löst er aus, melden alle Ports
+  gleichzeitig „over-current“, und bei einer längeren Überlast fällt auch die
+  C270 ab (so am 28.10. passiert).
+
+**Dauerschleife.** Ist die Versorgung einmal zusammengebrochen, kann sich das
+selbst halten: Beim Neu-Anmelden ziehen Orbbec und Lidar-Motor Anlaufstrom,
+der Schalter löst wieder aus, und so weiter. In `dmesg` steht dann
+`cannot reset (err = -71)` an den Hub-Ports. Meist endet die Schleife, wenn
+die Ursache weg ist (Last/Hitze), sonst den Roboter einmal ausschalten.
+
+**Kurzcheck vor jedem Test** (`python scripts/check_hardware.py`):
+
+| Prüfung | Gut | Schlecht → tun |
+|---|---|---|
+| USB-Versorgung | „keine neuen in 3 s“ | Neue Over-Current-Meldungen → nicht fahren, Ursache suchen (nächste Zeilen) |
+| Installiert/kompiliert der Pi? | keine Warnung | `dpkg`/`apt`/`dkms`/`cc1` läuft → abwarten bzw. abbrechen, nicht fahren |
+| Temperatur | unter ~70 °C | über 80 °C → Lüfter prüfen, Last wegnehmen |
+| Takt | 2000 MHz | höher → `arm_freq=2000` fehlt in `config.txt` |
+
+Am 28.10. lief zweimal ein sinnloser nvidia-Treiberbau (DKMS) im Hintergrund,
+ausgelöst durch einen hängenden `dpkg --configure -a`. Die nvidia-Pakete sind
+seitdem entfernt. Wer am Pi etwas mit `apt` installiert, tut das bitte nicht
+während eines Tests und prüft hinterher `dpkg --audit` (leer = gut).
+
+**Stresstest am 28.10. (Akku voll mit 12,0 V, Orbbec abgezogen).** In Ruhe
+(Lidar, Board, Lautsprecher) kam minutenlang keine Meldung. Beim Fahren
+kamen in 4,5 min 160 Over-Current-Meldungen und 83 USB-Abmeldungen, und
+**jede begann 0–5 s nach dem Start einer Drehung** (omega ±0,6, alle vier
+Motoren laufen gleichzeitig an). Geradeaus mit 0,1 m/s blieb ruhig.
+Temperatur 55–62 °C, keine Drosselung. Der Auslöser ist also der
+Anlaufstrom der Motoren. Er zieht die 5-V-Versorgung herunter, an der Pi
+bzw. Hub hängen. Punkte 1 und 2 unten reichen deshalb nicht, **Punkt 4 ist
+nötig**.
+
+Die Software übersteht die Aussetzer (Board und Lidar verbinden sich neu,
+das Board immer über `/dev/myserial`, nie über den Lidar-Port), aber
+zuverlässig fährt der Roboter so nicht.
+
+Der Lidar kann die Schleife auch im Stand antreiben: Sein Motor läuft nach
+jedem Neu-Verbinden an. Deshalb wartet der Server länger und länger, wenn
+der Lidar kurz nach dem Neu-Verbinden wieder ausfällt (`LIDAR_STABIL_S`).
+Meldet sich der Lidar gar nicht mehr an (`dmesg`: immer wieder „new
+full-speed USB device“ an 1-1.4), Lidar-Kabel neu stecken.
+
+**Gegenproben am 29.10. auf dem Podest.** Der Roboter stand dabei auf
+einem Podest, die Räder drehten frei in der Luft, also ohne Last. Gleicher
+Test wie am 28.10.: 5 min, davon 210 s Fahren mit denselben Drehungen.
+
+| Versorgung | Geräte | Over-Current / Abmeldungen |
+|---|---|---|
+| Labornetzteil | Orbbec, ohne C270 | 0 / 0 |
+| Akku, 100 % (12,3 V) | Orbbec und C270 (Bilder laufend) | 0 / 0 |
+
+Lidar und Kamera verbanden sich in beiden Läufen kein einziges Mal neu,
+51–53 °C, keine Drosselung. Am 28.10. stand der Roboter nicht auf dem
+Podest, die Räder hatten also Last: +160 Meldungen in 4,5 min. **Ohne Last
+reicht also auch der Akku.** Die Resets kommen vom Anlaufstrom der Motoren
+*unter Last*, der deutlich höher ist als bei frei drehenden Rädern. Ob ein
+Netzteil das abfängt, zeigt erst ein Test am Boden. Bis dahin bleibt
+Punkt 4 unten der sichere Weg.
+
+**Over-Current beim Beenden des Servers (behoben 29.10.).** Zweimal fielen
+genau beim Beenden alle USB-Geräte für etwa 2 s ab. Ursache: Der Pose-Thread
+(`sensors/pose.py`) wurde von `stop()` geweckt und öffnete dann noch den
+Hailo, statt sich zu beenden. Das Hochfahren des Hailo („Creating vdevice“
+im HailoRT-Log, in derselben Sekunde wie die Überlast) zieht kurz so viel
+Strom, dass der gemeinsame 1,6-A-Schalter auslöst. Jetzt prüft der Thread
+nach dem Aufwecken zuerst, ob er aufhören soll. Am Pi zweimal geprüft:
+keine Meldung mehr beim Beenden. Daraus folgt auch: Das Öffnen des Hailo
+ist ein Lastsprung. Beim Einschalten der Interaktion während der Fahrt auf
+neue Meldungen achten.
+
+### Was am Roboter tun (Hardware)
+
+Nach Wirkung sortiert, das Einfachste zuerst:
+
+1. **Akku laden.** Beim Sensor-Check lag er bei 10,1–10,3 V, also fast leer
+   (3S-Akku). Hub und Board werden vermutlich über das Expansion-Board aus
+   dem Akku versorgt. Sackt diese Schiene ab, holen sich die Geräte den Strom
+   über das USB-Kabel vom Pi, und der 1,6-A-Schalter löst aus. Das ist eine
+   Vermutung, sie lässt sich aber leicht prüfen: mit vollem Akku testen.
+   *Am 28.10. geprüft: Mit vollem Akku bleiben die Resets beim Drehen.*
+2. **Orbbec abziehen, solange sie niemand nutzt.** Sie ist der größte
+   Verbraucher am Hub (Tiefensensor mit Projektor, eigener interner Hub),
+   und unser Code verwendet sie nicht. *Seit 28.10. abgezogen, reicht
+   allein nicht.*
+3. **Nur nötige Geräte direkt am Pi.** Alles an den vier Pi-Buchsen teilt
+   sich 1,6 A. Momentan sind es C270, Lautsprecher, USB-Mikrofon und der Hub.
+   Die C270 hat selbst ein Mikrofon. Treten die Resets weiter auf, testweise
+   das zusätzliche Mikrofon abziehen und den Lautsprecher nicht voll aufdrehen.
+4. **Hub sauber versorgen (die eigentliche Lösung):** einen aktiven Hub mit
+   eigenem 5-V-Netzteil verwenden, am Roboter über einen DC/DC-Wandler aus
+   dem Akku (5 V, mindestens 3 A). Der Hub darf nicht rückspeisen. Ist der Hub
+   schon über das Board versorgt, kann man alternativ im Kabel vom Pi zum Hub
+   die 5-V-Ader (VBUS, rot) trennen, z. B. mit einem USB-Adapter „nur Daten“.
+   Dann fließt zwischen Pi und Hub kein Strom mehr.
+5. **Board und Lidar** nicht über die Orbbec bzw. eine Hub-Kaskade, sondern
+   direkt an den (versorgten) Hub.
+6. **Kühlung prüfen:** Der Lüfter des Pi muss laufen. 83 °C beim Kompilieren
+   deuten auf zu wenig Kühlung hin.
 
 Messungen und Herleitung: `Marlon/sensorcheck_2026-10-28/ZUSAMMENFASSUNG.md`.

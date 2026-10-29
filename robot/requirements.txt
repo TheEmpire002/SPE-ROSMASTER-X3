@@ -23,3 +23,14 @@ rplidar-roboticia
 # regelmäßig mit `pip install -U yt-dlp` erneuern -- YouTube ändert laufend
 # etwas. Braucht dazu mpv aus apt (sudo apt install mpv).
 yt-dlp
+
+# Sprachausgabe: keine pip-Pakete. Piper (Programm + Stimme), aplay
+# (alsa-utils) und notfalls espeak-ng sind Systemprogramme -- Einrichtung
+# in docs/hardware.md. Fehlen sie, spricht der Roboter nicht, läuft aber.
+
+# Sprachbefehle ("Robi, folgen") über das USB-Mikrofon, offline mit Vosk.
+# Optional: Fehlen die Pakete oder das Modell, ist nur die Erkennung aus.
+# Das deutsche Modell (~45 MB) kommt nicht über pip -- siehe docs/hardware.md.
+# sounddevice braucht libportaudio2 aus apt.
+vosk
+sounddevice

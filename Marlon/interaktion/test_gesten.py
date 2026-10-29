@@ -265,6 +265,7 @@ class Lidar:
 
 class Pose:
     verfuegbar = True
+    fov_deg = config.CAMERA_FOV_DEG  # wie Posenerkennung.fov_deg
 
     def __init__(self):
         self.liste, self.zeit = [], 0.0
@@ -378,6 +379,197 @@ li.latest = lambda: None
 po.liste = [mit_zeit(person(), 0.1)]
 b = ia._schritt(0.1)
 pruefe("Ohne Lidar -> steht", b and b.vx == 0 and b.omega == 0, b)
+
+# --- Sanft fahren (29.10.2026) -------------------------------------------------
+
+# Kurz verloren -> rollt aus statt hart zu bremsen, nach FOLGEN_HALTEN_S steht er
+ia, wd, li, po = interaktion([(-5, 5, 2.0)], vh.FOLGEN)
+po.liste = [mit_zeit(person(), 0.1)]
+voll = ia._schritt(0.1)
+po.liste = []
+b1 = ia._schritt(0.1 + 0.4 * config.FOLGEN_HALTEN_S)
+b2 = ia._schritt(0.1 + config.FOLGEN_HALTEN_S + 0.05)
+pruefe("Ausrollen: kurz weg -> fährt langsamer weiter", 0 < b1.vx < voll.vx, (voll, b1))
+pruefe("Ausrollen: nach der Haltezeit -> steht", b2.vx == 0 and b2.omega == 0, b2)
+
+# Ausrollen fährt nicht in ein Hindernis, das inzwischen davor steht
+ia, wd, li, po = interaktion([(-5, 5, 2.0)], vh.FOLGEN)
+po.liste = [mit_zeit(person(), 0.1)]
+ia._schritt(0.1)
+po.liste, li.objekte = [], [(-8, 8, 0.38)]
+b = ia._schritt(0.2)
+pruefe("Ausrollen: Hindernis davor -> steht", b.vx == 0, b)
+
+# Zwischen VOLL_WINKEL und MAX_WINKEL nimmt die Fahrt stetig ab statt hart aufzuhören
+w = (config.FOLGEN_VOLL_WINKEL + config.FOLGEN_MAX_WINKEL_FAHREN) / 2
+ia, wd, li, po = interaktion([(w - 8, w + 8, 2.0)], vh.FOLGEN)
+po.liste = [mit_zeit(person(mx=0.5 - w / config.CAMERA_FOV_DEG), 0.1)]
+b = ia._schritt(0.1)
+pruefe("Folgen: schräg -> fährt gedrosselt und dreht", 0 < b.vx < config.FOLGEN_MAX_SPEED and b.omega > 0, b)
+
+# Kleiner Winkel (Bildrauschen) -> nicht nachdrehen
+ia, wd, li, po = interaktion([(-5, 5, 2.0)], vh.FOLGEN)
+po.liste = [mit_zeit(person(mx=0.5 - 2.0 / config.CAMERA_FOV_DEG), 0.1)]
+b = ia._schritt(0.1)
+pruefe("Folgen: 2° daneben -> dreht nicht", b.omega == 0 and b.vx > 0, b)
+
+# Springt der Winkel ein Bild lang, folgt omega nur teilweise
+ia, wd, li, po = interaktion([(-30, 30, 2.0)], vh.FOLGEN)
+po.liste = [mit_zeit(person(), 0.1)]
+ia._schritt(0.1)
+# (unter INTERAKTION_SPRUNG_GRAD, sonst gälte es als andere Person)
+po.liste = [mit_zeit(person(mx=0.5 - 10 / config.CAMERA_FOV_DEG), 0.2)]
+ia._schritt(0.2)
+pruefe("Folgen: Winkelsprung wird geglättet", 0 < ia._winkel_glatt < 10 * 0.5, ia._winkel_glatt)
+
+# Nah-Hysterese: nach "zu nah" noch kurz stehen, dann weiter
+ia, wd, li, po = interaktion([(-5, 5, 2.0), (80, 90, 0.15)], vh.FOLGEN)
+po.liste = [mit_zeit(person(), 0.1)]
+ia._schritt(0.1)
+li.objekte = [(-5, 5, 2.0)]
+po.liste = [mit_zeit(person(), 0.2)]
+b1 = ia._schritt(0.1 + 0.5 * config.FOLGEN_NAH_HALTEN_S)
+po.liste = [mit_zeit(person(), 0.3)]
+b2 = ia._schritt(0.1 + config.FOLGEN_NAH_HALTEN_S + 0.05)
+pruefe("Nah-Hysterese: gleich danach -> steht noch", b1.vx == 0 and b1.omega == 0, b1)
+pruefe("Nah-Hysterese: danach -> fährt wieder", b2.vx > 0, b2)
+
+# --- Gesten entprellt ----------------------------------------------------------
+
+
+def wink_hand(t):
+    return (-0.7, 0.5 + 0.4 * math.sin(2 * math.pi * 1.5 * t))
+
+
+# Auf den Roboter zugehen (Person wächst im Bild) und dabei mit dem Arm
+# schwingen -> darf kein Herkommen sein
+def zugehen(t):
+    global BREITE
+    alt, BREITE = BREITE, 0.08 + 0.05 * t
+    try:
+        return person(hand_r=wink_hand(t))
+    finally:
+        BREITE = alt
+
+
+t = abspielen(zugehen, 3.0)
+pruefe("Entprellt: Person kommt näher + Armschwung -> nichts", t == [], t)
+
+# Zügig quer durchs Bild laufen und schwingen -> nichts
+t = abspielen(lambda t: person(hand_r=wink_hand(t), mx=0.2 + 0.25 * t), 2.5)
+pruefe("Entprellt: Person läuft quer + Armschwung -> nichts", t == [], t)
+
+
+# Von hinten (keine Nase) -> keine bewegte Geste
+def von_hinten(t):
+    p = person(hand_r=wink_hand(t))
+    p["kp"][0] = [0, 0, 0.1]
+    return p
+
+
+t = abspielen(von_hinten, 3.0)
+pruefe("Entprellt: von hinten winken -> nichts", t == [], t)
+
+
+# Roboter fährt -> kein Herkommen, Stopp geht trotzdem
+def abspielen_fahrend(erzeuger, dauer, hz=10.0):
+    erkennung, treffer = gs.Gestenerkennung(), []
+    for i in range(int(dauer * hz)):
+        z = i / hz
+        g = erkennung.update(erzeuger(z), z, ruhig=False)
+        if g:
+            treffer.append((round(z, 1), g))
+    return treffer
+
+
+t = abspielen_fahrend(winken, 3.0)
+pruefe("Entprellt: Roboter fährt -> kein Herkommen", t == [], t)
+t = abspielen_fahrend(lambda t: person(hand_l=(0.7, -0.6), hand_r=(-0.7, -0.6)), 1.5)
+pruefe("Entprellt: Roboter fährt -> Stopp geht", nur(t) == [gs.STOPP], t)
+
+# Interaktion fragt den Watchdog, ob der Roboter steht
+ia, wd, li, po = interaktion([(-5, 5, 2.0)], vh.BEREIT)
+wd.current_command = vh.DriveCommand(0.2, 0.0, 0.0)
+pruefe("Roboter fährt -> nicht ruhig", not ia._roboter_ruhig())
+wd.current_command = vh.DriveCommand(0.0, 0.0, 0.0)
+pruefe("Roboter steht -> ruhig", ia._roboter_ruhig())
+
+# --- Rampe im Watchdog ---------------------------------------------------------
+
+from rosmaster_assist.safety import watchdog as wdm  # noqa: E402
+
+r = wdm._rampe(0.0, 0.3, 0.8, 2.0, 0.05)
+pruefe("Rampe: anfahren begrenzt", abs(r - 0.04) < 1e-9, r)
+r = wdm._rampe(0.3, 0.0, 0.8, 2.0, 0.05)
+pruefe("Rampe: bremsen schneller als anfahren", abs(r - 0.2) < 1e-9, r)
+r = wdm._rampe(0.1, -0.3, 0.8, 2.0, 0.1)
+pruefe("Rampe: Richtungswechsel erst bis null", r == 0.0, r)
+r = wdm._rampe(0.29, 0.3, 0.8, 2.0, 0.05)
+pruefe("Rampe: kleiner Rest -> genau am Ziel", r == 0.3, r)
+
+
+class Antrieb:
+    def __init__(self):
+        self.gefahren, self.stopps = [], 0
+
+    def drive(self, cmd):
+        self.gefahren.append(cmd)
+
+    def stop(self):
+        self.stopps += 1
+
+
+an = Antrieb()
+w = wdm.SafetyWatchdog(an)
+w._ausgabe_at = -1.0  # wie lange nichts gefahren -> dt auf RAMPE_DT_MAX_S begrenzt
+erst = w.submit(vh.DriveCommand(0.3, 0.0, 0.0))
+pruefe("Watchdog: Sprung auf 0,3 -> erst ein Teil", 0 < erst.vx < 0.3, erst)
+for i in range(1, 20):
+    w._ausgeben(w._ausgabe_at + 0.05)
+pruefe("Watchdog: Rampe kommt am Ziel an", w.current_command.vx == 0.3, w.current_command)
+w.stop()
+pruefe("Watchdog: stop() sofort, ohne Rampe", w.current_command.is_stop() and an.stopps == 1, w.current_command)
+w.submit(vh.DriveCommand(0.3, 0.0, 0.0))
+w._last_command_at -= config.COMMAND_TIMEOUT_S + 0.1
+w._check_timeout()
+pruefe("Watchdog: Totmann greift weiterhin", w.current_command.is_stop() and an.stopps == 2, w.current_command)
+
+# --- Antrieb weg (USB-Reset beim Gestenstart, 29.10.) ---------------------------
+class LaeuftNoch:
+    """Steht für den asyncio-Task, damit `aktiv` ohne Event-Loop wahr ist."""
+
+    def done(self):
+        return False
+
+
+verbunden = [False]
+wd, li, po = Watchdog(), Lidar([(-5, 5, 2.0)]), Pose()
+ia = vh.Interaktion(wd, li, po, antrieb=lambda: verbunden[0])
+ia._task = LaeuftNoch()
+ia._meldungen = []
+ia.folgen()  # wie der App-Knopf
+pruefe("Antrieb weg: Folgen abgelehnt, bleibt bereit", ia._modus == vh.BEREIT, ia._modus)
+pruefe("Antrieb weg: Meldung für die App",
+       any("Antrieb" in m for m in ia.meldungen_abholen()))
+pruefe("Antrieb weg: Sprachbefehl Herkommen abgelehnt",
+       not ia.wechseln_zu(vh.HERKOMMEN, "per Sprache"), ia._modus)
+
+verbunden[0] = True
+pruefe("Antrieb wieder da: Folgen geht", ia.wechseln_zu(vh.FOLGEN, "per Sprache"), ia._modus)
+stopps = wd.stopps
+verbunden[0] = False
+ia.antrieb_verloren()
+pruefe("antrieb_verloren: hält an, Modus bereit", ia._modus == vh.BEREIT and wd.stopps > stopps,
+       (ia._modus, wd.stopps))
+pruefe("antrieb_verloren: Interaktion bleibt an", ia.aktiv)
+
+verbunden[0] = True
+ia._modus, ia._modus_seit, ia._gesehen = vh.FOLGEN, 0.0, 0.0
+po.liste = [mit_zeit(person(), 0.1)]
+verbunden[0] = False
+b = ia._schritt(0.1)
+pruefe("Schritt ohne Antrieb: kein Fahrbefehl, bereit",
+       (b is None or b.is_stop()) and ia._modus == vh.BEREIT, (b, ia._modus))
 
 print("\nalles bestanden" if not fehler else f"\n{fehler} Fehler")
 sys.exit(1 if fehler else 0)

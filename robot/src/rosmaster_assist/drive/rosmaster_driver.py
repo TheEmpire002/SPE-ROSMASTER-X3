@@ -62,14 +62,34 @@ class RosmasterDriver(DriveBase):
         if self._port_vorgabe:
             return self._port_vorgabe
 
+        # Dieselbe Yahboom-udev-Regel nagelt das Board (CH340, 1a86:7523)
+        # unter /dev/myserial fest. Gibt es den Pfad, ist er die sicherste
+        # Wahl -- er hängt an Hersteller- und Produktnummer, nicht an der
+        # Reihenfolge, in der sich die Geräte anmelden.
+        if os.path.exists("/dev/myserial"):
+            return "/dev/myserial"
+
         geraete = sorted(glob.glob("/dev/serial/by-id/*"))
         if not geraete:
             return None  # nichts zu entscheiden, Bibliothek soll suchen
-        if len(geraete) == 1:
-            return geraete[0]
 
+        # Den Lidar immer ausschließen, auch wenn er das einzige Gerät ist:
+        # Am 28.10. meldete er sich nach einem USB-Aussetzer eine Sekunde vor
+        # dem Board wieder an, /dev/rplidar gab es noch nicht, und der
+        # Treiber verband sich mit dem Lidar. In dem Moment verrät ihn nur
+        # sein Name (CP210x von Silicon Labs).
         lidar = os.path.realpath("/dev/rplidar") if os.path.exists("/dev/rplidar") else None
-        kandidaten = [g for g in geraete if os.path.realpath(g) != lidar]
+        kandidaten = [
+            g for g in geraete
+            if os.path.realpath(g) != lidar and (lidar is not None or "CP210" not in g)
+        ]
+
+        if not kandidaten:
+            # Nur der Lidar ist da, das Board meldet sich gerade noch an.
+            # None lässt Rosmaster_Lib /dev/myserial öffnen; das schlägt fehl,
+            # und ueberwachen() versucht es gleich noch einmal.
+            log.info("Nur der Lidar ist angemeldet -- warte auf das Board")
+            return None
 
         if len(kandidaten) == 1:
             log.info("Expansion Board erkannt: %s", kandidaten[0])

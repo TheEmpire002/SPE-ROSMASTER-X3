@@ -187,15 +187,27 @@ class Posenerkennung:
 
     def _loop(self) -> None:
         hailo: _Hailo | None = None
+        if not self._mock and config.POSE_WARM_HALTEN:
+            # Gleich beim Serverstart öffnen, solange der Roboter steht.
+            # Das Öffnen (Gerät + Modell laden) ist eine Lastspitze; kam sie
+            # erst beim Start der Gestensteuerung, setzte sie am X3 öfter den
+            # USB-Hub zurück -- "Keine Verbindung zum Antrieb" (29.10.2026).
+            hailo = self._oeffnen()
         try:
             while not self._stop.is_set():
                 if not self._aktiv.wait(timeout=1.0):
-                    # Nicht gebraucht: Hailo freigeben, damit andere
-                    # Programme (hailo-apps) ihn nutzen können.
-                    if hailo is not None:
+                    # Nicht gebraucht. Warm halten ist der Normalfall (siehe
+                    # oben); sonst freigeben, damit andere Programme
+                    # (hailo-apps) den Chip allein haben.
+                    if hailo is not None and not config.POSE_WARM_HALTEN:
                         hailo.schliessen()
                         hailo = None
                     continue
+                if self._stop.is_set():
+                    # stop() weckt uns über _aktiv auf. Ohne diese Prüfung
+                    # würde der Thread beim Beenden noch den Hailo öffnen --
+                    # am 29.10. fiel genau dabei die USB-Versorgung kurz aus.
+                    break
                 beginn = time.monotonic()
                 try:
                     if self._mock:
@@ -204,6 +216,8 @@ class Posenerkennung:
                         if hailo is None:
                             hailo = _Hailo(self._np)
                             log.info("Posenerkennung: Hailo bereit (%s)", config.POSE_HEF)
+                            if self._stop.is_set():
+                                break  # beim Beenden geöffnet -- gleich wieder zu
                         personen = self._erkennen(hailo)
                     if personen is not None:
                         self._merken(personen, beginn)
@@ -228,6 +242,20 @@ class Posenerkennung:
         finally:
             if hailo is not None:
                 hailo.schliessen()
+
+    def _oeffnen(self) -> "_Hailo | None":
+        """Hailo vorab öffnen. Misslingt es, versucht es die Schleife später."""
+        if self._stop.is_set():
+            return None
+        try:
+            hailo = _Hailo(self._np)
+        except Exception as exc:
+            with self._lock:
+                self._fehler = f"{exc.__class__.__name__}: {exc}"
+            log.warning("Posenerkennung: Hailo lässt sich nicht öffnen (%s) -- später neu", self._fehler)
+            return None
+        log.info("Posenerkennung: Hailo vorab geöffnet (%s)", config.POSE_HEF)
+        return hailo
 
     def _merken(self, personen: list[dict], beginn: float) -> None:
         jetzt = time.monotonic()

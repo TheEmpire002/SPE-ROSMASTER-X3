@@ -159,16 +159,31 @@ async def _test_motion(ws, driver: str | None, max_vx: float) -> None:
         print(f"  [!] Antrieb '{driver}' -- der Roboter fährt jetzt kurz an.")
 
     # Überhöhter Fahrbefehl muss auf das Tempolimit gekappt werden.
-    state = await drive_until(
-        ws,
-        {"type": "drive", "vx": 99.0, "vy": 0.0, "omega": 0.0},
-        lambda m: abs(m["vx"] - max_vx) < 1e-6,
-    )
-    check(
-        f"vx=99.0 wird auf {max_vx} begrenzt",
-        state is not None and abs(state["vx"] - max_vx) < 1e-6,
-        f"bekommen: {state}",
-    )
+    # Seit der Anfahrrampe im Watchdog (RAMPE_* in config) steht das Limit
+    # nicht mehr sofort im Status, sondern erst nach einigen Sekunden
+    # Beschleunigen. In der Simulation wird darauf gewartet; am echten
+    # Roboter wäre das eine Vollgasfahrt durch den Raum -- dort reicht der
+    # Nachweis, dass der Wert das Limit nie überschreitet.
+    # Die Simulation fährt dabei im Kreis (omega am Limit): geradeaus kämen
+    # bis zum Limit gut 15 m zusammen, und der Roboter stünde für die Tests
+    # danach außerhalb des gedachten Raums.
+    if driver == "mock":
+        state = await drive_until(
+            ws,
+            {"type": "drive", "vx": 99.0, "vy": 0.0, "omega": 99.0},
+            lambda m: abs(m["vx"] - max_vx) < 1e-6,
+            seconds=10.0,
+        )
+        ok = state is not None and abs(state["vx"] - max_vx) < 1e-6
+    else:
+        state = await drive_until(
+            ws,
+            {"type": "drive", "vx": 99.0, "vy": 0.0, "omega": 0.0},
+            lambda m: False,
+            seconds=1.0,
+        )
+        ok = state is not None and 0.0 < state["vx"] <= max_vx + 1e-6
+    check(f"vx=99.0 wird auf {max_vx} begrenzt", ok, f"bekommen: {state}")
 
     # Keine weiteren Befehle -> der Watchdog muss von selbst anhalten.
     # Dabei liegen noch Statusmeldungen aus der Fahrphase im Puffer; es wird

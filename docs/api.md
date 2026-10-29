@@ -158,6 +158,9 @@ Reihenfolge:
 | `interaction_stop` | – | Interaktionsmodus aus und anhalten. | `alert` an alle |
 | `follow` | – | „Folge mir“ ohne Geste. Schaltet den Interaktionsmodus bei Bedarf mit ein. | `alert` an alle |
 | `follow_stop` | – | Folgen beenden, anhalten; der Interaktionsmodus bleibt an. | `alert` an alle |
+| `say` | `text` (string, höchstens 300 Zeichen), `vorrang` (bool, optional) | Über den Lautsprecher sprechen (siehe „Stimme im Detail“). `vorrang: true` bricht den laufenden Satz ab und leert die Warteschlange. | keine; ohne `text` `error`, ohne Lautsprecher/Synthese `alert` (warning) |
+| `say_stop` | – | Sofort verstummen, Warteschlange leeren. | keine |
+| `speech` | `text` (string) | Text so behandeln, als wäre er ins Mikrofon gesprochen worden (siehe „Sprachbefehle im Detail“). Zum Ausprobieren ohne Mikrofon und in `--mock`. | `alert` „Sprachbefehl: …“ an alle, wenn ein Befehl erkannt wurde; sonst `alert` (info) „Kein Befehl erkannt …“; ohne `text` `error` |
 | `set_home` | – | Aktuelle Stelle wird neuer Startpunkt (0, 0, 0°), Lidar-Referenz wird neu aufgenommen. | `alert` an alle |
 | `collision` | `enabled` (bool, optional), `distance` (m, optional) | Kollisionsvermeidung ein/aus, Mindestabstand. `distance` wird auf 0,15–1,5 m begrenzt. | `collision` an alle |
 | `beep` | `ms` (int, Standard 100) | Buzzer. | keine |
@@ -187,7 +190,9 @@ Ein unbekannter `type` liefert `{"type": "error", "text": "Unbekannter Nachricht
   "pose": {"x": 1.234, "y": -0.05, "winkel": 12.5, "gemessen": true},
   "collision": {"enabled": false, "distance": 0.35, "verfuegbar": true, "blockiert": false},
   "autonomie": {"aktiv": false, "verfuegbar": true, "zustand": null, "...": "siehe unten"},
-  "interaktion": {"aktiv": false, "verfuegbar": true, "modus": null, "...": "siehe unten"}
+  "interaktion": {"aktiv": false, "verfuegbar": true, "modus": null, "...": "siehe unten"},
+  "stimme": {"verfuegbar": true, "spricht": false, "text": "Ich bin bereit."},
+  "sprache": {"verfuegbar": true, "geweckt": false, "gehoert": "robi folgen", "befehl": "folgen"}
 }
 ```
 
@@ -196,12 +201,14 @@ Ein unbekannter `type` liefert `{"type": "error", "text": "Unbekannter Nachricht
 | `driver` | `"rosmaster"` = echte Motoren, `"mock"` = Simulation |
 | `connected` | Verbindung zum Motorboard steht. `false` nach einem USB-Aussetzer; der Server verbindet selbst neu. |
 | `homing` | Heimfahrt läuft |
-| `vx`, `vy`, `omega` | was der Roboter **gerade ausführt**, nach Begrenzung und Kollisionsvermeidung |
+| `vx`, `vy`, `omega` | was der Roboter **gerade ausführt**, nach Begrenzung und Kollisionsvermeidung. Seit der Anfahrrampe im Watchdog (29.10.) steigt der Wert nach einem Fahrbefehl allmählich an (`RAMPE_*` in `config.py`, unter Einstellungen → „Fahren & Motoren“ abschalt- und verstellbar); ein Stopp gilt sofort. |
 | `pose` | geschätzte Position, siehe Konventionen. `gemessen: false` heißt: nur aus den Befehlen gerechnet, deutlich ungenauer. |
 | `collision.verfuegbar` | ob ein Lidar da ist, der Hindernisse sehen kann |
 | `collision.blockiert` | die Kollisionsvermeidung hält gerade eine Fahrt zurück |
 | `autonomie` | autonomes Fahren und erkannte Hindernisse, siehe „Autonomes Fahren im Detail“ |
 | `interaktion` | Interaktionsmodus (Handzeichen, Folgen), siehe „Interaktion im Detail“. Fehlt bei älteren Servern. |
+| `stimme` | Sprachausgabe: `verfuegbar` (es kommt Ton heraus), `spricht` (gerade ein Satz), `text` (zuletzt gesagter Satz oder `null`). Siehe „Stimme im Detail“. Fehlt bei älteren Servern. |
+| `sprache` | Sprachbefehle: `verfuegbar` (Mikrofon und Modell bereit), `geweckt` („Robi“ wurde gerade allein gesagt, der nächste Satz braucht keinen Namen), `gehoert` (zuletzt verstandener Satz oder `null`), `befehl` (erkannter Befehl, wenige Sekunden lang, sonst `null`). Siehe „Sprachbefehle im Detail“. Fehlt bei älteren Servern. |
 
 **`collision`**: beim Verbinden und nach jeder Änderung, Felder wie
 `state.collision`.
@@ -353,6 +360,50 @@ der Modus an ist. **Nur am Boden benutzen.**
 | `personen` | wie viele Menschen die Kamera gerade sieht |
 | `geste` | zuletzt erkannte Geste (`folgen`, `stopp`, `herkommen`, `weggehen`), wenige Sekunden lang, sonst `null` |
 | `grund` | warum der Modus zuletzt endete |
+
+### Stimme im Detail
+
+Am Roboter hängt ein USB-Lautsprecher. Der Roboter sagt von selbst kurz,
+was er tut: „Ich bin bereit.“ beim Start, „Ich folge dir.“, „Ich komme.“,
+„Da bin ich.“, „Wo bist du?“, „Okay, ich halte an.“, beim `stop` „Halt.“.
+Mit `say` lässt sich beliebiger Text vorlesen.
+
+- Gesprochen wird mit Piper (offline, deutsche Stimme). Fehlt Piper, spricht
+  espeak-ng, fehlt auch das, landet der Text nur im Log (`verfuegbar: false`).
+  In der Simulation (`--mock`) wird nur geloggt, `spricht` verhält sich aber
+  wie echt.
+- Sätze stellen sich in eine kleine Warteschlange (`STIMME_MAX_WARTESCHLANGE`,
+  3). Ist sie voll, fällt der älteste Satz weg. Derselbe Satz innerhalb von
+  `STIMME_WIEDERHOLUNG_S` (4 s) wird verschluckt.
+- `spricht` bleibt nach jedem Satz noch `STIMME_NACHLAUF_S` (0,4 s) wahr.
+  Die Spracherkennung hört in dieser Zeit nicht zu.
+
+### Sprachbefehle im Detail
+
+Der Roboter hört über das USB-Mikrofon zu (Vosk, offline). Befehle gelten
+nur mit dem Weckwort **„Robi“** im selben Satz oder bis zu 5 s
+(`SPRACHE_WECK_FENSTER_S`), nachdem „Robi“ allein gesagt wurde. „Stopp“,
+„Halt“ und „Bleib stehen“ gelten auch ohne Weckwort.
+
+| Befehl | Beispiele | wirkt wie |
+|---|---|---|
+| `folgen` | „Robi, folgen“, „Robi, folge mir“, „Robi, komm mit“ | `follow` |
+| `herkommen` | „Robi, komm her“ | `interaction_start`, dann Modus `herkommen` |
+| `weggehen` | „Robi, geh weg“, „Robi, zurück“ | `interaction_start`, dann Modus `weggehen` |
+| `stopp` | „Stopp“, „Halt“ | bei laufender Interaktion: Modus `bereit` (Interaktion bleibt an); sonst `stop` |
+| `nach_hause` | „Robi, fahr nach Hause“ | `home` |
+| `erkunden` | „Robi, erkunde“ | `explore` |
+| `musik_aus` | „Robi, Musik aus“, „Robi, Ruhe“ | `POST /mukke/stop` |
+| `start` | „Hallo Robi“ | `interaction_start` |
+| `aus` | „Robi, gute Nacht“ | `interaction_stop`, Heimfahrt/Erkunder abbrechen |
+
+- Ausgeführt wird über dieselben Wege wie die Befehle der App, mit
+  denselben Prüfungen und Meldungen. Wird ein Befehl abgelehnt, geht die
+  Warnung an alle Clients, und der Roboter sagt „Das geht gerade nicht.“.
+- Jeder erkannte Befehl erzeugt `alert` (info) „Sprachbefehl: <Text>“.
+- Ohne Vosk, Modell oder Mikrofon ist die Erkennung aus
+  (`sprache.verfuegbar: false`), der Rest läuft weiter. Den Grund nennt
+  `GET /sprache/status`.
 
 ---
 
@@ -587,6 +638,18 @@ Titel bekannt ist, vergehen ein paar Sekunden (yt-dlp muss die Tonspur erst
 finden). Voraussetzungen auf dem Pi: `mpv` und `yt-dlp`, siehe
 `docs/hardware.md`.
 
+### Stimme
+
+| Endpunkt | Liefert |
+|---|---|
+| `GET /stimme/status` | `aktiviert`, `verfuegbar`, `simuliert`, `ausgabe` (`piper`, `espeak`, `text`, `simuliert`), `geraet` (ALSA-Name), `spricht`, `warteschlange`, `zuletzt`, `gesagt`, `verworfen`, `fehler` (z. B. Meldung von aplay, wenn der Lautsprecher fehlt) |
+
+### Sprachbefehle
+
+| Endpunkt | Liefert |
+|---|---|
+| `GET /sprache/status` | `aktiviert`, `verfuegbar`, `simuliert`, `zustand` (`aus`, `laedt`, `hoert`, `fehler`, `simuliert`), `mikrofon` (Gerätename), `modell` (Pfad), `weckwort`, `geweckt`, `zuletzt_gehoert`, `letzter_befehl`, `erkannt` (Anzahl), `befehle` (alle Wendungen je Befehl), `fehler` (z. B. „vosk fehlt (pip install vosk sounddevice)“, „Vosk-Modell fehlt: …“ oder „kein Mikrofon gefunden (vorhanden: …)“) |
+
 ### Sonstiges
 
 | Endpunkt | Liefert |
@@ -648,7 +711,7 @@ Vorbild ist `navigation/homing.py`.
 | `protocol.py` | Nachrichtenformat, `DriveCommand` |
 | `api/server.py` | alle Endpunkte, WebSocket-Verarbeitung, Hintergrundschleifen |
 | `config.py` | alle Grenzwerte und Einstellungen an einer Stelle |
-| `safety/watchdog.py` | Begrenzung und Totmannschaltung |
+| `safety/watchdog.py` | Begrenzung, Totmannschaltung und Anfahrrampe |
 | `safety/collision.py` | Kollisionsvermeidung bei manueller Fahrt |
 | `navigation/odometry.py` | Positionsschätzung |
 | `navigation/localizer.py` | Lidar-Abgleich gegen die Startpunkt-Aufnahme |
