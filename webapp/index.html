@@ -11,28 +11,49 @@
 <header>
   <h1>ROSMASTER X3</h1>
   <nav class="header-nav">
-    <a href="/einstellungen" class="header-link">Einstellungen</a>
     <div id="status" class="status offline">
       <span class="dot"></span><span id="status-text">getrennt</span>
     </div>
+    <button type="button" id="btn-einst" class="header-icon"
+            title="Einstellungen" aria-label="Einstellungen">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
   </nav>
 </header>
 
+<!-- Einstellungen als Modal. Inhalt baut einstellungen.js beim ersten
+     Öffnen aus GET /settings auf. -->
+<dialog id="einst-dialog" class="einst-dialog" aria-labelledby="einst-titel">
+  <div class="einst-dialog-kopf">
+    <h1 id="einst-titel">Einstellungen</h1>
+    <button type="button" id="einst-schliessen" class="header-icon"
+            title="Schließen" aria-label="Schließen">✕</button>
+  </div>
+  <div id="einstellungen" class="einst-raster">
+    <section class="panel wide-panel einst-kopf">
+      <p>
+        Änderungen gelten sofort und werden auf dem Roboter gespeichert.
+        Mit <span class="einst-neustart">Neustart</span> markierte Werte
+        wirken erst nach einem Neustart des Servers.
+      </p>
+      <button type="button" id="alle-zurueck" class="btn">Alles auf Standard</button>
+      <p id="einst-meldung" class="einst-meldung" hidden></p>
+    </section>
+  </div>
+</dialog>
+
 <main>
 
-  <section class="panel">
+  <section id="cam-panel" class="panel">
     <h2>Kamera</h2>
     <!-- Umschalter, wird aus /cameras gefüllt. Bei nur einer Kamera leer. -->
     <div id="cam-wahl" class="cam-wahl" hidden></div>
-    <div class="cam-wrap">
-      <!-- MJPEG: der Browser zeigt den Stream direkt an, ohne JavaScript. -->
-      <img id="cam" class="cam" alt="Kamerabild">
-      <!-- Rahmen um erkannte Personen beim autonomen Fahren. -->
-      <canvas id="cam-overlay" class="cam-overlay"></canvas>
-      <p id="cam-error" class="cam-error" hidden>
-        Kein Bild. <button type="button" id="cam-retry">Erneut versuchen</button>
-      </p>
-    </div>
+    <!-- Eine Kachel je angezeigter Kamera, gebaut in app.js (CamKachel). -->
+    <div id="cam-feld" class="cam-feld"></div>
   </section>
 
   <section class="panel">
@@ -175,6 +196,7 @@
 
 </main>
 
+<script src="/static/einstellungen.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

@@ -382,3 +382,76 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 }
 .einst-kameras .ok { color: var(--ok); }
 .einst-kameras .fehlt { color: var(--warn); }
+
+/* --- Zahnrad in der Kopfzeile, Einstellungs-Modal --- */
+
+.header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  font: inherit;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.header-icon:hover { color: var(--text); background: #272b34; }
+.header-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.einst-dialog {
+  width: min(1100px, 96vw);
+  max-height: 92vh;
+  overflow: auto;
+  padding: 0;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.einst-dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+
+/* Kopf bleibt beim Scrollen stehen, damit Schließen immer erreichbar ist. */
+.einst-dialog-kopf {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.8rem 1.2rem;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+
+/* Dasselbe Raster wie <main>, damit die Blöcke gleich aussehen. */
+.einst-raster {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 1rem;
+  padding: 1rem 1.2rem 1.5rem;
+}
+
+/* --- Mehrere Kameras nebeneinander --- */
+
+.cam-feld.mehrere {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.6rem;
+}
+
+/* Siehe .cam-error[hidden]. */
+.cam-titel[hidden] { display: none; }
+.cam-titel {
+  position: absolute;
+  top: 0.4rem;
+  left: 0.4rem;
+  font-size: 0.72rem;
+  color: var(--text);
+  background: rgba(13, 15, 19, 0.75);
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+  pointer-events: none;
+}

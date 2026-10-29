@@ -1,5 +1,8 @@
 /*
- * Einstellungsseite.
+ * Einstellungen -- als eigene Seite (/einstellungen) und als Modal in der
+ * Steuerung. Beide haben dieselben Elemente (#einstellungen, #einst-meldung,
+ * #alle-zurueck). Alles in einer Funktion, damit sich die Namen hier nicht
+ * mit denen aus app.js in die Quere kommen.
  *
  * Alles, was hier steht, kommt vom Roboter (GET /settings): Blöcke,
  * Grenzen, Standardwerte, Hilfetexte. Die Seite kennt keine einzige
@@ -10,6 +13,8 @@
  * einem Knopf: sonst probiert man am Roboter etwas aus und wundert sich,
  * warum sich nichts tut.
  */
+
+(() => {
 
 const main = document.getElementById("einstellungen");
 const meldung = document.getElementById("einst-meldung");
@@ -209,7 +214,9 @@ function baueKameraAnzeige(panel) {
 }
 
 async function kamerasAktualisieren() {
-  if (!kameraListe) return;
+  // Nur nachfragen, solange die Liste zu sehen ist -- im geschlossenen
+  // Modal wären das sinnlose Anfragen alle zwei Sekunden.
+  if (!kameraListe || kameraListe.offsetParent === null) return;
   let daten;
   try {
     const antwort = await fetch("/cameras", { cache: "no-store" });
@@ -240,12 +247,15 @@ async function laden() {
     const antwort = await fetch("/settings", { cache: "no-store" });
     liste = await antwort.json();
   } catch {
-    zeigeMeldung("Roboter nicht erreichbar -- Seite neu laden, sobald er läuft", true);
+    zeigeMeldung("Roboter nicht erreichbar", true);
     return;
   }
 
+  // Schon aufgebaut (Modal erneut geöffnet): nur die Werte auffrischen --
+  // sie können sich inzwischen geändert haben, etwa von einem anderen Gerät.
   if (zeilen.size) {
     uebernehmen(liste);
+    kamerasAktualisieren();
     return;
   }
 
@@ -267,6 +277,7 @@ async function laden() {
     main.append(panel);
   }
   uebernehmen(liste);
+  kamerasAktualisieren(); // erst jetzt sichtbar, vorher würde es übersprungen
 }
 
 document.getElementById("alle-zurueck").addEventListener("click", async () => {
@@ -280,4 +291,8 @@ document.getElementById("alle-zurueck").addEventListener("click", async () => {
   }
 });
 
-laden();
+// Auf der eigenen Seite gleich laden; im Modal der Steuerung erst beim
+// Öffnen, damit die Seite beim Start nicht unnötig nachfragt.
+window.einstellungenLaden = laden;
+if (!document.getElementById("einst-dialog")) laden();
+})();

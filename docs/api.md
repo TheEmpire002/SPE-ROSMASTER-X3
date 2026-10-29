@@ -416,8 +416,8 @@ vom Startpunkt passt. Unter 0,05 ist gut.
 ### Einstellungen
 
 Die Einstellungen aus `config.py`, die sich zur Laufzeit verstellen lassen
-(Tempo, Kamera-Bildrate, Lidar, Autonomie …). Die Web-App hat dafür eine
-eigene Seite unter `/einstellungen`.
+(Tempo, Kamera-Bildrate, Lidar, Autonomie …). In der Web-App öffnet das Zahnrad oben rechts sie als Fenster; als
+eigene Seite gibt es sie unter `/einstellungen`.
 
 | Endpunkt | Liefert |
 |---|---|

@@ -52,9 +52,9 @@ const ui = {
   speedOut: el("speed-out"),
   maxSpeed: el("maxspeed"),
   maxSpeedOut: el("maxspeed-out"),
-  cam: el("cam"),
-  camError: el("cam-error"),
-  camRetry: el("cam-retry"),
+  camPanel: el("cam-panel"),
+  camFeld: el("cam-feld"),
+  einstDialog: el("einst-dialog"),
   dist: el("val-dist"),
   pos: el("val-pos"),
   winkel: el("val-winkel"),
@@ -80,7 +80,6 @@ const ui = {
   autoKamera: el("val-auto-kamera"),
   autoText: el("auto-text"),
   hindernisse: el("hindernisse"),
-  camOverlay: el("cam-overlay"),
   camWahl: el("cam-wahl"),
 };
 
@@ -256,6 +255,9 @@ const KEYS_UP = {
 
 window.addEventListener("keydown", (e) => {
   if (e.repeat) return;
+  // Im Einstellungs-Modal wird getippt -- ein "e" im Zahlenfeld darf den
+  // Roboter nicht drehen lassen.
+  if (ui.einstDialog.open) return;
   if (e.code === "Space") {
     e.preventDefault();
     stopAll();
@@ -579,8 +581,20 @@ function hindernisseZeichnen(mitte, skala) {
  * geben -- die Rahmen müssen auf die tatsächliche Bildfläche.
  */
 function personenZeichnen() {
-  const c = ui.camOverlay;
-  if (!c) return;
+  kacheln.forEach((k, i) => {
+    // Die Rahmen gehören zum Bild der Personenkamera. Über einer anderen
+    // Kamera stünden sie an der falschen Stelle. Kennt der Server keine
+    // Personenkamera (älterer Stand), dann wie früher über die erste.
+    const passt = personenKamera
+      ? (k.name ?? camStandard) === personenKamera
+      : i === 0;
+    rahmenZeichnen(k, passt ? personenBoxen : []);
+  });
+}
+
+function rahmenZeichnen(kachel, boxen) {
+  const c = kachel.overlay;
+  const img = kachel.img;
   const w = c.clientWidth;
   const h = c.clientHeight;
   if (c.width !== w || c.height !== h) {
@@ -589,12 +603,9 @@ function personenZeichnen() {
   }
   const ctx = c.getContext("2d");
   ctx.clearRect(0, 0, w, h);
-  if (!personenBoxen.length || !ui.cam.naturalWidth) return;
-  // Die Rahmen gehören zum Bild der Personenkamera. Über einer anderen
-  // Kamera stünden sie an der falschen Stelle.
-  if (personenKamera && personenKamera !== aktuelleKamera()) return;
+  if (!boxen.length || !img.naturalWidth) return;
 
-  const bildVerh = ui.cam.naturalWidth / ui.cam.naturalHeight;
+  const bildVerh = img.naturalWidth / img.naturalHeight;
   let bw = w, bh = w / bildVerh;
   if (bh > h) {
     bh = h;
@@ -607,7 +618,7 @@ function personenZeichnen() {
   ctx.fillStyle = farbe("Mensch");
   ctx.lineWidth = 2;
   ctx.font = "12px system-ui, sans-serif";
-  for (const b of personenBoxen) {
+  for (const b of boxen) {
     const x = ox + b.x1 * bw;
     const y = oy + b.y1 * bh;
     ctx.strokeRect(x, y, (b.x2 - b.x1) * bw, (b.y2 - b.y1) * bh);
@@ -670,34 +681,194 @@ ui.btnSetHome.addEventListener("click", () => {
  *   MJPEG     Ein Dauerstrom in einem <img>. Sparsam, aber nicht jeder
  *             Browser kann multipart/x-mixed-replace -- Safari auf
  *             iPhone und iPad zeigt dann einfach nichts an.
- *   Einzelbilder  Immer wieder /camera/snapshot laden. Funktioniert
+ *   Einzelbilder  Immer wieder .../snapshot laden. Funktioniert
  *             überall, kostet etwas mehr Overhead.
  *
  * Erst wird MJPEG versucht. Hat der Browser nach PRUEFZEIT_MS nichts
  * dekodiert, wird automatisch auf Einzelbilder umgeschaltet.
+ *
+ * Jede angezeigte Kamera ist eine eigene Kachel mit eigenem Bild,
+ * eigener Fehleranzeige und eigenem Rahmen-Overlay. So lassen sich auch
+ * alle Kameras nebeneinander zeigen.
  */
 const PRUEFZEIT_MS = 4000;
 const EINZELBILD_FPS = 10;
 
-let camModus = "mjpeg";
-let camTimer = null;
-let camPruefung = null;
+class CamKachel {
+  constructor() {
+    this.el = document.createElement("div");
+    this.el.className = "cam-wrap";
+
+    // MJPEG: der Browser zeigt den Stream direkt an, ohne JavaScript.
+    this.img = document.createElement("img");
+    this.img.className = "cam";
+    this.img.alt = "Kamerabild";
+    // Rahmen um erkannte Personen beim autonomen Fahren.
+    this.overlay = document.createElement("canvas");
+    this.overlay.className = "cam-overlay";
+    this.titel = document.createElement("span");
+    this.titel.className = "cam-titel";
+    this.titel.hidden = true;
+
+    this.fehler = document.createElement("p");
+    this.fehler.className = "cam-error";
+    this.fehler.hidden = true;
+    const nochmal = document.createElement("button");
+    nochmal.type = "button";
+    nochmal.textContent = "Erneut versuchen";
+    nochmal.addEventListener("click", () => {
+      ladeKameras(); // vielleicht ist die Kamera inzwischen da
+      this.start(this.name);
+    });
+    this.fehler.append("Kein Bild. ", nochmal);
+
+    this.el.append(this.img, this.overlay, this.titel, this.fehler);
+
+    this.name = null; // null = Standardkamera über /camera/...
+    this.modus = "aus";
+    this.timer = null;
+    this.pruefung = null;
+
+    this.img.addEventListener("error", () => {
+      if (this.modus !== "mjpeg") return; // Einzelbildmodus hat eigene Behandlung
+      this.fehler.hidden = false;
+      logLine(`Kamerabild abgerissen${this.name ? ` (${this.name})` : ""}`, "warning");
+    });
+  }
+
+  /* Ohne Kameranamen die alten Endpunkte -- die kennt auch ein Server
+     ohne /cameras. */
+  basis() {
+    return this.name ? `/camera/${encodeURIComponent(this.name)}` : "/camera";
+  }
+
+  stop() {
+    clearTimeout(this.timer);
+    clearTimeout(this.pruefung);
+    this.timer = this.pruefung = null;
+    this.modus = "aus";
+    this.img.onload = null;
+    this.img.onerror = null;
+    // Die Quelle wirklich wegnehmen: ein entferntes <img> hielte seinen
+    // MJPEG-Strom sonst offen, und der Browser erlaubt nur wenige
+    // gleichzeitige Verbindungen zum selben Rechner.
+    this.img.src = "data:,";
+  }
+
+  /*
+   * Der Zeitstempel in der URL ist nötig, weil der Browser sonst die
+   * abgebrochene Antwort aus dem Cache nimmt und das Bild schwarz bleibt.
+   */
+  start(name) {
+    this.stop();
+    this.name = name;
+    this.fehler.hidden = true;
+    this.modus = "mjpeg";
+    this.img.src = `${this.basis()}/stream?t=${Date.now()}`;
+
+    // naturalWidth > 0 heißt: mindestens ein Bild wurde dekodiert. Das
+    // load-Ereignis taugt hier nicht -- bei einem Dauerstrom feuert es
+    // je nach Browser nie.
+    this.pruefung = setTimeout(() => {
+      if (this.modus === "mjpeg" && this.img.naturalWidth === 0) {
+        logLine("Dauerstrom zeigt nichts — wechsle auf Einzelbilder", "warning");
+        this.einzelbilder();
+      }
+    }, PRUEFZEIT_MS);
+  }
+
+  einzelbilder() {
+    clearTimeout(this.pruefung);
+    this.fehler.hidden = true;
+    this.modus = "einzelbild";
+
+    // Das nächste Bild erst anfordern, wenn das vorige da ist. Ein fester
+    // Takt würde bei langsamer Verbindung Anfragen auftürmen.
+    const naechstes = () => {
+      if (this.modus !== "einzelbild") return;
+      this.timer = setTimeout(() => {
+        this.img.src = `${this.basis()}/snapshot?t=${Date.now()}`;
+      }, 1000 / EINZELBILD_FPS);
+    };
+
+    this.img.onload = naechstes;
+    this.img.onerror = () => {
+      this.fehler.hidden = false;
+      naechstes();
+    };
+    this.img.src = `${this.basis()}/snapshot?t=${Date.now()}`;
+  }
+}
 
 /*
- * Mehrere Kameras: /cameras sagt, welche es gibt. camName = null heißt
- * Standardkamera über /camera/stream -- das funktioniert auch mit einem
- * Server, der /cameras noch nicht kennt.
+ * Mehrere Kameras: /cameras sagt, welche es gibt. Angezeigt wird
+ *   null     die Standardkamera (/camera/stream) -- geht auch mit einem
+ *            Server, der /cameras noch nicht kennt,
+ *   "alle"   alle Kameras nebeneinander,
+ *   <name>   genau diese eine.
+ * Die Wahl bleibt im Browser gespeichert.
  */
-let camName = null;
+const ALLE = "alle";
+let camAnsicht = localStorage.getItem("camAnsicht");
 let camStandard = null;
+let camListe = [];
+let kacheln = [];
 
-const camBasis = () => (camName ? `/camera/${encodeURIComponent(camName)}` : "/camera");
-const aktuelleKamera = () => camName ?? camStandard;
+function anzuzeigen() {
+  if (camAnsicht === ALLE) {
+    return camListe.length ? camListe.map((k) => k.name) : [null];
+  }
+  return [camAnsicht];
+}
+
+function waehleAnsicht(ansicht) {
+  camAnsicht = ansicht;
+  if (ansicht) localStorage.setItem("camAnsicht", ansicht);
+  else localStorage.removeItem("camAnsicht");
+  zeigeKameras();
+}
+
+function kameraTitel(name) {
+  const info = camListe.find((c) => c.name === name);
+  return info ? (info.kamera || info.name) : (name || "");
+}
+
+function zeigeKameras() {
+  for (const k of kacheln) k.stop();
+  kacheln = anzuzeigen().map((name) => {
+    const k = new CamKachel();
+    k.start(name);
+    return k;
+  });
+  ui.camFeld.replaceChildren(...kacheln.map((k) => k.el));
+
+  // Mehrere Bilder brauchen Platz: dann über die ganze Breite.
+  const mehrere = kacheln.length > 1;
+  ui.camFeld.classList.toggle("mehrere", mehrere);
+  ui.camPanel.classList.toggle("wide-panel", mehrere);
+  for (const k of kacheln) {
+    k.titel.textContent = kameraTitel(k.name);
+    k.titel.hidden = !mehrere;
+  }
+  markiereKamera();
+  personenZeichnen();
+}
 
 function markiereKamera() {
+  const aktiv = camAnsicht ?? camStandard;
   for (const b of ui.camWahl.children) {
-    b.classList.toggle("aktiv", b.dataset.name === aktuelleKamera());
+    b.classList.toggle("aktiv", b.dataset.name === aktiv);
   }
+}
+
+function wahlKnopf(name, text, titel) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.dataset.name = name;
+  b.textContent = text;
+  if (titel) b.title = titel;
+  b.addEventListener("click", () => waehleAnsicht(name));
+  return b;
 }
 
 async function ladeKameras() {
@@ -709,104 +880,41 @@ async function ladeKameras() {
   } catch {
     return; // Server nicht erreichbar -- beim nächsten Verbinden erneut
   }
-  const liste = daten.kameras || [];
+  camListe = daten.kameras || [];
   camStandard = daten.standard;
   if (daten.personen) personenKamera = daten.personen;
+
   // Nach einem Neustart des Roboters kann die gewählte Kamera fehlen.
-  if (camName && !liste.some((k) => k.name === camName)) {
-    camName = null;
-    startCamera();
+  if (camAnsicht && camAnsicht !== ALLE && !camListe.some((k) => k.name === camAnsicht)) {
+    camAnsicht = null;
+    localStorage.removeItem("camAnsicht");
   }
 
-  ui.camWahl.hidden = liste.length < 2;
-  ui.camWahl.replaceChildren(...liste.map((k) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.dataset.name = k.name;
+  const knoepfe = camListe.map((k) => {
     let text = k.kamera || k.name;
     if (k.name === daten.personen) text += " · Personen";
     if (!k.geoeffnet) text += " (kein Bild)";
-    b.textContent = text;
-    b.title = k.geoeffnet ? (k.geraet || k.name) : (k.letzter_fehler || "nicht geöffnet");
-    b.addEventListener("click", () => {
-      camName = k.name;
-      markiereKamera();
-      personenZeichnen();
-      startCamera();
-    });
-    return b;
-  }));
+    return wahlKnopf(k.name, text,
+      k.geoeffnet ? (k.geraet || k.name) : (k.letzter_fehler || "nicht geöffnet"));
+  });
+  if (camListe.length > 1) {
+    knoepfe.push(wahlKnopf(ALLE, camListe.length === 2 ? "Beide" : "Alle",
+      "Alle Kameras nebeneinander"));
+  }
+  ui.camWahl.replaceChildren(...knoepfe);
+  ui.camWahl.hidden = camListe.length < 2;
+
+  // Nur neu aufbauen, wenn sich wirklich etwas ändert -- sonst risse
+  // jedes Nachladen alle Ströme kurz ab.
+  const soll = anzuzeigen().join("|");
+  const ist = kacheln.map((k) => k.name).join("|");
+  if (soll !== ist) {
+    zeigeKameras();
+    return;
+  }
+  for (const k of kacheln) k.titel.textContent = kameraTitel(k.name);
   markiereKamera();
 }
-
-function stopCamera() {
-  if (camTimer !== null) {
-    clearTimeout(camTimer);
-    camTimer = null;
-  }
-  if (camPruefung !== null) {
-    clearTimeout(camPruefung);
-    camPruefung = null;
-  }
-}
-
-/*
- * Der Zeitstempel in der URL ist nötig, weil der Browser sonst die
- * abgebrochene Antwort aus dem Cache nimmt und das Bild schwarz bleibt.
- */
-function startCamera() {
-  stopCamera();
-  ui.camError.hidden = true;
-  camModus = "mjpeg";
-  // Die Handler aus dem Einzelbildmodus abräumen, sonst löst jedes
-  // geladene Bild dort die nächste Anfrage aus.
-  ui.cam.onload = null;
-  ui.cam.onerror = null;
-  ui.cam.src = `${camBasis()}/stream?t=${Date.now()}`;
-
-  // naturalWidth > 0 heißt: mindestens ein Bild wurde dekodiert. Das
-  // load-Ereignis taugt hier nicht -- bei einem Dauerstrom feuert es
-  // je nach Browser nie.
-  camPruefung = setTimeout(() => {
-    if (camModus === "mjpeg" && ui.cam.naturalWidth === 0) {
-      logLine("Dauerstrom zeigt nichts — wechsle auf Einzelbilder", "warning");
-      starteEinzelbilder();
-    }
-  }, PRUEFZEIT_MS);
-}
-
-function starteEinzelbilder() {
-  stopCamera();
-  ui.camError.hidden = true;
-  camModus = "einzelbild";
-
-  // Das nächste Bild erst anfordern, wenn das vorige da ist. Ein fester
-  // Takt würde bei langsamer Verbindung Anfragen auftürmen.
-  const naechstes = () => {
-    if (camModus !== "einzelbild") return;
-    camTimer = setTimeout(() => {
-      ui.cam.src = `${camBasis()}/snapshot?t=${Date.now()}`;
-    }, 1000 / EINZELBILD_FPS);
-  };
-
-  ui.cam.onload = naechstes;
-  ui.cam.onerror = () => {
-    ui.camError.hidden = false;
-    naechstes();
-  };
-  ui.cam.src = `${camBasis()}/snapshot?t=${Date.now()}`;
-}
-
-ui.cam.addEventListener("error", () => {
-  if (camModus !== "mjpeg") return; // Einzelbildmodus hat eigene Behandlung
-  ui.camError.hidden = false;
-  logLine("Kamerabild abgerissen", "warning");
-});
-
-ui.camRetry.addEventListener("click", () => {
-  ladeKameras(); // vielleicht ist die Kamera inzwischen da
-  startCamera();
-});
 
 // Der Stream reißt ab, wenn der Roboter neu startet oder das WLAN kurz
 // weg war. Sobald die Steuerverbindung wieder steht, lohnt ein neuer
@@ -817,16 +925,37 @@ let camWasConnected = true;
 
 function onConnectionChange(connected) {
   if (connected && !camWasConnected) {
+    for (const k of kacheln) k.start(k.name);
     ladeKameras();
-    startCamera();
   }
   camWasConnected = connected;
 }
 
+// --- Einstellungen (Modal) ----------------------------------------------------
+
+el("btn-einst").addEventListener("click", () => {
+  // Handeingaben loslassen: Tasten, die beim Öffnen gedrückt waren,
+  // bekämen ihr keyup sonst nicht mehr mit, und er führe weiter.
+  dir.x = dir.y = dir.rot = 0;
+  ui.einstDialog.showModal();
+  window.einstellungenLaden?.();
+});
+
+el("einst-schliessen").addEventListener("click", () => ui.einstDialog.close());
+
+// Klick auf den abgedunkelten Rand schließt -- wie man es gewohnt ist.
+ui.einstDialog.addEventListener("click", (e) => {
+  if (e.target === ui.einstDialog) ui.einstDialog.close();
+});
+
+// Nach dem Schließen die Kameraliste auffrischen: Auflösung oder
+// Bildrate können sich geändert haben.
+ui.einstDialog.addEventListener("close", () => ladeKameras());
+
 // --- Start ----------------------------------------------------------------
 
+zeigeKameras(); // sofort die gewählte Ansicht, die Liste kommt hinterher
 ladeKameras();
-startCamera();
 applyLimits();
 sendTimer = setInterval(sendDrive, 1000 / SEND_HZ);
 connect();

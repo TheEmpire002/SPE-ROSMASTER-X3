@@ -226,8 +226,8 @@ Beim Start steht im Log, was gefunden wurde („Kameras: orientierung (…),
 personen (…)“ und je Kamera „Kamera '…' (USB …, /dev/videoN) bereit“).
 Ohne Log: `/cameras` im Browser aufrufen.
 
-Auflösung, Bildrate und JPEG-Qualität lassen sich auf der Einstellungsseite
-(`/einstellungen`) verstellen; die Standardwerte stehen in
+Auflösung, Bildrate und JPEG-Qualität lassen sich in den Einstellungen (Zahnrad
+oben rechts in der App) verstellen; die Standardwerte stehen in
 `robot/src/rosmaster_assist/config.py`. Bei ruckelndem Bild über WLAN zuerst
 `CAMERA_FPS` senken, erst danach die Auflösung.
 
