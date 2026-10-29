@@ -188,6 +188,11 @@ class Posenerkennung:
                         hailo.schliessen()
                         hailo = None
                     continue
+                if self._stop.is_set():
+                    # stop() weckt uns über _aktiv auf. Ohne diese Prüfung
+                    # würde der Thread beim Beenden noch den Hailo öffnen --
+                    # am 29.10. fiel genau dabei die USB-Versorgung kurz aus.
+                    break
                 beginn = time.monotonic()
                 try:
                     if self._mock:

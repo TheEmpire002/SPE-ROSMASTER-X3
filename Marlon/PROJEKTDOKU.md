@@ -234,12 +234,40 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 
 ### 29.10.2026 – Gegenprobe: Labornetzteil statt Akku (Marlon)
 - **Anlass:** Prüfen, ob die Resets beim Drehen am Akku liegen. Der Roboter hängt dafür an einem Labornetzteil statt am Akku. Die Orbbec war wieder angesteckt, die C270 nicht.
+- **Aufbau:** Roboter **auf einem Podest**, damit er nicht wegrollt. Die Räder drehen frei in der Luft, die Motoren laufen also ohne Last.
 - **Was:** Neuer Stand vom Laptop am Pi gestartet (mit Lidar-Fix `LIDAR_STABIL_S`), erst 2 min Ruhe beobachtet, dann derselbe Stresstest wie am 28.10. für 5 min (210 s Fahren, Drehungen mit omega ±0,6, vor/zurück mit 0,1 m/s).
 - **Ergebnis:**
   - Ruhe: keine Meldung. Die 25 Over-Current-Meldungen seit dem Start entstanden alle beim Einschalten.
   - Fahren: **0 Over-Current-Meldungen, 0 USB-Abmeldungen** (Akku am 28.10.: +160 bzw. 83 in 4,5 min). Lidar ohne Neu-Verbinden (2333 Umdrehungen), 51 °C, keine Drosselung. Gefahren ist er wirklich: Die Odometrie hat sich bewegt, und die Lidar-Ortung hat 1277-mal korrigiert.
-  - Beim Ein- und Ausstecken von C270 und Lautsprecher im laufenden Betrieb fielen kurz danach alle USB-Geräte für 3 s ab (+18 Meldungen). Der Server übersteht das, besser aber nur bei gestopptem Server umstecken.
-- **Schluss:** Die Ursache ist die Versorgung aus dem Akku. Unter dem Anlaufstrom der Motoren sackt sie ein, das Netzteil hält die Spannung. Orbbec, Rechenlast und Software sind es nicht. Zum Testen am Tisch reicht das Netzteil; fährt der Roboter mit Akku, braucht es weiterhin die getrennte 5-V-Versorgung (DC/DC), siehe `docs/hardware.md`.
+  - Beim Ein- und Ausstecken von C270 und Lautsprecher im laufenden Betrieb fielen kurz danach alle USB-Geräte für 3 s ab (+18 Meldungen). Der Server übersteht das. *Später geklärt:* Das Ereignis fiel mit dem Beenden des Servers zusammen, und die Ursache war ein Software-Fehler (Hailo-Start beim Beenden, siehe nächster Eintrag), nicht das Umstecken.
+- **Schluss (zuerst):** Die Ursache sei die Versorgung aus dem Akku, das Netzteil halte die Spannung.
+- **Korrigiert durch die Akku-Gegenprobe (nächster Eintrag):** Auf dem Podest gibt es auch mit Akku 0 Resets. Der Unterschied zum 28.10. ist also nicht Akku gegen Netzteil, sondern vor allem die **Last auf den Rädern**. Orbbec und Rechenlast scheiden weiterhin aus.
+
+### 29.10.2026 – Gegenprobe: voller Akku auf dem Podest, Fehler beim Beenden behoben (Marlon)
+- **Anlass:** Der Netzteiltest lief auf dem Podest. Damit war offen, ob das Netzteil hilft oder nur die fehlende Last. Deshalb derselbe Test mit Akku im selben Aufbau.
+- **Aufbau:**
+  - Roboter **auf dem Podest**, Räder frei in der Luft (wie beim Netzteiltest).
+  - **Akku auf 100 % geladen**, gemessen über das Board (`get_battery_voltage`): 12,3 V vor dem Test, 12,2–12,3 V danach.
+  - Orbbec **und** C270 angesteckt, Lautsprecher angesteckt. Der Server holte durchgehend Bilder von der C270.
+  - Stand vom Laptop (mit `LIDAR_STABIL_S`), Hailo-Pose aus, weil die Interaktion nicht lief.
+- **Was:** 2 min Ruhe beobachtet, dann derselbe Stresstest wie am 28.10. und beim Netzteil: 5 min, davon 210 s Fahren (Ansage, je 3 s Drehen mit omega ±0,6, je 2 s vor und zurück mit 0,1 m/s, 4 s Pause).
+- **Ergebnis:**
+  - Ruhe: keine neue Meldung.
+  - Fahren: **0 Over-Current-Meldungen, 0 USB-Abmeldungen** (Zähler blieb bei 19 aus dem Einschalten).
+  - Lidar 3335 Umdrehungen ohne Neu-Verbinden, Kamera 6566 Bilder ohne Neu-Öffnen, 50–53 °C, keine Drosselung (`throttled=0x0`).
+- **Vergleich:**
+
+  | Datum | Aufbau | Versorgung | Spannung | Over-Current / Abmeldungen beim Fahren |
+  |---|---|---|---|---|
+  | 28.10. | ohne Podest, Räder mit Last | Akku | 12,0 V | +160 / 83 in 4,5 min |
+  | 29.10. | Podest, Räder frei | Labornetzteil | – | 0 / 0 in 210 s |
+  | 29.10. | Podest, Räder frei | Akku | 12,3 V | 0 / 0 in 210 s |
+
+- **Schluss:** Ohne Last auf den Rädern reicht auch der Akku. Die Resets entstehen, wenn die Motoren gegen Last anlaufen: Dann ist der Anlaufstrom viel höher als bei frei drehenden Rädern. Ob das Netzteil das unter Last abfängt, zeigt erst ein **Test am Boden**. Erst am Netzteil, dann am Akku. Weitere Unterschiede zum 28.10.: Der Lidar-Fix `LIDAR_STABIL_S` war da noch nicht drauf, und der Akku hatte 12,0 statt 12,3 V.
+- **Fehler beim Beenden gefunden und behoben:**
+  - **Beobachtung:** Beim Beenden des Servers fielen zweimal alle USB-Geräte für etwa 2 s ab (zuletzt +12 Meldungen um 08:15:06). Das Ereignis vom Netzteiltest, das wir aufs Umstecken geschoben hatten, passierte ebenfalls beim Beenden.
+  - **Ursache:** `Posenerkennung.stop()` weckt den Pose-Thread auf, damit er sich beendet. Der Thread prüfte danach aber nicht, ob er aufhören soll, und öffnete erst noch den Hailo. Im HailoRT-Log steht „Creating vdevice“ um 08:15:06.890, in derselben Sekunde wie die Überlast. Das Hochfahren des Hailo zieht kurz viel Strom.
+  - **Behoben** in `sensors/pose.py`: Nach dem Aufwecken bricht der Thread ab, wenn `stop()` ihn geweckt hat. Am Pi zweimal gestartet und beendet: Zähler 31 → 31, kein Hailo-Start mehr beim Beenden.
 
 ---
 
@@ -256,7 +284,8 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 | Gestenerkennung und Verhalten | 4 Gesten, Negativfälle (Zittern, Hallo-Winken, Flackern, zwei Personen), Hailo-Dekodierung und Fahrlogik: 45 Prüfungen bestanden | `Marlon/interaktion/test_gesten.py` |
 | Hailo-Pose am Pi | C270, 10 fps, 1–2 Personen erkannt, keine Over-Current-Meldung unter Last | Gesamtprüfung 28.10. |
 | Stresstest (Akku voll, ohne Orbbec) | Ruhe: 0 Resets; Fahren: +160 Over-Current in 4,5 min, jeder 0–5 s nach Beginn einer Drehung | 28.10. |
-| Stresstest (Labornetzteil, mit Orbbec) | Ruhe und Fahren (210 s, gleiche Drehungen): 0 Over-Current, 0 Abmeldungen | 29.10. |
+| Stresstest (Labornetzteil, mit Orbbec, **auf Podest**) | Ruhe und Fahren (210 s, gleiche Drehungen): 0 Over-Current, 0 Abmeldungen | 29.10. |
+| Stresstest (Akku 100 %/12,3 V, Orbbec und C270, **auf Podest**) | Ruhe und Fahren (210 s): 0 Over-Current, 0 Abmeldungen, Lidar und Kamera ohne Neu-Verbinden | 29.10. |
 | Sprachausgabe | Warteschlange, Vorrang/Verstummen, Ausweichen ohne Piper, Ansagen des Verhaltens: 17 Prüfungen bestanden; am Lautsprecher noch nicht gehört | `Marlon/interaktion/test_stimme.py` |
 
 ---
@@ -274,8 +303,8 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 | Winken löste „Weggehen“ aus | Schulterbreite bricht beim seitlichen Drehen ein, Maße in Schulterbreiten werden riesig | Median der Schulterbreite über das Fenster (28.10.) |
 | Tippen im „Sagen“-Feld hätte den Roboter gefahren | Tastatursteuerung der App reagiert auf alle Tasten, Leertaste = Not-Stopp | Tasten in Textfeldern werden ignoriert (28.10.) |
 | Falsche Kamera möglich | `/dev/video*`-Nummern tauschen nach USB-Resets, Orbbec könnte `video0` werden | Kamera über den Namen wählen, `CAMERA_NAME = "C270"` (28.10.) |
-| Resets beim Drehen, trotz vollem Akku und ohne Orbbec | Anlaufstrom aller vier Motoren zieht die Versorgung aus dem Akku herunter (am Netzteil 0 Resets, 29.10.) | Tests am Netzteil; **offen für Akkubetrieb:** getrennte 5-V-Versorgung (DC/DC) für Pi bzw. Hub, siehe `docs/hardware.md` |
-| Alle USB-Geräte fallen kurz ab beim Umstecken | Einschaltstrom eines frisch gesteckten Geräts am gemeinsamen 1,6-A-Schalter | Nur bei gestopptem Server umstecken (29.10.) |
+| Resets beim Drehen, trotz vollem Akku und ohne Orbbec | Anlaufstrom aller vier Motoren unter Last zieht die Versorgung herunter. Auf dem Podest (Räder frei) 0 Resets, mit Akku wie mit Netzteil (29.10.) | **Offen:** Test am Boden (Netzteil, dann Akku); falls Resets bleiben, getrennte 5-V-Versorgung (DC/DC) für Pi bzw. Hub, siehe `docs/hardware.md` |
+| Alle USB-Geräte fallen beim Beenden des Servers kurz ab | Pose-Thread öffnete beim Beenden noch den Hailo, dessen Hochfahren kurz viel Strom zieht | `_stop`-Prüfung in `sensors/pose.py`; am Pi zweimal geprüft, 0 Meldungen (29.10.) |
 | Treiber verband sich mit dem Lidar | Nach einem Aussetzer war der Lidar kurz das einzige serielle Gerät | Board über `/dev/myserial`, Lidar immer ausgeschlossen (28.10.) |
 | USB-Dauerschleife auch im Stand | Lidar-Motor lief nach jedem Neu-Verbinden sofort wieder an, Wartezeit begann bei 1 s | Wartezeit wächst weiter, wenn er kurz danach wieder ausfällt (`LIDAR_STABIL_S`, 28.10.) |
 | Strg+C beendete den Server nicht | uvicorn wartete auf den endlosen Kamera-Stream, Motoren-Stopp lief nicht an | `SHUTDOWN_TIMEOUT_S = 3` (28.10.) |
@@ -286,8 +315,8 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 ## 5. Offene Punkte und Ausblick
 
 - Bodentest des Erkunders mit Hindernissen.
-- Hardware-Fix der USB-Versorgung für den Akkubetrieb: Am Netzteil laufen alle Tests ohne Reset (29.10.), am Akku nicht. Nötig ist eine getrennte 5-V-Versorgung für Pi bzw. Hub (siehe `docs/hardware.md`, „Was am Roboter tun“).
-- Stresstest mit angesteckter C270 am Netzteil wiederholen (Hailo-Pose und Gesten unter Fahrlast).
+- **Stresstest am Boden** (Räder mit Last): erst am Netzteil, dann am Akku. Auf dem Podest gibt es mit beiden 0 Resets (29.10.), deshalb ist offen, ob das Netzteil unter Last hilft. Bleiben am Boden Resets, braucht es die getrennte 5-V-Versorgung für Pi bzw. Hub (siehe `docs/hardware.md`, „Was am Roboter tun“).
+- Stresstest mit eingeschalteter Interaktion (Hailo-Pose und Gesten unter Fahrlast) wiederholen.
 - Interaktion: Hailo-Pose am Pi prüfen, Fahrtest Folgen/Herkommen am Boden; danach Stufen 4–5 (Sprache, Geist).
 - Stimme: Piper am Pi installieren, Lautsprecher und Lautstärke prüfen. Bei der Spracherkennung (Vosk) `Stimme.spricht` nutzen, damit er sich nicht selbst zuhört.
 - Später: lokales LLM auf dem Hailo, Gesichter wiedererkennen, Orbbec-Tiefe für niedrige Hindernisse.

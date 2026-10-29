@@ -362,20 +362,33 @@ der Lidar kurz nach dem Neu-Verbinden wieder ausfällt (`LIDAR_STABIL_S`).
 Meldet sich der Lidar gar nicht mehr an (`dmesg`: immer wieder „new
 full-speed USB device“ an 1-1.4), Lidar-Kabel neu stecken.
 
-**Gegenprobe am 29.10. mit Labornetzteil statt Akku** (Orbbec wieder
-angesteckt, C270 nicht). Gleicher Test, 5 min, davon 210 s Fahren mit
-denselben Drehungen: **0 Over-Current-Meldungen, 0 USB-Abmeldungen**,
-Lidar ohne ein einziges Neu-Verbinden, 51 °C, keine Drosselung. Damit ist
-belegt, dass der Akku-Zweig die Ursache ist: Unter dem Anlaufstrom der
-Motoren bricht die Spannung des Akkus bzw. seiner Zuleitung ein, das
-stabile Netzteil hält sie. Für den Fahrbetrieb mit Akku bleibt Punkt 4
-nötig; am Tisch und für Tests ist das Netzteil eine saubere Lösung.
+**Gegenproben am 29.10. auf dem Podest.** Der Roboter stand dabei auf
+einem Podest, die Räder drehten frei in der Luft, also ohne Last. Gleicher
+Test wie am 28.10.: 5 min, davon 210 s Fahren mit denselben Drehungen.
 
-Einmal löste es trotzdem aus: Beim Ein- und Ausstecken von C270 und
-Lautsprecher im laufenden Betrieb fielen alle Geräte für 3 s ab (18
-Meldungen auf einmal). Der Einschaltstrom eines frisch gesteckten Geräts
-reicht für den gemeinsamen 1,6-A-Schalter des Pi. **USB-Geräte nur bei
-gestopptem Server und stehendem Roboter umstecken.**
+| Versorgung | Geräte | Over-Current / Abmeldungen |
+|---|---|---|
+| Labornetzteil | Orbbec, ohne C270 | 0 / 0 |
+| Akku, 100 % (12,3 V) | Orbbec und C270 (Bilder laufend) | 0 / 0 |
+
+Lidar und Kamera verbanden sich in beiden Läufen kein einziges Mal neu,
+51–53 °C, keine Drosselung. Am 28.10. stand der Roboter nicht auf dem
+Podest, die Räder hatten also Last: +160 Meldungen in 4,5 min. **Ohne Last
+reicht also auch der Akku.** Die Resets kommen vom Anlaufstrom der Motoren
+*unter Last*, der deutlich höher ist als bei frei drehenden Rädern. Ob ein
+Netzteil das abfängt, zeigt erst ein Test am Boden. Bis dahin bleibt
+Punkt 4 unten der sichere Weg.
+
+**Over-Current beim Beenden des Servers (behoben 29.10.).** Zweimal fielen
+genau beim Beenden alle USB-Geräte für etwa 2 s ab. Ursache: Der Pose-Thread
+(`sensors/pose.py`) wurde von `stop()` geweckt und öffnete dann noch den
+Hailo, statt sich zu beenden. Das Hochfahren des Hailo („Creating vdevice“
+im HailoRT-Log, in derselben Sekunde wie die Überlast) zieht kurz so viel
+Strom, dass der gemeinsame 1,6-A-Schalter auslöst. Jetzt prüft der Thread
+nach dem Aufwecken zuerst, ob er aufhören soll. Am Pi zweimal geprüft:
+keine Meldung mehr beim Beenden. Daraus folgt auch: Das Öffnen des Hailo
+ist ein Lastsprung. Beim Einschalten der Interaktion während der Fahrt auf
+neue Meldungen achten.
 
 ### Was am Roboter tun (Hardware)
 
