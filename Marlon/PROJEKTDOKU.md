@@ -298,6 +298,23 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
   - „Heimfahrt startet“ im Smoke-Test schlägt gelegentlich fehl, wenn derselbe Mock-Server mehrmals hintereinander getestet wird: Der simulierte Roboter fährt durch die gedachten Wände, die Ortung landet dann nahe am Startpunkt, und die Heimfahrt ist fertig, bevor der nächste Status sie zeigt. Zum Vergleich ohne Rampe: 3 von 5 Läufen fehlgeschlagen, mit Rampe 1 von 4. Das lag also schon vorher vor; mit frisch gestartetem Server läuft der Test durch.
 - **Offen:** am Pi am Boden testen, ob Folgen ruhiger läuft und die USB-Resets beim Folgen ausbleiben (`dmesg -w` mitlaufen lassen, `/diagnose` beobachten). Falls das Anfahren zu träge wirkt: `RAMPE_ANFAHREN_XY` erhöhen.
 
+### 29.10.2026 – Sprachbefehle „Robi“ und Antrieb-Abbruch beim Gestenstart behoben (Marlon)
+- **Was:**
+  - **Stand zusammengeführt:** Die noch nicht gepushten Commits vom Branch `interaktion` (Gesten, Stimme, Diagnose, sanftes Fahren) sind in den neuen Branch `sprache` eingeflossen, der auf dem aktuellen `main` aufsetzt.
+  - **Hailo bleibt warm:** Die Posenerkennung öffnet den Hailo schon beim Serverstart und hält ihn offen (`POSE_WARM_HALTEN = True`). Gerechnet wird weiter nur, solange die Interaktion an ist.
+  - **Antrieb weg ≠ Interaktion aus:** Fällt das Board weg, hält das Verhalten an und geht nach `bereit`, die Interaktion bleibt an. Fahrmodi (Folgen, Herkommen, Weggehen, Suchen) werden abgelehnt, solange `driver.connected` falsch ist; er sagt dann „Ich habe keine Verbindung zu meinen Rädern.“. Nach dem Neuverbinden geht es mit der nächsten Geste weiter.
+  - **Sprachbefehle mit Weckwort „Robi“** (`interaktion/sprache.py`): USB-Mikrofon → Vosk (offline, kleines deutsches Modell) mit fester Grammatik. Befehle: folgen („Robi, folgen“, „folge mir“, „komm mit“), komm her, geh weg/zurück, fahr nach Hause, erkunde, Musik aus/Ruhe, „Hallo Robi“ (Interaktion an), „Robi, gute Nacht“ (alles aus). „Stopp“, „Halt“, „Bleib stehen“ gelten auch ohne Weckwort. Ausgeführt wird über dieselben Wege wie die App-Befehle. Neu: Befehl `speech {text}` (Text statt Mikrofon, auch im Mock), `state.sprache`, `GET /sprache/status`, Feld „Hören“ in der App. Abhängigkeiten als optionales Extra `pip install -e "robot[sprache]"`.
+- **Warum:**
+  - Beim Einschalten der Gestensteuerung kam oft „Keine Verbindung zum Antrieb“, und die Interaktion war sofort wieder aus. Ursache 1: Erst beim Einschalten wurde der Hailo hochgefahren, das zieht kurz viel Strom, und am Hub meldet sich das Board ab (gleiches Muster wie beim Beenden des Servers). Ursache 2: Der Server beendete bei jedem Antriebsverlust den ganzen Interaktionsmodus, statt nur anzuhalten.
+  - Sprachbefehle sind die zweite Eingabe neben den Gesten (Stufe 4 im Konzept). Das Weckwort verhindert, dass Gespräche im Raum den Roboter losfahren lassen; Stopp braucht es nicht, damit Anhalten immer geht.
+- **Ergebnis (lokal, Mock):** `test_sprache.py` 41 Prüfungen (Weckwort, Weckfenster, Rangfolge, Grammatik gegen den Wortschatz des Modells, kein Absturz ohne Vosk/Mikrofon); `test_gesten.py` 76 (neu: Fahrmodi ohne Antrieb abgelehnt, `antrieb_verloren` lässt die Interaktion an); `test_stimme.py` 17; `test_diagnose.py` 9/9. `/sprache/status` und `speech` im Mock geprüft.
+- **Probleme und Lösungen:**
+  - „Musik stopp“ wurde als Stopp erkannt: Die Befehle haben jetzt eine Rangfolge, Musik aus steht vor Stopp.
+  - Wörter, die das Vosk-Modell nicht kennt, würden die Grammatik ungültig machen. Sie werden gegen `graph/words.txt` gefiltert; für „Robi“ gibt es Varianten („robbie“, „ruby“ …).
+  - Musik (mpv) und Stimme (aplay) teilen sich den Lautsprecher exklusiv, und das Mikrofon hört die Musik mit. „Robi, Musik aus“ hilft; eine saubere Lösung (gemeinsamer Mixer) ist offen.
+  - Smoke-Test „Heimfahrt startet“ wackelt weiter wie am 29.10. beschrieben (wiederholte Läufe gegen denselben Mock-Server); nicht durch diese Änderung.
+- **Offen:** Am Pi Vosk und Modell installieren (`docs/hardware.md`, „Mikrofon und Sprachbefehle“), `/sprache/status` prüfen, „Robi, folgen“ am Boden testen. Beim Einschalten der Gesten `dmesg -w` mitlaufen lassen: Bleibt der Reset aus?
+
 ---
 
 ## 3. Ergebnisse und Messwerte
@@ -317,6 +334,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 | Stresstest (Akku 100 %/12,3 V, Orbbec und C270, **auf Podest**) | Ruhe und Fahren (210 s): 0 Over-Current, 0 Abmeldungen, Lidar und Kamera ohne Neu-Verbinden | 29.10. |
 | Sprachausgabe | Warteschlange, Vorrang/Verstummen, Ausweichen ohne Piper, Ansagen des Verhaltens: 17 Prüfungen bestanden; am Lautsprecher noch nicht gehört | `Marlon/interaktion/test_stimme.py` |
 | Sanftes Fahren und entprellte Gesten | Rampe, Ausrollen, Glättung, Laufen/Vorbeigehen ohne Fehlauslösung: 69 Prüfungen bestanden (29.10.) | `Marlon/interaktion/test_gesten.py` |
+| Sprachbefehle „Robi“ | Weckwort, Weckfenster, Rangfolge, Grammatik, Ausfallsicherheit: 41 Prüfungen; Gesten inkl. Antriebsverlust: 76 Prüfungen (29.10.); am Mikrofon noch nicht getestet | `Marlon/interaktion/test_sprache.py` |
 
 ---
 
@@ -340,6 +358,8 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 | Strg+C beendete den Server nicht | uvicorn wartete auf den endlosen Kamera-Stream, Motoren-Stopp lief nicht an | `SHUTDOWN_TIMEOUT_S = 3` (28.10.) |
 | USB-Resets und Ruckeln beim Folgen | harte Sprünge im Fahrbefehl → Stromspitzen → Spannungseinbruch | Anfahrrampe im Watchdog, geglättetes Folgen mit Ausrollen (29.10.). **Offen:** Bodentest am Pi |
 | Verhalten wechselt beim Folgen ohne Zeichen | schwingende Arme beim Laufen sehen wie Herkommen/Weggehen aus | Herkommen/Weggehen nur bei stillstehender, zugewandter Person und stehendem Roboter (29.10.) |
+| „Keine Verbindung zum Antrieb“ beim Start der Gestensteuerung, Interaktion sofort aus | Hailo fuhr erst beim Einschalten hoch (Stromspitze → USB-Reset), und jeder Antriebsverlust beendete die ganze Interaktion | Hailo beim Serverstart öffnen und warm halten (`POSE_WARM_HALTEN`); bei Antriebsverlust nur anhalten, Fahrmodi ohne Board ablehnen (29.10.). **Offen:** am Pi prüfen |
+| „Musik stopp“ als Stopp erkannt | Stopp-Wendung steckt im Musikbefehl | Rangfolge der Sprachbefehle, Musik aus zuerst (29.10.) |
 | Ausfälle nur per SSH auffindbar | Kernel-Log, vcgencmd und Serverlog getrennt | Diagnoseseite `/diagnose` mit Problemen, Zeitleiste und Log (29.10.) |
 | Push aus dem Laptop hängt | Git Credential Manager wartet auf Login-Fenster | Nutzer pusht selbst, der Pi zieht nur (`git pull`) |
 | MUKKE: mpv meldet „Failed to recognize file format“ | mpvs ytdl-Skript findet yt-dlp in der venv nicht und gibt den YouTube-Link roh weiter | Server löst den Link selbst mit der yt-dlp-Bibliothek auf, mpv bekommt nur noch die direkte Tonspur; YouTube-Fehler erscheinen im Fenster |
@@ -352,7 +372,10 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Stresstest am Boden** (Räder mit Last): erst am Netzteil, dann am Akku. Auf dem Podest gibt es mit beiden 0 Resets (29.10.), deshalb ist offen, ob das Netzteil unter Last hilft. Bleiben am Boden Resets, braucht es die getrennte 5-V-Versorgung für Pi bzw. Hub (siehe `docs/hardware.md`, „Was am Roboter tun“).
 - Stresstest mit eingeschalteter Interaktion (Hailo-Pose und Gesten unter Fahrlast) wiederholen.
 - Interaktion: Hailo-Pose am Pi prüfen, Fahrtest Folgen/Herkommen am Boden; danach Stufen 4–5 (Sprache, Geist).
-- Stimme: Piper am Pi installieren, Lautsprecher und Lautstärke prüfen. Bei der Spracherkennung (Vosk) `Stimme.spricht` nutzen, damit er sich nicht selbst zuhört.
+- Stimme: Piper am Pi installieren, Lautsprecher und Lautstärke prüfen.
+- Sprachbefehle am Pi: `libportaudio2`, `pip install -e "robot[sprache]"` und Vosk-Modell installieren, `/sprache/status` prüfen, „Robi, folgen“ am Boden testen; erkennt Vosk „Robi“ schlecht, Varianten in `SPRACHE_WECKWORT_VARIANTEN` ergänzen.
+- Lautsprecher teilen: MUKKE und Stimme blockieren sich gegenseitig (exklusives ALSA-Gerät); gemeinsamer Mixer (dmix/PipeWire) offen.
+- Prüfen, ob der Antrieb beim Einschalten der Gesten jetzt verbunden bleibt (warmer Hailo).
 - Später: lokales LLM auf dem Hailo, Gesichter wiedererkennen, Orbbec-Tiefe für niedrige Hindernisse.
 - Diagnoseseite am Pi prüfen (Kernel-Log-Berechtigung, echte Akku- und Überlastwerte).
 - Sanftes Fahren am Boden prüfen: Folgen ohne USB-Resets, Rampe nicht zu träge.

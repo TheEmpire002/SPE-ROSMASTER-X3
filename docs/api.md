@@ -160,6 +160,7 @@ Reihenfolge:
 | `follow_stop` | – | Folgen beenden, anhalten; der Interaktionsmodus bleibt an. | `alert` an alle |
 | `say` | `text` (string, höchstens 300 Zeichen), `vorrang` (bool, optional) | Über den Lautsprecher sprechen (siehe „Stimme im Detail“). `vorrang: true` bricht den laufenden Satz ab und leert die Warteschlange. | keine; ohne `text` `error`, ohne Lautsprecher/Synthese `alert` (warning) |
 | `say_stop` | – | Sofort verstummen, Warteschlange leeren. | keine |
+| `speech` | `text` (string) | Text so behandeln, als wäre er ins Mikrofon gesprochen worden (siehe „Sprachbefehle im Detail“). Zum Ausprobieren ohne Mikrofon und in `--mock`. | `alert` „Sprachbefehl: …“ an alle, wenn ein Befehl erkannt wurde; sonst `alert` (info) „Kein Befehl erkannt …“; ohne `text` `error` |
 | `set_home` | – | Aktuelle Stelle wird neuer Startpunkt (0, 0, 0°), Lidar-Referenz wird neu aufgenommen. | `alert` an alle |
 | `collision` | `enabled` (bool, optional), `distance` (m, optional) | Kollisionsvermeidung ein/aus, Mindestabstand. `distance` wird auf 0,15–1,5 m begrenzt. | `collision` an alle |
 | `beep` | `ms` (int, Standard 100) | Buzzer. | keine |
@@ -190,7 +191,8 @@ Ein unbekannter `type` liefert `{"type": "error", "text": "Unbekannter Nachricht
   "collision": {"enabled": false, "distance": 0.35, "verfuegbar": true, "blockiert": false},
   "autonomie": {"aktiv": false, "verfuegbar": true, "zustand": null, "...": "siehe unten"},
   "interaktion": {"aktiv": false, "verfuegbar": true, "modus": null, "...": "siehe unten"},
-  "stimme": {"verfuegbar": true, "spricht": false, "text": "Ich bin bereit."}
+  "stimme": {"verfuegbar": true, "spricht": false, "text": "Ich bin bereit."},
+  "sprache": {"verfuegbar": true, "geweckt": false, "gehoert": "robi folgen", "befehl": "folgen"}
 }
 ```
 
@@ -206,6 +208,7 @@ Ein unbekannter `type` liefert `{"type": "error", "text": "Unbekannter Nachricht
 | `autonomie` | autonomes Fahren und erkannte Hindernisse, siehe „Autonomes Fahren im Detail“ |
 | `interaktion` | Interaktionsmodus (Handzeichen, Folgen), siehe „Interaktion im Detail“. Fehlt bei älteren Servern. |
 | `stimme` | Sprachausgabe: `verfuegbar` (es kommt Ton heraus), `spricht` (gerade ein Satz), `text` (zuletzt gesagter Satz oder `null`). Siehe „Stimme im Detail“. Fehlt bei älteren Servern. |
+| `sprache` | Sprachbefehle: `verfuegbar` (Mikrofon und Modell bereit), `geweckt` („Robi“ wurde gerade allein gesagt, der nächste Satz braucht keinen Namen), `gehoert` (zuletzt verstandener Satz oder `null`), `befehl` (erkannter Befehl, wenige Sekunden lang, sonst `null`). Siehe „Sprachbefehle im Detail“. Fehlt bei älteren Servern. |
 
 **`collision`**: beim Verbinden und nach jeder Änderung, Felder wie
 `state.collision`.
@@ -373,7 +376,34 @@ Mit `say` lässt sich beliebiger Text vorlesen.
   3). Ist sie voll, fällt der älteste Satz weg. Derselbe Satz innerhalb von
   `STIMME_WIEDERHOLUNG_S` (4 s) wird verschluckt.
 - `spricht` bleibt nach jedem Satz noch `STIMME_NACHLAUF_S` (0,4 s) wahr.
-  Eine Spracherkennung sollte in dieser Zeit nicht zuhören.
+  Die Spracherkennung hört in dieser Zeit nicht zu.
+
+### Sprachbefehle im Detail
+
+Der Roboter hört über das USB-Mikrofon zu (Vosk, offline). Befehle gelten
+nur mit dem Weckwort **„Robi“** im selben Satz oder bis zu 5 s
+(`SPRACHE_WECK_FENSTER_S`), nachdem „Robi“ allein gesagt wurde. „Stopp“,
+„Halt“ und „Bleib stehen“ gelten auch ohne Weckwort.
+
+| Befehl | Beispiele | wirkt wie |
+|---|---|---|
+| `folgen` | „Robi, folgen“, „Robi, folge mir“, „Robi, komm mit“ | `follow` |
+| `herkommen` | „Robi, komm her“ | `interaction_start`, dann Modus `herkommen` |
+| `weggehen` | „Robi, geh weg“, „Robi, zurück“ | `interaction_start`, dann Modus `weggehen` |
+| `stopp` | „Stopp“, „Halt“ | bei laufender Interaktion: Modus `bereit` (Interaktion bleibt an); sonst `stop` |
+| `nach_hause` | „Robi, fahr nach Hause“ | `home` |
+| `erkunden` | „Robi, erkunde“ | `explore` |
+| `musik_aus` | „Robi, Musik aus“, „Robi, Ruhe“ | `POST /mukke/stop` |
+| `start` | „Hallo Robi“ | `interaction_start` |
+| `aus` | „Robi, gute Nacht“ | `interaction_stop`, Heimfahrt/Erkunder abbrechen |
+
+- Ausgeführt wird über dieselben Wege wie die Befehle der App, mit
+  denselben Prüfungen und Meldungen. Wird ein Befehl abgelehnt, geht die
+  Warnung an alle Clients, und der Roboter sagt „Das geht gerade nicht.“.
+- Jeder erkannte Befehl erzeugt `alert` (info) „Sprachbefehl: <Text>“.
+- Ohne Vosk, Modell oder Mikrofon ist die Erkennung aus
+  (`sprache.verfuegbar: false`), der Rest läuft weiter. Den Grund nennt
+  `GET /sprache/status`.
 
 ---
 
@@ -613,6 +643,12 @@ finden). Voraussetzungen auf dem Pi: `mpv` und `yt-dlp`, siehe
 | Endpunkt | Liefert |
 |---|---|
 | `GET /stimme/status` | `aktiviert`, `verfuegbar`, `simuliert`, `ausgabe` (`piper`, `espeak`, `text`, `simuliert`), `geraet` (ALSA-Name), `spricht`, `warteschlange`, `zuletzt`, `gesagt`, `verworfen`, `fehler` (z. B. Meldung von aplay, wenn der Lautsprecher fehlt) |
+
+### Sprachbefehle
+
+| Endpunkt | Liefert |
+|---|---|
+| `GET /sprache/status` | `aktiviert`, `verfuegbar`, `simuliert`, `zustand` (`aus`, `laedt`, `hoert`, `fehler`, `simuliert`), `mikrofon` (Gerätename), `modell` (Pfad), `weckwort`, `geweckt`, `zuletzt_gehoert`, `letzter_befehl`, `erkannt` (Anzahl), `befehle` (alle Wendungen je Befehl), `fehler` (z. B. „vosk fehlt (pip install vosk sounddevice)“, „Vosk-Modell fehlt: …“ oder „kein Mikrofon gefunden (vorhanden: …)“) |
 
 ### Sonstiges
 

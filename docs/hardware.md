@@ -316,6 +316,38 @@ echo "Hallo, ich bin der Rosmaster." \
 - Nach einem USB-Aussetzer geht höchstens der Satz verloren, der gerade
   lief. Der nächste findet den Lautsprecher unter demselben Namen wieder.
 
+## Mikrofon und Sprachbefehle
+
+Gehört wird über das USB-Mikrofon (C-Media `0d8c:0016`). Der Server sucht
+es über den Namen (`SPRACHE_MIKROFON_NAMEN`: „USB PnP“, „C-Media“,
+„Microphone“, „C270“ – in dieser Reihenfolge), nicht über die Nummer.
+Erkannt wird mit Vosk und dem kleinen deutschen Modell (ca. 45 MB, läuft
+auf der CPU).
+
+Einrichtung am Pi (einmalig):
+
+```bash
+sudo apt install libportaudio2             # für sounddevice
+cd ~/gitpipeline/SPE-ROSMASTER-X3
+robot/.venv/bin/pip install -e "robot[sprache]"   # vosk + sounddevice
+
+cd ~ && wget https://alphacephei.com/vosk/models/vosk-model-small-de-0.15.zip
+unzip vosk-model-small-de-0.15.zip         # -> ~/vosk-model-small-de-0.15 (SPRACHE_MODELL)
+
+arecord -l                                 # Mikrofon da?
+arecord -D plughw:CARD=Device,DEV=0 -d 3 -f S16_LE -r 16000 test.wav && aplay test.wav
+```
+
+- Der Kartenname beim `arecord`-Test kann anders heißen; `arecord -l`
+  zeigt ihn. Der Server braucht ihn nicht.
+- Fehlt etwas, läuft der Server ohne Sprachbefehle weiter.
+  `curl localhost:8000/sprache/status` zeigt `zustand` und `fehler`.
+- Nach einem USB-Aussetzer versucht die Erkennung alle
+  `SPRACHE_NEUVERSUCH_S` (3 s), das Mikrofon wieder zu öffnen.
+- Lautsprecher und Mikrofon sitzen nah beieinander. Solange der Roboter
+  spricht, wird das Mikrofon verworfen. Musik (MUKKE) hört er aber mit;
+  „Robi, Musik aus“ geht trotzdem meist durch.
+
 ## AI HAT+
 
 > **Nachtrag 28.10.:** Verbaut ist ein **AI HAT+ 2 mit Hailo-10H** (PCIe,

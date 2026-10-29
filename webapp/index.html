@@ -202,6 +202,7 @@
       <dt>Person</dt>   <dd id="val-ia-person">—</dd>
       <dt>Geste</dt>    <dd id="val-ia-geste">—</dd>
       <dt>Stimme</dt>   <dd id="val-stimme">—</dd>
+      <dt>Ohr</dt>      <dd id="val-sprache">—</dd>
     </dl>
 
     <div class="home-buttons">
@@ -222,6 +223,12 @@
       <button type="submit" class="btn">Sagen</button>
     </form>
 
+    <form id="speech-form" class="say-form">
+      <input type="text" id="speech-text" maxlength="200"
+             placeholder="Sprachbefehl tippen, z. B. „Robi folgen“" autocomplete="off">
+      <button type="submit" class="btn">Hören</button>
+    </form>
+
     <p class="hint">
       Handzeichen vor der Kamera: <strong>Folgen</strong> – einen Arm über
       den Kopf halten · <strong>Stopp</strong> – beide Hände über die
@@ -229,6 +236,12 @@
       ab winken · <strong>Weggehen</strong> – Hand seitlich wegwischen.
       Nur am Boden benutzen. Jede Fahreingabe und der Not-Stopp beenden
       die Interaktion.
+    </p>
+    <p class="hint">
+      Sprachbefehle ins Mikrofon, immer mit <strong>„Robi“</strong>:
+      folgen · komm her · geh weg · nach Hause · erkunde · Musik aus ·
+      hallo (Interaktion an) · gute Nacht (aus). <strong>„Stopp“</strong>
+      geht auch ohne „Robi“.
     </p>
   </section>
 

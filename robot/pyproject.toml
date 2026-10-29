@@ -14,6 +14,11 @@ dependencies = [
     "rplidar-roboticia>=0.9",
 ]
 
+[project.optional-dependencies]
+# Sprachbefehle über das Mikrofon. Optional, damit der Server auch ohne
+# läuft: pip install -e "robot[sprache]" (Modell siehe docs/hardware.md).
+sprache = ["vosk>=0.3.45", "sounddevice>=0.4"]
+
 [project.scripts]
 rosmaster-assist = "rosmaster_assist.main:main"
 

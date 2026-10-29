@@ -32,6 +32,12 @@ In BEREIT schickt die Schleife **keine** Befehle -- der Roboter steht, und
 nichts hält den Antrieb unnötig wach. Handsteuerung aus der App beendet den
 ganzen Interaktionsmodus (wie beim Erkunder): Wer selbst lenkt, will nicht,
 dass eine Geste dazwischenfährt.
+
+Antrieb weg (29.10.2026): Bricht die Verbindung zum Board ab (USB-Reset),
+endet der Interaktionsmodus nicht mehr, sondern fällt nach BEREIT zurück
+und schaut weiter zu. Fahrende Modi werden erst wieder angenommen, wenn
+das Board zurück ist -- und auch dann nur auf eine *neue* Geste oder einen
+neuen Befehl hin. Von selbst losfahren nach dem Neuverbinden tut er nie.
 """
 
 from __future__ import annotations
@@ -41,7 +47,7 @@ import logging
 import math
 import time
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from .. import config
 from ..navigation.explorer import frei_in_richtung
@@ -62,6 +68,9 @@ FOLGEN = "folgen"
 HERKOMMEN = "herkommen"
 WEGGEHEN = "weggehen"
 SUCHEN = "sucht"
+
+#: Modi, in denen gefahren wird -- die brauchen ein verbundenes Board.
+_FAHRMODI = (FOLGEN, HERKOMMEN, WEGGEHEN, SUCHEN)
 
 #: Welche Geste welchen Modus auslöst.
 _GESTE_ZU_MODUS = {
@@ -88,6 +97,15 @@ _GESTE_SAGEN = {
     gs.WEGGEHEN: "Ich fahre zurück.",
 }
 
+#: Anzeige und Satz, wenn der Modus gleich mit einem Auftrag startet
+#: (App-Knopf "Folgen" oder Sprachbefehl "Robi komm her").
+_START_TEXT = {
+    BEREIT: ("wartet auf ein Handzeichen", "Hallo! Zeig mir ein Handzeichen."),
+    FOLGEN: ("folgt (per App)", "Ich folge dir."),
+    HERKOMMEN: ("kommt her", "Ich komme."),
+    WEGGEHEN: ("nimmt Abstand", "Ich fahre zurück."),
+}
+
 #: So lange (s) bleibt die letzte Geste in der Anzeige stehen.
 _GESTE_ANZEIGE_S = 3.0
 
@@ -104,11 +122,15 @@ class Interaktion:
         lidar: "LidarService | None",
         pose: "Posenerkennung | None",
         stimme: "Stimme | None" = None,
+        antrieb: Callable[[], bool] | None = None,
     ) -> None:
         self._watchdog = watchdog
         self._lidar = lidar
         self._pose = pose
         self._stimme = stimme
+        # Fragt, ob das Board gerade verbunden ist. Ohne Angabe (Tests)
+        # gilt es als verbunden.
+        self._antrieb = antrieb
         self._gesten = gs.Gestenerkennung()
         self._task: asyncio.Task[None] | None = None
         self._grund: str | None = None
@@ -183,6 +205,24 @@ class Interaktion:
         self._wechseln(FOLGEN, "folgt (per App)", time.monotonic(), sagen="Ich folge dir.")
         return True
 
+    def antrieb_verloren(self) -> None:
+        """Board weg: anhalten, aber weiter zuschauen (siehe Modulkopf).
+
+        Früher endete hier der ganze Interaktionsmodus. Weil gerade beim
+        Einschalten der Gestensteuerung am X3 öfter ein USB-Reset kam,
+        war sie dann sofort wieder aus -- und man musste neu starten.
+        """
+        if self.aktiv and self._modus != BEREIT:
+            self._wechseln(BEREIT, "Verbindung zum Antrieb verloren -- angehalten",
+                           time.monotonic(), melden=True)
+
+    def wechseln_zu(self, modus: str, text: str, sagen: str | None = None) -> bool:
+        """Verhalten von außen setzen (Sprachbefehl). False, wenn nicht an."""
+        if not self.aktiv:
+            return False
+        self._wechseln(modus, text, time.monotonic(), sagen=sagen)
+        return self._modus == modus
+
     def folgen_stop(self) -> None:
         """Verhalten beenden, Interaktionsmodus bleibt an."""
         if self.aktiv and self._modus != BEREIT:
@@ -233,12 +273,8 @@ class Interaktion:
         self._abstand_gut, self._abstand_gut_zeit = None, -1e9
         self._nah_zuletzt = -1e9
         self._modus = BEREIT
-        self._wechseln(
-            modus,
-            "folgt (per App)" if modus == FOLGEN else "wartet auf ein Handzeichen",
-            time.monotonic(),
-            sagen="Ich folge dir." if modus == FOLGEN else "Hallo! Zeig mir ein Handzeichen.",
-        )
+        text, satz = _START_TEXT.get(modus, _START_TEXT[BEREIT])
+        self._wechseln(modus, text, time.monotonic(), sagen=satz)
         if self._pose is not None:
             self._pose.aktivieren(True)
         log.info("Interaktion gestartet")
@@ -276,6 +312,12 @@ class Interaktion:
             self._winkel = ziel["winkel"]
             if abs(self._winkel) > 2.0:
                 self._letzte_seite = 1.0 if self._winkel > 0 else -1.0
+
+        if self._modus != BEREIT and not self._antrieb_da():
+            # Zweite Absicherung neben antrieb_verloren(): die
+            # Verbindungsüberwachung prüft nur alle RECONNECT_CHECK_S.
+            return self._wechseln(BEREIT, "Verbindung zum Antrieb verloren -- angehalten",
+                                  jetzt, melden=True)
 
         if self._modus == BEREIT:
             self._abstand = self._abstand_zu(ziel)
@@ -506,8 +548,9 @@ class Interaktion:
             WEGGEHEN: "fährt zurück",
         }
         self._wechseln(modus, texte[modus], jetzt)
-        # Stopp hat Vorrang: was davor in der Schlange stand, stimmt nicht mehr.
-        self._sagen(_GESTE_SAGEN[geste], vorrang=geste == gs.STOPP)
+        if self._modus == modus:  # sonst abgelehnt (kein Antrieb), das sagt _wechseln
+            # Stopp hat Vorrang: was davor in der Schlange stand, stimmt nicht mehr.
+            self._sagen(_GESTE_SAGEN[geste], vorrang=geste == gs.STOPP)
 
     def _glaetten(self, ziel: dict, jetzt: float) -> None:
         """Kamerawinkel tiefpassfiltern -- einmal pro neuem Kamerabild.
@@ -567,6 +610,9 @@ class Interaktion:
             nah &= punkte[:, 0] < 0.0
         return int(nah.sum()) >= 3
 
+    def _antrieb_da(self) -> bool:
+        return self._antrieb is None or bool(self._antrieb())
+
     def _sagen(self, text: str, vorrang: bool = False) -> None:
         if self._stimme is not None:
             self._stimme.sagen(text, vorrang=vorrang)
@@ -574,6 +620,14 @@ class Interaktion:
     def _wechseln(
         self, modus: str, text: str, jetzt: float, melden: bool = False, sagen: str | None = None
     ) -> None:
+        if modus in _FAHRMODI and not self._antrieb_da():
+            # Ohne Board würde jeder Befehl ins Leere gehen, und nach dem
+            # Neuverbinden führe er plötzlich los. Also gar nicht erst
+            # umschalten, sondern stehen bleiben und Bescheid geben.
+            log.warning("Interaktion: %s abgelehnt -- keine Verbindung zum Antrieb", modus)
+            modus, text, melden = BEREIT, "wartet auf den Antrieb", True
+            self._meldungen.append("Keine Verbindung zum Antrieb -- fahre nicht los")
+            sagen = "Ich habe keine Verbindung zu meinen Rädern."
         if modus == BEREIT and self._modus != BEREIT:
             # Beim Wechsel nach BEREIT einmal ausdrücklich anhalten -- danach
             # schickt die Schleife nichts mehr.

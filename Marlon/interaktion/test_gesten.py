@@ -534,5 +534,42 @@ w._last_command_at -= config.COMMAND_TIMEOUT_S + 0.1
 w._check_timeout()
 pruefe("Watchdog: Totmann greift weiterhin", w.current_command.is_stop() and an.stopps == 2, w.current_command)
 
+# --- Antrieb weg (USB-Reset beim Gestenstart, 29.10.) ---------------------------
+class LaeuftNoch:
+    """Steht für den asyncio-Task, damit `aktiv` ohne Event-Loop wahr ist."""
+
+    def done(self):
+        return False
+
+
+verbunden = [False]
+wd, li, po = Watchdog(), Lidar([(-5, 5, 2.0)]), Pose()
+ia = vh.Interaktion(wd, li, po, antrieb=lambda: verbunden[0])
+ia._task = LaeuftNoch()
+ia._meldungen = []
+ia.folgen()  # wie der App-Knopf
+pruefe("Antrieb weg: Folgen abgelehnt, bleibt bereit", ia._modus == vh.BEREIT, ia._modus)
+pruefe("Antrieb weg: Meldung für die App",
+       any("Antrieb" in m for m in ia.meldungen_abholen()))
+pruefe("Antrieb weg: Sprachbefehl Herkommen abgelehnt",
+       not ia.wechseln_zu(vh.HERKOMMEN, "per Sprache"), ia._modus)
+
+verbunden[0] = True
+pruefe("Antrieb wieder da: Folgen geht", ia.wechseln_zu(vh.FOLGEN, "per Sprache"), ia._modus)
+stopps = wd.stopps
+verbunden[0] = False
+ia.antrieb_verloren()
+pruefe("antrieb_verloren: hält an, Modus bereit", ia._modus == vh.BEREIT and wd.stopps > stopps,
+       (ia._modus, wd.stopps))
+pruefe("antrieb_verloren: Interaktion bleibt an", ia.aktiv)
+
+verbunden[0] = True
+ia._modus, ia._modus_seit, ia._gesehen = vh.FOLGEN, 0.0, 0.0
+po.liste = [mit_zeit(person(), 0.1)]
+verbunden[0] = False
+b = ia._schritt(0.1)
+pruefe("Schritt ohne Antrieb: kein Fahrbefehl, bereit",
+       (b is None or b.is_stop()) and ia._modus == vh.BEREIT, (b, ia._modus))
+
 print("\nalles bestanden" if not fehler else f"\n{fehler} Fehler")
 sys.exit(1 if fehler else 0)

@@ -382,6 +382,15 @@ POSE_MIN_SCORE = 0.5
 # verdeckte Hände sollen keine Geste auslösen.
 POSE_KP_MIN_CONF = 0.4
 
+# Hailo beim Serverstart öffnen und offen lassen, statt ihn erst beim
+# Start der Gestensteuerung zu öffnen und danach wieder freizugeben. Das
+# Öffnen ist eine Lastspitze, die am X3 den USB-Hub zurücksetzen kann --
+# dann war das Board weg ("Keine Verbindung zum Antrieb"), genau in dem
+# Moment, in dem die Interaktion losgehen sollte. Beim Serverstart steht
+# der Roboter, und es passiert nur einmal. False gibt den Chip frei, wenn
+# die Interaktion aus ist (z. B. für hailo-apps).
+POSE_WARM_HALTEN = True
+
 # --- Gesten ------------------------------------------------------------------------
 
 # So weit reicht der Blick zurück, um Bewegungen (Winken, Wischen) zu sehen.
@@ -613,3 +622,39 @@ STIMME_TIMEOUT_S = 20.0
 # im Raum und Puffer im Lautsprecher -- die Spracherkennung soll das nicht
 # als Eingabe verstehen.
 STIMME_NACHLAUF_S = 0.4
+
+# --- Sprachbefehle (USB-Mikrofon, Vosk) -------------------------------------------
+# Siehe interaktion/sprache.py und docs/interaktion.md. Ohne vosk/sounddevice,
+# Modell oder Mikrofon ist die Erkennung aus; der Server läuft trotzdem.
+SPRACHE_ENABLED = True
+
+# Kleines deutsches Vosk-Modell (~45 MB, läuft auf der CPU des Pi).
+# Herunterladen: siehe docs/hardware.md.
+SPRACHE_MODELL = "~/vosk-model-small-de-0.15"
+
+# None = selbst suchen (nach SPRACHE_MIKROFON_NAMEN), sonst ein Teil des
+# Gerätenamens (str) oder die Gerätenummer von sounddevice (int).
+SPRACHE_MIKROFON = None
+
+# Reihenfolge = Vorliebe: das USB-Mikrofon (C-Media "USB PnP Sound Device")
+# vor den Mikrofonen in C270 und Orbbec, die weiter weg vom Sprecher zeigen.
+SPRACHE_MIKROFON_NAMEN = ("USB PnP", "C-Media", "Microphone", "C270")
+
+# Der Name des Roboters. Vosk kennt "robi" nicht als Wort; es hört je nach
+# Aussprache eine der Varianten. Nur die, die im Modell stehen, werden benutzt.
+SPRACHE_WECKWORT = "robi"
+SPRACHE_WECKWORT_VARIANTEN = ("robbie", "robby", "roby", "robi", "ruby", "rubi", "robin")
+
+# So lange (s) nach einem einzelnen "Robi" reicht der Befehl allein.
+SPRACHE_WECK_FENSTER_S = 5.0
+
+# "Stopp"/"halt" gilt auch ohne Namen: Anhalten darf nie daran scheitern,
+# dass der Name überhört wurde. Ein falscher Stopp schadet nicht.
+SPRACHE_STOPP_OHNE_WECKWORT = True
+
+# Vosk-Modelle sind auf 16 kHz trainiert. Kann das Mikrofon das nicht,
+# wird seine eigene Rate genommen und Vosk rechnet um.
+SPRACHE_ABTASTRATE = 16000
+
+# Wartezeit (s) vor dem nächsten Versuch, wenn das Mikrofon weg ist.
+SPRACHE_NEUVERSUCH_S = 3.0

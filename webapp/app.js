@@ -88,6 +88,9 @@ const ui = {
   iaGeste: el("val-ia-geste"),
   iaText: el("ia-text"),
   stimme: el("val-stimme"),
+  sprache: el("val-sprache"),
+  speechForm: el("speech-form"),
+  speechText: el("speech-text"),
   sayForm: el("say-form"),
   sayText: el("say-text"),
 };
@@ -153,6 +156,7 @@ function handleMessage(msg) {
       zeigeAutonomie(msg.autonomie);
       zeigeInteraktion(msg.interaktion);
       zeigeStimme(msg.stimme);
+      zeigeSprache(msg.sprache);
       break;
 
     case "collision":
@@ -738,6 +742,28 @@ ui.sayForm.addEventListener("submit", (ev) => {
   send({ type: "say", text });
   ui.sayText.value = "";
 });
+
+// Wie ins Mikrofon gesprochen -- zum Ausprobieren ohne Mikrofon.
+ui.speechForm.addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const text = ui.speechText.value.trim();
+  if (!text) return;
+  send({ type: "speech", text });
+  ui.speechText.value = "";
+});
+
+function zeigeSprache(sp) {
+  if (!sp) return;
+  if (!sp.verfuegbar) {
+    ui.sprache.textContent = "kein Mikrofon (/sprache/status)";
+  } else if (sp.befehl) {
+    ui.sprache.textContent = `Befehl: ${sp.befehl}`;
+  } else if (sp.geweckt) {
+    ui.sprache.textContent = "hört zu …";
+  } else {
+    ui.sprache.textContent = sp.gehoert ? `gehört: „${sp.gehoert}“` : "wartet auf „Robi“";
+  }
+}
 
 function zeigeStimme(st) {
   if (!st) return;
