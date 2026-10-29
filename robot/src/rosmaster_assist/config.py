@@ -185,12 +185,19 @@ CAMERA_ENABLED = True
 # fov_deg: horizontaler Bildwinkel bei 640x480 laut Datenblatt. Damit wird
 # eine Person im Bild einer Richtung im Lidar zugeordnet -- bei Bedarf
 # nachmessen.
+#
+# flip: Einbaulage ausgleichen. None, "horizontal" (links/rechts spiegeln),
+# "vertikal" (oben/unten) oder "180" (beides = auf dem Kopf). Gedreht wird
+# auf dem Roboter, bevor irgendwer das Bild sieht -- auch die Personen- und
+# Posenerkennung. Auf der Einstellungsseite verstellbar.
 CAMERA_ROLES = {
     # Orbbec-Tiefenkamera, Farbkanal. Für Orientierung und Fahren. Der
     # Tiefenkanal (2bc5:060f) ist kein Videogerät und braucht das Orbbec-SDK.
-    "orientierung": {"usb_id": "2bc5", "label": "Orbbec (Farbbild)", "fov_deg": 66.0},
-    # Logitech C270: Personenerkennung.
-    "personen": {"usb_id": "046d", "label": "Logitech C270", "fov_deg": 45.0},
+    "orientierung": {"usb_id": "2bc5", "label": "Orbbec (Farbbild)", "fov_deg": 66.0,
+                     "flip": None},
+    # Logitech C270: Personenerkennung. Hängt falsch herum (29.10.2026).
+    "personen": {"usb_id": "046d", "label": "Logitech C270", "fov_deg": 45.0,
+                 "flip": "horizontal"},
 }
 
 # Welche Kamera unter /camera/stream, /camera/snapshot und /camera/status

@@ -223,6 +223,9 @@ class Picamera2Camera(CameraBase):
 #: sie lassen sich öffnen und blockieren dann beim Lesen.
 KEINE_KAMERA = ("pispbe", "hevc", "codec", "isp", "cfe", "rpivid")
 
+#: "flip" in config.CAMERA_ROLES -> Code für cv2.flip.
+FLIP_CODES = {"horizontal": 1, "vertikal": 0, "180": -1}
+
 
 def _lesen(pfad: str) -> str:
     try:
@@ -442,6 +445,12 @@ class OpenCVCamera(CameraBase):
         ok, frame = self._cap.read()
         if not ok:
             return None
+        # Schon hier drehen, nicht erst in der App: Personen- und
+        # Posenerkennung bekommen dasselbe Bild, sonst lägen links und
+        # rechts bei der Zuordnung zum Lidar vertauscht.
+        code = FLIP_CODES.get(config.CAMERA_ROLES.get(self.name, {}).get("flip"))
+        if code is not None:
+            frame = cv2.flip(frame, code)
         ok, buf = cv2.imencode(
             ".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), config.CAMERA_QUALITY]
         )

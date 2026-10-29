@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import re
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -17,7 +18,12 @@ from typing import Any
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    Response,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 
 from .. import config, settings
@@ -58,6 +64,28 @@ class _OhneVeraltetenCache(StaticFiles):
         antwort = await super().get_response(path, scope)
         antwort.headers.update(_KEIN_CACHE)
         return antwort
+
+
+def _seite(name: str) -> HTMLResponse:
+    """Eine HTML-Seite der Web-App, Skripte und Styles mit Versionsnummer.
+
+    no-cache allein reicht nicht: eine Kopie, die der Browser noch von vor
+    dieser Einstellung hat, verwendet er ungefragt weiter. Mit ``?v=...``
+    ist jede geänderte Datei für ihn eine neue Adresse -- eine alte app.js
+    zur neuen index.html (Skript bricht ab, App bleibt auf "getrennt")
+    kann es dann nicht mehr geben.
+    """
+    def version(treffer: re.Match) -> str:
+        pfad = WEBAPP_DIR / treffer.group(2)
+        try:
+            v = int(pfad.stat().st_mtime)
+        except OSError:
+            return treffer.group(0)
+        return f'{treffer.group(1)}{treffer.group(2)}?v={v}"'
+
+    html = (WEBAPP_DIR / name).read_text(encoding="utf-8")
+    html = re.sub(r'(/static/)([\w./-]+\.(?:js|css))"', version, html)
+    return HTMLResponse(html, headers=_KEIN_CACHE)
 
 
 class ConnectionHub:
@@ -475,12 +503,12 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         app.mount("/static", _OhneVeraltetenCache(directory=WEBAPP_DIR), name="static")
 
         @app.get("/")
-        async def index() -> FileResponse:
-            return FileResponse(WEBAPP_DIR / "index.html", headers=_KEIN_CACHE)
+        async def index() -> HTMLResponse:
+            return _seite("index.html")
 
         @app.get("/einstellungen")
-        async def einstellungen_seite() -> FileResponse:
-            return FileResponse(WEBAPP_DIR / "einstellungen.html", headers=_KEIN_CACHE)
+        async def einstellungen_seite() -> HTMLResponse:
+            return _seite("einstellungen.html")
     else:
         log.warning("webapp/ nicht gefunden unter %s -- nur /ws verfügbar", WEBAPP_DIR)
 

@@ -73,6 +73,25 @@ def _aufloesung_schreiben(wert: str) -> None:
     config.CAMERA_WIDTH, config.CAMERA_HEIGHT = int(breite), int(hoehe)
 
 
+def _flip(rolle: str) -> Einstellung:
+    """Einbaulage einer Kamera -- steckt in config.CAMERA_ROLES, nicht in einem eigenen Wert."""
+
+    def lesen() -> str:
+        return config.CAMERA_ROLES[rolle].get("flip") or "aus"
+
+    def schreiben(wert: str) -> None:
+        config.CAMERA_ROLES[rolle]["flip"] = None if wert == "aus" else wert
+
+    return Einstellung(
+        f"CAMERA_FLIP_{rolle.upper()}", "kamera",
+        f"{config.CAMERA_ROLES[rolle].get('label', rolle)}: drehen/spiegeln",
+        optionen=("aus", "horizontal", "vertikal", "180"),
+        hilfe="horizontal = links/rechts spiegeln, vertikal = oben/unten, 180 = auf dem Kopf. "
+              "Gilt auch für die Personen- und Posenerkennung.",
+        lesen=lesen, schreiben=schreiben,
+    )
+
+
 #: Reihenfolge und Überschriften der Blöcke auf der Seite.
 GRUPPEN = [
     ("fahren", "Fahren & Motoren", "Obergrenzen für jeden Fahrbefehl, egal woher er kommt."),
@@ -122,6 +141,7 @@ EINSTELLUNGEN: list[Einstellung] = [
                 lesen=_aufloesung_lesen, schreiben=_aufloesung_schreiben),
     Einstellung("CAMERA_QUALITY", "kamera", "JPEG-Qualität", "%", 10, 95, 5,
                 hilfe="Höher = schärfer, aber größere Bilder übers WLAN."),
+    *[_flip(rolle) for rolle in config.CAMERA_ROLES],
     Einstellung("CAMERA_ENABLED", "kamera", "Kameras eingeschaltet", neustart=True),
 
     # --- Personenerkennung
