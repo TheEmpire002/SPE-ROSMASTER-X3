@@ -369,12 +369,34 @@ def main() -> int:
     env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
 
     try:
-        return subprocess.run(cmd, env=env).returncode
+        code = subprocess.run(cmd, env=env).returncode
     except KeyboardInterrupt:
         # Der Serverprozess bekommt dasselbe Strg+C und fährt selbst sauber
         # herunter -- inklusive Anhalten der Motoren.
         print("\n  Beendet.\n")
         return 0
+    _ende_erklaeren(code)
+    return code
+
+
+# Wie der Server endete -- damit "er ist einfach weg" eine Ursache bekommt.
+# Negative Codes heißen unter Linux: durch dieses Signal beendet.
+_ENDE_TEXTE = {
+    -9: "vom System hart beendet (SIGKILL) -- meist Speicher voll oder `kill -9`.",
+    -11: "Speicherzugriffsfehler (Segfault) in einer C-Bibliothek, Details in "
+         "~/.rosmaster/diagnose/absturz.txt.",
+    -6: "abgebrochen (SIGABRT) in einer C-Bibliothek.",
+    -1: "Terminal/SSH geschlossen (SIGHUP). Tipp: den Server in `tmux` starten.",
+    -15: "von außen beendet (SIGTERM).",
+}
+
+
+def _ende_erklaeren(code: int) -> None:
+    if code in (0, 130, -2):
+        return
+    text = _ENDE_TEXTE.get(code, "mit einem Fehler beendet, siehe Log oben.")
+    print(f"\n  Server beendet (Code {code}): {text}")
+    print("  Mehr auf der Seite /diagnose unter „Abstürze & Hänger“.\n")
 
 
 if __name__ == "__main__":

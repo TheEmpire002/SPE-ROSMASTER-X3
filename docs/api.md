@@ -620,6 +620,24 @@ schritten. Die Seite dazu ist `/diagnose`.
   `systemd-journal`), `nicht vorhanden` (Windows, Simulation) oder
   `Fehler beim Lesen`.
 - Die Warnschwellen sind über `/settings` (Block `diagnose`) einstellbar.
+- `absturz` (seit 29.10.): Absturz- und Hänger-Erfassung. Felder:
+  - `aktiv`, `ordner`: ob mitgeschrieben wird und wohin
+    (`~/.rosmaster/diagnose/`).
+  - `boot`, `journal_dauerhaft`: Boot-ID; ob das Kernel-Log Neustarts
+    überlebt.
+  - `vorher`: Erklärung, falls der vorige Lauf nicht sauber endete
+    (`art`: `pi_neustart`, `segfault`, `speicher`, `prozess_weg`; dazu
+    `titel`, `was`, `tun`, Log-Zeilen, `dump`), sonst `null`.
+  - `laeufe`: die letzten Serverläufe (`pid`, `boot`, `start`, `zuletzt`,
+    `ende`; `ende: null` = nicht sauber beendet).
+  - `haenger`, `puls_max_s`, `puls_alter_s`: wie oft und wie lange die
+    Ereignisschleife stand; `blockiert` (`zeit`, `dauer_s`, `stapel`) zeigt,
+    woran sie zuletzt hing.
+  - `speicher` (`server_mb`, `threads`, `dateien`, `frei_mb`, `gesamt_mb`)
+    und `speicher_verlauf`: um ein Speicherleck zu erkennen.
+  - `usb_ports`, `usb_ports_neu`, `usb_pro_min`: Over-Current-Zähler je
+    Root-Port, neue seit dem Start und Rate pro Minute. Ab
+    `USB_STURM_PRO_MIN` meldet die Seite eine dauerhafte USB-Überlast.
 
 ### Musik („MUKKE“)
 

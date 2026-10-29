@@ -302,6 +302,90 @@ function zeigeGeraete(st) {
     : "Alle Messquellen verfügbar.";
 }
 
+// --- Abstürze & Hänger ------------------------------------------------------------
+
+const ENDE_TEXT = {
+  beendet: "sauber beendet",
+};
+
+function zeigeAbsturz(st) {
+  const a = st.absturz;
+  if (!a) return;
+
+  const v = a.vorher;
+  el("diag-vorher").hidden = !v;
+  if (v) {
+    el("diag-vorher").className = `diag-vorher ${v.art === "prozess_weg" ? "warnung" : "kritisch"}`;
+    el("diag-vorher-titel").textContent = `Voriger Lauf: ${v.titel}`;
+    el("diag-vorher-was").textContent = v.was;
+    const teile = [];
+    if (v.kernel && v.kernel.length) teile.push("Kernel-Log:", ...v.kernel, "");
+    if (v.log && v.log.length) teile.push("Letzte Log-Zeilen:", ...v.log, "");
+    if (v.dump && v.dump.length) teile.push("Stack-Dump:", ...v.dump);
+    el("diag-vorher-text").textContent = teile.join("\n") || "Nichts aufgezeichnet.";
+  }
+
+  const zeilen = [];
+  const zeile = (name, wert, stufe = "", hilfe = "") => zeilen.push({ name, wert, stufe, hilfe });
+  zeile("Erfassung", a.aktiv ? "aktiv" : "aus (Ordner nicht beschreibbar)", a.aktiv ? "ok" : "warnung");
+  zeile("Journal überlebt Neustart", a.journal_dauerhaft ? "ja" : "nein", a.journal_dauerhaft ? "ok" : "warnung",
+    "Ohne dauerhaftes Journal ist das Kernel-Log nach einem Neustart weg");
+  if (a.puls_alter_s !== null && a.puls_alter_s !== undefined) {
+    zeile("Herzschlag des Servers", `vor ${a.puls_alter_s.toFixed(1)} s`, a.puls_alter_s > 2 ? "kritisch" : "ok",
+      "Kommt keiner, hängt die Ereignisschleife");
+  }
+  zeile("Längste Verzögerung", `${a.puls_max_s.toFixed(2)} s`, a.puls_max_s > 1 ? "warnung" : "ok",
+    "Wie lange die Ereignisschleife höchstens blockiert war");
+  zeile("Hänger seit Start", String(a.haenger), a.haenger ? "warnung" : "ok");
+  const sp = a.speicher || {};
+  if (sp.server_mb !== undefined) zeile("Speicher Server", `${sp.server_mb} MB, ${sp.threads} Threads, ${sp.dateien} Dateien`);
+  if (sp.frei_mb !== undefined) zeile("Speicher frei", `${sp.frei_mb} von ${sp.gesamt_mb} MB`, sp.frei_mb < 300 ? "kritisch" : "ok");
+  if (a.usb_pro_min !== null && a.usb_pro_min !== undefined) {
+    zeile("USB-Überlast", `${a.usb_pro_min} / min`, a.usb_pro_min >= 20 ? "kritisch" : a.usb_pro_min ? "warnung" : "ok",
+      "Jede Meldung trennt kurz alle USB-Geräte");
+  }
+  const dl = el("diag-absturz-werte");
+  dl.replaceChildren();
+  for (const z of zeilen) {
+    const dt = neu("dt", null, z.name);
+    const dd = neu("dd", z.stufe, z.wert);
+    if (z.hilfe) { dt.title = z.hilfe; dd.title = z.hilfe; }
+    dl.append(dt, dd);
+  }
+
+  el("diag-blockiert").hidden = !a.blockiert;
+  if (a.blockiert) {
+    el("diag-blockiert-text").textContent =
+      `${uhrzeit(a.blockiert.zeit)} -- stand ${a.blockiert.dauer_s} s:\n${a.blockiert.stapel}`;
+  }
+
+  const ul = el("diag-laeufe");
+  ul.replaceChildren();
+  for (const l of a.laeufe) {
+    const lebt = !l.ende && l.pid && l === a.laeufe[0];
+    const stufe = lebt ? "ok" : !l.ende ? "kritisch" : l.ende === "beendet" ? "" : "warnung";
+    const ende = lebt ? "läuft (dieser Lauf)" : l.ende ? (ENDE_TEXT[l.ende] || l.ende) : "abgestürzt (kein Ende vermerkt)";
+    const li = neu("li", stufe);
+    li.append(neu("time", null, new Date(l.start * 1000).toLocaleString("de-DE")));
+    li.append(neu("span", null, `${dauer(Math.max(0, l.zuletzt - l.start))} · ${ende}`));
+    ul.append(li);
+  }
+  if (!a.laeufe.length) ul.append(neu("li", null, "Noch keine Läufe aufgezeichnet."));
+
+  const pu = el("diag-usb-ports");
+  pu.replaceChildren();
+  const ports = Object.entries(a.usb_ports || {});
+  for (const [port, n] of ports) {
+    const neuN = (a.usb_ports_neu || {})[port] || 0;
+    pu.append(neu("li", neuN ? "kritisch" : n ? "warnung" : "ok", `${port}: ${n}${neuN ? ` (+${neuN} seit Serverstart)` : ""}`));
+  }
+  if (!ports.length) pu.append(neu("li", null, "Keine Zähler lesbar (nur am Pi)."));
+
+  el("diag-absturz-ordner").textContent = a.ordner
+    ? `Dateien nach einem Absturz: ${a.ordner} (server.log, laeufe.json, absturz.txt, blockiert.txt)`
+    : "";
+}
+
 // --- Zeitleiste ------------------------------------------------------------------
 
 function zeigeEreignisse(st) {
@@ -386,6 +470,17 @@ function bericht() {
   z.push("Geräte:");
   for (const g of st.geraete) z.push(`  ${g.ok === false ? "✗" : "✓"} ${g.name}: ${g.text}`);
   z.push("");
+  if (st.absturz) {
+    const a = st.absturz;
+    z.push("Abstürze & Hänger:");
+    if (a.vorher) z.push(`  Voriger Lauf: ${a.vorher.titel}`);
+    z.push(`  Hänger: ${a.haenger}, längste Verzögerung ${a.puls_max_s} s, USB-Überlast ${a.usb_pro_min ?? "?"}/min`);
+    for (const l of a.laeufe.slice(0, 10)) {
+      z.push(`  Lauf ${new Date(l.start * 1000).toLocaleString("de-DE")}: ${l.ende || "kein Ende vermerkt"}`);
+    }
+    if (a.blockiert) z.push(`  Hing zuletzt:\n${a.blockiert.stapel}`);
+    z.push("");
+  }
   z.push("Zeitleiste (neueste zuerst):");
   for (const e of st.ereignisse.slice(0, 50)) z.push(`  ${uhrzeit(e.zeit)} [${e.schwere}] ${e.text}`);
   z.push("");
@@ -437,6 +532,7 @@ async function aktualisieren() {
     zeigeProbleme(st);
     zeigeMesswerte(st);
     zeigeGeraete(st);
+    zeigeAbsturz(st);
     zeigeEreignisse(st);
     await logNachladen();
     el("diag-aktualisiert").textContent = `aktualisiert ${new Date().toLocaleTimeString("de-DE")}`;

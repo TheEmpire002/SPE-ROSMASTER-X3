@@ -698,6 +698,26 @@ a.einst-knopf { text-decoration: none; }
 .diag-ereignisse time { color: var(--muted); font-variant-numeric: tabular-nums; }
 .diag-ereignisse li.kritisch .diag-ereignis-text { color: var(--danger); }
 
+/* Abstürze & Hänger */
+.diag-unter { font-size: 0.85rem; color: var(--muted); margin: 0.9rem 0 0.3rem; font-weight: 600; }
+.diag-vorher { border-left: 3px solid var(--warn); padding: 0.4rem 0.7rem; margin-bottom: 0.8rem; }
+.diag-vorher.kritisch { border-left-color: var(--danger); }
+.diag-vorher[hidden] { display: none; }
+.diag-vorher p { margin: 0.3rem 0; font-size: 0.9rem; }
+.diag-pre {
+  background: #111317; border: 1px solid var(--line); border-radius: 6px;
+  padding: 0.5rem; max-height: 260px; overflow: auto; white-space: pre-wrap;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 0.74rem;
+}
+.diag-laeufe { list-style: none; padding: 0; margin: 0; font-size: 0.85rem; }
+.diag-laeufe li { display: flex; gap: 0.8rem; padding: 0.15rem 0; }
+.diag-laeufe li time { color: var(--muted); flex: none; }
+.diag-laeufe li.ok { color: var(--ok); }
+.diag-laeufe li.warnung { color: var(--warn); }
+.diag-laeufe li.kritisch { color: var(--danger); }
+.diag-befunde ul, .diag-befunde ol { padding-left: 1.2rem; font-size: 0.9rem; line-height: 1.5; }
+.diag-befunde code { font-size: 0.8rem; }
+
 /* Server-Log: Festbreitenschrift, damit die Spalten untereinander stehen. */
 .diag-log {
   background: #111317;

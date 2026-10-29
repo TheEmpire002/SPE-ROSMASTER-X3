@@ -72,6 +72,77 @@
     <p class="diag-fussnote" id="diag-quellen"></p>
   </section>
 
+  <!-- Abstürze & Hänger: Was überlebt einen Absturz? Laufprotokoll, Hänger,
+       Speicher und USB-Überlast -- seit der Fehlersuche vom 29.10. -->
+  <section class="panel wide-panel">
+    <h2>Abstürze &amp; Hänger</h2>
+    <div id="diag-vorher" class="diag-vorher" hidden>
+      <strong id="diag-vorher-titel"></strong>
+      <p id="diag-vorher-was"></p>
+      <details id="diag-vorher-details">
+        <summary>Kernel-Log, letzte Log-Zeilen und Stack-Dump vom Lauf davor</summary>
+        <pre id="diag-vorher-text" class="diag-pre"></pre>
+      </details>
+    </div>
+    <dl id="diag-absturz-werte" class="diag-messwerte"></dl>
+    <details id="diag-blockiert" hidden>
+      <summary>Wo der Server zuletzt hing</summary>
+      <pre id="diag-blockiert-text" class="diag-pre"></pre>
+    </details>
+    <h3 class="diag-unter">Letzte Serverläufe</h3>
+    <ul id="diag-laeufe" class="diag-laeufe"></ul>
+    <h3 class="diag-unter">USB-Überlast je Port (seit Pi-Start)</h3>
+    <ul id="diag-usb-ports" class="diag-laeufe"></ul>
+    <p class="diag-fussnote" id="diag-absturz-ordner"></p>
+  </section>
+
+  <!-- Feste Befunde der Fehlersuche am 29.10. -- damit das Team sie hier
+       findet und nicht nur im Projekttagebuch. -->
+  <section class="panel wide-panel diag-befunde">
+    <h2>Befunde der Fehlersuche (29.10.)</h2>
+    <p>
+      Gemessen per SSH am Pi, Roboter auf dem Podest, am Netzteil, Board am
+      anderen USB-Anschluss. <strong>Ergebnis: Die Abstürze kommen von der
+      USB-Stromversorgung, nicht aus dem Code.</strong>
+    </p>
+    <ul>
+      <li><strong>Strom des Pi in Ordnung:</strong> keine Unterspannung
+        (<code>throttled=0x0</code>), 5,05–5,08 V, 47 °C, 14 GB RAM frei.</li>
+      <li><strong>USB-Überlast im Dauerfeuer:</strong> 49–65 Meldungen je
+        10 s, auch im Stand, ohne laufenden Server und bei 82 % freier CPU.
+        Alle sechs Root-Ports des Pi zählen hoch (je 160–325), die Ports der
+        Hubs bleiben bei 0. Am Pi 5 teilen sich alle Ports einen Schalter
+        -- löst er aus, fallen <em>alle</em> USB-Geräte kurz weg: Board,
+        Lidar, Kameras, Mikrofon, Lautsprecher.</li>
+      <li><strong>Schon in der ersten Sekunde nach dem Start:</strong> Der
+        Sturm beginnt, bevor irgendein Programm läuft -- Code kann es nicht
+        auslösen.</li>
+      <li><strong>Lidar meldet sich nicht an:</strong>
+        <code>device descriptor read/64, error -32</code>, <code>/dev/rplidar</code>
+        fehlt. Dazu viele Abmeldungen und <code>cannot reset (err -71)</code>.</li>
+      <li><strong>Verdacht:</strong> Rückspeisung über den selbstversorgten
+        Hub auf dem Expansion Board (VIA 2109) oder ein Kurzschluss/Defekt
+        am Lidar bzw. dessen Kabel.</li>
+      <li><strong>Code:</strong> Kein Absturz im Code gefunden. Schwachstellen,
+        die einen Absturz <em>vortäuschen</em> konnten, sind behoben: Schleifen
+        starben beim ersten Fehler still (App fror ein), ein langsames Handy
+        blockierte alle Clients, ein fehlerhafter Befehl trennte die
+        Verbindung, ein geschlossenes SSH-Fenster beendete den Server.</li>
+    </ul>
+    <h3 class="diag-unter">So eingrenzen</h3>
+    <ol>
+      <li>Alle USB-Geräte abziehen, Pi starten: Zähler unten beobachten
+        (sollte stehen).</li>
+      <li>Geräte einzeln wieder anstecken, <strong>Lidar zuletzt</strong>; nach
+        jedem Gerät 1 Minute warten. Springt der Zähler los, ist das der
+        Schuldige.</li>
+      <li>Lidar mit einem anderen Kabel bzw. am anderen Port testen.</li>
+      <li>Board-USB-Kabel abziehen: Hört der Sturm auf, speist das Board
+        zurück -- dann ein USB-Kabel ohne 5-V-Leitung bzw. einen Hub mit
+        Rückspeiseschutz nehmen.</li>
+    </ol>
+  </section>
+
   <!-- Zeitleiste: was ist wann passiert -- zum Zusammenhänge erkennen. -->
   <section class="panel wide-panel">
     <h2>Zeitleiste</h2>

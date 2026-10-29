@@ -465,6 +465,62 @@ keine Meldung mehr beim Beenden. Daraus folgt auch: Das Öffnen des Hailo
 ist ein Lastsprung. Beim Einschalten der Interaktion während der Fahrt auf
 neue Meldungen achten.
 
+**„Random Abstürze“ am anderen Board (Befund vom 29.10.).** Nach dem
+Umstecken auf das andere Expansion-Board gab es weiter scheinbar zufällige
+Abstürze, am Netzteil und auf dem Podest. Per SSH gemessen, **ohne
+laufenden Server** und ohne dass sich ein Rad drehte:
+
+| Messung | Wert |
+|---|---|
+| `vcgencmd get_throttled` | `0x0` (nie Unterspannung, nie gedrosselt) |
+| Pi-Versorgung (PMIC `EXT5V`) | 5,05–5,08 V |
+| Temperatur, freier RAM | 47 °C, 14 GB frei |
+| Over-Current-Meldungen im Leerlauf | **49–65 pro 10 s**, ununterbrochen |
+| Zähler `over_current_count` | alle 6 Root-Ports zählen hoch (160–325), die Ports der Hubs bleiben bei 0 |
+| Beginn | in der ersten Sekunde nach dem Booten |
+| Lidar | meldet sich nicht an (`device descriptor read … error -32`, dazu `-71`), `/dev/rplidar` fehlt |
+
+Daraus folgt:
+
+- **Der Code ist nicht die Ursache.** Die Überlast läuft schon, bevor der
+  Server startet, und ohne jede Rechen- oder Fahrlast. Der Pi selbst hat
+  genug Spannung und ist kühl.
+- Dass *alle* Root-Ports zählen, passt zum gemeinsamen Stromschalter des
+  Pi 5 (siehe oben): Ein Gerät oder Kabel zieht zu viel bzw. speist zurück,
+  und der Schalter meldet es für alle. Verdächtig sind der Hub auf dem Board
+  (VIA 2109, Rückspeisung über VBUS) und der Lidar bzw. sein Kabel, der sich
+  gar nicht erst anmeldet.
+- Jede Überlast trennt kurz die Geräte. Für den Server sieht das aus wie ein
+  Absturz: Lidar, Board und Kamera fallen weg, die App zeigt „Keine
+  Verbindung zum Antrieb“.
+
+**Eingrenzen (am Roboter, in dieser Reihenfolge).** Nach jedem Schritt auf
+`/diagnose` unter „Abstürze & Hänger“ den Wert *USB-Überlast pro Minute*
+ansehen (bzw. `dmesg -w`):
+
+1. Alle USB-Geräte vom Pi abziehen. Hört die Überlast auf, liegt es an
+   einem Gerät; zählt sie weiter, am Pi bzw. seiner Versorgung.
+2. Geräte einzeln wieder anstecken, den Lidar zuletzt. Das Gerät, nach dem
+   die Zähler wieder laufen, ist der Verursacher.
+3. Lidar mit einem anderen Kabel bzw. am anderen Adapter testen.
+4. Das USB-Kabel vom Board zum Pi abziehen (Rückspeisung über das Board
+   ausschließen). Bleibt es dann ruhig, Punkt 4 unten umsetzen.
+
+Damit beim nächsten Mal auch nach einem Neustart das Kernel-Log noch da ist,
+das Journal dauerhaft machen (am Pi war es nur im RAM):
+
+```bash
+sudo mkdir -p /var/log/journal/$(cat /etc/machine-id)
+sudo systemd-tmpfiles --create --prefix /var/log/journal
+sudo systemctl restart systemd-journald
+```
+
+Der Server schreibt außerdem selbst mit (`~/.rosmaster/diagnose/`): jeden
+Lauf mit Boot-ID (`laeufe.json`), das Log als Datei (`server.log`),
+Segfaults (`absturz.txt`) und Hänger der Ereignisschleife
+(`blockiert.txt`). Die Seite `/diagnose` ordnet beim nächsten Start ein, ob
+der Pi neu gestartet ist, der Server hart beendet wurde oder abgestürzt ist.
+
 ### Was am Roboter tun (Hardware)
 
 Nach Wirkung sortiert, das Einfachste zuerst:

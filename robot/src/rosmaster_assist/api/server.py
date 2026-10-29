@@ -112,23 +112,57 @@ class ConnectionHub:
         log.info("Client getrennt (%d aktiv)", len(self._clients))
 
     async def broadcast(self, message: dict[str, Any]) -> None:
-        """An alle senden. Tote Verbindungen werden dabei aussortiert."""
+        """An alle senden. Tote oder hängende Verbindungen werden aussortiert.
+
+        Parallel und mit Zeitlimit: Ein Handy mit schlechtem WLAN hielt
+        vorher die Statusschleife und damit alle anderen Clients auf -- die
+        App fror ein, und es sah aus wie ein Absturz.
+        """
         async with self._lock:
             targets = list(self._clients)
+        if not targets:
+            return
 
-        dead = []
-        for ws in targets:
+        async def senden(ws: WebSocket) -> WebSocket | None:
             try:
-                await ws.send_json(message)
+                await asyncio.wait_for(ws.send_json(message), config.WS_SENDE_TIMEOUT_S)
+                return None
             except Exception:
-                dead.append(ws)
+                return ws
 
-        for ws in dead:
-            await self.remove(ws)
+        for ws in await asyncio.gather(*(senden(ws) for ws in targets)):
+            if ws is not None:
+                await self.remove(ws)
+                # Schließen, damit auch die Empfangsschleife dieses Clients
+                # endet (und bei null Clients angehalten wird).
+                asyncio.create_task(_schliessen(ws))
 
     @property
     def count(self) -> int:
         return len(self._clients)
+
+
+async def _schliessen(ws: WebSocket) -> None:
+    try:
+        await asyncio.wait_for(ws.close(), 2.0)
+    except Exception:
+        pass
+
+
+_fehler_zuletzt: dict[str, float] = {}
+
+
+def _schleifenfehler(name: str) -> None:
+    """Fehler in einer Dauerschleife loggen -- gedrosselt -- und weitermachen.
+
+    Nur in einem except-Block aufrufen. Früher beendete der erste Fehler die
+    Schleife für immer (etwa keine Statusmeldungen mehr), ohne dass es
+    jemand merkte.
+    """
+    jetzt = time.monotonic()
+    if jetzt - _fehler_zuletzt.get(name, -1e9) >= config.SCHLEIFENFEHLER_LOG_S:
+        _fehler_zuletzt[name] = jetzt
+        log.exception("Fehler in %s -- läuft weiter", name)
 
 
 def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
@@ -194,10 +228,16 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     diagnose = Diagnose(
         driver, watchdog, lidar, kameras, pose, log_puffer, mock=use_mock_camera
     )
+    diagnose.absturz_einrichten()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        driver.connect()
+        try:
+            driver.connect()
+        except Exception:
+            # Ohne Board trotzdem starten: Diagnose und App sollen zeigen,
+            # was los ist; die Verbindungsüberwachung versucht es weiter.
+            log.exception("Antrieb beim Start nicht verbindbar -- versuche es weiter")
         if driver.name == "mock":
             log.warning("Antrieb: SIMULATION — die Motoren bleiben stehen")
         else:
@@ -218,8 +258,12 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             # einmessen. Ohne Referenz gäbe es bis zum ersten "set_home"
             # keine Korrektur -- und den Knopf drückt erfahrungsgemäß
             # niemand, bevor etwas schiefgeht.
-            asyncio.create_task(_referenz_nachholen(localizer, odometry))
+            diagnose.task_ueberwachen(
+                asyncio.create_task(_referenz_nachholen(localizer, odometry)),
+                "Startpunkt einmessen", endlos=False,
+            )
         diagnose.start()
+        asyncio.get_running_loop().set_exception_handler(diagnose.loop_fehler)
 
         status_task = asyncio.create_task(
             _status_loop(
@@ -233,9 +277,23 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         hw_task = asyncio.create_task(
             _hardware_loop(hub, watchdog, driver, homing, erkunder, interaktion)
         )
+        puls_task = asyncio.create_task(_puls_loop(diagnose))
+        for task, name in [
+            (status_task, "Statusmeldungen"), (sprach_task, "Sprachbefehle"),
+            (odo_task, "Positionsverfolgung"), (hw_task, "Verbindungsüberwachung"),
+            (puls_task, "Puls"),
+        ]:
+            diagnose.task_ueberwachen(task, name)
+        # Der Abgleich endet ohne Lidar von selbst -- nur Fehler melden.
+        diagnose.task_ueberwachen(match_task, "Lidar-Abgleich", endlos=False)
         try:
             yield
         finally:
+            # Zuerst festhalten, dass dies ein gewolltes Ende ist: Hängt das
+            # Aufräumen und wird der Prozess dann abgeschossen, soll das
+            # nicht als Absturz zählen.
+            diagnose.sauber_beendet()
+            puls_task.cancel()
             # Reihenfolge ist wichtig: erst Statusmeldungen beenden, dann
             # Watchdog (der hält an), dann die Hardware trennen.
             status_task.cancel()
@@ -283,10 +341,17 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         try:
             while True:
                 msg = await ws.receive_json()
-                reply = await _handle(
-                    msg, watchdog, driver, hub, odometry, homing, localizer, guard,
-                    erkunder, interaktion, stimme, sprache,
-                )
+                try:
+                    reply = await _handle(
+                        msg, watchdog, driver, hub, odometry, homing, localizer, guard,
+                        erkunder, interaktion, stimme, sprache,
+                    )
+                except Exception:
+                    # Früher trennte ein fehlerhafter Befehl die Verbindung --
+                    # der Roboter hielt an, und es wirkte wie ein Absturz.
+                    typ = msg.get("type") if isinstance(msg, dict) else None
+                    log.exception("Befehl %r fehlgeschlagen", typ)
+                    reply = alert_message("warning", f"Befehl {typ!r} fehlgeschlagen (siehe /diagnose)")
                 if reply is not None:
                     await ws.send_json(reply)
         except WebSocketDisconnect:
@@ -1009,18 +1074,16 @@ async def _match_loop(localizer: Localizer) -> None:
     """Gleicht die Position regelmäßig mit der Referenzaufnahme ab."""
     if not localizer.verfuegbar:
         return
-    try:
-        while True:
-            # Jedes Mal neu lesen: auf der Einstellungsseite verstellbar.
-            await asyncio.sleep(1.0 / max(0.1, config.MATCH_HZ))
+    while True:
+        # Jedes Mal neu lesen: auf der Einstellungsseite verstellbar.
+        await asyncio.sleep(1.0 / max(0.1, config.MATCH_HZ))
+        try:
             # Der Abgleich rechnet mit einigen hundert Punkten und würde
             # die Ereignisschleife sonst kurz blockieren -- das macht sich
             # in ruckelnder Steuerung bemerkbar.
             await asyncio.to_thread(localizer.abgleichen)
-    except asyncio.CancelledError:
-        raise
-    except Exception:
-        log.exception("Lidar-Abgleich abgestürzt -- Ortung nur noch per Odometrie")
+        except Exception:
+            _schleifenfehler("Lidar-Abgleich")
 
 
 async def _hardware_loop(
@@ -1037,9 +1100,9 @@ async def _hardware_loop(
     dafür gesorgt, dass bis dahin nichts weiterfährt und die App es erfährt.
     """
     verbunden = driver.connected
-    try:
-        while True:
-            await asyncio.sleep(config.RECONNECT_CHECK_S)
+    while True:
+        await asyncio.sleep(config.RECONNECT_CHECK_S)
+        try:
             # Neu verbinden kann eine Weile dauern -- nicht in der
             # Ereignisschleife, sonst stockt die Steuerung.
             await asyncio.to_thread(driver.ueberwachen)
@@ -1062,15 +1125,15 @@ async def _hardware_loop(
                     alert_message(
                         "warning",
                         "Verbindung zum Antrieb verloren -- verbinde neu. "
-                        "Häufigste Ursache: Akku schwach.",
+                        "Häufigste Ursache: Stromversorgung bzw. USB-Überlast "
+                        "(siehe /diagnose).",
                     )
                 )
             else:
                 await hub.broadcast(alert_message("info", "Antrieb wieder verbunden"))
-    except asyncio.CancelledError:
-        raise
-    except Exception:
-        log.exception("Verbindungsüberwachung abgestürzt -- kein Neuverbinden mehr")
+        except Exception:
+            # Früher war hier Schluss: kein Neuverbinden mehr bis zum Neustart.
+            _schleifenfehler("Verbindungsüberwachung")
 
 
 async def _odometry_loop(watchdog: SafetyWatchdog, odometry: Odometry) -> None:
@@ -1080,14 +1143,26 @@ async def _odometry_loop(watchdog: SafetyWatchdog, odometry: Odometry) -> None:
     Roboter beim Druck auf den Home-Knopf nicht, wo er inzwischen steht.
     """
     takt = 1.0 / max(1, config.ODOMETRY_HZ)
-    try:
-        while True:
-            await asyncio.sleep(takt)
+    while True:
+        await asyncio.sleep(takt)
+        try:
             odometry.update(watchdog.current_command)
-    except asyncio.CancelledError:
-        raise
-    except Exception:
-        log.exception("Positionsverfolgung abgestürzt -- Heimfahrt unbrauchbar")
+        except Exception:
+            _schleifenfehler("Positionsverfolgung")
+
+
+async def _puls_loop(diagnose: Diagnose) -> None:
+    """Lebenszeichen der Ereignisschleife für die Diagnose.
+
+    Wacht das sleep deutlich zu spät auf, war die Schleife blockiert (Hänger).
+    Bleibt der Puls ganz aus, schreibt die Diagnose aus ihrem eigenen Thread
+    auf, wo die Schleife hängt.
+    """
+    takt = config.DIAGNOSE_PULS_S
+    while True:
+        vorher = time.monotonic()
+        await asyncio.sleep(takt)
+        diagnose.puls(max(0.0, time.monotonic() - vorher - takt))
 
 
 async def _status_loop(
@@ -1110,10 +1185,9 @@ async def _status_loop(
     zuletzt_aktiv = False
     zuletzt_erkundet = False
     zuletzt_interagiert = False
-    try:
-        while True:
-            await asyncio.sleep(config.STATUS_INTERVAL_S)
-
+    while True:
+        await asyncio.sleep(config.STATUS_INTERVAL_S)
+        try:
             # Das Ende der Heimfahrt melden -- sie beendet sich selbst,
             # ohne dass jemand danach fragt.
             if zuletzt_aktiv and not homing.aktiv and homing.letzter_grund:
@@ -1164,8 +1238,10 @@ async def _status_loop(
                         sprache=sprache.zustand() if sprache is not None else None,
                     )
                 )
-    except asyncio.CancelledError:
-        raise
+        except Exception:
+            # Früher endeten damit die Statusmeldungen für immer: Die App
+            # zeigte eingefrorene Werte, es sah aus wie ein Absturz.
+            _schleifenfehler("Statusmeldungen")
 
 
 def _autonomie(

@@ -329,6 +329,23 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Nachtrag – „Robi, Beatbox“:** spielt das Lied aus `SPRACHE_BEATBOX_URL` (mit Weckwort). Die Lied-Befehle laufen im Server jetzt über einen gemeinsamen Zweig. „Beatbox“ steht vermutlich nicht im Vosk-Modell; Varianten („beat box“, „bit box“ …) sind hinterlegt, unbekannte fallen weg.
 - **Offen:** Am Pi testen: Musik an, „Robi, hallo“ → Musik pausiert, Antwort, Musik läuft weiter. „La da da“ ohne Robi. Ob Vosk „la da da“ zuverlässig hört, zeigt `/sprache/status` (`zuletzt_gehoert`).
 
+### 29.10.2026 – Fehlersuche „random Abstürze“ per SSH (Marlon)
+- **Was:** Nach dem Umstecken auf das andere Board stürzte der Roboter weiter scheinbar zufällig ab (am Netzteil, auf dem Podest). Per SSH am Pi gemessen und den Code auf Absturzquellen durchgesehen.
+- **Befund am Pi (ohne laufenden Server, Räder still):**
+  - Versorgung und System gesund: `throttled=0x0`, 5,05–5,08 V, 47 °C, 14 GB RAM frei.
+  - **Dauerhafte USB-Überlast:** 49–65 Over-Current-Meldungen pro 10 s, ab der ersten Sekunde nach dem Booten. Alle 6 Root-Ports zählen hoch, die Hub-Ports nicht.
+  - Der Lidar meldet sich gar nicht an (`error -32`/`-71`), `/dev/rplidar` fehlt.
+  - Das Journal lief nur im RAM, Logs von früheren Abstürzen waren weg.
+- **Ergebnis:** Die Ursache ist Hardware bzw. die USB-Stromversorgung (Rückspeisung über den Hub auf dem Board oder Lidar/Kabel defekt), nicht der Code. Jede Überlast trennt kurz alle Geräte, das sieht in der App wie ein Absturz aus. Eingrenzen in vier Schritten (alle USB-Geräte ab, einzeln wieder an mit dem Lidar zuletzt, Lidar-Kabel tauschen, Board-USB abziehen), siehe `docs/hardware.md`.
+- **Code robuster gemacht** (Schwachstellen, die wie Abstürze aussehen könnten):
+  - Server-Schleifen (Status, Hardware, Odometrie, Karten-Abgleich) fangen Fehler ab und laufen weiter, statt still zu enden; alle Hintergrund-Tasks werden überwacht.
+  - Ein hängender WebSocket-Client bremst den Status für alle anderen nicht mehr aus (paralleles Senden mit Timeout `WS_SENDE_TIMEOUT_S`).
+  - Ein Fehler in einer einzelnen App-Nachricht trennt die Verbindung nicht mehr.
+  - Fällt das Board beim Start aus, startet der Server trotzdem (Treiber verbindet sich später neu); der serielle Port wird dabei wieder geschlossen.
+  - `main.py` erklärt, wie der Server endete (SIGKILL, Segfault, SIGHUP …).
+- **Absturzerfassung** (`absturz.py`, `/diagnose` → „Abstürze & Hänger“): jeder Serverlauf mit Boot-ID, Log als Datei, Segfault-Dump, Puls der Ereignisschleife mit Stack bei Hängern, Speicherverlauf, USB-Überlast pro Minute und pro Port. Beim nächsten Start sagt die Seite, ob der Pi neu gestartet ist, der Server hart beendet wurde oder abgestürzt ist. Die Befunde dieser Fehlersuche stehen fest auf der Seite.
+- **Offen:** Die vier Eingrenzungsschritte am Roboter; Journal dauerhaft machen (Befehl in `docs/hardware.md`); Server in `tmux` starten, damit ein geschlossenes SSH-Fenster ihn nicht beendet.
+
 ---
 
 ## 3. Ergebnisse und Messwerte
@@ -374,6 +391,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 | Verhalten wechselt beim Folgen ohne Zeichen | schwingende Arme beim Laufen sehen wie Herkommen/Weggehen aus | Herkommen/Weggehen nur bei stillstehender, zugewandter Person und stehendem Roboter (29.10.) |
 | „Keine Verbindung zum Antrieb“ beim Start der Gestensteuerung, Interaktion sofort aus | Hailo fuhr erst beim Einschalten hoch (Stromspitze → USB-Reset), und jeder Antriebsverlust beendete die ganze Interaktion | Hailo beim Serverstart öffnen und warm halten (`POSE_WARM_HALTEN`); bei Antriebsverlust nur anhalten, Fahrmodi ohne Board ablehnen (29.10.). **Offen:** am Pi prüfen |
 | „Musik stopp“ als Stopp erkannt | Stopp-Wendung steckt im Musikbefehl | Rangfolge der Sprachbefehle, Musik aus zuerst (29.10.) |
+| „Random Abstürze“ auch am anderen Board und am Netzteil | Dauerhafte USB-Überlast schon im Leerlauf ab dem Booten (alle Root-Ports), Lidar meldet sich nicht an; kein Code-Fehler (29.10.) | Server-Schleifen robuster, Absturzerfassung auf `/diagnose`. **Offen:** Verursacher eingrenzen (Geräte einzeln, Lidar-Kabel, Board-USB), siehe `docs/hardware.md` |
 | Ausfälle nur per SSH auffindbar | Kernel-Log, vcgencmd und Serverlog getrennt | Diagnoseseite `/diagnose` mit Problemen, Zeitleiste und Log (29.10.) |
 | Push aus dem Laptop hängt | Git Credential Manager wartet auf Login-Fenster | Nutzer pusht selbst, der Pi zieht nur (`git pull`) |
 | MUKKE: mpv meldet „Failed to recognize file format“ | mpvs ytdl-Skript findet yt-dlp in der venv nicht und gibt den YouTube-Link roh weiter | Server löst den Link selbst mit der yt-dlp-Bibliothek auf, mpv bekommt nur noch die direkte Tonspur; YouTube-Fehler erscheinen im Fenster |
@@ -382,6 +400,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 
 ## 5. Offene Punkte und Ausblick
 
+- **USB-Überlast im Leerlauf eingrenzen** (29.10.): alle Geräte ab, einzeln wieder an (Lidar zuletzt), Lidar-Kabel tauschen, Board-USB abziehen; Wert „USB-Überlast pro Minute“ auf `/diagnose`. Journal am Pi dauerhaft machen.
 - Bodentest des Erkunders mit Hindernissen.
 - **Stresstest am Boden** (Räder mit Last): erst am Netzteil, dann am Akku. Auf dem Podest gibt es mit beiden 0 Resets (29.10.), deshalb ist offen, ob das Netzteil unter Last hilft. Bleiben am Boden Resets, braucht es die getrennte 5-V-Versorgung für Pi bzw. Hub (siehe `docs/hardware.md`, „Was am Roboter tun“).
 - Stresstest mit eingeschalteter Interaktion (Hailo-Pose und Gesten unter Fahrlast) wiederholen.
