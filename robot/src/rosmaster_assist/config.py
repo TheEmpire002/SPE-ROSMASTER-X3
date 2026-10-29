@@ -322,3 +322,101 @@ PERSON_CAMERA = "personen"
 # Horizontaler Bildwinkel in Grad für Kameras ohne eigene Angabe in
 # CAMERA_ROLES (CSI-Kamera, zusätzliche USB-Kameras).
 CAMERA_FOV_DEG = 60.0
+
+# --- Körperpose (Hailo-10H) ------------------------------------------------------
+
+# Gesten brauchen die Körperpunkte (Schultern, Handgelenke ...), nicht nur
+# eine Box. Das Modell läuft auf dem AI HAT+ 2 und kostet die CPU fast
+# nichts -- wichtig, weil CPU-Lastsprünge am X3 USB-Resets auslösen.
+POSE_ENABLED = True
+
+# Mitgeliefert vom Hailo-Paket (hailo-models). Erwartet 640x640 RGB.
+POSE_HEF = "/usr/share/hailo-models/yolov8s_pose_h10.hef"
+
+# Bilder pro Sekunde. Die Kamera liefert 15; für Winken braucht es ~10,
+# damit eine Auf-Ab-Bewegung mehrere Bilder umfasst.
+POSE_HZ = 10.0
+
+# Mindestwert, ab dem ein Treffer als Person gilt (0..1).
+POSE_MIN_SCORE = 0.5
+
+# Körperpunkte unter dieser Sicherheit zählen als "nicht gesehen" --
+# verdeckte Hände sollen keine Geste auslösen.
+POSE_KP_MIN_CONF = 0.4
+
+# --- Gesten ------------------------------------------------------------------------
+
+# So weit reicht der Blick zurück, um Bewegungen (Winken, Wischen) zu sehen.
+GESTE_FENSTER_S = 1.5
+
+# Folgen (ein Arm über dem Kopf) muss so lange gehalten werden -- sonst
+# löst jedes Haare-Richten aus.
+GESTE_HALTEN_S = 1.0
+
+# Stopp (beide Arme hoch) soll schnell wirken, deshalb kürzer.
+GESTE_STOPP_HALTEN_S = 0.4
+
+# Anteil der Bilder im Haltezeitraum, die die Haltung zeigen müssen.
+# Nicht 100 %: einzelne Bilder mit verlorenem Handgelenk sind normal.
+GESTE_ANTEIL = 0.8
+
+# Winken (Herkommen): Mindestzahl Richtungswechsel des Handgelenks im
+# Fenster und Mindesthub, gemessen in Schulterbreiten (so unabhängig vom
+# Abstand der Person).
+GESTE_WINK_WECHSEL = 2
+GESTE_WINK_HUB = 0.35
+
+# Wischen (Weggehen): so viele Schulterbreiten muss die Hand seitlich nach
+# außen wandern.
+GESTE_WISCH_STRECKE = 1.0
+
+# Nach einer erkannten Geste so lange keine neue -- eine gehaltene Geste
+# soll nicht jede Sekunde neu auslösen.
+GESTE_PAUSE_S = 2.0
+
+# --- Interaktion (Folgen, Herkommen, Weggehen) -------------------------------------
+
+# Wunschabstand beim Folgen. 1 m: nah genug, um die Person nicht zu
+# verlieren, weit genug, dass sie sich nicht bedrängt fühlt.
+FOLGEN_ABSTAND_M = 1.0
+
+# Höchstgeschwindigkeit beim Folgen. Gemütliches Gehen ist ~1 m/s; der
+# Roboter muss nicht mithalten, er holt beim Stehenbleiben auf.
+FOLGEN_MAX_SPEED = 0.30
+
+# Rückwärts nur langsam -- hinten ist er weniger umsichtig unterwegs.
+FOLGEN_RUECK_SPEED = 0.12
+
+# Regler: Geschwindigkeit pro Meter Abstandsfehler bzw. Drehrate pro
+# Radiant Winkelfehler.
+FOLGEN_KP_V = 0.6
+FOLGEN_KP_W = 1.5
+FOLGEN_MAX_OMEGA = 0.8
+
+# Innerhalb dieses Abstandsfehlers bleibt er stehen -- sonst ruckelt er
+# bei jedem Atemzug der Person vor und zurück.
+FOLGEN_TOTZONE_M = 0.10
+
+# Erst geradeaus fahren, wenn die Person ungefähr vorn ist; sonst zuerst
+# drehen (sonst fährt er schräg an ihr vorbei).
+FOLGEN_MAX_WINKEL_FAHREN = 25.0
+
+# So lange darf die Person aus dem Bild sein, bevor er sucht, und so lange
+# sucht er (langsam drehen in die Richtung, in der sie verschwand).
+FOLGEN_VERLOREN_S = 2.0
+FOLGEN_SUCHEN_S = 6.0
+
+# Herkommen: bis zu diesem Abstand heranfahren, dann stehen bleiben.
+HERKOMMEN_ABSTAND_M = 0.70
+
+# Weggehen: so weit zurückweichen, mit dieser Geschwindigkeit.
+WEGGEHEN_STRECKE_M = 1.0
+WEGGEHEN_SPEED = 0.15
+
+# Herkommen/Weggehen enden spätestens nach dieser Zeit, auch wenn das Ziel
+# nicht erreicht ist -- kein Verhalten soll endlos laufen.
+INTERAKTION_VERHALTEN_MAX_S = 20.0
+
+# Wechselt die verfolgte Person um mehr als diesen Winkel in einem Bild,
+# ist es vermutlich eine andere -- dann beginnt die Gestenerkennung neu.
+INTERAKTION_SPRUNG_GRAD = 15.0

@@ -149,11 +149,15 @@ Reihenfolge:
 | `type` | Felder | Wirkung | Antwort |
 |---|---|---|---|
 | `drive` | `vx`, `vy`, `omega` (Zahlen, fehlende = 0) | Fahren. Siehe Regeln 1, 3, 4. Bricht eine laufende Heimfahrt ab, sobald ein Wert ≠ 0 ist; Nullbefehle werden während der Heimfahrt ignoriert. | keine; bei ungültigen Werten `error` |
-| `stop` | – | Sofort anhalten, Heimfahrt und autonomes Fahren abbrechen. | keine |
+| `stop` | – | Sofort anhalten, Heimfahrt, autonomes Fahren und Interaktion abbrechen. | keine |
 | `explore` | – | Autonomes Fahren starten (siehe unten). Braucht den Lidar; bricht eine Heimfahrt ab. | `alert` an alle; ohne Lidar `alert` (warning) |
 | `explore_stop` | – | Autonomes Fahren beenden und anhalten. | `alert` an alle |
 | `home` | – | Selbstständig zum Startpunkt zurückfahren (siehe unten). | `alert` an alle |
 | `home_cancel` | – | Heimfahrt abbrechen und anhalten. | `alert` an alle |
+| `interaction_start` | – | Interaktionsmodus an: Der Roboter wartet auf Handzeichen (siehe „Interaktion im Detail“). Braucht Lidar und Posenerkennung; bricht Heimfahrt und autonomes Fahren ab. | `alert` an alle; sonst `alert` (warning) |
+| `interaction_stop` | – | Interaktionsmodus aus und anhalten. | `alert` an alle |
+| `follow` | – | „Folge mir“ ohne Geste. Schaltet den Interaktionsmodus bei Bedarf mit ein. | `alert` an alle |
+| `follow_stop` | – | Folgen beenden, anhalten; der Interaktionsmodus bleibt an. | `alert` an alle |
 | `set_home` | – | Aktuelle Stelle wird neuer Startpunkt (0, 0, 0°), Lidar-Referenz wird neu aufgenommen. | `alert` an alle |
 | `collision` | `enabled` (bool, optional), `distance` (m, optional) | Kollisionsvermeidung ein/aus, Mindestabstand. `distance` wird auf 0,15–1,5 m begrenzt. | `collision` an alle |
 | `beep` | `ms` (int, Standard 100) | Buzzer. | keine |
@@ -182,7 +186,8 @@ Ein unbekannter `type` liefert `{"type": "error", "text": "Unbekannter Nachricht
   "vx": 0.2, "vy": 0.0, "omega": 0.0,
   "pose": {"x": 1.234, "y": -0.05, "winkel": 12.5, "gemessen": true},
   "collision": {"enabled": false, "distance": 0.35, "verfuegbar": true, "blockiert": false},
-  "autonomie": {"aktiv": false, "verfuegbar": true, "zustand": null, "...": "siehe unten"}
+  "autonomie": {"aktiv": false, "verfuegbar": true, "zustand": null, "...": "siehe unten"},
+  "interaktion": {"aktiv": false, "verfuegbar": true, "modus": null, "...": "siehe unten"}
 }
 ```
 
@@ -196,6 +201,7 @@ Ein unbekannter `type` liefert `{"type": "error", "text": "Unbekannter Nachricht
 | `collision.verfuegbar` | ob ein Lidar da ist, der Hindernisse sehen kann |
 | `collision.blockiert` | die Kollisionsvermeidung hält gerade eine Fahrt zurück |
 | `autonomie` | autonomes Fahren und erkannte Hindernisse, siehe „Autonomes Fahren im Detail“ |
+| `interaktion` | Interaktionsmodus (Handzeichen, Folgen), siehe „Interaktion im Detail“. Fehlt bei älteren Servern. |
 
 **`collision`**: beim Verbinden und nach jeder Änderung, Felder wie
 `state.collision`.
@@ -294,6 +300,59 @@ Ist OpenCV installiert, sucht die Personenkamera (Logitech C270, siehe
 | `hindernisse` | die 12 nächsten, nächstes zuerst. `winkel` in Grad wie beim Lidar, `x`/`y` Mitte in Roboterkoordinaten (m) |
 | `personen` | Personenrahmen im Bild der Personenkamera, relativ zur Bildgröße (0..1) |
 | `personenerkennung` | ob die Kamera-Erkennung geht; `fehler` z. B. „opencv fehlt“; `kamera`: auf welchem Kamerabild die Rahmen liegen (Name wie in `/cameras`) |
+
+### Interaktion im Detail
+
+`interaction_start` schaltet den Interaktionsmodus ein. Der Roboter steht
+dann und wartet auf ein Handzeichen vor der Kamera (Modus `bereit`). Die
+Körperpunkte rechnet der Hailo-Chip (YOLOv8-Pose); er arbeitet nur, solange
+der Modus an ist. **Nur am Boden benutzen.**
+
+| Handzeichen | Wie | Modus danach |
+|---|---|---|
+| Folgen | einen Arm über den Kopf halten (1 s) | `folgen`: bleibt `FOLGEN_ABSTAND_M` (1,0 m) hinter der Person |
+| Stopp | beide Hände über die Schultern halten (0,4 s) | `bereit`: steht sofort |
+| Herkommen | vor dem Körper auf und ab winken | `herkommen`: fährt bis `HERKOMMEN_ABSTAND_M` (0,7 m) heran, dann `bereit` |
+| Weggehen | Hand seitlich wegwischen | `weggehen`: `WEGGEHEN_STRECKE_M` (1,0 m) rückwärts, dann `bereit` |
+
+- Die Richtung zur Person kommt aus der Kamera, der Abstand aus dem Lidar
+  in genau dieser Richtung.
+- Verliert er die Person beim Folgen länger als `FOLGEN_VERLOREN_S` (2 s),
+  sucht er durch Drehen (Modus `sucht`, höchstens `FOLGEN_SUCHEN_S`).
+- Sicherheit wie beim autonomen Fahren: vorwärts nur bei freiem
+  Fahrschlauch, rückwärts nur bei freiem Raum hinten, ohne frische
+  Lidar-Daten steht er. `herkommen` und `weggehen` enden spätestens nach
+  `INTERAKTION_VERHALTEN_MAX_S` (20 s).
+- Jede Fahreingabe ≠ 0, `stop`, `explore`, `home`, `set_home` oder das
+  Trennen des letzten Clients beendet den Modus. Nullbefehle der App
+  werden ignoriert.
+- Erkannte Gesten und Moduswechsel kommen als `alert` (info), das Ende als
+  „Interaktion beendet: …“.
+
+`state.interaktion`:
+
+```json
+{
+  "aktiv": true,
+  "verfuegbar": true,
+  "modus": "folgen",
+  "text": "hält Abstand (1.20 m)",
+  "person": {"winkel": -8.5, "abstand": 1.2},
+  "personen": 1,
+  "geste": "folgen",
+  "grund": null
+}
+```
+
+| Feld | Bedeutung |
+|---|---|
+| `verfuegbar` | Lidar und Posenerkennung da, `interaction_start` möglich |
+| `modus` | `bereit`, `folgen`, `herkommen`, `weggehen`, `sucht`; `null` wenn aus |
+| `text` | Erklärung für die Anzeige |
+| `person` | verfolgte Person: `winkel` in Grad wie beim Lidar, `abstand` in m (`null`, wenn der Lidar dort nichts sieht); `null` ohne Person |
+| `personen` | wie viele Menschen die Kamera gerade sieht |
+| `geste` | zuletzt erkannte Geste (`folgen`, `stopp`, `herkommen`, `weggehen`), wenige Sekunden lang, sonst `null` |
+| `grund` | warum der Modus zuletzt endete |
 
 ---
 
@@ -453,6 +512,13 @@ als `alert` (`info`).
 
 Ändern geht nur von einer Seite, die vom Roboter selbst geladen wurde: CORS
 erlaubt fremden Seiten nur `GET`.
+
+### Interaktion
+
+| Endpunkt | Liefert |
+|---|---|
+| `GET /interaktion/status` | dasselbe wie `state.interaktion`, dazu `pose`: `verfuegbar`, `simuliert`, `aktiv`, `fehler`, `fps`, `bilder`, `letzte_erkennung_vor_s`, `kamera` (auf welchem Kamerabild die Punkte liegen, Name wie in `/cameras`) |
+| `GET /interaktion/pose` | `personen`: erkannte Menschen, größter zuerst, je `box` [x1, y1, x2, y2] und `kp` (17 × [x, y, Sicherheit], COCO-Reihenfolge), relativ zur Bildgröße (0..1), dazu `score`, `winkel`; `skelett`: Punktpaare zum Verbinden. Leer, solange der Modus aus ist. |
 
 ### Sonstiges
 

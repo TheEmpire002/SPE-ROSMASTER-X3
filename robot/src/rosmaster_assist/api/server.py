@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .. import config, settings
 from ..drive.base import DriveBase
+from ..interaktion.verhalten import Interaktion
 from ..protocol import (
     DriveCommand,
     ProtocolError,
@@ -37,6 +38,7 @@ from ..safety import CollisionGuard, SafetyWatchdog
 from ..sensors.camera import CameraService, create_cameras
 from ..sensors.lidar import LidarService, create_lidar
 from ..sensors.personen import Personenerkennung
+from ..sensors.pose import SKELETT, Posenerkennung
 
 log = logging.getLogger(__name__)
 
@@ -128,8 +130,13 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     homing = Homing(watchdog, odometry, localizer)
     guard = CollisionGuard(localizer)
     erkennung = Hinderniserkennung()
-    personen = Personenerkennung(kameras.get(config.PERSON_CAMERA, camera))
+    # Personenerkennung und Posenerkennung (Gesten, Folgen) schauen beide
+    # durch die Personenkamera (C270), siehe docs/interaktion.md.
+    personen_kamera = kameras.get(config.PERSON_CAMERA, camera)
+    personen = Personenerkennung(personen_kamera)
     erkunder = Erkunder(watchdog, lidar, erkennung, personen)
+    pose = Posenerkennung(personen_kamera, mock=use_mock_camera)
+    interaktion = Interaktion(watchdog, lidar, pose)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -142,6 +149,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         for kamera in kameras.values():
             kamera.start()
         personen.start()
+        pose.start()  # rechnet erst, wenn die Interaktion läuft
         if lidar is not None:
             lidar.start()
             # Dem Lidar eine Umdrehung Zeit geben, dann den Startpunkt
@@ -153,13 +161,13 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         status_task = asyncio.create_task(
             _status_loop(
                 hub, watchdog, driver, odometry, homing, localizer, guard,
-                erkunder, erkennung, lidar, personen,
+                erkunder, erkennung, lidar, personen, interaktion,
             )
         )
         odo_task = asyncio.create_task(_odometry_loop(watchdog, odometry))
         match_task = asyncio.create_task(_match_loop(localizer))
         hw_task = asyncio.create_task(
-            _hardware_loop(hub, watchdog, driver, homing, erkunder)
+            _hardware_loop(hub, watchdog, driver, homing, erkunder, interaktion)
         )
         try:
             yield
@@ -172,8 +180,10 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             hw_task.cancel()
             homing.abbrechen("Server wird beendet")
             erkunder.abbrechen("Server wird beendet")
+            interaktion.abbrechen("Server wird beendet")
             await watchdog.shutdown()
             personen.stop()
+            pose.stop()
             for kamera in kameras.values():
                 kamera.stop()
             if lidar is not None:
@@ -204,7 +214,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                 msg = await ws.receive_json()
                 reply = await _handle(
                     msg, watchdog, driver, hub, odometry, homing, localizer, guard,
-                    erkunder,
+                    erkunder, interaktion,
                 )
                 if reply is not None:
                     await ws.send_json(reply)
@@ -219,6 +229,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                 log.warning("Kein Client mehr verbunden -- halte an")
                 homing.abbrechen("Verbindung verloren")
                 erkunder.abbrechen("Verbindung verloren")
+                interaktion.abbrechen("Verbindung verloren")
                 watchdog.stop()
 
     # --- Kamera ---
@@ -444,6 +455,21 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             return JSONResponse({"fehler": str(exc)}, status_code=400)
         return await _einstellungen_antwort(geaendert)
 
+    # --- Interaktion ---
+
+    @app.get("/interaktion/status")
+    async def interaktion_status():
+        """Modus, verfolgte Person, letzte Geste und ob die Posenerkennung läuft."""
+        return {**interaktion.zustand(), "pose": pose.status()}
+
+    @app.get("/interaktion/pose")
+    async def interaktion_pose():
+        """Erkannte Körperpunkte zum Einblenden über dem Kamerabild.
+
+        Leer, solange die Interaktion aus ist -- dann rechnet der Hailo nicht.
+        """
+        return {"personen": pose.personen(), "skelett": SKELETT}
+
     # Die Web-App direkt mitausliefern, damit eine Adresse genügt.
     if WEBAPP_DIR.is_dir():
         app.mount("/static", _OhneVeraltetenCache(directory=WEBAPP_DIR), name="static")
@@ -471,6 +497,7 @@ async def _handle(
     localizer: Localizer,
     guard: CollisionGuard,
     erkunder: Erkunder | None = None,
+    interaktion: Interaktion | None = None,
 ) -> dict[str, Any] | None:
     """Eine eingehende Nachricht verarbeiten.
 
@@ -501,6 +528,13 @@ async def _handle(
             # Die Meldung mit Grund schickt _status_loop.
             erkunder.abbrechen("von Hand übersteuert")
 
+        # Interaktion ebenso: wer von Hand lenkt, will nicht, dass der
+        # Roboter gleichzeitig einer Person folgt.
+        if interaktion is not None and interaktion.aktiv:
+            if cmd.is_stop():
+                return None
+            interaktion.abbrechen("von Hand übersteuert")
+
         erlaubt, hindernis = guard.pruefen(cmd)
         if hindernis is not None and guard.melden():
             await hub.broadcast(
@@ -520,6 +554,8 @@ async def _handle(
         homing.abbrechen("Not-Stopp")
         if erkunder is not None:
             erkunder.abbrechen("Not-Stopp")
+        if interaktion is not None:
+            interaktion.abbrechen("Not-Stopp")
         watchdog.stop()
         return None
 
@@ -529,6 +565,8 @@ async def _handle(
         if erkunder.aktiv:
             return None
         homing.abbrechen("autonomes Fahren gestartet")
+        if interaktion is not None:
+            interaktion.abbrechen("autonomes Fahren gestartet")
         if erkunder.start():
             await hub.broadcast(alert_message("info", "Autonomes Fahren gestartet"))
         return None
@@ -539,12 +577,46 @@ async def _handle(
         watchdog.stop()
         return None
 
+    if kind in ("interaction_start", "follow"):
+        if interaktion is None or not interaktion.verfuegbar:
+            return alert_message(
+                "warning",
+                "Interaktion geht nur mit Lidar und Posenerkennung (siehe /interaktion/status)",
+            )
+        if not interaktion.aktiv:
+            # Nur ein Programm lenkt: Erkunder und Heimfahrt weichen.
+            homing.abbrechen("Interaktion gestartet")
+            if erkunder is not None:
+                erkunder.abbrechen("Interaktion gestartet")
+        if kind == "follow":
+            war_aktiv = interaktion.aktiv
+            if interaktion.folgen() and not war_aktiv:
+                await hub.broadcast(alert_message("info", "Interaktion an -- folge dir"))
+        elif interaktion.start():
+            await hub.broadcast(
+                alert_message("info", "Interaktion an -- ich reagiere auf Handzeichen")
+            )
+        return None
+
+    if kind == "follow_stop":
+        if interaktion is not None:
+            interaktion.folgen_stop()
+        return None
+
+    if kind == "interaction_stop":
+        if interaktion is not None:
+            interaktion.abbrechen("vom Nutzer beendet")  # Meldung kommt aus _status_loop
+        watchdog.stop()
+        return None
+
     if kind == "home":
         if not odometry.misst_tatsaechlich:
             log.warning("Heimfahrt ohne Bewegungsmessung -- Position ist geschätzt")
         abstand = odometry.distanz_zum_start()
         if erkunder is not None:
             erkunder.abbrechen("Heimfahrt gestartet")
+        if interaktion is not None:
+            interaktion.abbrechen("Heimfahrt gestartet")
         if homing.start():
             await hub.broadcast(
                 alert_message("info", f"Heimfahrt gestartet ({abstand:.2f} m)")
@@ -561,6 +633,8 @@ async def _handle(
         homing.abbrechen("Startpunkt wurde verschoben")
         if erkunder is not None:
             erkunder.abbrechen("Startpunkt wurde verschoben")
+        if interaktion is not None:
+            interaktion.abbrechen("Startpunkt wurde verschoben")
         # Nur in der Simulation vorhanden: dort muss auch die gedachte
         # Wirklichkeit auf den Startpunkt zurück, sonst stünde der Roboter
         # außerhalb des simulierten Raums.
@@ -648,6 +722,7 @@ async def _hardware_loop(
     driver: DriveBase,
     homing: Homing,
     erkunder: Erkunder | None = None,
+    interaktion: Interaktion | None = None,
 ) -> None:
     """Hält die Verbindung zum Antrieb am Leben.
 
@@ -670,6 +745,8 @@ async def _hardware_loop(
                 homing.abbrechen("Verbindung zum Antrieb verloren")
                 if erkunder is not None:
                     erkunder.abbrechen("Verbindung zum Antrieb verloren")
+                if interaktion is not None:
+                    interaktion.abbrechen("Verbindung zum Antrieb verloren")
                 watchdog.stop()
                 await hub.broadcast(
                     alert_message(
@@ -715,10 +792,12 @@ async def _status_loop(
     erkennung: Hinderniserkennung | None = None,
     lidar: LidarService | None = None,
     personen: Personenerkennung | None = None,
+    interaktion: Interaktion | None = None,
 ) -> None:
     """Schickt regelmäßig den Zustand an alle Clients."""
     zuletzt_aktiv = False
     zuletzt_erkundet = False
+    zuletzt_interagiert = False
     try:
         while True:
             await asyncio.sleep(config.STATUS_INTERVAL_S)
@@ -741,6 +820,17 @@ async def _status_loop(
                     )
                 zuletzt_erkundet = erkunder.aktiv
 
+            # Interaktion: erkannte Gesten und Moduswechsel als Hinweis,
+            # dazu das Ende (z. B. Lidar weg).
+            if interaktion is not None:
+                for text in interaktion.meldungen_abholen():
+                    await hub.broadcast(alert_message("info", text))
+                if zuletzt_interagiert and not interaktion.aktiv and interaktion.letzter_grund:
+                    await hub.broadcast(
+                        alert_message("info", f"Interaktion beendet: {interaktion.letzter_grund}")
+                    )
+                zuletzt_interagiert = interaktion.aktiv
+
             if hub.count:
                 autonomie = (
                     _autonomie(erkunder, erkennung, lidar, personen)
@@ -757,6 +847,7 @@ async def _status_loop(
                         pose_gemessen=odometry.misst_tatsaechlich,
                         collision=guard.zustand(),
                         autonomie=autonomie,
+                        interaktion=interaktion.zustand() if interaktion is not None else None,
                     )
                 )
     except asyncio.CancelledError:

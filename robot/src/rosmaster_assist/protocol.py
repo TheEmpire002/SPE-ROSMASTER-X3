@@ -19,6 +19,12 @@ Von der App / vom ESP an den Roboter
 {"type": "collision", "enabled": true, "distance": 0.35}  Kollisionsvermeidung
 {"type": "explore"}                                       autonom umherfahren (Test 1)
 {"type": "explore_stop"}                                  autonomes Fahren beenden
+{"type": "interaction_start"}                             Interaktion an: Gesten steuern
+                                                          (fährt! nur am Boden)
+{"type": "interaction_stop"}                              Interaktion aus, anhalten
+{"type": "follow"}                                        der Person vor der Kamera folgen
+                                                          (schaltet Interaktion mit ein)
+{"type": "follow_stop"}                                   nicht mehr folgen, Interaktion bleibt an
 {"type": "ping"}                                          Verbindung am Leben halten
 
 Vom Roboter an die App
@@ -26,7 +32,9 @@ Vom Roboter an die App
 {"type": "limits", "max_vx":…, "max_vy":…, "max_omega":…}  einmalig beim Verbinden
 {"type": "state",  "vx":…, "vy":…, "omega":…, "driver":…, "connected":…}
                    (mit Lidar zusätzlich "autonomie": {"aktiv":…, "zustand":…,
-                    "hindernisse": […], "personen": […], …})
+                    "hindernisse": […], "personen": […], …};
+                    mit Kamera-Pose zusätzlich "interaktion": {"aktiv":…,
+                    "modus":…, "text":…, "person":…, "geste":…, …})
 {"type": "vitals", "bpm":…, "motion":…}                   weitergereichte ESP-Daten
 {"type": "alert",  "level": "info"|"warning"|"emergency", "text": "…"}
 {"type": "error",  "text": "…"}                           ungültige Nachricht o.Ä.
@@ -102,6 +110,7 @@ def state_message(
     pose_gemessen: bool = False,
     collision: dict[str, Any] | None = None,
     autonomie: dict[str, Any] | None = None,
+    interaktion: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     msg: dict[str, Any] = {
         "type": "state",
@@ -114,6 +123,8 @@ def state_message(
         msg["collision"] = collision
     if autonomie is not None:
         msg["autonomie"] = autonomie
+    if interaktion is not None:
+        msg["interaktion"] = interaktion
     if pose is not None:
         x, y, winkel = pose
         msg["pose"] = {

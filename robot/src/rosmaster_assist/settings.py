@@ -79,6 +79,8 @@ GRUPPEN = [
     ("sicherheit", "Sicherheit", "Totmannschaltung und Hindernisstopp bei Handsteuerung."),
     ("kamera", "Kameras", "Gilt für alle Kameras gemeinsam."),
     ("personen", "Personenerkennung", "Sucht während des autonomen Fahrens im Bild der Personenkamera."),
+    ("gesten", "Interaktion: Pose & Gesten", "Körperpose auf dem Hailo (Personenkamera), daraus die Handzeichen."),
+    ("folgen", "Interaktion: Folgen, Herkommen, Weggehen", "Wie der Roboter auf die Handzeichen reagiert."),
     ("lidar", "Lidar", "RPLIDAR A1: Einbaulage und Messbereich."),
     ("ortung", "Ortung (Lidar-Abgleich)", "Korrigiert die Position durch Vergleich mit der Aufnahme am Startpunkt."),
     ("hindernisse", "Hinderniserkennung", "Benennt, was der Lidar sieht (Wand, Stuhl, Mensch …)."),
@@ -131,6 +133,51 @@ EINSTELLUNGEN: list[Einstellung] = [
                 hilfe="Kleiner = schneller, aber entfernte Personen werden übersehen."),
     Einstellung("PERSON_MIN_SCORE", "personen", "Mindestsicherheit", "", 0.0, 2.0, 0.1,
                 hilfe="Höher = weniger Fehlalarme, aber Personen von der Seite werden eher übersehen."),
+
+    # --- Interaktion: Pose & Gesten
+    Einstellung("POSE_ENABLED", "gesten", "Posenerkennung (Hailo) an", neustart=True),
+    Einstellung("POSE_HZ", "gesten", "Posen pro Sekunde", "Hz", 2.0, 30.0, 1.0,
+                hilfe="Für Winken braucht es ~10, damit eine Auf-Ab-Bewegung mehrere Bilder umfasst. "
+                      "Mehr als die Kamera liefert bringt nichts."),
+    Einstellung("POSE_MIN_SCORE", "gesten", "Mindestsicherheit Person", "", 0.1, 0.95, 0.05),
+    Einstellung("POSE_KP_MIN_CONF", "gesten", "Mindestsicherheit Körperpunkt", "", 0.1, 0.95, 0.05,
+                hilfe="Darunter gilt ein Punkt als verdeckt -- verdeckte Hände lösen keine Geste aus."),
+    Einstellung("GESTE_FENSTER_S", "gesten", "Rückblick für Bewegungen", "s", 0.5, 4.0, 0.1,
+                hilfe="So weit wird zurückgeschaut, um Winken und Wischen zu erkennen."),
+    Einstellung("GESTE_HALTEN_S", "gesten", "„Folgen“ halten für", "s", 0.2, 3.0, 0.1,
+                hilfe="Ein Arm über dem Kopf. Zu kurz, und jedes Haare-Richten löst aus."),
+    Einstellung("GESTE_STOPP_HALTEN_S", "gesten", "„Stopp“ halten für", "s", 0.1, 2.0, 0.1,
+                hilfe="Beide Arme hoch. Bewusst kürzer, damit Stopp schnell wirkt."),
+    Einstellung("GESTE_ANTEIL", "gesten", "Anteil passender Bilder", "", 0.5, 1.0, 0.05,
+                hilfe="Nicht 100 %: einzelne Bilder mit verlorenem Handgelenk sind normal."),
+    Einstellung("GESTE_WINK_WECHSEL", "gesten", "Winken: Richtungswechsel mindestens", "", 1, 6, 1),
+    Einstellung("GESTE_WINK_HUB", "gesten", "Winken: Mindesthub", "Schulterbr.", 0.1, 1.5, 0.05),
+    Einstellung("GESTE_WISCH_STRECKE", "gesten", "Wischen: Mindeststrecke", "Schulterbr.", 0.3, 3.0, 0.1),
+    Einstellung("GESTE_PAUSE_S", "gesten", "Pause nach einer Geste", "s", 0.5, 10.0, 0.5,
+                hilfe="Stopp wirkt auch in der Pause."),
+    Einstellung("INTERAKTION_SPRUNG_GRAD", "gesten", "Personenwechsel ab Winkelsprung", "°", 5, 45, 1,
+                hilfe="Springt die verfolgte Person um mehr, ist es vermutlich eine andere."),
+
+    # --- Interaktion: Folgen, Herkommen, Weggehen
+    Einstellung("FOLGEN_ABSTAND_M", "folgen", "Folgen: Wunschabstand", "m", 0.5, 3.0, 0.05),
+    Einstellung("FOLGEN_MAX_SPEED", "folgen", "Folgen: Höchsttempo", "m/s", 0.05, 0.8, 0.01),
+    Einstellung("FOLGEN_RUECK_SPEED", "folgen", "Folgen: Tempo rückwärts", "m/s", 0.02, 0.3, 0.01,
+                hilfe="Hinten ist er weniger umsichtig unterwegs."),
+    Einstellung("FOLGEN_MAX_OMEGA", "folgen", "Folgen: höchste Drehrate", "rad/s", 0.2, 2.0, 0.05),
+    Einstellung("FOLGEN_KP_V", "folgen", "Regler Tempo", "(m/s)/m", 0.1, 2.0, 0.05,
+                hilfe="Tempo je Meter Abstandsfehler."),
+    Einstellung("FOLGEN_KP_W", "folgen", "Regler Drehung", "(rad/s)/rad", 0.2, 4.0, 0.1,
+                hilfe="Drehrate je Radiant Winkelfehler."),
+    Einstellung("FOLGEN_TOTZONE_M", "folgen", "Totzone", "m", 0.0, 0.5, 0.01,
+                hilfe="Innerhalb dieses Abstandsfehlers bleibt er stehen, statt bei jedem Atemzug zu ruckeln."),
+    Einstellung("FOLGEN_MAX_WINKEL_FAHREN", "folgen", "Erst fahren, wenn Person innerhalb", "°", 5, 60, 1,
+                hilfe="Sonst zuerst drehen, statt schräg an ihr vorbeizufahren."),
+    Einstellung("FOLGEN_VERLOREN_S", "folgen", "Person verloren nach", "s", 0.5, 10.0, 0.5),
+    Einstellung("FOLGEN_SUCHEN_S", "folgen", "Suchen höchstens", "s", 0, 30, 1),
+    Einstellung("HERKOMMEN_ABSTAND_M", "folgen", "Herkommen: bis auf", "m", 0.3, 2.0, 0.05),
+    Einstellung("WEGGEHEN_STRECKE_M", "folgen", "Weggehen: Strecke", "m", 0.2, 3.0, 0.1),
+    Einstellung("WEGGEHEN_SPEED", "folgen", "Weggehen: Tempo", "m/s", 0.05, 0.4, 0.01),
+    Einstellung("INTERAKTION_VERHALTEN_MAX_S", "folgen", "Herkommen/Weggehen höchstens", "s", 5, 120, 5),
 
     # --- Lidar
     Einstellung("LIDAR_ANGLE_OFFSET_DEG", "lidar", "Einbauwinkel", "°", -180, 180, 1,
@@ -206,6 +253,10 @@ _REGELN = [
     ("EXPLORE_WANDER_MIN_S", "EXPLORE_WANDER_MAX_S", "frühester Richtungswechsel muss vor dem spätesten liegen"),
     ("HOME_TOLERANCE_M", "HOME_SLOWDOWN_M", "„Abbremsen ab“ muss größer sein als „Angekommen bei“"),
     ("OBSTACLE_LEG_MAX_M", "OBSTACLE_HUMAN_LEG_MAX_M", "Stuhlbein muss schmaler sein als Menschenbein"),
+    # Ältere Bilder fallen aus dem Rückblick -- eine längere Haltezeit wäre nie erfüllbar.
+    ("GESTE_HALTEN_S", "GESTE_FENSTER_S", "„Folgen“ halten muss kürzer sein als der Rückblick"),
+    ("GESTE_STOPP_HALTEN_S", "GESTE_FENSTER_S", "„Stopp“ halten muss kürzer sein als der Rückblick"),
+    ("FOLGEN_TOTZONE_M", "FOLGEN_ABSTAND_M", "Totzone muss kleiner sein als der Wunschabstand"),
 ]
 
 _lock = threading.Lock()

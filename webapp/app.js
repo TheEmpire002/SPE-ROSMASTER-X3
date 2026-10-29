@@ -81,6 +81,12 @@ const ui = {
   autoText: el("auto-text"),
   hindernisse: el("hindernisse"),
   camWahl: el("cam-wahl"),
+  btnInteraktion: el("btn-interaktion"),
+  btnFolgen: el("btn-folgen"),
+  iaModus: el("val-ia-modus"),
+  iaPerson: el("val-ia-person"),
+  iaGeste: el("val-ia-geste"),
+  iaText: el("ia-text"),
 };
 
 function logLine(text, level = "info") {
@@ -142,6 +148,7 @@ function handleMessage(msg) {
       setzeHomeKnopf(msg.homing === true);
       zeigeKollision(msg.collision);
       zeigeAutonomie(msg.autonomie);
+      zeigeInteraktion(msg.interaktion);
       break;
 
     case "collision":
@@ -588,11 +595,13 @@ function personenZeichnen() {
     const passt = personenKamera
       ? (k.name ?? camStandard) === personenKamera
       : i === 0;
-    rahmenZeichnen(k, passt ? personenBoxen : []);
+    rahmenZeichnen(k, passt ? personenBoxen : [], passt);
   });
 }
 
-function rahmenZeichnen(kachel, boxen) {
+// zeigtPersonen: diese Kachel zeigt die Personenkamera -- nur dort gehören
+// Rahmen und Skelette hin (beide kommen aus der C270).
+function rahmenZeichnen(kachel, boxen, zeigtPersonen) {
   const c = kachel.overlay;
   const img = kachel.img;
   const w = c.clientWidth;
@@ -603,7 +612,8 @@ function rahmenZeichnen(kachel, boxen) {
   }
   const ctx = c.getContext("2d");
   ctx.clearRect(0, 0, w, h);
-  if (!boxen.length || !img.naturalWidth) return;
+  const skelettHier = zeigtPersonen && skelette.length > 0;
+  if ((!boxen.length && !skelettHier) || !img.naturalWidth) return;
 
   const bildVerh = img.naturalWidth / img.naturalHeight;
   let bw = w, bh = w / bildVerh;
@@ -624,9 +634,136 @@ function rahmenZeichnen(kachel, boxen) {
     ctx.strokeRect(x, y, (b.x2 - b.x1) * bw, (b.y2 - b.y1) * bh);
     ctx.fillText(`Mensch ${b.score.toFixed(1)}`, x + 3, y + 14);
   }
+
+  if (skelettHier) skeletteZeichnen(ctx, ox, oy, bw, bh);
 }
 
 window.addEventListener("resize", personenZeichnen);
+
+// --- Interaktion --------------------------------------------------------------
+
+/*
+ * Wie beim autonomen Fahren: Der Roboter entscheidet, die App zeigt an und
+ * schickt interaction_start / interaction_stop / follow / follow_stop.
+ * Die Skelette holt sie sich nur, solange die Interaktion läuft -- sonst
+ * rechnet der Hailo ohnehin nicht.
+ */
+const POSE_HZ = 8;
+/** Körperpunkte unter dieser Sicherheit werden nicht gezeichnet. */
+const KP_MIN = 0.3;
+
+const MODUS_TEXT = {
+  bereit: "wartet auf Handzeichen",
+  folgen: "folgt",
+  herkommen: "kommt her",
+  weggehen: "weicht zurück",
+  sucht: "sucht",
+};
+
+let interaktionAktiv = false;
+let interaktionModus = null;
+let skelette = [];
+let skelettLinien = [];
+let poseLaeuft = false;
+
+function setzeInteraktionKnoepfe(aktiv, modus) {
+  interaktionAktiv = aktiv;
+  interaktionModus = modus;
+  ui.btnInteraktion.textContent = aktiv ? "Interaktion aus" : "Interaktion an";
+  ui.btnInteraktion.classList.toggle("aktiv", aktiv);
+  const folgt = aktiv && modus === "folgen";
+  ui.btnFolgen.textContent = folgt ? "Nicht mehr folgen" : "Folge mir";
+}
+
+ui.btnInteraktion.addEventListener("click", () => {
+  send({ type: interaktionAktiv ? "interaction_stop" : "interaction_start" });
+  // Sofort umschalten, die nächste Statusmeldung rückt es gerade.
+  setzeInteraktionKnoepfe(!interaktionAktiv, interaktionAktiv ? null : "bereit");
+});
+
+ui.btnFolgen.addEventListener("click", () => {
+  const folgt = interaktionAktiv && interaktionModus === "folgen";
+  send({ type: folgt ? "follow_stop" : "follow" });
+  setzeInteraktionKnoepfe(true, folgt ? "bereit" : "folgen");
+});
+
+function zeigeInteraktion(ia) {
+  if (!ia) return;
+  setzeInteraktionKnoepfe(ia.aktiv === true, ia.modus);
+  ui.btnInteraktion.disabled = ui.btnFolgen.disabled = ia.verfuegbar === false;
+
+  ui.iaModus.textContent = ia.aktiv
+    ? (MODUS_TEXT[ia.modus] || ia.modus)
+    : (ia.verfuegbar === false ? "nicht verfügbar" : "aus");
+
+  const p = ia.person;
+  if (p) {
+    const seite = Math.abs(p.winkel) < 5 ? "mittig" : p.winkel > 0 ? "links" : "rechts";
+    const abstand = typeof p.abstand === "number" ? `${p.abstand.toFixed(2)} m · ` : "";
+    ui.iaPerson.textContent = `${abstand}${seite} (${p.winkel.toFixed(0)}°) · ${ia.personen} im Bild`;
+  } else {
+    ui.iaPerson.textContent = ia.aktiv ? `${ia.personen} im Bild` : "—";
+  }
+  ui.iaGeste.textContent = ia.geste || "—";
+
+  let text = ia.text || "—";
+  if (!ia.aktiv && ia.grund) text = `Zuletzt beendet: ${ia.grund}`;
+  if (ia.verfuegbar === false) text = "Braucht Lidar und Posenerkennung — Details unter /interaktion/status";
+  ui.iaText.textContent = text;
+
+  if (!ia.aktiv && skelette.length) {
+    skelette = [];
+    personenZeichnen();
+  }
+}
+
+async function poseHolen() {
+  if (!interaktionAktiv || poseLaeuft) return;
+  poseLaeuft = true; // keine Anfragen auftürmen, wenn das WLAN hängt
+  try {
+    const r = await fetch("/interaktion/pose", { cache: "no-store" });
+    if (r.ok) {
+      const d = await r.json();
+      skelette = d.personen || [];
+      skelettLinien = d.skelett || [];
+      personenZeichnen();
+    }
+  } catch {
+    // Verbindung kurz weg: beim nächsten Takt neu versuchen.
+  } finally {
+    poseLaeuft = false;
+  }
+}
+
+setInterval(poseHolen, 1000 / POSE_HZ);
+
+/** Skelette auf die eingepasste Bildfläche (ox/oy/bw/bh aus personenZeichnen). */
+function skeletteZeichnen(ctx, ox, oy, bw, bh) {
+  if (!skelette.length) return;
+  ctx.lineWidth = 3;
+  // Die größte Person (vorn in der Liste) ist meist die verfolgte.
+  skelette.forEach((s, i) => {
+    const col = i === 0 ? "#3ddc97" : "#9aa1ad";
+    ctx.strokeStyle = col;
+    ctx.fillStyle = col;
+    const kp = s.kp || [];
+    for (const [a, b] of skelettLinien) {
+      const pa = kp[a];
+      const pb = kp[b];
+      if (!pa || !pb || pa[2] < KP_MIN || pb[2] < KP_MIN) continue;
+      ctx.beginPath();
+      ctx.moveTo(ox + pa[0] * bw, oy + pa[1] * bh);
+      ctx.lineTo(ox + pb[0] * bw, oy + pb[1] * bh);
+      ctx.stroke();
+    }
+    for (const [x, y, c] of kp) {
+      if (c < KP_MIN) continue;
+      ctx.beginPath();
+      ctx.arc(ox + x * bw, oy + y * bh, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  });
+}
 
 // --- Heimfahrt ----------------------------------------------------------------
 

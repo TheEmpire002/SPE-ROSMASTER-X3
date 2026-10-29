@@ -212,5 +212,8 @@ python scripts/check_hardware.py
 - [x] Rückfahrt zum Startpunkt (Koppelnavigation)
 - [x] Lidar: Ortung und Hinderniserkennung
 - [ ] ESP-Anbindung (Bewegung, Puls)
-- [ ] Autonomes Fahren / SLAM
+- [x] Autonomes Fahren, Test 1: Erkunder mit Hindernis-Benennung (ohne SLAM)
+- [x] Interaktion, Stufe 2+3: Gesten (Hailo-Pose) und Verhalten Folgen/Stopp/Herkommen/Weggehen (siehe [`docs/interaktion.md`](docs/interaktion.md))
+- [ ] Interaktion: Sprache, Stimme, „Geist“
+- [ ] SLAM / Karte
 - [ ] Box-Mechanik

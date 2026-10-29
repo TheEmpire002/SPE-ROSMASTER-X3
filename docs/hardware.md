@@ -4,12 +4,14 @@
 
 | Komponente      | Modell                | Anschluss        | Status      |
 |-----------------|-----------------------|------------------|-------------|
-| Rechner         | Raspberry Pi 5 + AI HAT+ | —             | vorhanden   |
+| Rechner         | Raspberry Pi 5 (16 GB) + AI HAT+ 2 (Hailo-10H) | PCIe (`/dev/hailo0`) | vorhanden, Hailo für Interaktion geplant |
 | Fahrgestell     | Yahboom ROSMASTER X3  | USB-Serial       | vorhanden   |
 | Expansion Board | Yahboom (STM32)       | USB-Serial       | vorhanden   |
 | Lidar           | Slamtec RPLIDAR A1    | USB-Seriell      | eingebunden (Ortung + Hindernisse) |
-| Tiefenkamera    | Orbbec (Farb- + Tiefenkanal) | USB (über Hub) | Farbbild eingebunden (Orientierung), Tiefe noch nicht |
-| Webcam          | Logitech C270         | USB (direkt am Pi) | eingebunden (Personenerkennung) |
+| Tiefenkamera    | Orbbec (Farb- + Tiefenkanal) | USB (über Hub) | Farbbild eingebunden (Kamera `orientierung`), Tiefe noch nicht |
+| Webcam          | Logitech C270 (vorn, leicht nach oben) | USB, eigener Bus (direkt am Pi) | eingebunden (Kamera `personen`: Personenerkennung, Gesten) |
+| Mikrofon        | USB-Mikrofon (FongLun, C-Media `0d8c:0016`); weitere in C270 und Orbbec | USB-Audio, eigener Bus | für Sprache geplant |
+| Lautsprecher    | USB-Lautsprecher „UACDemoV1.0“ | USB-Audio, direkt am Pi | für Sprachausgabe geplant |
 | ESP32           | *(Modell eintragen)*  | WLAN             | geplant     |
 | Pulssensor      | *(Modell eintragen)*  | ESP32            | geplant     |
 | Box-Motor       | *(Modell eintragen)*  | Servo am X3      | geplant     |
@@ -27,9 +29,9 @@ Ausgabe von `lsusb` auf diesem Roboter, übersetzt:
 | `10c4:ea60` | Silicon Labs CP210x | **RPLIDAR A1** |
 | `2bc5:050f` | Orbbec „USB 2.0 Camera" | RGB-Bild, Kamera `orientierung` |
 | `2bc5:060f` | Orbbec Depth Sensor | Tiefenkanal derselben Kamera |
-| `046d:0825` | Logitech C270 HD WebCam | Kamera `personen` |
-| `4c4a:4155` | Jieli UACDemoV1.0 | USB-Audio (Lautsprecher), keine Kamera |
-| `0d8c:0016` | C-Media USB Microphone | Mikrofon |
+| `046d:0825` | Logitech C270 HD WebCam | Kamera `personen`, Mikrofon (eigener USB-Bus, nicht am Hub) |
+| `0d8c:0016` | USB-Mikrofon (C-Media) | Spracheingabe (ALSA „Microphone“) |
+| `4c4a:4155` | Jieli „UACDemoV1.0“ | USB-Lautsprecher, Sprachausgabe (ALSA „UACDemoV10“), keine Kamera |
 
 **Daraus folgt das Wichtigste:** Es gibt **zwei** USB-Seriell-Adapter. Board
 und Lidar erscheinen beide als `/dev/ttyUSB*`, und welcher welche Nummer
@@ -52,11 +54,16 @@ für Orientierung und Kollisionsvermeidung gedacht, ist aber kein
 Videogerät (taucht in `v4l2-ctl --list-devices` nicht auf) und braucht das
 Orbbec-SDK.
 
-Die **Logitech C270** hängt direkt am Pi, nicht am Hub: Am Hub hängen
-schon Board, Lidar und Orbbec, und eine weitere Kamera dort macht
-Spannungseinbrüche wahrscheinlicher. Beim Einstecken meldet der Kernel
-einige `Failed to query (GET_INFO) UVC control …` und `cannot get freq`.
-Das ist bei der C270 normal und harmlos.
+Seit dem 28.10. ist zusätzlich eine **Logitech C270** vorn montiert. Sie
+hängt direkt am Pi, nicht am Hub: Am Hub hängen schon Board, Lidar und
+Orbbec, und eine weitere Kamera dort macht Spannungseinbrüche
+wahrscheinlicher. Beim Einstecken meldet der Kernel einige
+`Failed to query (GET_INFO) UVC control …` und `cannot get freq`. Das ist
+bei der C270 normal und harmlos.
+
+Die `/dev/video*`-Nummern hängen von der Einsteckreihenfolge ab. Der Server
+ordnet die Kameras deshalb über die USB-Kennung zu, nicht über die Nummer
+(siehe [Kamera](#kamera)).
 
 ## Antrieb
 
@@ -252,8 +259,42 @@ zeigt die Standardkamera (`orientierung`).
 
 ## AI HAT+
 
+> **Nachtrag 28.10.:** Verbaut ist ein **AI HAT+ 2 mit Hailo-10H** (PCIe,
+> `/dev/hailo0`, Firmware 5.1.1, 40 TOPS, 8 GB eigener Speicher). HailoRT
+> 5.1.1 ist installiert; `hailo_platform` lässt sich im venv importieren.
+> Mitgelieferte Modelle liegen in `/usr/share/hailo-models/`, u. a.
+> `yolov8s_pose_h10.hef` (Körperpose, 17 Punkte) und `yolov8m_h10.hef`
+> (Objekte). Der Hailo-10H kann auch kleine Sprachmodelle ausführen (Hailo
+> GenAI, noch nicht installiert). Geplante Nutzung: Gestenerkennung über
+> die Körperpose, siehe [`interaktion.md`](interaktion.md) und E5 in
+> [`entscheidungen.md`](entscheidungen.md).
+
 Der AI HAT+ enthält einen Hailo-Beschleuniger. Er ist für die spätere
 Kamera-Auswertung interessant (Personenerkennung, Sturzerkennung) und wird im
 aktuellen Grundgerüst noch nicht genutzt. Ob die Personenerkennung über die
 Kamera oder über den ESP läuft, ist noch offen — der AI HAT+ wäre das deutlich
 zuverlässigere Verfahren.
+
+## USB-Resets (Befund vom 28.10.)
+
+Geräte am USB-Hub (Lidar, Board, Orbbec) melden sich gelegentlich gleichzeitig
+ab. `dmesg` zeigt dann „over-current“ auf allen Ports. Die Ursache sind
+**CPU-Lastsprünge bei 2,4 GHz**, vermutlich mit Rückspeisung (Backfeed) des
+Hubs über das Expansion-Board. Ein leerer Akku ist es nicht.
+
+- Mit 2,0 GHz treten die Resets deutlich seltener auf, ganz weg sind sie
+  aber nicht. **Seit dem 28.10. steht deshalb `arm_freq=2000` in
+  `/boot/firmware/config.txt`** (mit Ben abgestimmt, Backup
+  `config.txt.vor-arm_freq-2026-10-28`). Der Server braucht dafür keine
+  Anpassung: Alle Schleifen laufen nach Uhrzeit, nicht nach Rechenzeit, und
+  die teuersten Teile (Personenerkennung 2 Hz, JPEG 15 fps) haben genug Luft.
+- `python scripts/check_hardware.py` zeigt Takt, Temperatur und Drosselung
+  und warnt, wenn die Begrenzung fehlt.
+- Wird der Pi heiß (über ~80 °C, z. B. beim Kompilieren), drosselt er selbst
+  auf 1,5 GHz und die USB-Geräte fallen massenhaft ab. Beim Kompilieren also
+  Roboter nicht fahren lassen.
+- Die eigentliche Lösung liegt in der Hardware: ein Hub ohne Rückspeisung
+  oder eine getrennte VBUS-Leitung.
+- Die C270 hängt an einem eigenen Bus und ist nicht betroffen.
+
+Messungen und Herleitung: `Marlon/sensorcheck_2026-10-28/ZUSAMMENFASSUNG.md`.
