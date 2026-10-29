@@ -227,6 +227,12 @@ class Spracherkennung:
         except ImportError as exc:
             self._aus(f"{exc.name} fehlt (pip install vosk sounddevice)")
             return
+        except OSError as exc:
+            # sounddevice ist installiert, aber die C-Bibliothek fehlt:
+            # "PortAudio library not found" kommt als OSError, nicht als
+            # ImportError -- ohne diesen Zweig stürbe der Hör-Thread still.
+            self._aus(f"{exc} (sudo apt install libportaudio2)")
+            return
         modell_pfad = os.path.expanduser(config.SPRACHE_MODELL)
         if not os.path.isdir(modell_pfad):
             self._aus(f"Vosk-Modell fehlt: {modell_pfad} (siehe docs/hardware.md)")
@@ -237,7 +243,7 @@ class Spracherkennung:
         except Exception as exc:  # kaputtes oder halbes Modell
             self._aus(f"Vosk-Modell lässt sich nicht laden: {exc}")
             return
-        grammatik = json.dumps(self._grammatik(modell_pfad), ensure_ascii=False)
+        grammatik = json.dumps(self._grammatik(modell_pfad, modell), ensure_ascii=False)
 
         while not self._stop.is_set():
             try:
@@ -334,7 +340,7 @@ class Spracherkennung:
             return int(sd.query_devices(geraet)["default_samplerate"])
 
     @staticmethod
-    def _grammatik(modell_pfad: str) -> list[str]:
+    def _grammatik(modell_pfad: str, modell=None) -> list[str]:
         """Alle Sätze, die Vosk erkennen darf.
 
         Wörter, die das Modell nicht kennt, kann es nicht erkennen -- "robi"
@@ -348,10 +354,24 @@ class Spracherkennung:
             with open(woerter_txt, encoding="utf-8") as f:
                 bekannt = {zeile.split()[0] for zeile in f if zeile.strip()}
         except OSError:
-            pass  # Modell ohne Wortliste: alles versuchen
+            pass  # die kleinen Modelle haben keine words.txt, siehe unten
+
+        def kennt(wort: str) -> bool:
+            if bekannt is not None:
+                return wort in bekannt
+            # Ohne words.txt (z.B. vosk-model-small-de-0.15) steckt der
+            # Wortschatz nur in graph/Gr.fst; Vosk kann ihn selbst abfragen
+            # (-1 = unbekannt). Am echten Modell am 29.10. geprüft.
+            finden = getattr(modell, "vosk_model_find_word", None)
+            if finden is None:
+                return True  # nicht prüfbar: alles versuchen
+            try:
+                return finden(wort) >= 0
+            except Exception:
+                return True
 
         def geht(satz: str) -> bool:
-            return bekannt is None or all(w in bekannt for w in satz.split())
+            return all(kennt(w) for w in satz.split())
 
         weck = [w for w in dict.fromkeys(
             [config.SPRACHE_WECKWORT.lower(), *config.SPRACHE_WECKWORT_VARIANTEN]

@@ -324,7 +324,10 @@ es über den Namen (`SPRACHE_MIKROFON_NAMEN`: „USB PnP“, „C-Media“,
 Erkannt wird mit Vosk und dem kleinen deutschen Modell (ca. 45 MB, läuft
 auf der CPU).
 
-Einrichtung am Pi (einmalig):
+Einrichtung am Pi: `python main.py` erledigt das beim Start mit echter
+Hardware selbst (Pakete `vosk`/`sounddevice` und Modell nach `~`, braucht
+einmal Internet). Von Hand bleibt nur PortAudio, weil es `sudo` braucht;
+`main.py` weist darauf hin, wenn es fehlt. Zum Nachvollziehen von Hand:
 
 ```bash
 sudo apt install libportaudio2             # für sounddevice
@@ -340,6 +343,8 @@ arecord -D plughw:CARD=Device,DEV=0 -d 3 -f S16_LE -r 16000 test.wav && aplay te
 
 - Der Kartenname beim `arecord`-Test kann anders heißen; `arecord -l`
   zeigt ihn. Der Server braucht ihn nicht.
+- Das kleine Modell hat keine `words.txt`; welche Weckwort-Varianten es
+  kennt, fragt der Server Vosk direkt (zurzeit „robbie“, „ruby“, „robin“).
 - Fehlt etwas, läuft der Server ohne Sprachbefehle weiter.
   `curl localhost:8000/sprache/status` zeigt `zustand` und `fehler`.
 - Nach einem USB-Aussetzer versucht die Erkennung alle

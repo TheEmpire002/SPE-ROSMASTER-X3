@@ -27,11 +27,15 @@ from __future__ import annotations
 import argparse
 import os
 import platform
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
+import urllib.request
 import webbrowser
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -39,6 +43,11 @@ ROBOT_DIR = ROOT / "robot"
 VENV_DIR = ROBOT_DIR / ".venv"
 
 MIN_PYTHON = (3, 11)
+
+# Sprachbefehle: muss zu SPRACHE_MODELL in config.py passen. Hier doppelt,
+# weil main.py nichts aus der virtuellen Umgebung importieren darf.
+VOSK_MODELL = "vosk-model-small-de-0.15"
+VOSK_URL = f"https://alphacephei.com/vosk/models/{VOSK_MODELL}.zip"
 
 
 # --- Ausgabe -------------------------------------------------------------------
@@ -125,6 +134,53 @@ def ensure_dependencies(py: Path) -> None:
         check=True,
     )
     info("fertig")
+
+
+def ensure_sprache(py: Path) -> None:
+    """Richtet die Sprachbefehle ein (Pakete und Vosk-Modell), soweit möglich.
+
+    Bewusst ohne Abbruch: Fehlt etwas oder ist kein Internet da, startet
+    der Server trotzdem, nur ohne Sprache. /sprache/status zeigt den Grund.
+    """
+    step("Sprachbefehle")
+    # Nur auf "ist installiert" prüfen, nicht importieren: Ohne
+    # libportaudio2 schlägt der Import fehl, ein erneutes pip install
+    # hilft dann nicht und kostete bei jedem Start Zeit.
+    fehlt = [m for m in ("vosk", "sounddevice")
+             if not has_module(py, f"importlib.util as u; assert u.find_spec('{m}')")]
+    if fehlt:
+        info(f"Installiere {', '.join(fehlt)} …")
+        result = subprocess.run(
+            [str(py), "-m", "pip", "install", "--quiet", "--editable", f"{ROBOT_DIR}[sprache]"],
+        )
+        if result.returncode != 0:
+            info("Installation fehlgeschlagen (Internet?) -- Server startet ohne Sprache.")
+            return
+    if not has_module(py, "sounddevice"):
+        info("PortAudio fehlt -- einmalig: sudo apt install libportaudio2")
+        return
+
+    modell = Path.home() / VOSK_MODELL
+    if not modell.is_dir():
+        info(f"Lade Vosk-Modell (~45 MB) nach {modell} …")
+        try:
+            # Erst in eine temporäre Datei, damit ein abgebrochener Download
+            # kein halbes Modell hinterlässt, das beim nächsten Start als
+            # vorhanden gälte.
+            with tempfile.TemporaryDirectory() as tmp:
+                zip_pfad = Path(tmp) / "modell.zip"
+                with urllib.request.urlopen(VOSK_URL, timeout=30) as antwort,                         open(zip_pfad, "wb") as ziel:
+                    while block := antwort.read(1 << 20):
+                        ziel.write(block)
+                with zipfile.ZipFile(zip_pfad) as z:
+                    z.extractall(tmp)
+                # move statt rename: /tmp ist am Pi oft ein eigenes
+                # Dateisystem (tmpfs), rename ginge dann nicht.
+                shutil.move(str(Path(tmp, VOSK_MODELL)), str(modell))
+        except Exception as exc:  # kein Netz, voller Speicher, ...
+            info(f"Download fehlgeschlagen ({exc}) -- Server startet ohne Sprache.")
+            return
+    info("bereit")
 
 
 # --- Hardware-Erkennung -----------------------------------------------------------
@@ -279,6 +335,9 @@ def main() -> int:
     else:
         info(f"Echte Hardware ({reason})")
         info("Der Roboter kann sich bewegen. Freie Fläche sicherstellen!")
+        # Nur am Roboter: Im Mock werden Sprachbefehle simuliert, dort
+        # braucht es weder Mikrofon noch Modell.
+        ensure_sprache(py)
 
     if args.setup_only:
         step("Einrichtung abgeschlossen (--setup-only)")
