@@ -867,3 +867,11 @@ a.einst-knopf { text-decoration: none; }
 }
 .mukke-laut input { flex: 1; accent-color: #c58af9; }
 .mukke-laut output { min-width: 2.8rem; text-align: right; color: var(--text); }
+/* Durchsage: Hinweis, warum das Mikrofon nicht freigegeben ist (kein HTTPS). */
+.mikro-hinweis[hidden] { display: none; }
+.mikro-hinweis {
+  margin: 0.3rem 0 0.6rem;
+  font-size: 0.8rem;
+  color: var(--warn);
+}
+.mikro-hinweis a { color: inherit; }

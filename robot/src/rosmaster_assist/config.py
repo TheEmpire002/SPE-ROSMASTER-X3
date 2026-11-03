@@ -108,6 +108,14 @@ RAMPE_DT_MAX_S = 0.1
 HOST = "0.0.0.0"
 PORT = 8000
 
+# Zusätzlich dieselbe App über HTTPS (0 = aus). Browser geben das Mikrofon
+# nur auf sicheren Seiten frei, also nicht unter http://10.42.0.62:8000 --
+# für die Durchsage vom Handy braucht es https://10.42.0.62:8443. Das
+# Zertifikat erzeugt der Server beim ersten Start selbst (openssl); der
+# Browser warnt einmal, weil es niemand beglaubigt hat.
+HTTPS_PORT = 8443
+HTTPS_ORDNER = "~/.rosmaster/https"
+
 # Takt, in dem der Roboter von sich aus Statusmeldungen an die App schickt.
 STATUS_INTERVAL_S = 0.5
 
@@ -707,6 +715,18 @@ STIMME_TIMEOUT_S = 20.0
 # im Raum und Puffer im Lautsprecher -- die Spracherkennung soll das nicht
 # als Eingabe verstehen.
 STIMME_NACHLAUF_S = 0.4
+
+# Durchsage: aus der App (Laptop/Handy-Mikrofon) live über den Lautsprecher
+# des Roboters sprechen (WebSocket /sprache/durchsage). Kommt so lange (s)
+# kein Ton, gilt sie als beendet und der Lautsprecher wird frei ...
+DURCHSAGE_PAUSE_S = 2.0
+# ... und mehr als so viel (s) Ton wird nicht gepuffert. Stand die Durchsage
+# hinter einem Satz an, fällt der Anfang weg, statt dass sie dauerhaft um
+# Sekunden hinterherhinkt.
+DURCHSAGE_MAX_PUFFER_S = 0.5
+# Puffer von aplay (µs). Kleiner = weniger Verzögerung, aber jedes Stocken
+# im WLAN wird hörbar.
+DURCHSAGE_APLAY_PUFFER_US = 200000
 
 # --- Sprachbefehle (USB-Mikrofon, Vosk) -------------------------------------------
 # Siehe interaktion/sprache.py und docs/interaktion.md. Ohne vosk/sounddevice,

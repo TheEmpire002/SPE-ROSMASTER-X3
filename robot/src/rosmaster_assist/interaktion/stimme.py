@@ -28,6 +28,7 @@ import collections
 import json
 import logging
 import os
+import queue
 import re
 import shutil
 import subprocess
@@ -70,6 +71,33 @@ def _leiser(quelle, ziel, faktor: float) -> None:
                 pass
 
 
+class Durchsage:
+    """Live-Ton aus der App (16 bit, mono), der über den Lautsprecher geht.
+
+    Steht in derselben Warteschlange wie die Sätze. Dadurch gilt alles, was
+    für die Stimme gilt, auch hier: MUKKE pausiert, die Spracherkennung hört
+    weg (sonst verstünde sie die Durchsage als Befehl), und Sätze und
+    Durchsage reden sich nicht gegenseitig ins Gerät.
+    """
+
+    def __init__(self, rate: int) -> None:
+        self.rate = rate
+        self._bloecke: queue.Queue[bytes | None] = queue.Queue()
+        self.vorbei = False
+        # aplay ging nicht (Lautsprecher belegt oder weg): Die App soll dann
+        # nicht mit jedem Tonpaket gleich die nächste Durchsage beginnen.
+        self.fehlgeschlagen = False
+
+    def rein(self, daten: bytes) -> None:
+        self._bloecke.put(daten)
+
+    def ende(self) -> None:
+        self._bloecke.put(None)
+
+    def __str__(self) -> str:  # für status()["warteschlange"]
+        return "(Durchsage)"
+
+
 class Stimme:
     def __init__(self, mock: bool = False, vor_sprechen=None, nach_sprechen=None) -> None:
         self._mock = mock
@@ -84,6 +112,7 @@ class Stimme:
         self._thread: threading.Thread | None = None
         self._warteschlange: collections.deque[str] = collections.deque()
         self._prozesse: list[subprocess.Popen] = []
+        self._laufende: Durchsage | None = None  # die gerade spielt
 
         self._ausgabe = TEXT
         self._piper: str | None = None  # gefundener Pfad, siehe _ausgabe_finden()
@@ -158,10 +187,12 @@ class Stimme:
             self._zuletzt_zeit = jetzt
             if vorrang:
                 self._verworfen += len(self._warteschlange)
-                self._warteschlange.clear()
+                self._leeren()
             while len(self._warteschlange) >= config.STIMME_MAX_WARTESCHLANGE:
                 # Das Älteste fällt weg: Es beschreibt, was längst vorbei ist.
-                self._warteschlange.popleft()
+                alt = self._warteschlange.popleft()
+                if isinstance(alt, Durchsage):
+                    alt.vorbei = True
                 self._verworfen += 1
             self._warteschlange.append(text)
         if vorrang:
@@ -169,12 +200,35 @@ class Stimme:
         self._neu.set()
         return True
 
+    def durchsage(self, rate: int) -> Durchsage:
+        """Eine Durchsage beginnen; der Ton kommt danach mit ``rein()``.
+
+        Läuft gerade ein Satz, kommt sie direkt danach. Ein Satz mit Vorrang
+        (Stopp) bricht sie ab, dann ist ``vorbei`` wahr.
+        """
+        d = Durchsage(rate)
+        if not config.STIMME_ENABLED:
+            d.vorbei = True
+            return d
+        with self._lock:
+            self._warteschlange.append(d)
+        self._neu.set()
+        return d
+
     def verstummen(self) -> None:
         """Schlange leeren und den laufenden Satz abbrechen (Not-Stopp)."""
         with self._lock:
             self._verworfen += len(self._warteschlange)
-            self._warteschlange.clear()
+            self._leeren()
         self._prozesse_beenden()
+
+    def _leeren(self) -> None:
+        """Schlange leeren (unter self._lock). Wartende Durchsagen erfahren,
+        dass sie vorbei sind -- sonst schickte die App ins Leere."""
+        for eintrag in self._warteschlange:
+            if isinstance(eintrag, Durchsage):
+                eintrag.vorbei = True
+        self._warteschlange.clear()
 
     def zustand(self) -> dict:
         """Für state.stimme in der App."""
@@ -193,7 +247,7 @@ class Stimme:
                 "ausgabe": self._ausgabe,
                 "geraet": config.STIMME_GERAET,
                 "spricht": self.spricht,
-                "warteschlange": list(self._warteschlange),
+                "warteschlange": [str(t) for t in self._warteschlange],
                 "zuletzt": self._zuletzt,
                 "gesagt": self._gesagt,
                 "verworfen": self._verworfen,
@@ -249,7 +303,77 @@ class Stimme:
         except Exception:  # Musik darf die Stimme nicht abschalten
             log.exception("Stimme: Rückruf fehlgeschlagen")
 
-    def _sprechen(self, text: str) -> None:
+    def _durchsage_abspielen(self, d: Durchsage) -> None:
+        if d.vorbei:
+            return  # in der Schlange schon abgebrochen
+        log.info("Stimme: Durchsage aus der App (%d Hz)", d.rate)
+        faktor = max(0.0, min(100.0, float(config.LAUTSTAERKE))) / 100.0
+        ziel = None
+        if self._ausgabe not in (SIMULIERT, TEXT):
+            ziel = subprocess.Popen(
+                ["aplay", "-q", "-D", config.STIMME_GERAET, "-r", str(d.rate), "-f", "S16_LE",
+                 "-c", "1", "-t", "raw", f"--buffer-time={config.DURCHSAGE_APLAY_PUFFER_US}"],
+                stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        with self._lock:
+            self._prozesse = [ziel] if ziel is not None else []
+            self._laufende = d
+        # Was sich angestaut hat, während noch ein Satz lief, ist überholt.
+        max_bytes = int(d.rate * 2 * config.DURCHSAGE_MAX_PUFFER_S)
+        import numpy as np
+
+        try:
+            while not self._stop.is_set():
+                try:
+                    daten = d._bloecke.get(timeout=config.DURCHSAGE_PAUSE_S)
+                except queue.Empty:
+                    break  # App still oder weg: Lautsprecher freigeben
+                if daten is None:
+                    break
+                stau = d._bloecke.qsize() * len(daten)
+                while stau > max_bytes:
+                    try:
+                        weg = d._bloecke.get_nowait()
+                    except queue.Empty:
+                        break
+                    if weg is None:
+                        return
+                    stau -= len(weg)
+                if ziel is None:
+                    continue  # Simulation: Ton verwerfen, aber "spricht" bleibt wahr
+                if ziel.poll() is not None:
+                    break  # abgebrochen (Vorrang) oder Lautsprecher weg
+                daten = daten[: len(daten) - len(daten) % 2]
+                if faktor < 0.999:
+                    werte = np.frombuffer(daten, dtype="<i2").astype(np.float32) * faktor
+                    daten = werte.astype("<i2").tobytes()
+                ziel.stdin.write(daten)
+                ziel.stdin.flush()
+        except (OSError, ValueError):
+            pass  # aplay weg (Vorrang, USB) -- die Durchsage ist dann vorbei
+        finally:
+            d.vorbei = True
+            if ziel is not None:
+                try:
+                    ziel.stdin.close()
+                    ziel.wait(timeout=2.0)
+                except (OSError, ValueError, subprocess.TimeoutExpired):
+                    pass
+                self._prozesse_beenden()
+                # Positiver Code: aplay selbst ging nicht (belegt, weg).
+                # Negativ hieße abgebrochen (Vorrang) -- das ist kein Fehler.
+                if (ziel.returncode or 0) > 0:
+                    d.fehlgeschlagen = True
+                    meldung = f"Durchsage: Lautsprecher geht nicht (aplay Code {ziel.returncode})"
+                    if meldung != self._fehler:
+                        log.warning("Stimme: %s", meldung)
+                    self._fehler = meldung
+            log.info("Stimme: Durchsage beendet")
+
+    def _sprechen(self, text: str | Durchsage) -> None:
+        if isinstance(text, Durchsage):
+            self._durchsage_abspielen(text)
+            return
         log.info("Stimme sagt: %s", text)
         if self._ausgabe == SIMULIERT:
             # Ungefähr so lange wie echtes Sprechen, damit ``spricht`` sich
@@ -338,6 +462,12 @@ class Stimme:
     def _prozesse_beenden(self) -> None:
         with self._lock:
             prozesse, self._prozesse = self._prozesse, []
+            laufende, self._laufende = self._laufende, None
+        if laufende is not None:
+            # Auch ohne aplay (Simulation) sofort beenden: ende() weckt den
+            # wartenden Sprech-Thread, vorbei lässt die App neu beginnen.
+            laufende.vorbei = True
+            laufende.ende()
         for p in prozesse:
             if p.poll() is None:
                 try:

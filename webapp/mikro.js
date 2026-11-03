@@ -197,4 +197,138 @@ hoeren.addEventListener("change", () => {
   if (hoeren.checked) mithoerenAn(); else mithoerenAus();
 });
 
+// --- Durchsage: über den Roboter sprechen --------------------------------------
+//
+// Eigenes Mikrofon (Laptop/Handy) -> WebSocket /sprache/durchsage -> Lautsprecher
+// des Roboters. Erst {"rate": Hz}, dann Rohton 16 bit mono.
+
+const sprechen = $("mikro-sprechen");
+const sprechenStatus = $("mikro-sprechen-state");
+const hinweis = $("mikro-sprechen-hinweis");
+/** Für Sprache reicht das; so bleibt es im WLAN klein (32 kB/s). */
+const SENDE_RATE = 16000;
+/** Port der HTTPS-Variante (config.HTTPS_PORT). */
+const HTTPS_PORT = 8443;
+
+let dsWs = null;
+let dsCtx = null;
+let dsStrom = null;
+let dsTimer = null;
+
+function hinweisZeigen(knoten) {
+  hinweis.replaceChildren(...(knoten ? [knoten].flat() : []));
+  hinweis.hidden = !knoten;
+}
+
+/** Mikrofon-Ton auf SENDE_RATE bringen und als 16 bit verpacken. */
+function verpacken(ein, schritt) {
+  const n = Math.floor(ein.length / schritt);
+  const aus = new Int16Array(n);
+  for (let i = 0; i < n; i++) {
+    // Mittelwert über das Fenster: ein einfacher Tiefpass, sonst klirrt es.
+    const von = Math.floor(i * schritt);
+    const bis = Math.min(ein.length, Math.floor((i + 1) * schritt));
+    let summe = 0;
+    for (let j = von; j < bis; j++) summe += ein[j];
+    const wert = Math.max(-1, Math.min(1, summe / Math.max(1, bis - von)));
+    aus[i] = wert * 32767;
+  }
+  return aus;
+}
+
+async function sprechenAn() {
+  // Browser geben das Mikrofon nur auf sicheren Seiten frei (HTTPS oder
+  // localhost). Unter http://10.42.0.62:8000 gibt es getUserMedia gar nicht.
+  if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+    const ziel = `https://${location.hostname}:${HTTPS_PORT}${location.pathname}`;
+    const link = document.createElement("a");
+    link.href = ziel;
+    link.textContent = ziel;
+    hinweisZeigen(["Das Mikrofon gibt der Browser nur über HTTPS frei: ", link,
+                   " öffnen und die Zertifikatswarnung einmal bestätigen."]);
+    sprechen.checked = false;
+    status(sprechenStatus, "nur über HTTPS", false);
+    return;
+  }
+  hinweisZeigen(null);
+  status(sprechenStatus, "Mikrofon …", false);
+  try {
+    dsStrom = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+  } catch (fehler) {
+    sprechen.checked = false;
+    status(sprechenStatus, "kein Zugriff", false);
+    hinweisZeigen(`Mikrofon nicht freigegeben (${fehler.name}). In den Seiteneinstellungen des Browsers erlauben.`);
+    return;
+  }
+  if (!sprechen.checked) { sprechenAus(); return; }  // inzwischen wieder aus
+
+  dsCtx = new AudioContext();
+  const quelle = dsCtx.createMediaStreamSource(dsStrom);
+  // ScriptProcessor ist veraltet, läuft aber in allen Browsern ohne eigene
+  // Worklet-Datei. 2048 Werte sind bei 48 kHz gut 40 ms.
+  const knoten = dsCtx.createScriptProcessor(2048, 1, 1);
+  const schritt = dsCtx.sampleRate / SENDE_RATE;
+  knoten.onaudioprocess = (ev) => {
+    if (!dsWs || dsWs.readyState !== WebSocket.OPEN) return;
+    // Staut es sich im WLAN, lieber Ton weglassen als immer später ankommen.
+    if (dsWs.bufferedAmount > SENDE_RATE) return;
+    dsWs.send(verpacken(ev.inputBuffer.getChannelData(0), schritt).buffer);
+  };
+  quelle.connect(knoten);
+  // Der Knoten rechnet nur, wenn er am Ausgang hängt -- stumm, sonst hörte
+  // man sich selbst aus dem eigenen Lautsprecher.
+  const stumm = dsCtx.createGain();
+  stumm.gain.value = 0;
+  knoten.connect(stumm);
+  stumm.connect(dsCtx.destination);
+  dsVerbinden();
+}
+
+function dsVerbinden() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  dsWs = new WebSocket(`${proto}://${location.host}/sprache/durchsage`);
+  dsWs.binaryType = "arraybuffer";
+  status(sprechenStatus, "verbinde …", false);
+  dsWs.onopen = () => dsWs.send(JSON.stringify({ rate: SENDE_RATE }));
+  dsWs.onmessage = (ev) => {
+    if (typeof ev.data !== "string") return;
+    const msg = JSON.parse(ev.data);
+    if (msg.bereit) {
+      status(sprechenStatus, "an -- sprich", true);
+    } else {
+      status(sprechenStatus, msg.grund || "geht nicht", false);
+    }
+  };
+  dsWs.onclose = () => {
+    dsWs = null;
+    if (!sprechen.checked) return;
+    // Server neu gestartet oder WLAN weg: wieder verbinden, das Mikrofon bleibt offen.
+    status(sprechenStatus, "getrennt -- verbinde neu …", false);
+    clearTimeout(dsTimer);
+    dsTimer = setTimeout(() => { if (sprechen.checked && !dsWs) dsVerbinden(); }, 2000);
+  };
+}
+
+function sprechenAus() {
+  clearTimeout(dsTimer);
+  if (dsWs) {
+    const alt = dsWs;
+    dsWs = null;
+    alt.onclose = null;
+    alt.close();
+  }
+  // Mikrofon wirklich freigeben, sonst zeigt der Browser weiter "Aufnahme".
+  if (dsStrom) dsStrom.getTracks().forEach((t) => t.stop());
+  dsStrom = null;
+  if (dsCtx) dsCtx.close();
+  dsCtx = null;
+  status(sprechenStatus, "aus", false);
+}
+
+sprechen.addEventListener("change", () => {
+  if (sprechen.checked) sprechenAn(); else sprechenAus();
+});
+
 })();

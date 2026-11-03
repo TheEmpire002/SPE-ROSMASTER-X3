@@ -216,6 +216,13 @@
       <span>Mikrofon mithören</span>
       <output id="mikro-hoeren-state" class="switch-state">aus</output>
     </label>
+    <!-- Durchsage: eigenes Mikrofon -> Lautsprecher des Roboters (WebSocket /sprache/durchsage). -->
+    <label class="switch">
+      <input type="checkbox" id="mikro-sprechen">
+      <span>Über den Roboter sprechen</span>
+      <output id="mikro-sprechen-state" class="switch-state">aus</output>
+    </label>
+    <p id="mikro-sprechen-hinweis" class="mikro-hinweis" hidden></p>
     <div id="mikro-live" class="mikro-live" hidden>
       <div class="mikro-pegel" title="Lautstärke am Mikrofon"><div id="mikro-pegel-balken"></div></div>
       <p id="mikro-teil" class="mikro-teil">—</p>

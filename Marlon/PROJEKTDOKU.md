@@ -427,6 +427,15 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Nebenbefund:** Der Pi ist um etwa 09:41 wieder neu gestartet (Uptime danach 4 min), im Log davor viele Not-Stopps.
 - **Offen:** Am Boden testen: Person verlieren, er sucht im Kreis, findet sie wieder. Fahren mit zwei offenen Apps.
 
+### 03.11.2026 – Durchsage: über den Roboter sprechen
+- **Was:** Neuer Schalter „Über den Roboter sprechen“ in der App. Das Mikrofon von Laptop oder Handy geht live über den Lautsprecher des Roboters.
+  - Browser: Mikrofon mit Echo- und Rauschunterdrückung, auf 16 kHz heruntergerechnet, als Rohton über den WebSocket `/sprache/durchsage`.
+  - Roboter: Die Durchsage steht in der Warteschlange der Stimme. Musik pausiert, die Spracherkennung hört weg, ein Stopp bricht ab, die zentrale Lautstärke gilt. Nach 2 s Stille ist der Lautsprecher wieder frei.
+  - Zusätzlich HTTPS auf Port 8443 mit selbst erzeugtem Zertifikat. Ohne HTTPS geben Browser das Mikrofon nicht frei, unter `http://` zeigt die App einen Link dorthin.
+- **Warum:** Wunsch, über den Roboter mit Leuten zu sprechen, ohne danebenzustehen.
+- **Ergebnis:** Am echten Lautsprecher: Testton über die Durchsage abgespielt, Spracherkennung hört so lange weg, keine neue Over-Current-Meldung. Mit einem zweiten Server (Simulation): HTTP auf 8100 und HTTPS auf 8443 laufen gleichzeitig, das Zertifikat wurde erzeugt, die Durchsage kommt über `wss://` an, Strg+C beendet sauber. `test_stimme.py` mit neuen Prüfungen: Die Durchsage hält „spricht“, endet mit dem Ende, nach einer Pause und durch einen Stopp. Gefunden und behoben: War der Lautsprecher belegt, hätte jedes Tonpaket ein neues aplay gestartet. Jetzt wartet der Server 2 s und meldet es der App.
+- **Offen:** Im Browser auf Laptop und Handy ausprobieren (Zertifikatswarnung, Verzögerung, Lautstärke).
+
 ---
 
 ## 3. Ergebnisse und Messwerte

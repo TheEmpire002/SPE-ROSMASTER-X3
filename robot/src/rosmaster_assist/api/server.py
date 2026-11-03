@@ -8,6 +8,7 @@ man nur eine Adresse im Browser braucht.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import math
 import queue
@@ -737,6 +738,54 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             pass  # Browser zu oder Seite verlassen
         finally:
             sprache.ton_abmelden(abo)
+
+    @app.websocket("/sprache/durchsage")
+    async def sprache_durchsage(ws: WebSocket) -> None:
+        """Durchsage: Ton aus der App live über den Lautsprecher des Roboters.
+
+        Erst eine Textnachricht {"rate": Hz}, dann Rohton als Binärnachrichten
+        (16 bit little-endian, mono). Antwort {"bereit": bool, "grund": ...}.
+        """
+        await ws.accept()
+        rate = 16000
+        durchsage = None
+        neu_ab: float | None = None  # nach einem Lautsprecher-Fehler erst ab dann
+        bereit = stimme is not None and stimme.verfuegbar
+        await ws.send_json({"bereit": bereit, "grund": None if bereit else "kein Lautsprecher"})
+        try:
+            while True:
+                nachricht = await ws.receive()
+                if nachricht["type"] == "websocket.disconnect":
+                    break
+                if nachricht.get("text"):
+                    try:
+                        rate = max(8000, min(48000, int(json.loads(nachricht["text"]).get("rate", rate))))
+                    except (ValueError, TypeError, AttributeError):
+                        pass
+                    continue
+                daten = nachricht.get("bytes")
+                if not daten or not bereit:
+                    continue
+                # Nach einer Sprechpause oder einem Stopp ist die alte Durchsage
+                # vorbei; dann einfach eine neue beginnen. Ging der Lautsprecher
+                # nicht, erst nach einer Pause wieder versuchen -- sonst startete
+                # jedes Tonpaket ein neues aplay.
+                if durchsage is None or durchsage.vorbei:
+                    if durchsage is not None and durchsage.fehlgeschlagen:
+                        if neu_ab is None:
+                            neu_ab = time.monotonic() + config.DURCHSAGE_PAUSE_S
+                            await ws.send_json({"bereit": False, "grund": "Lautsprecher geht gerade nicht"})
+                        if time.monotonic() < neu_ab:
+                            continue
+                    neu_ab = None
+                    durchsage = stimme.durchsage(rate)
+                    await ws.send_json({"bereit": True, "grund": None})
+                durchsage.rein(daten)
+        except (WebSocketDisconnect, RuntimeError):
+            pass
+        finally:
+            if durchsage is not None:
+                durchsage.ende()
 
     async def _sprach_loop() -> None:
         """Erkannte Sprachbefehle abholen und ausführen.
