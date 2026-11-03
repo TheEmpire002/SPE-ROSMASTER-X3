@@ -588,7 +588,9 @@ STIMME_ENABLED = True
 # Piper spricht offline und klingt deutlich natürlicher als espeak-ng.
 # Fehlt Piper oder das Modell, weicht die Stimme auf espeak-ng aus und
 # zuletzt auf reine Log-Ausgabe -- der Server startet in jedem Fall.
-STIMME_PIPER = "piper"
+# Orte für das Programm, der erste gefundene gilt. Das Release von
+# github.com/rhasspy/piper wird nach ~/piper/piper/ entpackt.
+STIMME_PIPER = ("~/piper/piper/piper", "piper")
 STIMME_MODELL = "~/piper/de_DE-thorsten-medium.onnx"
 STIMME_ESPEAK = "espeak-ng"
 
@@ -673,9 +675,18 @@ SPRACHE_MAX_UNK_ANTEIL = 0.5
 # kamen. Am 03.11. wurde aus Geräuschen "robin hallo hause zu weg ruby"
 # (-> weggehen); ein gesprochener Befehl ist genau ein Grammatik-Satz.
 SPRACHE_MAX_ZUSATZWOERTER = 0
-# Unsicher Gehörtes lässt nur Stopp durch, laufende Musik zusätzlich
-# "Musik aus". Beim Einstellen helfen "konfidenz" und "zuletzt_verworfen"
-# in /sprache/status.
+# Unsicher Gehörtes lässt nur Stopp durch. Beim Einstellen helfen
+# "konfidenz" und "zuletzt_verworfen" in /sprache/status.
+
+# Läuft Musik, hört das Mikrofon das Lied mit. Dann gilt ein Befehl nur mit
+# "Robi" und mit dieser höheren Konfidenz (Stopp und "Musik aus" immer).
+SPRACHE_MIN_KONFIDENZ_MUSIK = 0.85
+
+# Antwort auf ein einzelnes "Robi" (None = still). Gesagt wird sie erst nach
+# dieser Pause (s): Wer "Robi ... folge mir" mit kurzer Pause sagt, dem soll
+# das "Ja?" nicht ins Wort fallen -- während der Roboter spricht, hört er nicht.
+SPRACHE_WECK_ANTWORT = "Ja?"
+SPRACHE_WECK_ANTWORT_NACH_S = 1.0
 
 # Vosk-Modelle sind auf 16 kHz trainiert. Kann das Mikrofon das nicht,
 # wird seine eigene Rate genommen und Vosk rechnet um.

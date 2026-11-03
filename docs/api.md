@@ -386,8 +386,12 @@ nur mit dem Weckwort **„Robi“** im selben Satz oder bis zu 5 s
 „Halt“ und „Bleib stehen“ gelten auch ohne Weckwort, ebenso „La da da“.
 Hört Vosk unsicher (Wort-Konfidenz unter `SPRACHE_MIN_KONFIDENZ` oder
 überwiegend unbekannte Wörter) oder kommt mehr als Weckwort plus Wendung
-(Wortsalat wie „robin hallo hause zu weg ruby“), gilt nur Stopp; während MUKKE spielt, nur
-Stopp und „Musik aus“. Sonst würden Musik und Gespräche zu Befehlen.
+(Wortsalat wie „robin hallo hause zu weg ruby“), gilt nur Stopp. Während MUKKE spielt,
+braucht jeder Befehl außer Stopp das Weckwort und eine höhere Konfidenz
+(`SPRACHE_MIN_KONFIDENZ_MUSIK`). Sonst würden Musik und Gespräche zu
+Befehlen. Auf „Robi“ allein antwortet er nach 1 s mit „Ja?“
+(`SPRACHE_WECK_ANTWORT`), sofern bis dahin kein Befehl kam. Die 5 s für den
+Befehl laufen erst ab, wenn er ausgeredet hat.
 
 | Befehl | Beispiele | wirkt wie |
 |---|---|---|

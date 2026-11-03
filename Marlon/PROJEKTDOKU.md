@@ -348,6 +348,15 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Folgerung:** Wie am 28./29.10.: Die Ursache ist die gemeinsame 5-V-Versorgung, Abhilfe schafft nur Hardware (`docs/hardware.md`, „Was am Roboter tun“, Punkt 4: aktiver Hub mit eigener Versorgung bzw. VBUS zwischen Pi und Hub trennen). Bis dahin die Orbbec wieder abziehen. Mit dem Hinweis auf den V1-Hub ist der Tausch gegen eine neuere Version bzw. einen Hub mit sauberer eigener Versorgung der naheliegende Schritt. Gegenprobe vorher: Hub ab, Board und Lidar direkt an den Pi.
 - **Nachtrag – Treiberboard V1:** Der Hinweis „V1 mit Stromproblemen“ bezog sich auf das Treiberboard (Yahboom ROS Driver Board). Laut Yahboom kann erst V3.0 das Stromprotokoll des Pi 5 (5,1 V/5 A). Am Pi bestätigt: Es wurde nichts ausgehandelt (`usbpd_power_data_objects` = 0). Die 5 A stehen nur von Hand im EEPROM (`PSU_MAX_CURRENT=5000`), der Pi gibt deshalb 1,6 A für USB frei, die das V1-Board unter Last nicht liefert. Board-Firmware 2.4, Akku 11,9 V. Ein Firmware-Update hilft nicht: Die Firmware steuert Motoren und IMU, die Versorgung ist Hardware. Abhilfe: Board V3.0 oder ein eigener 5-V/5-A-Wandler mit Pi-5-Protokoll für den Pi.
 
+### 03.11.2026 – „Robi“ wieder hörbar, natürlichere Stimme
+- **Was:**
+  - **„Robi“ nach einem Befehl:** Der letzte Befehl im Test war „Robi, Beatbox“. Danach ließ die Regel vom Vormittag bei laufender Musik nur Stopp und „Musik aus“ durch, auch das Weckwort fiel weg. Der Roboter war also bis zum Liedende taub. Jetzt gilt bei Musik jeder Befehl, wenn er das Weckwort hat und Vosk sich sicher ist (`SPRACHE_MIN_KONFIDENZ_MUSIK` = 0,85).
+  - **„Robi“ allein wird beantwortet:** Nach 1 s sagt er „Ja?“, außer der Befehl kam schon. Bisher kam keine hörbare Rückmeldung, man wusste nicht, ob er zugehört hat. Das Weckfenster (5 s) läuft erst ab, wenn er ausgeredet hat. Ein „Robi“ mitten im Wortsalat weckt nicht mehr.
+  - **Stimme:** Piper mit der Stimme „Thorsten medium“ am Pi eingerichtet (`~/piper/`). Bisher fehlte Piper, der Server sprach mit espeak-ng, deshalb klang er so robotisch. Der Server findet Piper jetzt auch im Release-Ordner (`STIMME_PIPER`).
+- **Ergebnis:** Geschwindigkeit am Pi gemessen: „medium“ etwa doppelt so schnell wie Echtzeit, „high“ langsamer als Echtzeit (5,7 s für 3,5 s Sprache), deshalb medium. Testskripte `test_sprache.py` und `test_stimme.py` am Pi bestanden.
+- **Offen:** Am Roboter ausprobieren: „Robi“ → „Ja?“ → „folge mir“; während eines Lieds „Robi, stopp“ und „Robi, komm her“. Klang der neuen Stimme im Raum beurteilen.
+- **Nebenbefund:** Die Absturzerfassung (`~/.rosmaster/diagnose/server.log`) liegt nur auf dem Branch `fehlersuche-abstuerze`. Auf `main` schreibt der Server kein Log, nur in das Terminal.
+
 ---
 
 ## 3. Ergebnisse und Messwerte
@@ -406,7 +415,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Stresstest am Boden** (Räder mit Last): erst am Netzteil, dann am Akku. Auf dem Podest gibt es mit beiden 0 Resets (29.10.), deshalb ist offen, ob das Netzteil unter Last hilft. Bleiben am Boden Resets, braucht es die getrennte 5-V-Versorgung für Pi bzw. Hub (siehe `docs/hardware.md`, „Was am Roboter tun“).
 - Stresstest mit eingeschalteter Interaktion (Hailo-Pose und Gesten unter Fahrlast) wiederholen.
 - Interaktion: Hailo-Pose am Pi prüfen, Fahrtest Folgen/Herkommen am Boden; danach Stufen 4–5 (Sprache, Geist).
-- Stimme: Piper am Pi installieren, Lautsprecher und Lautstärke prüfen.
+- Stimme: Piper ist seit 03.11. am Pi; Lautsprecher und Lautstärke im Raum prüfen.
 - Sprachbefehle am Pi: `libportaudio2`, `pip install -e "robot[sprache]"` und Vosk-Modell installieren, `/sprache/status` prüfen, „Robi, folgen“ am Boden testen; erkennt Vosk „Robi“ schlecht, Varianten in `SPRACHE_WECKWORT_VARIANTEN` ergänzen.
 - Lautsprecher teilen: MUKKE und Stimme blockieren sich gegenseitig (exklusives ALSA-Gerät); gemeinsamer Mixer (dmix/PipeWire) offen.
 - Prüfen, ob der Antrieb beim Einschalten der Gesten jetzt verbunden bleibt (warmer Hailo).

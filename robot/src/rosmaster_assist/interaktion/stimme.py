@@ -60,6 +60,7 @@ class Stimme:
         self._prozesse: list[subprocess.Popen] = []
 
         self._ausgabe = TEXT
+        self._piper: str | None = None  # gefundener Pfad, siehe _ausgabe_finden()
         self._abtastrate = 22050
         self._spricht_bis = 0.0  # monotonic; > jetzt heißt "spricht"
         self._sprechend = False
@@ -224,7 +225,7 @@ class Stimme:
         aplay = ["aplay", "-q", "-D", config.STIMME_GERAET]
         if self._ausgabe == PIPER:
             erzeuger = [
-                config.STIMME_PIPER,
+                self._piper,
                 "--model", os.path.expanduser(config.STIMME_MODELL),
                 "--length_scale", str(config.STIMME_TEMPO),
                 "--output-raw",
@@ -296,7 +297,13 @@ class Stimme:
             log.warning("Stimme: %s -- nur Text", self._fehler)
             return TEXT
         modell = os.path.expanduser(config.STIMME_MODELL)
-        if shutil.which(config.STIMME_PIPER) and os.path.isfile(modell):
+        # Das Piper-Release bringt seine Bibliotheken im eigenen Ordner mit;
+        # deshalb dort suchen, nicht nur im PATH.
+        self._piper = next(
+            (p for p in (shutil.which(os.path.expanduser(n)) for n in config.STIMME_PIPER) if p),
+            None,
+        )
+        if self._piper and os.path.isfile(modell):
             self._abtastrate = self._abtastrate_lesen(modell)
             return PIPER
         if shutil.which(config.STIMME_ESPEAK):

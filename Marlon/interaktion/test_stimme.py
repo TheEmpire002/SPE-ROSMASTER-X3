@@ -66,7 +66,8 @@ s.stop()
 
 # --- Ohne Sprachprogramme: nur Text --------------------------------------------------
 alt = (config.STIMME_PIPER, config.STIMME_ESPEAK)
-config.STIMME_PIPER = config.STIMME_ESPEAK = "gibt-es-nicht-xyz"
+config.STIMME_PIPER = ("gibt-es-nicht-xyz",)
+config.STIMME_ESPEAK = "gibt-es-nicht-xyz"
 s = st.Stimme(mock=False)
 s.start()
 s.sagen("Niemand hört mich.")

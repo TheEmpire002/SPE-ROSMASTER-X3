@@ -22,8 +22,11 @@ Ablauf:
   erlaubten Satz. Musik und Gespräche im Raum wurden so zu "robbie hallo"
   und schalteten die Interaktion ein. Deshalb lässt unsicher Gehörtes
   (``SPRACHE_MIN_KONFIDENZ``, ``SPRACHE_MAX_UNK_ANTEIL``) und Wortsalat
-  aus mehreren Sätzen (``SPRACHE_MAX_ZUSATZWOERTER``) nur Stopp durch,
-  laufende Musik nur Stopp und "Musik aus".
+  aus mehreren Sätzen (``SPRACHE_MAX_ZUSATZWOERTER``) nur Stopp durch.
+  Bei laufender Musik braucht jeder Befehl außer Stopp den Namen und
+  ``SPRACHE_MIN_KONFIDENZ_MUSIK``.
+* "Robi" allein beantwortet der Server mit ``SPRACHE_WECK_ANTWORT``
+  ("Ja?"), damit man hört, dass er zuhört.
 
 Das Modul fährt nicht selbst. Es legt erkannte Befehle in eine Schlange;
 der Server holt sie ab und behandelt sie wie Knöpfe der App (über den
@@ -63,6 +66,9 @@ ERKUNDEN = "erkunden"
 MUSIK_AUS = "musik_aus"
 LADADA = "ladada"
 BEATBOX = "beatbox"
+#: Kein Befehl, nur "Robi" allein: Der Server antwortet ("Ja?"), damit man
+#: hört, dass er zuhört. Steht nur in der Schlange, nie in state.sprache.
+WECKEN = "wecken"
 
 #: Befehl -> Wendungen. Die Reihenfolge zählt: Kommen in einem Satz
 #: mehrere vor, gewinnt der weiter oben -- Stopp also vor allem, was fährt.
@@ -99,6 +105,10 @@ def normalisieren(text: str) -> list[str]:
     return re.findall(r"[a-zäöü]+", text)
 
 
+def _weckwoerter() -> set[str]:
+    return {w.lower() for w in config.SPRACHE_WECKWORT_VARIANTEN} | {config.SPRACHE_WECKWORT.lower()}
+
+
 def _enthaelt(woerter: list[str], wendung: list[str]) -> bool:
     n = len(wendung)
     return any(woerter[i:i + n] == wendung for i in range(len(woerter) - n + 1))
@@ -111,7 +121,7 @@ def erkennen(text: str, geweckt: bool = False) -> tuple[str | None, bool]:
     Befehl ohne Namen.
     """
     woerter = normalisieren(text)
-    weck = {w.lower() for w in config.SPRACHE_WECKWORT_VARIANTEN} | {config.SPRACHE_WECKWORT.lower()}
+    weck = _weckwoerter()
     weckwort = any(w in weck for w in woerter)
     rest = [w for w in woerter if w not in weck]
     for befehl, wendungen in BEFEHLE.items():
@@ -132,7 +142,7 @@ def wortsalat(text: str, befehl: str) -> str | None:
     Weckwort doppelt oder Wörter, die zu keiner Wendung des Befehls gehören.
     """
     woerter = normalisieren(text)
-    weck = {w.lower() for w in config.SPRACHE_WECKWORT_VARIANTEN} | {config.SPRACHE_WECKWORT.lower()}
+    weck = _weckwoerter()
     rest = [w for w in woerter if w not in weck]
     if len(woerter) - len(rest) > 1:
         return "Weckwort mehrfach"
@@ -225,12 +235,16 @@ class Spracherkennung:
         text = " ".join(str(text).split())
         if not text:
             return None
-        befehl, weckwort = erkennen(text, self.geweckt)
+        war_geweckt = self.geweckt
+        befehl, weckwort = erkennen(text, war_geweckt)
         verworfen = None
         if erlaubt is not None:
             weckwort = False
             if befehl is not None and befehl not in erlaubt:
                 verworfen, befehl = befehl, None
+        # Nur ein "Robi" ohne weitere Wörter weckt: Steckt der Name in
+        # Wortsalat ("robin la weg"), hat ihn eher ein Geräusch gesagt.
+        weckwort = weckwort and all(w in _weckwoerter() for w in normalisieren(text))
         jetzt = time.monotonic()
         with self._lock:
             self._gehoert = text
@@ -244,6 +258,8 @@ class Spracherkennung:
                 self._befehle.append({"befehl": befehl, "text": text})
             elif weckwort:
                 self._weck_bis = jetzt + config.SPRACHE_WECK_FENSTER_S
+                if not war_geweckt:
+                    self._befehle.append({"befehl": WECKEN, "text": text})
         if befehl is not None:
             log.info("Sprachbefehl %s (gehört: %r)", befehl, text)
         elif verworfen is not None:
@@ -363,6 +379,10 @@ class Spracherkennung:
                     # Weiterlesen, damit kein alter Ton im Puffer bleibt,
                     # aber nichts davon auswerten.
                     taub = True
+                    if self.geweckt:
+                        # Das Fenster nach "Robi" läuft erst ab, wenn das
+                        # "Ja?" vorbei ist -- solange kann man nichts sagen.
+                        self._weck_bis = time.monotonic() + config.SPRACHE_WECK_FENSTER_S
                     continue
                 if taub:
                     erkenner.Reset()
@@ -380,18 +400,29 @@ class Spracherkennung:
         konfidenz = min((float(w.get("conf", 1.0)) for w in bekannt), default=1.0)
         self._konfidenz = round(konfidenz, 2)
         unbekannt = len(woerter) - len(bekannt)
-        befehl = erkennen(text, self.geweckt)[0]
+        befehl, weckwort = erkennen(text, self.geweckt)
         salat = wortsalat(text, befehl) if befehl is not None else None
-        if self._mukke is not None and self._mukke.laeuft:
-            self.hoeren(text, erlaubt=(STOPP, MUSIK_AUS), grund="Musik läuft")
-        elif salat is not None:
-            self.hoeren(text, erlaubt=(STOPP,), grund=f"Wortsalat, {salat}")
-        elif konfidenz < config.SPRACHE_MIN_KONFIDENZ:
-            self.hoeren(text, erlaubt=(STOPP,), grund=f"unsicher ({konfidenz:.2f})")
+        # Bei Musik strenger statt taub: Ganz zu sperren hieß, dass nach
+        # "Robi, Beatbox" bis zum Liedende kein "Robi" mehr ankam.
+        musik = self._mukke is not None and self._mukke.laeuft
+        mindestens = config.SPRACHE_MIN_KONFIDENZ_MUSIK if musik else config.SPRACHE_MIN_KONFIDENZ
+        grund = None
+        if salat is not None:
+            grund = f"Wortsalat, {salat}"
+        elif konfidenz < mindestens:
+            grund = f"unsicher ({konfidenz:.2f})"
         elif woerter and unbekannt / len(woerter) > config.SPRACHE_MAX_UNK_ANTEIL:
-            self.hoeren(text, erlaubt=(STOPP,), grund=f"{unbekannt} von {len(woerter)} Wörtern unbekannt")
-        else:
+            grund = f"{unbekannt} von {len(woerter)} Wörtern unbekannt"
+        elif musik and befehl not in (None, STOPP) and not (weckwort or self.geweckt):
+            # "La da da" gilt sonst ohne Namen -- das Lied selbst darf
+            # kein anderes starten.
+            grund = "ohne Weckwort"
+        if grund is None:
             self.hoeren(text)
+        elif musik:
+            self.hoeren(text, erlaubt=(STOPP, MUSIK_AUS), grund=f"{grund}, Musik läuft")
+        else:
+            self.hoeren(text, erlaubt=(STOPP,), grund=grund)
 
     def _aus(self, grund: str) -> None:
         self._fehler = grund

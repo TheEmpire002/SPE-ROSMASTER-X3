@@ -292,18 +292,22 @@ Einrichtung am Pi (einmalig):
 sudo apt install alsa-utils espeak-ng      # aplay/amixer, Ersatzstimme
 aplay -L | grep UACDemo                    # Lautsprecher da?
 
-# Piper: Programm von github.com/rhasspy/piper (Release für aarch64)
-# entpacken und `piper` in den PATH legen (z. B. ~/.local/bin).
-# Stimme: beide Dateien nach ~/piper/
-#   de_DE-thorsten-medium.onnx  und  de_DE-thorsten-medium.onnx.json
-# (huggingface.co/rhasspy/piper-voices, de/de_DE/thorsten/medium)
+# Piper: Release für aarch64 nach ~/piper/piper/ entpacken (der Server
+# sucht dort zuerst, siehe STIMME_PIPER), dazu die Stimme Thorsten medium.
+mkdir -p ~/piper && cd ~/piper
+curl -fsSL https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_aarch64.tar.gz | tar xz
+B=https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/de/de_DE/thorsten/medium
+curl -fsSLO $B/de_DE-thorsten-medium.onnx && curl -fsSLO $B/de_DE-thorsten-medium.onnx.json
 
 # Test ohne Server:
 echo "Hallo, ich bin der Rosmaster." \
-  | piper --model ~/piper/de_DE-thorsten-medium.onnx --output-raw \
+  | ~/piper/piper/piper --model ~/piper/de_DE-thorsten-medium.onnx --output-raw \
   | aplay -D plughw:CARD=UACDemoV10,DEV=0 -r 22050 -f S16_LE -c 1 -t raw
 ```
 
+- Am Pi eingerichtet am 03.11. Gemessen: „medium“ rechnet etwa doppelt so
+  schnell wie Echtzeit (3,5 s Satz in 1,75 s, „Ja?“ in 0,85 s), „high“ ist
+  langsamer als Echtzeit (5,7 s) und erzeugt Lastspitzen. Deshalb medium.
 - Piper ist ein Systemprogramm, keine pip-Abhängigkeit. Fehlt es (oder das
   Modell), weicht der Server auf espeak-ng aus und meldet das im Log. Fehlt
   auch das, spricht er nicht, läuft aber normal weiter.

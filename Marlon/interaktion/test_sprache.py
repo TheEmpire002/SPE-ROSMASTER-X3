@@ -93,7 +93,11 @@ pruefe("Fenster läuft ab", s.hoeren("komm her") is None)
 config.SPRACHE_WECK_FENSTER_S = alt
 
 abgeholt = s.befehle_abholen()
-pruefe("Befehl in der Schlange", abgeholt == [{"befehl": sp.FOLGEN, "text": "folge mir"}], abgeholt)
+pruefe("Robi allein meldet sich zum Antworten", abgeholt[0] == {"befehl": sp.WECKEN, "text": "robi"}, abgeholt)
+befehle = [e for e in abgeholt if e["befehl"] != sp.WECKEN]
+pruefe("Befehl in der Schlange", befehle == [{"befehl": sp.FOLGEN, "text": "folge mir"}], abgeholt)
+s.hoeren("robin la")
+pruefe("Robi im Wortsalat weckt nicht", not s.geweckt and s.befehle_abholen() == [])
 pruefe("Schlange danach leer", s.befehle_abholen() == [])
 pruefe("Zustand zeigt den Befehl", s.zustand()["befehl"] == sp.FOLGEN, s.zustand())
 pruefe("leerer Text wird ignoriert", s.hoeren("   ") is None)

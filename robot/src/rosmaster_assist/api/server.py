@@ -639,9 +639,19 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         Die Erkennung läuft im eigenen Thread; gefahren wird aber nur hier
         im Event-Loop -- über dieselben Wege wie mit den Knöpfen der App.
         """
+        antwort_um: float | None = None
         while True:
             await asyncio.sleep(0.1)
+            if antwort_um is not None and time.monotonic() >= antwort_um:
+                antwort_um = None
+                # Kam in der Pause schon der Befehl, ist das Fenster verbraucht
+                # und das "Ja?" überflüssig.
+                if sprache.geweckt and config.SPRACHE_WECK_ANTWORT:
+                    stimme.sagen(config.SPRACHE_WECK_ANTWORT)
             for eintrag in sprache.befehle_abholen():
+                if eintrag["befehl"] == sp.WECKEN:
+                    antwort_um = time.monotonic() + config.SPRACHE_WECK_ANTWORT_NACH_S
+                    continue
                 try:
                     await _sprachbefehl(eintrag["befehl"], eintrag["text"])
                 except Exception:  # ein kaputter Befehl darf das Ohr nicht abschalten
