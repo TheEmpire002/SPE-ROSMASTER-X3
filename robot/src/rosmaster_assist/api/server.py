@@ -333,6 +333,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             match_task.cancel()
             hw_task.cancel()
             sprach_task.cancel()
+            mapping_manager.stop()
             homing.abbrechen("Server wird beendet")
             erkunder.abbrechen("Server wird beendet")
             manoever.abbrechen("Server wird beendet")
@@ -1006,17 +1007,6 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             return _seite("diagnose.html")
     else:
         log.warning("webapp/ nicht gefunden unter %s -- nur /ws verfügbar", WEBAPP_DIR)
-
-    def _stop_mapping_on_shutdown() -> None:
-        try:
-            mapping_manager.stop()
-        except Exception:
-            # Beispielsweise, wenn Docker beim Herunterfahren bereits beendet ist.
-            logging.getLogger(__name__).exception(
-                "Mapping konnte beim Herunterfahren nicht sauber gestoppt werden"
-            )
-    
-    app.add_event_handler("shutdown", _stop_mapping_on_shutdown)
 
     return app
 
