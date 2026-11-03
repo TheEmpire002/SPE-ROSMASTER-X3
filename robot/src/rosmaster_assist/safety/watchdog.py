@@ -18,6 +18,11 @@ genau die Situation, in der oben nichts mehr funktioniert.
    mit begrenzter Beschleunigung angefahren (`RAMPE_*` in `config`). Harte
    Sprünge zwischen Fahren und Halten erzeugen Stromspitzen, die am X3 den
    USB-Hub zurücksetzen. `stop()` umgeht die Rampe und steht sofort.
+
+4. **Autonome Grenze.** Befehle der autonomen Modi (`quelle="autonom"`)
+   werden zusätzlich auf `AUTONOM_MAX_*` gekappt, bei schwachem Akku noch
+   einmal reduziert. So kann kein Rechenfehler in Folgen, Erkunden oder
+   Heimfahrt den Roboter schneller machen, als der Lidar Hindernisse sieht.
 """
 
 from __future__ import annotations
@@ -69,23 +74,53 @@ class SafetyWatchdog:
         self._ausgabe_at = 0.0        # wann zuletzt an den Antrieb gegeben
         self._stopped = True
         self._task: asyncio.Task[None] | None = None
+        # Akkuspannung wird nur gelegentlich nachgesehen -- sie ändert sich
+        # langsam, und submit() läuft im 20-Hz-Takt.
+        self._akku_v: float | None = None
+        self._akku_at = -1e9
 
     # --- Steuerung ------------------------------------------------------------
 
-    def submit(self, cmd: DriveCommand) -> DriveCommand:
-        """Fahrbefehl ausführen. Gibt den tatsächlich gefahrenen Befehl zurück."""
+    def submit(self, cmd: DriveCommand, quelle: str = "hand") -> DriveCommand:
+        """Fahrbefehl ausführen. Gibt den tatsächlich gefahrenen Befehl zurück.
+
+        `quelle` ist "hand" (App, ESP32) oder "autonom" (Folgen, Erkunden,
+        Heimfahrt). Für autonome Befehle gilt die engere Grenze.
+        """
+        jetzt = time.monotonic()
+        grenze_xy_x, grenze_xy_y = config.MAX_SPEED_X, config.MAX_SPEED_Y
+        grenze_w = config.MAX_SPEED_OMEGA
+        if quelle == "autonom":
+            autonom = config.AUTONOM_MAX_SPEED * self._akku_faktor(jetzt)
+            grenze_xy_x = min(grenze_xy_x, autonom)
+            grenze_xy_y = min(grenze_xy_y, autonom)
+            grenze_w = min(grenze_w, config.AUTONOM_MAX_OMEGA)
         safe = DriveCommand(
-            vx=_clamp(cmd.vx, config.MAX_SPEED_X),
-            vy=_clamp(cmd.vy, config.MAX_SPEED_Y),
-            omega=_clamp(cmd.omega, config.MAX_SPEED_OMEGA),
+            vx=_clamp(cmd.vx, grenze_xy_x),
+            vy=_clamp(cmd.vy, grenze_xy_y),
+            omega=_clamp(cmd.omega, grenze_w),
         )
         if safe != cmd:
-            log.debug("Fahrbefehl begrenzt: %s -> %s", cmd, safe)
+            log.debug("Fahrbefehl begrenzt (%s): %s -> %s", quelle, cmd, safe)
 
-        jetzt = time.monotonic()
         self._ziel = safe
         self._last_command_at = jetzt
         return self._ausgeben(jetzt)
+
+    def _akku_faktor(self, jetzt: float) -> float:
+        """Tempofaktor für autonome Modi je nach Akkuspannung."""
+        if jetzt - self._akku_at > 2.0:
+            self._akku_at = jetzt
+            try:
+                self._akku_v = self._driver.read_battery()
+            except Exception:
+                # Ohne Messwert nicht drosseln -- die Diagnose meldet den
+                # Ausfall ohnehin, und ein Treiberfehler darf hier nicht
+                # den Fahrbefehl verhindern.
+                self._akku_v = None
+        if self._akku_v is not None and self._akku_v < config.AKKU_WARN_V:
+            return config.AUTONOM_AKKU_FAKTOR
+        return 1.0
 
     def _ausgeben(self, jetzt: float) -> DriveCommand:
         """Einen Rampenschritt Richtung Ziel an den Antrieb geben."""

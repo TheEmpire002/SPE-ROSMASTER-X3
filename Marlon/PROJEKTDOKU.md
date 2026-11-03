@@ -348,6 +348,17 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Offen:** Die vier Eingrenzungsschritte am Roboter; Journal dauerhaft machen (Befehl in `docs/hardware.md`); Server in `tmux` starten, damit ein geschlossenes SSH-Fenster ihn nicht beendet.
 - **Nachtrag – startete im Mock-Modus:** `main.py` prüft beim Start, ob das Board antwortet. Wegen der USB-Überlast fehlte `/dev/myserial` oft genau in diesem Moment, dann lief der Server in der Simulation („Es bewegt sich nichts“), und `--real` brach ab. Jetzt gilt: Ist die `Rosmaster_Lib` installiert (= wir sind auf dem Roboter), startet er immer echt und warnt nur; der Treiber verbindet sich, sobald das Board wieder da ist. Simulation nur noch unter Windows, ohne Lib oder mit `--mock`.
 
+### 03.11.2026 – Autonomie Schritt A: Blickrichtung, Zeitstempel, Tempogrenzen (Marlon, mit Claude)
+- **Was:** Erster Schritt des Verbesserungsplans für Folgen und Erkunden (Branch `autonom`). Grundlagen reparieren, bevor Ziel-Lock und Erkunder umgebaut werden.
+- **Warum:** Die IMU-Lage des Boards liefert dauerhaft 0 (Sensor-Check 28.10.). Die Odometrie nahm diesen Wert als Blickrichtung, `theta` blieb beim Drehen stehen. Das erklärt „theta im Server ≈ 0“, warum der Erkunder nur nach Zeit dreht und warum die Heimfahrt in die falsche Richtung rechnen kann.
+- **Änderungen:**
+  - Odometrie summiert die vom Board gemessene Drehrate auf (`ODOM_IMU_WINKEL = False`). Wird die IMU eingeschaltet, prüft eine Plausibilitätsprüfung sie: Steht ihr Winkel beim Drehen still, wird sie verworfen, mit Warnung im Log (sichtbar auf `/diagnose`). Neu: `odometry.geschwindigkeit()` für den späteren Personen-Tracker.
+  - Zeitstempel: Die Kamera merkt sich die Aufnahmezeit je Bild (`latest_mit_zeit()`, `latest()` bleibt). Die Pose-`zeit` ist jetzt die Aufnahmezeit statt der Verarbeitungszeit. `Scan` kennt seine Dauer und `zeit_mitte`.
+  - Tempogrenzen: `MAX_SPEED_*` von wirkungslosen 5,0 auf 1,0 m/s bzw. 3,0 rad/s. Folgen, Erkunden und Heimfahrt melden sich beim Watchdog als `quelle="autonom"` und sind auf 0,35 m/s / 1,2 rad/s begrenzt, unter `AKKU_WARN_V` auf die Hälfte.
+- **Ergebnis:** Neuer Test `Marlon/autonomes_fahren/test_odometrie.py` besteht (90°-Drehung trotz IMU = 0, Geradeausfahrt danach in +y, starre IMU verworfen, Hand- und Autonom-Grenzen, Akku-Drosselung). `test_gesten`, `test_stimme`, `test_sprache`, `test_hindernisse` und `test_diagnose` bestehen weiter. Smoke-Test 18/19, genau wie vorher; „Heimfahrt startet“ schlägt auch ohne die Änderungen fehl (siehe offene Punkte).
+- **Probleme:** Erste Smoke-Läufe zeigten 14/19, weil `main.py --mock` automatisch einen Browser öffnet: die Web-App verbindet sich und schickt eigene Fahr- und Stoppbefehle dazwischen. Mit `--no-browser` laufen die Tests sauber.
+- **Offen:** Drehtest 90° am Boden gegen den Lidar (stimmt `theta`?).
+
 ---
 
 ## 3. Ergebnisse und Messwerte
@@ -415,6 +426,8 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - Später: lokales LLM auf dem Hailo, Gesichter wiedererkennen, Orbbec-Tiefe für niedrige Hindernisse.
 - Diagnoseseite am Pi prüfen (Kernel-Log-Berechtigung, echte Akku- und Überlastwerte).
 - Sanftes Fahren am Boden prüfen: Folgen ohne USB-Resets, Rampe nicht zu träge.
+- Smoke-Test „Heimfahrt startet“ schlägt im Mock fehl (auch ohne die Änderungen vom 03.11.): Die Fahrt zuvor legt nur ~0,02 m zurück, die Heimfahrt endet sofort. Ursache prüfen.
+- Drehtest 90° am Boden: Blickrichtung aus der Board-Drehrate gegen den Lidar prüfen.
 
 ---
 

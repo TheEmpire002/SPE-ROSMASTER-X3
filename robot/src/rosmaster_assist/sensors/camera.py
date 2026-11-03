@@ -643,6 +643,10 @@ class CameraService:
     def __init__(self, camera: CameraBase) -> None:
         self._camera = camera
         self._latest: Frame | None = None
+        # Aufnahmezeit des aktuellen Bildes (time.monotonic). Pose und
+        # Folgen müssen wissen, *wann* ein Bild entstand, um die
+        # Eigenbewegung des Roboters seitdem herauszurechnen.
+        self._latest_zeit = 0.0
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
@@ -738,6 +742,15 @@ class CameraService:
         with self._lock:
             return self._latest
 
+    def latest_mit_zeit(self) -> tuple[Frame | None, float]:
+        """Aktuelles Bild samt Aufnahmezeit (time.monotonic, 0.0 = noch keins).
+
+        Eigene Methode statt latest() zu ändern: die Streams verlassen sich
+        darauf, dass latest() nur das Bild liefert.
+        """
+        with self._lock:
+            return self._latest, self._latest_zeit
+
     def _neu_oeffnen(self, grund: str = "liefert nichts") -> None:
         log.warning("Kamera '%s' %s -- öffne sie neu", self.name, grund)
         try:
@@ -780,6 +793,7 @@ class CameraService:
                         # Standbild erneut durchs WLAN schicken.
                         if neu:
                             self._latest = frame
+                            self._latest_zeit = begin
                             self._bilder += 1
                             self._letztes_bild = begin
                             self._letzter_fehler = None

@@ -116,7 +116,7 @@ class Homing:
                     log.warning("Heimfahrt angehalten -- %s", self._grund)
                     return
 
-                self._watchdog.submit(befehl)
+                self._watchdog.submit(befehl, quelle="autonom")
                 await asyncio.sleep(takt)
 
         except asyncio.CancelledError:

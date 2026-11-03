@@ -285,7 +285,7 @@ class Interaktion:
                 # None heißt: nichts schicken (BEREIT). Angehalten wurde beim
                 # Wechsel nach BEREIT schon.
                 if befehl is not None:
-                    self._watchdog.submit(befehl)
+                    self._watchdog.submit(befehl, quelle="autonom")
                 await asyncio.sleep(takt)
 
         except asyncio.CancelledError:

@@ -183,7 +183,7 @@ class Erkunder:
                     self._watchdog.stop()
                     log.info("Erkundung beendet -- %s", self._grund)
                     return
-                self._watchdog.submit(befehl)
+                self._watchdog.submit(befehl, quelle="autonom")
                 await asyncio.sleep(takt)
 
         except asyncio.CancelledError:

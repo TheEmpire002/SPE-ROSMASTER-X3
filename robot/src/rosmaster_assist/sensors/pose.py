@@ -270,7 +270,15 @@ class Posenerkennung:
             self._fehler = None
 
     def _erkennen(self, hailo: "_Hailo") -> list[dict] | None:
-        frame = self._camera.latest() if self._camera is not None else None
+        if self._camera is None:
+            return None
+        # Mit Aufnahmezeit, wo die Kamera sie kennt: "zeit" einer Person soll
+        # sagen, wann das Bild entstand, nicht wann der Hailo fertig war --
+        # sonst rechnet das Folgen mit einem bis zu ~100 ms zu späten Winkel.
+        if hasattr(self._camera, "latest_mit_zeit"):
+            frame, aufnahme = self._camera.latest_mit_zeit()
+        else:
+            frame, aufnahme = self._camera.latest(), 0.0
         if frame is None:
             return None
         cv2, np = self._cv2, self._np
@@ -301,14 +309,15 @@ class Posenerkennung:
             personen.append(_person(
                 [bx[0], by[0], bx[1], by[1]],
                 [[float(x), float(y), float(c)] for x, y, c in zip(kx, ky, kp[:, 2])],
-                float(score), w / h, self.fov_deg,
+                float(score), w / h, self.fov_deg, aufnahme or None,
             ))
         personen.sort(key=lambda p: -(p["box"][3] - p["box"][1]))
         return personen
 
 
 def _person(
-    box, kp, score: float, seitenverhaeltnis: float, fov: float | None = None
+    box, kp, score: float, seitenverhaeltnis: float, fov: float | None = None,
+    zeit: float | None = None,
 ) -> dict:
     mitte = (box[0] + box[2]) / 2
     return {
@@ -317,7 +326,7 @@ def _person(
         "score": round(score, 2),
         "winkel": round((0.5 - mitte) * (fov if fov is not None else config.CAMERA_FOV_DEG), 1),
         "seitenverhaeltnis": round(seitenverhaeltnis, 3),
-        "zeit": time.monotonic(),
+        "zeit": zeit if zeit is not None else time.monotonic(),
     }
 
 

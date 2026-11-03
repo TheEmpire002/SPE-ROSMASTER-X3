@@ -24,6 +24,7 @@ import threading
 import time
 from collections import deque
 
+from .. import config
 from ..drive.base import DriveBase
 from ..protocol import DriveCommand
 
@@ -58,6 +59,18 @@ class Odometry:
         self._stillstand_trotz_befehl = 0.0
         self._messung_verworfen = False
 
+        # Plausibilitätsprüfung der IMU: steht ihr Winkel still, obwohl das
+        # Board eine deutliche Drehrate meldet, ist sie unbrauchbar (am X3
+        # liefert sie dauerhaft 0). Dann bis zum Neustart nur noch die
+        # Drehrate aufsummieren.
+        self._imu_starr_s = 0.0
+        self._imu_letzter: float | None = None
+        self._imu_verworfen = False
+        # Zuletzt verwendete Drehrate (rad/s), für Personen-Tracker und
+        # Festfahr-Erkennung: dort zählt die Eigendrehung, nicht der Winkel.
+        self._omega = 0.0
+        self._v = (0.0, 0.0)
+
     # --- Abfrage -------------------------------------------------------------
 
     def pose(self) -> tuple[float, float, float]:
@@ -69,6 +82,16 @@ class Odometry:
     def misst_tatsaechlich(self) -> bool:
         """Ob echte Messwerte eingehen oder nur die Befehle gerechnet werden."""
         return self._gemessen
+
+    @property
+    def imu_verworfen(self) -> bool:
+        """Ob die IMU als unbrauchbar erkannt wurde (für /diagnose)."""
+        return self._imu_verworfen
+
+    def geschwindigkeit(self) -> tuple[float, float, float]:
+        """Zuletzt verwendete Eigenbewegung (vx, vy, omega) im Roboterrahmen."""
+        with self._lock:
+            return self._v[0], self._v[1], self._omega
 
     def distanz_zum_start(self) -> float:
         with self._lock:
@@ -178,6 +201,8 @@ class Odometry:
         )
 
         with self._lock:
+            self._omega = omega
+            self._v = (vx, vy)
             neuer_winkel = self._winkel_bestimmen(omega, dt)
 
             # In der Mitte des Zeitschritts auswerten: bei gleichzeitigem
@@ -230,11 +255,23 @@ class Odometry:
         return gemessen
 
     def _winkel_bestimmen(self, omega: float, dt: float) -> float:
-        """Blickrichtung aus der IMU, ersatzweise aus der Drehrate."""
+        """Blickrichtung aus der Drehrate, wahlweise aus der IMU.
+
+        Standard ist das Aufsummieren der gemessenen Drehrate: die IMU-Lage
+        des X3 liefert dauerhaft 0 (Sensor-Check 28.10.), und ein Winkel,
+        der beim Drehen stillsteht, ist schlimmer als einer, der langsam
+        driftet. Die Drift fängt der Lidar-Abgleich wieder ein.
+        """
+        summiert = _normalisieren(self.theta + omega * dt)
+        if not config.ODOM_IMU_WINKEL or self._imu_verworfen:
+            return summiert
+
         imu = self._driver.read_heading()
         if imu is None:
-            # Aufsummieren: der Fehler wächst mit jeder Drehung.
-            return _normalisieren(self.theta + omega * dt)
+            return summiert
+
+        if not self._imu_plausibel(imu, omega, dt):
+            return summiert
 
         if self._imu_referenz is None:
             # Neuer Bezugspunkt. Der aktuelle Winkel wird als Versatz
@@ -250,6 +287,27 @@ class Odometry:
         # halbe Umdrehung.
         seit_bezug = _normalisieren(math.radians(imu - self._imu_referenz))
         return _normalisieren(self._imu_versatz + seit_bezug)
+
+    def _imu_plausibel(self, imu: float, omega: float, dt: float) -> bool:
+        """Verwirft die IMU, wenn ihr Winkel beim Drehen stillsteht."""
+        letzter, self._imu_letzter = self._imu_letzter, imu
+        if letzter is None or abs(omega) < config.ODOM_IMU_PRUEF_OMEGA:
+            self._imu_starr_s = 0.0
+            return True
+        if abs(imu - letzter) > 1e-3:
+            self._imu_starr_s = 0.0
+            return True
+        self._imu_starr_s += dt
+        if self._imu_starr_s > config.ODOM_IMU_PRUEF_S:
+            self._imu_verworfen = True
+            self._imu_referenz = None
+            log.warning(
+                "IMU-Winkel steht seit %.1f s still, obwohl der Roboter sich "
+                "dreht (%.2f rad/s) -- IMU wird ignoriert, Winkel kommt ab "
+                "jetzt aus der Drehrate.", self._imu_starr_s, omega,
+            )
+            return False
+        return True
 
 
 def _normalisieren(winkel: float) -> float:

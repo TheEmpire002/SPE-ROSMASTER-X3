@@ -175,8 +175,12 @@ Ein unbekannter `type` liefert `{"type": "error", "text": "Unbekannter Nachricht
 **`limits`**: einmal beim Verbinden.
 
 ```json
-{"type": "limits", "max_vx": 5.0, "max_vy": 5.0, "max_omega": 5.0}
+{"type": "limits", "max_vx": 1.0, "max_vy": 1.0, "max_omega": 3.0}
 ```
+
+Das sind die Grenzen der Handsteuerung (`MAX_SPEED_*`). Folgen, Erkunden und
+Heimfahrt sind zusätzlich auf `AUTONOM_MAX_SPEED` (0,35 m/s) und
+`AUTONOM_MAX_OMEGA` (1,2 rad/s) begrenzt, bei schwachem Akku auf die Hälfte.
 
 **`state`**: alle 0,5 s an alle Clients.
 

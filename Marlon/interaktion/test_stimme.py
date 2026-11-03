@@ -88,7 +88,7 @@ class Mitschrift:
 
 
 class Watchdog:
-    def submit(self, cmd):
+    def submit(self, cmd, quelle="hand"):
         pass
 
     def stop(self):

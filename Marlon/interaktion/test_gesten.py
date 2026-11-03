@@ -241,7 +241,7 @@ class Watchdog:
     def __init__(self):
         self.befehle, self.stopps = [], 0
 
-    def submit(self, cmd):
+    def submit(self, cmd, quelle="hand"):
         self.befehle.append(cmd)
 
     def stop(self):

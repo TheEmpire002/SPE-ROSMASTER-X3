@@ -60,9 +60,24 @@ CAMERA_REOPEN_MAX_S = 120.0
 # ACHTUNG: Das Fahrgestell schafft rund 1 m/s, und das Expansion Board kappt
 # intern auf seinen eigenen Bereich. Werte darüber ändern am tatsächlichen
 # Tempo nichts -- die App zeigt dann mehr an, als der Roboter fährt.
-MAX_SPEED_X = 5.0      # m/s  vorwärts / rückwärts
-MAX_SPEED_Y = 5.0      # m/s  seitwärts (Mecanum)
-MAX_SPEED_OMEGA = 5.0  # rad/s  drehen
+MAX_SPEED_X = 1.0      # m/s  vorwärts / rückwärts
+MAX_SPEED_Y = 1.0      # m/s  seitwärts (Mecanum)
+MAX_SPEED_OMEGA = 3.0  # rad/s  drehen
+
+# Zusätzliche Obergrenze für alles, was der Roboter selbst entscheidet
+# (Folgen, Erkunden, Heimfahrt). Die einzelnen Modi haben eigene, meist
+# niedrigere Werte -- diese Grenze fängt nur Rechenfehler ab, damit kein
+# autonomer Modus je schneller fährt, als der Lidar Hindernisse rechtzeitig
+# sieht (7,5 Umdrehungen/s, plus Bremsweg). Die Handsteuerung ist davon
+# ausgenommen; für sie gelten MAX_SPEED_*.
+AUTONOM_MAX_SPEED = 0.35        # m/s   vx und vy
+AUTONOM_MAX_OMEGA = 1.2         # rad/s
+
+# Akku fast leer: autonome Modi fahren langsamer. Unter Last bricht die
+# Spannung zusätzlich ein, und genau dann setzt sich am X3 der USB-Hub
+# zurück -- mit halbem Tempo zieht der Antrieb deutlich weniger Strom.
+# Faktor auf AUTONOM_MAX_SPEED, sobald der Akku unter AKKU_WARN_V liegt.
+AUTONOM_AKKU_FAKTOR = 0.5
 
 # --- Sicherheit ---------------------------------------------------------------
 
@@ -173,6 +188,20 @@ COLLISION_CONE_DEG = 35.0
 # Takt, in dem die Position fortgeschrieben wird. Höher = genauer, aber die
 # Ungenauigkeit kommt ohnehin vom Radschlupf, nicht von diesem Takt.
 ODOMETRY_HZ = 20
+
+# Blickrichtung aus der IMU-Lage des Boards nehmen? Aus: der Sensor-Check
+# vom 28.10. zeigt, dass get_imu_attitude_data() am X3 dauerhaft 0 liefert.
+# Damit fror der Winkel ein (theta blieb bei 0, nur der Lidar-Abgleich
+# bewegte ihn), und Heimfahrt, Erkunden und Ortung rechneten mit falscher
+# Richtung. Stattdessen wird die vom Board gemessene Drehrate aufsummiert.
+# Nur einschalten, wenn die IMU nachweislich einen echten Winkel meldet --
+# selbst dann wird sie verworfen, sobald sie beim Drehen stillsteht.
+ODOM_IMU_WINKEL = False
+
+# Ab dieser Drehrate (rad/s) muss sich ein IMU-Winkel sichtbar ändern; tut
+# er das über ODOM_IMU_PRUEF_S nicht, gilt die IMU als unbrauchbar.
+ODOM_IMU_PRUEF_OMEGA = 0.3
+ODOM_IMU_PRUEF_S = 1.0
 
 # Tempo der automatischen Heimfahrt. Bewusst gemächlich: der Roboter fährt
 # hier ohne Hinderniserkennung, da will man nicht überrascht werden.
