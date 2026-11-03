@@ -328,9 +328,22 @@ EXPLORE_WANDER_MIN_S = 4.0
 EXPLORE_WANDER_MAX_S = 10.0
 
 # Am Boden dreht er nur ~75 % dessen, was befohlen wird (Sensor-Check:
-# 90° befohlen, 65° gedreht). Die Drehdauer wird damit verlängert, weil sich
-# auf den IMU-Winkel der Bibliothek kein Verlass ist.
+# 90° befohlen, 65° gedreht). Die Drehdauer wird damit verlängert. Gilt nur
+# noch als Rückfall, wenn das Board keine Drehrate liefert -- sonst dreht er
+# nach gemessenem Winkel (EXPLORE_DREH_*).
 EXPLORE_TURN_FACTOR = 1.3
+
+# Drehen nach Winkel: so viele Grad vor dem Ziel den Drehbefehl beenden.
+# Befehlsverzögerung und Bremsrampe drehen ihn noch ein Stück weiter.
+EXPLORE_DREH_VORHALT_GRAD = 8.0
+
+# Obergrenze einer gemessenen Drehung als Vielfaches der rechnerischen
+# Dauer -- fängt ab, dass er sich nicht dreht (z. B. eingeklemmt).
+EXPLORE_DREH_ZEIT_FAKTOR = 2.0
+
+# Nach dem Drehen entscheidet er erst mit einer Lidar-Runde, die so lange
+# nach Drehende begonnen hat (der Roboter rollt noch kurz nach).
+EXPLORE_NACHLAUF_S = 0.25
 
 # Älter darf eine Lidar-Umdrehung nicht sein, sonst fährt er blind. Der
 # echte Lidar liefert alle ~0,13 s eine Runde.
@@ -345,6 +358,36 @@ EXPLORE_PERSON_WAIT_S = 2.0
 
 # Gesamtdauer einer Erkundung; 0 = bis jemand stoppt.
 EXPLORE_TIMEOUT_S = 0.0
+
+# Rückt etwas näher als EXPLORE_NAH_M, wartet er so lange (vielleicht ein
+# Mensch, der gleich weitergeht) und schiebt sich dann frei.
+EXPLORE_NAH_WARTEN_S = 3.0
+
+# Befreien: ohne Drehung in die freieste Richtung schieben (Mecanum). So
+# langsam, dass das Heck nichts anstößt, so lange, dass es etwas bringt.
+EXPLORE_BEFREIEN_SPEED = 0.08
+EXPLORE_BEFREIEN_S = 1.5
+# In der gewählten Richtung muss mindestens so viel frei sein (ab
+# Lidar-Mitte, der Roboter selbst reicht ~0,15 m nach vorn und hinten) ...
+EXPLORE_BEFREIEN_FREI_M = 0.45
+# ... und unter diesem Wert bricht er das Schieben ab.
+EXPLORE_BEFREIEN_STOP_M = 0.30
+# So viele Befreiungen in Folge ohne freie Fahrt dazwischen, dann gibt er auf.
+EXPLORE_BEFREIEN_MAX = 3
+# So lange muss er ungehindert geradeaus fahren, damit Fehlversuche und
+# Befreiungen wieder bei null beginnen.
+EXPLORE_FREI_ZURUECK_S = 3.0
+
+# Festfahr-Erkennung: Fährt er (Befehl vx mindestens EXPLORE_FEST_MIN_VX)
+# so lange, ohne dass das Board Bewegung meldet (unter EXPLORE_FEST_V_MS)
+# oder sich das Lidar-Bild rundum in höchstens einer Richtung um mehr als
+# EXPLORE_FEST_WEG_M (bzw. 2 % des Abstands, Messrauschen) ändert, steckt er
+# fest. Muss unter den 3 s der Odometrie bleiben, nach denen sie eine
+# Stillstand meldende Messung ganz verwirft.
+EXPLORE_FEST_S = 1.5
+EXPLORE_FEST_MIN_VX = 0.05
+EXPLORE_FEST_V_MS = 0.02
+EXPLORE_FEST_WEG_M = 0.03
 
 # --- Hinderniserkennung ----------------------------------------------------------
 

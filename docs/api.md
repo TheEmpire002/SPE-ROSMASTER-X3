@@ -259,8 +259,22 @@ weicht allem aus, was der Lidar sieht. Werte in `config.py` (`EXPLORE_*`):
 - frei ist ein 40 cm breiter Korridor (`EXPLORE_HALF_WIDTH_M`), nicht ein
   Kegel -- so passt er nicht in Lücken, die schmaler sind als er selbst
 - unter `EXPLORE_STOP_M` (0,4 m) vorn: anhalten und in die freieste
-  Richtung drehen. Gedreht wird nach Zeit (`EXPLORE_TURN_FACTOR`), weil
-  der Roboter seine Blickrichtung nicht misst.
+  Richtung drehen. Gedreht wird nach dem gemessenen Winkel aus der
+  Drehrate des Boards (seit 03.11.); er hört `EXPLORE_DREH_VORHALT_GRAD`
+  (8°) vor dem Ziel auf, weil er nachläuft. Eine Zeitgrenze
+  (`EXPLORE_DREH_ZEIT_FAKTOR`) fängt Hänger ab. Nur ohne Messung dreht er
+  wie früher nach Zeit (`EXPLORE_TURN_FACTOR`). Danach wartet er auf einen
+  frischen Scan, statt auf dem alten Bild weiterzufahren.
+- Punkte näher als `EXPLORE_NAH_M`: Er wartet erst `EXPLORE_NAH_WARTEN_S`
+  (3 s), weil oft ein Mensch herangetreten ist. Ist es dann nicht frei,
+  **befreit er sich** (Zustand `befreit sich`): langsam seitlich oder
+  rückwärts in die freieste Richtung, ohne zu drehen, damit das Heck nicht
+  ausschwenkt.
+- **Festfahr-Erkennung:** Fährt er laut Befehl, aber das Board meldet
+  kaum Tempo oder das Lidar-Bild rundum ändert sich über `EXPLORE_FEST_S`
+  (1,5 s) nicht, befreit er sich ebenso.
+- Erst nach `EXPLORE_BEFREIEN_MAX` (3) erfolglosen Befreiungen hintereinander
+  endet die Fahrt mit „festgefahren“.
 - alle 4–10 s biegt er zufällig ab, damit er nicht immer dieselbe Bahn fährt
 - steht ein **Mensch** bis 1 m vor ihm, wartet er `EXPLORE_PERSON_WAIT_S`
   (2 s), bevor er ausweicht
@@ -291,6 +305,7 @@ Ist OpenCV installiert, sucht die Personenkamera (Logitech C270, siehe
   "dauer_s": 42,
   "ausweichen": 5,
   "menschen": 1,
+  "befreien": 0,
   "grund": null,
   "hindernisse": [
     {"art": "Stuhl", "winkel": 31.5, "abstand": 0.84, "breite": 0.41,
@@ -305,10 +320,10 @@ Ist OpenCV installiert, sucht die Personenkamera (Logitech C270, siehe
 | Feld | Bedeutung |
 |---|---|
 | `verfuegbar` | Lidar vorhanden, `explore` möglich |
-| `zustand` | `faehrt`, `dreht`, `wartet`, `wartet auf Mensch`, `wartet auf Lidar`; `null` wenn aus |
+| `zustand` | `faehrt`, `dreht`, `wartet`, `wartet auf Mensch`, `wartet auf Lidar`, `befreit sich` (neu 03.11.); `null` wenn aus |
 | `text` | Erklärung für die Anzeige |
 | `frei_vorn` | freie Strecke im Korridor vor dem Roboter (m) |
-| `ausweichen`, `menschen` | Zähler dieser Fahrt |
+| `ausweichen`, `menschen`, `befreien` | Zähler dieser Fahrt (`befreien` neu 03.11., fehlt bei älteren Servern) |
 | `grund` | warum die letzte Fahrt endete |
 | `hindernisse` | die 12 nächsten, nächstes zuerst. `winkel` in Grad wie beim Lidar, `x`/`y` Mitte in Roboterkoordinaten (m) |
 | `personen` | Personenrahmen im Bild der Personenkamera, relativ zur Bildgröße (0..1) |

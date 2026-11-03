@@ -384,6 +384,19 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Probleme:** Zwei Testfehler lagen am Test: Der Text „folgt Person N“ wird im nächsten Takt vom Fahrtext ersetzt, und eine Testphase lief zeitlich rückwärts (die Pause dauerte länger als angenommen). Die Stopp-Geste in der Pause funktioniert.
 - **Offen:** Antippen am Handy/Tablet ausprobieren (Trefferfläche), Bodentest mit zwei Personen.
 
+### 03.11.2026 – Autonomie Schritt D: Erkunder ohne Hängenbleiben (Marlon, mit Claude)
+- **Was:** Der Erkunder (`navigation/explorer.py`) dreht nach gemessenem Winkel, wartet nach dem Drehen auf einen frischen Scan, befreit sich bei zu nahen Punkten und erkennt, wenn er festhängt.
+- **Warum:** Bisher blieb er bei Punkten unter 0,22 m ohne Zeitlimit stehen, drehte nur nach Zeit (die Blickrichtung fehlte, siehe Schritt A) und brach nach sechs Fehlversuchen mit „festgefahren“ ab.
+- **Änderungen:**
+  - Drehen: Ziel aus der Drehrate des Boards, Stopp 8° vorher (Nachlauf), Zeitgrenze als Notbremse, ohne Messung wie früher nach Zeit.
+  - Nah-Punkte: erst 3 s warten (meist ein Mensch), dann langsam seitlich/rückwärts in die freieste Richtung, ohne zu drehen. Neuer Zustand `befreit sich`, Zähler `befreien` in `state.autonomie`.
+  - Festfahr-Erkennung: Board meldet kaum Tempo trotz Fahrbefehl, oder das Lidar-Bild rundum (12 Strahlen) ändert sich 1,5 s lang in höchstens einer Richtung. Dann Befreiung; erst nach drei erfolglosen Befreiungen endet die Fahrt.
+  - Alle Werte als `EXPLORE_*` in `config.py`.
+- **Ergebnis:** Neuer Test `Marlon/autonomes_fahren/test_erkunder.py` (simulierter Raum mit Wänden und Hindernissen, mit und ohne Board-Messung): Drehwinkel, Befreien statt Dauerhalt, Festfahren, keine Fehlalarme im Raum und im Mock-Raum. Alle anderen Tests bestehen, Smoke-Test 19/19. Im Mock 20 s Erkunden: fährt, keine Befreiung, Drehung +163° bei Ziel +170°.
+- **Probleme:** Die erste Festfahr-Prüfung schaute nur nach vorn. Fährt er schräg an einer Wand entlang, bleibt dieser Abstand gleich: Fehlalarm. Deshalb jetzt das Bild rundum. Im Mock gab es danach noch einen Fehlalarm, weil Strahlen an der Reichweitengrenze wegfielen und nur die gleichbleibenden Seitenwände übrig blieben; jetzt zählt auch Auftauchen/Wegfallen eines Strahls als Bewegung.
+- **Grenzen:** Durchdrehende Räder im offenen Raum ohne Board-Messung erkennt er nicht (zu wenige Strahlen in Reichweite). Ein Mensch, der sich daneben bewegt, kann die Lidar-Prüfung überdecken; Board- und Nah-Prüfung bleiben.
+- **Offen:** Bodentest: Drehwinkel gegen Lidar, Befreien aus einer Ecke, Festfahren (z. B. an einem Stuhlbein).
+
 ---
 
 ## 3. Ergebnisse und Messwerte

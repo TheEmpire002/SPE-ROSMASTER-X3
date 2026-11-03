@@ -202,7 +202,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     # durch die Personenkamera (C270), siehe docs/interaktion.md.
     personen_kamera = kameras.get(config.PERSON_CAMERA, camera)
     personen = Personenerkennung(personen_kamera)
-    erkunder = Erkunder(watchdog, lidar, erkennung, personen)
+    erkunder = Erkunder(watchdog, lidar, erkennung, personen, odometry=odometry)
     pose = Posenerkennung(personen_kamera, mock=use_mock_camera)
     mukke = Mukke()
     # Stimme und Musik teilen sich den Lautsprecher: Solange der Roboter

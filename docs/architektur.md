@@ -94,6 +94,13 @@ die Grundlage dafür.
 mit demselben Watchdog wie die Handsteuerung. Das ältere ROS2-Projekt liegt
 zum Vergleich unter `Marlon/autonomes_fahren/`.
 
+**Stand 03.11.:** Der Erkunder dreht nach dem gemessenen Winkel (Drehrate
+des Boards über die Odometrie), entscheidet nach dem Drehen erst auf einem
+frischen Scan und befreit sich selbst, statt stehen zu bleiben: seitlich
+oder rückwärts, wenn Punkte zu nah sind oder er nicht vorankommt (Board-
+Tempo oder unverändertes Lidar-Bild rundum). Test ohne Hardware:
+`Marlon/autonomes_fahren/test_erkunder.py` (simulierter Raum).
+
 ## Interaktion
 
 Gesten, Sprache und eine „Geist“-Schicht sitzen als eigene Ebene über den
