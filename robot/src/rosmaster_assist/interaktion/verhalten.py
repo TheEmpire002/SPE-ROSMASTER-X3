@@ -56,6 +56,7 @@ import time
 from typing import TYPE_CHECKING, Callable
 
 from .. import config
+from ..navigation import hindernisse as hd
 from ..navigation.explorer import frei_in_richtung
 from ..protocol import DriveCommand
 from ..safety import SafetyWatchdog
@@ -168,6 +169,12 @@ class Interaktion:
         self._letzter_befehl: DriveCommand | None = None
         self._abstand_gut: float | None = None
         self._abstand_gut_zeit = -1e9
+        # Woher der letzte Abstand kam ("Cluster: Mensch", "Minimum") -- für
+        # Tests und Fehlersuche. Eigene Erkennung, weil der Server seine mit
+        # den Personenwinkeln aufruft: dort hieße auch ein Stuhl vor der
+        # Person "Mensch", und genau den wollen wir hier unterscheiden.
+        self._abstand_quelle: str | None = None
+        self._hinderniserkennung = hd.Hinderniserkennung()
         self._nah_zuletzt = -1e9
 
         # Ziel-Lock (nur im RAM, wird beim Ausschalten gelöscht)
@@ -426,13 +433,13 @@ class Interaktion:
                                   jetzt, melden=True)
 
         if self._modus == BEREIT:
-            self._abstand = self._abstand_zu(ziel)
+            self._abstand = self._abstand_zu(ziel, jetzt=jetzt)
             return None
 
         if self._pausiert:
             # Tracker und Sperre laufen oben weiter, damit das Ziel nach dem
             # Weiter noch dasselbe ist. Gefahren wird nicht.
-            self._abstand = self._abstand_zu(ziel)
+            self._abstand = self._abstand_zu(ziel, jetzt=jetzt)
             self._text = "pausiert -- Ziel bleibt gemerkt"
             self._letzter_befehl = None
             return halt
@@ -457,7 +464,7 @@ class Interaktion:
         self._ohne_lidar_seit = None
 
         punkte = scan.punkte()
-        self._abstand = self._abstand_zu(ziel, scan)
+        self._abstand = self._abstand_zu(ziel, scan, jetzt)
         if self._abstand is not None and math.isfinite(self._abstand):
             self._abstand_gut, self._abstand_gut_zeit = self._abstand, jetzt
         elif ziel is not None and jetzt - self._abstand_gut_zeit < config.FOLGEN_HALTEN_S:
@@ -789,13 +796,30 @@ class Interaktion:
             and abs(befehl.omega) <= config.GESTE_ROBOTER_RUHIG_W
         )
 
-    def _abstand_zu(self, ziel: dict | None, scan=None) -> float | None:
-        """Lidar-Abstand in Richtung der Person (über die Breite ihrer Box)."""
+    def _abstand_zu(self, ziel: dict | None, scan=None, jetzt: float | None = None) -> float | None:
+        """Lidar-Abstand zur Person: ihr Cluster im Bildwinkel der Box.
+
+        Früher das Minimum im Winkelbereich der Box -- dann galt ein Stuhl
+        vor der Person als ihr Abstand. Jetzt wird unter den Clustern in
+        diesem Bereich derjenige gewählt, der am ehesten die Person ist:
+
+        1. zwei Menschenbeine ("Mensch") -- die stärkste Form im Lidar,
+        2. passt zum letzten guten Abstand (Sprung < FOLGEN_CLUSTER_SPRUNG_M),
+        3. dicke Einzelbeine oder Objekte (Rock, Mantel) vor Möbelbeinen,
+        4. Winkel am nächsten an der Boxmitte.
+
+        Findet sich kein Cluster (Person weiter als OBSTACLE_RANGE_M, an
+        der Wand, nur ein Strahl), gilt wie früher das Minimum. Sicherheit
+        hängt nicht daran: ``_annaehern`` begrenzt die Vorwärtsfahrt immer
+        mit dem freien Fahrschlauch, ein Stuhl davor hält ihn also trotzdem.
+        """
         if ziel is None:
+            self._abstand_quelle = None
             return None
         if scan is None:
             scan = self._lidar.latest() if self._lidar is not None else None
             if scan is None:
+                self._abstand_quelle = None
                 return None
         fov = self._pose.fov_deg if self._pose is not None else config.CAMERA_FOV_DEG
         von = (0.5 - ziel["box"][2]) * fov
@@ -804,7 +828,29 @@ class Interaktion:
         # ist die Box schmal, und ein Lidar-Strahl trifft sonst daneben.
         mitte = (von + bis) / 2
         halb = max(3.0, (bis - von) / 2)
-        return scan.min_abstand(mitte, halb)
+
+        rand = config.FOLGEN_CLUSTER_RAND_GRAD
+        kandidaten = [
+            h for h in self._hinderniserkennung.aktuell(scan)
+            if h.art != hd.WAND and abs((h.winkel - mitte + 180.0) % 360.0 - 180.0) <= halb + rand
+        ]
+        if not kandidaten:
+            self._abstand_quelle = "Minimum"
+            return scan.min_abstand(mitte, halb)
+
+        gut = None
+        if jetzt is not None and jetzt - self._abstand_gut_zeit < config.FOLGEN_CLUSTER_GUT_S:
+            gut = self._abstand_gut
+
+        def rang(h):
+            unplausibel = gut is not None and abs(h.abstand - gut) > config.FOLGEN_CLUSTER_SPRUNG_M
+            moebel = h.art in (hd.STUHL, hd.TISCH, hd.BEIN)
+            winkel = abs((h.winkel - mitte + 180.0) % 360.0 - 180.0)
+            return (h.art != hd.MENSCH, unplausibel, moebel, winkel)
+
+        bester = min(kandidaten, key=rang)
+        self._abstand_quelle = f"Cluster: {bester.art}"
+        return bester.abstand
 
     @staticmethod
     def _nah(punkte, nur_hinten: bool = False) -> bool:

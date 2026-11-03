@@ -183,6 +183,9 @@ Ein unbekannter `type` liefert `{"type": "error", "text": "Unbekannter Nachricht
 Das sind die Grenzen der Handsteuerung (`MAX_SPEED_*`). Folgen, Erkunden und
 Heimfahrt sind zusätzlich auf `AUTONOM_MAX_SPEED` (0,35 m/s) und
 `AUTONOM_MAX_OMEGA` (1,2 rad/s) begrenzt, bei schwachem Akku auf die Hälfte.
+Außerdem bremst der Roboter autonome Fahrt so, dass er vor dem nächsten
+Lidar-Punkt in Fahrtrichtung anhalten kann; ohne frische Lidar-Daten dreht
+er nur noch.
 
 **`state`**: alle 0,5 s an alle Clients.
 
@@ -344,7 +347,7 @@ der Modus an ist. **Nur am Boden benutzen.**
 | Weggehen | Hand seitlich wegwischen | `weggehen`: `WEGGEHEN_STRECKE_M` (1,0 m) rückwärts, dann `bereit` |
 
 - Die Richtung zur Person kommt aus der Kamera, der Abstand aus dem Lidar
-  in genau dieser Richtung.
+  (Cluster der Person in dieser Richtung, ein Stuhl davor zählt nicht).
 - Verliert er die Person beim Folgen länger als `FOLGEN_VERLOREN_S` (2 s),
   sucht er durch Drehen (Modus `sucht`, höchstens `FOLGEN_SUCHEN_S`).
 - Sicherheit wie beim autonomen Fahren: vorwärts nur bei freiem

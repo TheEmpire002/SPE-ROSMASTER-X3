@@ -114,7 +114,7 @@ mindestens Schultern und Handgelenke im Bild.
 ## Verhalten
 
 - **Folgen:**
-  - Ziel ist die Person, die die Geste gemacht hat. Die Richtung kommt aus der Kamera, der Abstand aus dem Lidar in genau dieser Richtung.
+  - Ziel ist die Person, die die Geste gemacht hat. Die Richtung kommt aus der Kamera, der Abstand aus dem Lidar: aus dem Lidar-Cluster im Winkelbereich der Box (siehe „Abstand zur Person“).
   - Sollabstand `FOLGEN_ABSTAND_M` (1,0 m), P-Regler auf `vx` und `omega`, begrenzt durch `FOLGEN_MAX_SPEED`.
   - Ist die Person länger als 2 s weg, hält er an und dreht sich kurz suchend.
 - **Herkommen:** fährt auf die Person zu bis 0,7 m und bleibt stehen.
@@ -125,6 +125,27 @@ mindestens Schultern und Handgelenke im Bild.
 - `herkommen` und `weggehen` enden spätestens nach `INTERAKTION_VERHALTEN_MAX_S`.
 - **Ohne Antrieb** (Board weg, USB-Reset) hält er an und geht nach `bereit`, der Interaktionsmodus bleibt aber an. Fahrende Modi werden abgelehnt, solange `driver.connected` falsch ist; ist das Board wieder da, geht es mit der nächsten Geste oder dem nächsten Sprachbefehl weiter.
 - Alle Werte: `FOLGEN_*`, `HERKOMMEN_*`, `WEGGEHEN_*` in `config.py`.
+
+### Abstand zur Person (03.11.)
+
+Früher galt der kleinste Lidar-Wert im Winkelbereich der Box als Abstand.
+Stand ein Stuhl oder Tisch vor der Person, las der Roboter dessen Abstand,
+hielt an und „hing“, während die Person weiterging.
+
+Jetzt werden die Cluster aus `navigation/hindernisse.py` im Bereich der Box
+(plus `FOLGEN_CLUSTER_RAND_GRAD`, weil Kamera und Lidar nicht zeitgleich
+messen) betrachtet, Wände ausgenommen. Gewählt wird in dieser Reihenfolge:
+
+1. zwei Menschenbeine („Mensch“),
+2. passt zum letzten guten Abstand (Sprung unter `FOLGEN_CLUSTER_SPRUNG_M`,
+   solange dieser jünger als `FOLGEN_CLUSTER_GUT_S` ist),
+3. andere Objekte vor Möbelbeinen (Stuhl, Tisch, Bein),
+4. Winkel am nächsten an der Boxmitte.
+
+Gibt es keinen Cluster (Person zu weit, steht an der Wand), gilt wie früher
+das Minimum. Die Sicherheit hängt nicht daran: Die Vorwärtsfahrt ist immer
+durch den freien Fahrschlauch begrenzt, und der `AutonomSchutz` im Watchdog
+bremst nach Bremsweg (siehe `docs/architektur.md`).
 
 ### Sanft fahren (29.10.)
 

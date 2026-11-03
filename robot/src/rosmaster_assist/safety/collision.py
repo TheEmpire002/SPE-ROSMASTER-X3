@@ -1,4 +1,8 @@
-"""Kollisionsvermeidung für die manuelle Steuerung.
+"""Kollisionsvermeidung für die manuelle Steuerung und die autonomen Modi.
+
+Zwei Klassen: `CollisionGuard` für die Handsteuerung (abschaltbar, siehe
+unten) und `AutonomSchutz` für Folgen, Erkunden und Heimfahrt (immer an,
+siehe dort).
 
 Prüft vor jedem Fahrbefehl, ob in Fahrtrichtung etwas zu nah ist, und
 unterdrückt in dem Fall die Bewegung.
@@ -113,3 +117,118 @@ class CollisionGuard:
             return False
         self._zuletzt_gemeldet = jetzt
         return True
+
+
+class AutonomSchutz:
+    """Letzte Bremse für alle autonomen Fahrbefehle.
+
+    Folgen, Erkunden und Heimfahrt prüfen Hindernisse jeweils selbst, aber
+    jeder auf seine Art, mit eigenen Abständen und eigenem Scan-Alter. Diese
+    Klasse sitzt im `SafetyWatchdog` und prüft *jeden* autonomen Befehl
+    gleich: Kann der Roboter bei diesem Tempo vor dem nächsten Hindernis in
+    Fahrtrichtung noch anhalten?
+
+    Erlaubt ist das Tempo, bei dem gilt
+
+        frei - Rand >= v * t + v² / (2 * a)
+
+    mit `t` = Latenz + Alter des Scans (in dieser Zeit fährt der Roboter
+    blind weiter) und `a` = angenommene Bremsverzögerung. Die Formel nach
+    `v` aufgelöst ergibt die Obergrenze; ist der Befehl schneller, wird
+    (vx, vy) anteilig verkleinert, die Richtung bleibt. Drehen bleibt
+    unberührt -- auf der Stelle nähert sich der Roboter nichts an, und ein
+    Modus muss sich aus einer Ecke herausdrehen können.
+
+    Im Normalbetrieb greift die Schicht nicht ein: Die Modi halten selbst
+    früher an (`EXPLORE_STOP_M`, `HOME_STOP_DISTANCE_M`) und fahren langsam
+    an Hindernisse heran. Sie fängt das ab, was die Modi nicht sehen: ein
+    Hindernis, das plötzlich auftaucht, einen Lidar, der keine frischen
+    Daten mehr liefert, und Rechenfehler.
+
+    Bewusst **kein** Stopp an der Rampe vorbei: Die Obergrenze sinkt
+    stetig, je näher das Hindernis kommt, und die Bremsrampe des Watchdogs
+    (`RAMPE_BREMSEN_XY`) ist schneller als die hier angenommene
+    Verzögerung. Ein harter Stopp aus voller Fahrt erzeugt die Stromspitzen,
+    die am X3 den USB-Hub zurücksetzen -- und damit den Lidar, auf den sich
+    diese Schicht verlässt.
+    """
+
+    #: Eingriffe höchstens so oft protokollieren. Die Schicht läuft im
+    #: 20-Hz-Takt; bei einem stehenden Hindernis käme sonst jede Meldung
+    #: zwanzigmal pro Sekunde.
+    MELDE_ABSTAND_S = 3.0
+
+    def __init__(self, lidar) -> None:
+        self._lidar = lidar
+        self.eingriffe = 0
+        self._zuletzt_gemeldet = -1e9
+        # Punkte nur einmal pro Scan umrechnen: der Lidar liefert 7,5
+        # Umdrehungen pro Sekunde, gefragt wird 20-mal.
+        self._scan = None
+        self._punkte = None
+
+    def zustand(self) -> dict:
+        return {
+            "aktiv": bool(config.AUTONOM_SCHUTZ_AKTIV),
+            "eingriffe": self.eingriffe,
+        }
+
+    def erlaubtes_tempo(self, frei: float, alter_s: float) -> float:
+        """Höchsttempo (m/s), bei dem der Roboter vor `frei` noch steht."""
+        netto = frei - config.AUTONOM_SCHUTZ_RAND_M
+        if netto <= 0.0:
+            return 0.0
+        if math.isinf(netto):
+            return float("inf")
+        a = config.AUTONOM_SCHUTZ_BREMSEN
+        t = config.AUTONOM_SCHUTZ_LATENZ_S + max(0.0, alter_s)
+        # Positive Lösung von v*t + v²/(2a) = netto.
+        return a * (-t + math.sqrt(t * t + 2.0 * netto / a))
+
+    def pruefen(self, cmd: DriveCommand, jetzt: float | None = None) -> DriveCommand:
+        """Gibt den erlaubten Befehl zurück (Drehung immer unverändert)."""
+        tempo = math.hypot(cmd.vx, cmd.vy)
+        if tempo < 1e-6:
+            return cmd
+        if jetzt is None:
+            jetzt = time.monotonic()
+
+        scan = self._lidar.latest() if self._lidar is not None else None
+        if scan is None or jetzt - scan.zeit > config.AUTONOM_SCHUTZ_SCAN_MAX_S:
+            # Ohne frische Lidar-Daten weiß niemand, was vorn ist. Drehen
+            # darf er weiter, fahren nicht.
+            self._eingriff(jetzt, "keine frischen Lidar-Daten")
+            return DriveCommand(0.0, 0.0, cmd.omega)
+
+        if scan is not self._scan:
+            self._scan = scan
+            self._punkte = scan.punkte()
+
+        # Später Import: explorer.py importiert den Watchdog, und der
+        # importiert dieses Modul.
+        from ..navigation.explorer import frei_in_richtung
+
+        richtung = math.degrees(math.atan2(cmd.vy, cmd.vx))
+        frei = frei_in_richtung(
+            self._punkte, richtung, config.AUTONOM_SCHUTZ_HALBE_BREITE_M
+        )
+        # Der älteste Punkt des Scans ist eine ganze Umdrehung älter als
+        # dessen Ende -- mit dem rechnen, nicht mit dem Mittel.
+        alter = jetzt - (scan.zeit - scan.dauer)
+        v_max = self.erlaubtes_tempo(frei, alter)
+        if tempo <= v_max:
+            return cmd
+
+        faktor = v_max / tempo
+        self._eingriff(
+            jetzt,
+            "Hindernis %.2f m in Richtung %.0f°, Tempo %.2f -> %.2f m/s"
+            % (frei, richtung, tempo, v_max),
+        )
+        return DriveCommand(cmd.vx * faktor, cmd.vy * faktor, cmd.omega)
+
+    def _eingriff(self, jetzt: float, grund: str) -> None:
+        self.eingriffe += 1
+        if jetzt - self._zuletzt_gemeldet >= self.MELDE_ABSTAND_S:
+            self._zuletzt_gemeldet = jetzt
+            log.warning("Autonomer Fahrbefehl gebremst: %s", grund)

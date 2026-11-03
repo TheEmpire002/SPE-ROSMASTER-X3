@@ -23,6 +23,12 @@ genau die Situation, in der oben nichts mehr funktioniert.
    werden zusätzlich auf `AUTONOM_MAX_*` gekappt, bei schwachem Akku noch
    einmal reduziert. So kann kein Rechenfehler in Folgen, Erkunden oder
    Heimfahrt den Roboter schneller machen, als der Lidar Hindernisse sieht.
+
+5. **Bremsweg autonom.** Danach prüft `autonom_schutz` (ein
+   `AutonomSchutz` aus `collision.py`, vom Server gesetzt), ob der Roboter
+   bei diesem Tempo vor dem nächsten Hindernis in Fahrtrichtung noch
+   anhalten kann, und bremst sonst. Ohne frische Lidar-Daten fährt kein
+   autonomer Modus, drehen darf er.
 """
 
 from __future__ import annotations
@@ -78,6 +84,10 @@ class SafetyWatchdog:
         # langsam, und submit() läuft im 20-Hz-Takt.
         self._akku_v: float | None = None
         self._akku_at = -1e9
+        # Bremsweg-Prüfung für autonome Befehle (Punkt 5). Bleibt None,
+        # wenn kein Lidar konfiguriert ist -- dann gibt es auch keine
+        # autonomen Modi, die fahren könnten.
+        self.autonom_schutz = None
 
     # --- Steuerung ------------------------------------------------------------
 
@@ -100,6 +110,12 @@ class SafetyWatchdog:
             vy=_clamp(cmd.vy, grenze_xy_y),
             omega=_clamp(cmd.omega, grenze_w),
         )
+        if (
+            quelle == "autonom"
+            and self.autonom_schutz is not None
+            and config.AUTONOM_SCHUTZ_AKTIV
+        ):
+            safe = self.autonom_schutz.pruefen(safe, jetzt)
         if safe != cmd:
             log.debug("Fahrbefehl begrenzt (%s): %s -> %s", quelle, cmd, safe)
 

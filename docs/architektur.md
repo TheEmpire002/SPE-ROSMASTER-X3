@@ -52,6 +52,16 @@ die Rampe im Watchdog liegt, gilt sie für Handsteuerung, Erkunder,
 Heimfahrt und Interaktion gleichermaßen. `stop()` umgeht sie und hält
 sofort an.
 
+Seit dem 03.11. prüft der Watchdog autonome Fahrbefehle (`quelle="autonom"`:
+Erkunder, Heimfahrt, Folgen) zusätzlich mit dem **`AutonomSchutz`**
+(`safety/collision.py`): Das Tempo in Fahrtrichtung wird so begrenzt, dass
+der Roboter vor dem nächsten Lidar-Punkt im Fahrschlauch noch anhalten kann
+(`v·t + v²/(2a) ≤ frei − Rand`, mit Latenz plus Alter des Scans). Ohne
+frischen Scan bleibt nur die Drehung erlaubt. Gebremst wird über die Rampe,
+nicht mit `stop()`: ein harter Halt erzeugt genau die Stromspitzen, die den
+USB-Hub zurücksetzen. Die Module prüfen weiterhin selbst; der Schutz ist
+das Netz darunter. Werte: `AUTONOM_SCHUTZ_*` in `config.py`.
+
 **4. Die Notfall-Logik entscheidet nicht, sie meldet.**
 Erkennt das System einen möglichen Notfall, löst es einen Alarm an einen
 Menschen aus. Es bewertet keinen Gesundheitszustand.
@@ -65,7 +75,7 @@ Menschen aus. Es bewertet keinen Gesundheitszustand.
 | `audio/`       | Ton auf dem USB-Lautsprecher: `mukke.py` spielt YouTube-Links mit mpv ab |
 | `protocol.py`  | Nachrichtenformat — die gemeinsame Sprache aller Beteiligten |
 | `drive/`       | Fahren. `base.py` = Schnittstelle, dazu echter Treiber + Mock |
-| `safety/`      | Watchdog, Not-Aus, Geschwindigkeitsbegrenzung               |
+| `safety/`      | Watchdog, Not-Aus, Geschwindigkeitsbegrenzung, Bremsweg-Prüfung autonom (`AutonomSchutz`) |
 | `sensors/`     | Lidar, Kamera, Personenerkennung, Körperpose (Hailo)        |
 | `navigation/`  | Odometrie, Lidar-Ortung, Heimfahrt, Erkunder, Hindernis-Benennung |
 | `interaktion/` | Gesten, Verhalten (Folgen, Herkommen, Weggehen), Stimme (Sprachausgabe) und Sprachbefehle mit dem Weckwort „Robi“; geplant: Geist — siehe [`interaktion.md`](interaktion.md) |

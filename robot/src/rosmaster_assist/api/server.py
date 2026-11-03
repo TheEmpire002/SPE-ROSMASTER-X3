@@ -46,7 +46,7 @@ from ..protocol import (
     vitals_message,
 )
 from ..navigation import Erkunder, Hinderniserkennung, Homing, Localizer, Odometry
-from ..safety import CollisionGuard, SafetyWatchdog
+from ..safety import AutonomSchutz, CollisionGuard, SafetyWatchdog
 from ..sensors.camera import CameraService, create_cameras
 from ..sensors.lidar import LidarService, create_lidar
 from ..sensors.personen import Personenerkennung
@@ -197,6 +197,9 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     localizer = Localizer(odometry, lidar)
     homing = Homing(watchdog, odometry, localizer)
     guard = CollisionGuard(localizer)
+    if lidar is not None:
+        # Letzte Bremse für Folgen, Erkunden und Heimfahrt, siehe watchdog.py.
+        watchdog.autonom_schutz = AutonomSchutz(lidar)
     erkennung = Hinderniserkennung()
     # Personenerkennung und Posenerkennung (Gesten, Folgen) schauen beide
     # durch die Personenkamera (C270), siehe docs/interaktion.md.

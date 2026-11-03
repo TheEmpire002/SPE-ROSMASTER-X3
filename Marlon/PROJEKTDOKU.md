@@ -397,6 +397,18 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Grenzen:** Durchdrehende Räder im offenen Raum ohne Board-Messung erkennt er nicht (zu wenige Strahlen in Reichweite). Ein Mensch, der sich daneben bewegt, kann die Lidar-Prüfung überdecken; Board- und Nah-Prüfung bleiben.
 - **Offen:** Bodentest: Drehwinkel gegen Lidar, Befreien aus einer Ecke, Festfahren (z. B. an einem Stuhlbein).
 
+### 03.11.2026 – Autonomie Schritt E: Bremsweg-Prüfung und Folgen-Abstand (Marlon, mit Claude)
+- **Was:** Ein zentraler Schutz im Watchdog bremst alle autonomen Fahrbefehle nach Bremsweg. Beim Folgen kommt der Abstand zur Person aus ihrem Lidar-Cluster statt aus dem kleinsten Wert im Bildwinkel.
+- **Warum:** Erkunder, Heimfahrt und Folgen prüften Hindernisse jeweils selbst, mit unterschiedlichen Regeln; ein Fehler in einem Modul hätte ungebremst gewirkt. Beim Folgen galt ein Stuhl vor der Person als ihr Abstand, der Roboter blieb stehen, obwohl sie weiterging.
+- **Änderungen:**
+  - `AutonomSchutz` (`safety/collision.py`): erlaubtes Tempo aus `v·t + v²/(2a) = frei − Rand`, `t` = Latenz + Alter des Scans, freier Weg im Fahrschlauch in Fahrtrichtung (`frei_in_richtung`). Richtung bleibt erhalten, nur das Tempo sinkt. Ohne Scan oder bei Scan älter als 0,5 s nur Drehen. Greift nur bei `quelle="autonom"`, Handsteuerung unverändert. Abschaltbar mit `AUTONOM_SCHUTZ_AKTIV`.
+  - Gebremst wird über die Rampe, nicht mit `stop()`, wegen der Stromspitzen (USB-Resets).
+  - Folgen (`interaktion/verhalten.py`): Cluster aus `navigation/hindernisse.py` im Boxbereich, Rangfolge Mensch → passt zum letzten Abstand → kein Möbelbein → Winkel. Ohne Cluster wie früher das Minimum. Eigene Hinderniserkennung, weil die des Servers mit Personenwinkeln arbeitet und dort auch ein Stuhl „Mensch“ hieße.
+  - Werte: `AUTONOM_SCHUTZ_*`, `FOLGEN_CLUSTER_*` in `config.py`.
+- **Ergebnis:** Neuer Test `Marlon/autonomes_fahren/test_schutz.py`: Bremsformel, Wand vorn/seitlich, Rückwärts und Seitwärts frei, Diagonale behält Richtung, veralteter Scan, Watchdog nur bei autonom; Folgen: Person hinter Stuhlbein (1,45 m statt 0,79 m), zwei Objekte mit/ohne letzten Abstand, nur Wand → Minimum. Alle anderen Tests bestehen, Smoke-Test 19/19. Im Mock 40 s Erkunden: fährt, kein Eingriff des Schutzes, kein Festfahren.
+- **Probleme:** Erste Testszenen waren zu streng gewählt (bei 0,5 m Wand sind rechnerisch noch 0,52 m/s erlaubt); Szenen angepasst, die Formel blieb. `Scan.min_abstand` überspringt Strahlen ohne Echo (r = 0) nicht; im Test vermieden, am Roboter prüfen, ob solche Strahlen ankommen.
+- **Offen:** Bodentest; `AUTONOM_SCHUTZ_BREMSEN` und `AUTONOM_SCHUTZ_LATENZ_S` am Roboter messen (Bremsweg aus 0,3 m/s).
+
 ---
 
 ## 3. Ergebnisse und Messwerte

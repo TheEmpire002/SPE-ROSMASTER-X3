@@ -79,6 +79,27 @@ AUTONOM_MAX_OMEGA = 1.2         # rad/s
 # Faktor auf AUTONOM_MAX_SPEED, sobald der Akku unter AKKU_WARN_V liegt.
 AUTONOM_AKKU_FAKTOR = 0.5
 
+# Bremsweg-Prüfung für alle autonomen Befehle im Watchdog (AutonomSchutz in
+# safety/collision.py). Erlaubt ist nur ein Tempo, bei dem der Roboter vor
+# dem nächsten Hindernis in Fahrtrichtung noch steht:
+#   frei - RAND >= v * (LATENZ + Scan-Alter) + v² / (2 * BREMSEN)
+# Die Modi halten selbst früher an; das hier ist die letzte Bremse.
+AUTONOM_SCHUTZ_AKTIV = True
+# Abstand Lidar-Mitte -> Hindernis, bei dem v = 0 ist. Kleiner als
+# EXPLORE_BEFREIEN_STOP_M (0,30) und EXPLORE_STOP_M (0,40), sonst würde die
+# Schicht das Befreien und das normale Erkunden blockieren.
+AUTONOM_SCHUTZ_RAND_M = 0.22
+AUTONOM_SCHUTZ_HALBE_BREITE_M = 0.20  # wie EXPLORE_HALF_WIDTH_M
+# Zeit von der Messung bis die Motoren reagieren (Rechnen, Board, Rampe),
+# zusätzlich zum Alter des Scans.
+AUTONOM_SCHUTZ_LATENZ_S = 0.15
+# Angenommene Bremsverzögerung. Bewusst kleiner als RAMPE_BREMSEN_XY (2,0):
+# Mecanum-Räder rutschen auf glattem Boden, und gemessen ist der Wert nicht.
+AUTONOM_SCHUTZ_BREMSEN = 1.0      # m/s²
+# Älterer Scan = kein Fahren mehr (nur Drehen). Bei 7,5 Umdrehungen/s ist
+# ein Scan im Betrieb höchstens ~0,15 s alt; 0,5 s heißt: der Lidar hängt.
+AUTONOM_SCHUTZ_SCAN_MAX_S = 0.5
+
 # --- Sicherheit ---------------------------------------------------------------
 
 # Kommt innerhalb dieser Zeit kein neuer Fahrbefehl, hält der Roboter an.
@@ -565,6 +586,20 @@ FOLGEN_VOLL_WINKEL = 10.0
 # gilt der letzte gute Lidar-Abstand, wenn in Richtung der Person kurz
 # kein Punkt liegt.
 FOLGEN_HALTEN_S = 0.5
+
+# Abstand zur Person aus dem Lidar-Cluster statt aus dem kleinsten Wert im
+# Bildwinkel der Box: Ein Stuhl oder Tisch vor der Person würde sonst als
+# ihr Abstand gelesen, und der Roboter bliebe stehen, während sie
+# weitergeht. Gesucht werden Cluster (navigation/hindernisse.py) im
+# Winkelbereich der Box, erweitert um diesen Rand -- Kamera und Lidar sehen
+# nicht exakt zur selben Zeit, beim Drehen verschiebt sich das um einige Grad.
+FOLGEN_CLUSTER_RAND_GRAD = 5.0
+# Weicht ein Cluster um mehr als das vom letzten guten Abstand ab, ist er
+# wahrscheinlich nicht die Person (bei 0,3 m/s Schritttempo legt sie in
+# FOLGEN_CLUSTER_GUT_S höchstens ~0,3 m zurück). Gilt nur, solange der
+# letzte gute Abstand jünger ist als FOLGEN_CLUSTER_GUT_S.
+FOLGEN_CLUSTER_SPRUNG_M = 0.5
+FOLGEN_CLUSTER_GUT_S = 1.0
 
 # War etwas sehr nah (EXPLORE_NAH_M), bleibt er noch so lange stehen,
 # nachdem es frei ist -- sonst flackert er an der Grenze zwischen Halt
