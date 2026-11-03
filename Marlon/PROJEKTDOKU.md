@@ -482,6 +482,149 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Ergebnis:** Am Pi mit den echten Gerätenamen nachgeprüft: C270 und Orbbec fallen heraus, übrig bleiben nur „pulse“ und „default“, die zu keinem Namen passen. Das USB-Mikrofon hält der laufende Server belegt (`/sprache/status`: „USB Microphone (hw:5,0)“).
 - **Offen:** Nach dem nächsten Server-Neustart in `/sprache/status` prüfen, dass `mikrofon` das USB-Mikrofon ist. Mikrofon kurz abziehen: Die Erkennung muss „kein Mikrofon“ melden statt auf die C270 zu wechseln.
 
+### 03.11.2026 – Autonomie Schritt A: Blickrichtung, Zeitstempel, Tempogrenzen (Marlon, mit Claude)
+- **Was:** Erster Schritt des Verbesserungsplans für Folgen und Erkunden (Branch `autonom`). Grundlagen reparieren, bevor Ziel-Lock und Erkunder umgebaut werden.
+- **Warum:** Die IMU-Lage des Boards liefert dauerhaft 0 (Sensor-Check 28.10.). Die Odometrie nahm diesen Wert als Blickrichtung, `theta` blieb beim Drehen stehen. Das erklärt „theta im Server ≈ 0“, warum der Erkunder nur nach Zeit dreht und warum die Heimfahrt in die falsche Richtung rechnen kann.
+- **Änderungen:**
+  - Odometrie summiert die vom Board gemessene Drehrate auf (`ODOM_IMU_WINKEL = False`). Wird die IMU eingeschaltet, prüft eine Plausibilitätsprüfung sie: Steht ihr Winkel beim Drehen still, wird sie verworfen, mit Warnung im Log (sichtbar auf `/diagnose`). Neu: `odometry.geschwindigkeit()` für den späteren Personen-Tracker.
+  - Zeitstempel: Die Kamera merkt sich die Aufnahmezeit je Bild (`latest_mit_zeit()`, `latest()` bleibt). Die Pose-`zeit` ist jetzt die Aufnahmezeit statt der Verarbeitungszeit. `Scan` kennt seine Dauer und `zeit_mitte`.
+  - Tempogrenzen: `MAX_SPEED_*` von wirkungslosen 5,0 auf 1,0 m/s bzw. 3,0 rad/s. Folgen, Erkunden und Heimfahrt melden sich beim Watchdog als `quelle="autonom"` und sind auf 0,35 m/s / 1,2 rad/s begrenzt, unter `AKKU_WARN_V` auf die Hälfte.
+- **Ergebnis:** Neuer Test `Marlon/autonomes_fahren/test_odometrie.py` besteht (90°-Drehung trotz IMU = 0, Geradeausfahrt danach in +y, starre IMU verworfen, Hand- und Autonom-Grenzen, Akku-Drosselung). `test_gesten`, `test_stimme`, `test_sprache`, `test_hindernisse` und `test_diagnose` bestehen weiter. Smoke-Test 18/19, genau wie vorher; „Heimfahrt startet“ schlägt auch ohne die Änderungen fehl (siehe offene Punkte).
+- **Probleme:** Erste Smoke-Läufe zeigten 14/19, weil `main.py --mock` automatisch einen Browser öffnet: die Web-App verbindet sich und schickt eigene Fahr- und Stoppbefehle dazwischen. Mit `--no-browser` laufen die Tests sauber.
+- **Offen:** Drehtest 90° am Boden gegen den Lidar (stimmt `theta`?).
+
+### 03.11.2026 – Autonomie Schritt B: Ziel-Lock beim Folgen (Marlon, mit Claude)
+- **Was:** Personen-Tracker mit Track-IDs und ein Ziel-Lock mit Zustandsautomat (`interaktion/ziel.py`, neu). Die Pose liefert ein Farbmerkmal des Rumpfs, die Mock-Pose zeigt zeitweise eine zweite Person.
+- **Warum:** Beim Folgen sprang der Roboter auf andere Personen über. Die Zuordnung lief nur über den Kamerawinkel, und nach jeder Suche nahm er die größte Person im Bild.
+- **Änderungen:**
+  - Tracker: Kalman auf dem Winkel, Eigendrehung aus der Odometrie herausgerechnet, gierige Zuordnung.
+  - `ZielSperre` mit den Zuständen idle → acquiring_target → following ↔ target_temporarily_lost → searching_for_target → safe_stop. Wiederfinden nur mit passendem Merkmal, klarer Marge und 5 bestätigten Bildern. Bei Zweifel steht er.
+  - Gesten werden je Person erkannt: Die Folgen-Geste macht den Gestikulierenden zum Ziel. Beim Folgen zählen nur die Gesten des Ziels, Stopp darf jeder.
+  - Neues Feld `state.interaktion.ziel`. Das Merkmal bleibt im Roboter (nicht in `/interaktion/pose`), nur im RAM.
+- **Ergebnis:** Neuer Test `Marlon/interaktion/test_ziel.py` besteht, ebenso alle bisherigen Tests (`test_gesten`, `test_sprache`, `test_stimme`, `test_hindernisse`, `test_odometrie`, `test_diagnose`, `test_explorer_sim`). Smoke-Test 18/19, unverändert.
+- **Probleme:** Zwei Testannahmen waren falsch, nicht der Code. Ohne Eigendrehung reißt die Zuordnung nicht ab, weil das Gate mitwächst; der Test prüft jetzt die geschätzte Geschwindigkeit. Nach 1 s Verdeckung lebt der Track noch, das Ziel ist also sofort wieder da; geprüft wird jetzt kurz (sofort) und lang (2 s, neue Bestätigung).
+- **Bewusst anders als geplant:** Die Zeiten heißen weiter `FOLGEN_VERLOREN_S`/`FOLGEN_SUCHEN_S`. Er fährt schon während der Erfassung los, sobald das Ziel eindeutig ist.
+- **Offen:** ~~Antippen in der Web-App (Schritt C)~~ (erledigt, siehe unten), Bodentest mit zwei Personen (kreuzen, verdecken, gleiche Kleidung).
+
+### 03.11.2026 – Autonomie Schritt C: Ziel wählen, Pause und Loslassen in der Web-App (Marlon, mit Claude)
+- **Was:** Die Web-App kann das Ziel beim Folgen bestimmen: Person im Kamerabild antippen, Pause/Weiter, Loslassen, Anzeige des Ziel-Zustands.
+- **Warum:** Gesteuert wird der Roboter über die Weboberfläche. Bei mehreren Personen lehnt der Ziel-Lock aus Schritt B einen Start ohne Auswahl ab; dafür braucht es eine eindeutige Auswahl in der App.
+- **Änderungen:**
+  - `protocol.py` nur ergänzt: `follow` mit optionalem `ziel_id`, neu `follow_pause` und `follow_resume`. Neues Feld `state.interaktion.pausiert`.
+  - `/interaktion/pose` liefert je Person `id` (Track-ID) und `ziel`; das Merkmal bleibt weiter im Roboter.
+  - `verhalten.py`: `folgen(ziel_id)` wechselt auch während des Folgens das Ziel, eine verlorene ID wird abgelehnt. Pause hält an, Tracker und Sperre laufen weiter. Jeder Moduswechsel beendet die Pause. `follow_stop` quittiert ein `safe_stop`.
+  - Web-App: Personen antippbar (Trefferprüfung auf die Box, kleinste gewinnt), Ziel grün, andere grau, „Person N“ über dem Kopf, Zeile „Ziel“, Knöpfe „Pause/Weiter“ und „Loslassen“. Ein eigener Knopf „Neu wählen“ entfällt, weil Antippen genau das tut.
+- **Ergebnis:** `test_ziel.py` um 27 Prüfungen erweitert, alles besteht; alle anderen Tests ebenso. Smoke-Test 19/19. Im Mock geprüft: falsche `ziel_id` wird abgewiesen, Pause/Weiter, unbekannte ID, `id`/`ziel` in `/interaktion/pose`.
+- **Probleme:** Zwei Testfehler lagen am Test: Der Text „folgt Person N“ wird im nächsten Takt vom Fahrtext ersetzt, und eine Testphase lief zeitlich rückwärts (die Pause dauerte länger als angenommen). Die Stopp-Geste in der Pause funktioniert.
+- **Offen:** Antippen am Handy/Tablet ausprobieren (Trefferfläche), Bodentest mit zwei Personen.
+
+### 03.11.2026 – Autonomie Schritt D: Erkunder ohne Hängenbleiben (Marlon, mit Claude)
+- **Was:** Der Erkunder (`navigation/explorer.py`) dreht nach gemessenem Winkel, wartet nach dem Drehen auf einen frischen Scan, befreit sich bei zu nahen Punkten und erkennt, wenn er festhängt.
+- **Warum:** Bisher blieb er bei Punkten unter 0,22 m ohne Zeitlimit stehen, drehte nur nach Zeit (die Blickrichtung fehlte, siehe Schritt A) und brach nach sechs Fehlversuchen mit „festgefahren“ ab.
+- **Änderungen:**
+  - Drehen: Ziel aus der Drehrate des Boards, Stopp 8° vorher (Nachlauf), Zeitgrenze als Notbremse, ohne Messung wie früher nach Zeit.
+  - Nah-Punkte: erst 3 s warten (meist ein Mensch), dann langsam seitlich/rückwärts in die freieste Richtung, ohne zu drehen. Neuer Zustand `befreit sich`, Zähler `befreien` in `state.autonomie`.
+  - Festfahr-Erkennung: Board meldet kaum Tempo trotz Fahrbefehl, oder das Lidar-Bild rundum (12 Strahlen) ändert sich 1,5 s lang in höchstens einer Richtung. Dann Befreiung; erst nach drei erfolglosen Befreiungen endet die Fahrt.
+  - Alle Werte als `EXPLORE_*` in `config.py`.
+- **Ergebnis:** Neuer Test `Marlon/autonomes_fahren/test_erkunder.py` (simulierter Raum mit Wänden und Hindernissen, mit und ohne Board-Messung): Drehwinkel, Befreien statt Dauerhalt, Festfahren, keine Fehlalarme im Raum und im Mock-Raum. Alle anderen Tests bestehen, Smoke-Test 19/19. Im Mock 20 s Erkunden: fährt, keine Befreiung, Drehung +163° bei Ziel +170°.
+- **Probleme:** Die erste Festfahr-Prüfung schaute nur nach vorn. Fährt er schräg an einer Wand entlang, bleibt dieser Abstand gleich: Fehlalarm. Deshalb jetzt das Bild rundum. Im Mock gab es danach noch einen Fehlalarm, weil Strahlen an der Reichweitengrenze wegfielen und nur die gleichbleibenden Seitenwände übrig blieben; jetzt zählt auch Auftauchen/Wegfallen eines Strahls als Bewegung.
+- **Grenzen:** Durchdrehende Räder im offenen Raum ohne Board-Messung erkennt er nicht (zu wenige Strahlen in Reichweite). Ein Mensch, der sich daneben bewegt, kann die Lidar-Prüfung überdecken; Board- und Nah-Prüfung bleiben.
+- **Offen:** Bodentest: Drehwinkel gegen Lidar, Befreien aus einer Ecke, Festfahren (z. B. an einem Stuhlbein).
+
+### 03.11.2026 – Autonomie Schritt E: Bremsweg-Prüfung und Folgen-Abstand (Marlon, mit Claude)
+- **Was:** Ein zentraler Schutz im Watchdog bremst alle autonomen Fahrbefehle nach Bremsweg. Beim Folgen kommt der Abstand zur Person aus ihrem Lidar-Cluster statt aus dem kleinsten Wert im Bildwinkel.
+- **Warum:** Erkunder, Heimfahrt und Folgen prüften Hindernisse jeweils selbst, mit unterschiedlichen Regeln; ein Fehler in einem Modul hätte ungebremst gewirkt. Beim Folgen galt ein Stuhl vor der Person als ihr Abstand, der Roboter blieb stehen, obwohl sie weiterging.
+- **Änderungen:**
+  - `AutonomSchutz` (`safety/collision.py`): erlaubtes Tempo aus `v·t + v²/(2a) = frei − Rand`, `t` = Latenz + Alter des Scans, freier Weg im Fahrschlauch in Fahrtrichtung (`frei_in_richtung`). Richtung bleibt erhalten, nur das Tempo sinkt. Ohne Scan oder bei Scan älter als 0,5 s nur Drehen. Greift nur bei `quelle="autonom"`, Handsteuerung unverändert. Abschaltbar mit `AUTONOM_SCHUTZ_AKTIV`.
+  - Gebremst wird über die Rampe, nicht mit `stop()`, wegen der Stromspitzen (USB-Resets).
+  - Folgen (`interaktion/verhalten.py`): Cluster aus `navigation/hindernisse.py` im Boxbereich, Rangfolge Mensch → passt zum letzten Abstand → kein Möbelbein → Winkel. Ohne Cluster wie früher das Minimum. Eigene Hinderniserkennung, weil die des Servers mit Personenwinkeln arbeitet und dort auch ein Stuhl „Mensch“ hieße.
+  - Werte: `AUTONOM_SCHUTZ_*`, `FOLGEN_CLUSTER_*` in `config.py`.
+- **Ergebnis:** Neuer Test `Marlon/autonomes_fahren/test_schutz.py`: Bremsformel, Wand vorn/seitlich, Rückwärts und Seitwärts frei, Diagonale behält Richtung, veralteter Scan, Watchdog nur bei autonom; Folgen: Person hinter Stuhlbein (1,45 m statt 0,79 m), zwei Objekte mit/ohne letzten Abstand, nur Wand → Minimum. Alle anderen Tests bestehen, Smoke-Test 19/19. Im Mock 40 s Erkunden: fährt, kein Eingriff des Schutzes, kein Festfahren.
+- **Probleme:** Erste Testszenen waren zu streng gewählt (bei 0,5 m Wand sind rechnerisch noch 0,52 m/s erlaubt); Szenen angepasst, die Formel blieb. `Scan.min_abstand` überspringt Strahlen ohne Echo (r = 0) nicht; im Test vermieden, am Roboter prüfen, ob solche Strahlen ankommen.
+- **Offen:** Bodentest; `AUTONOM_SCHUTZ_BREMSEN` und `AUTONOM_SCHUTZ_LATENZ_S` am Roboter messen (Bremsweg aus 0,3 m/s).
+
+### 03.11.2026 – Autonomie Schritt F1: Fahrtenschreiber und Nachspielen (Marlon, mit Claude)
+- **Was:** Der Server hält immer die letzte Minute der Fahrt im Speicher (Lidar-Scans, Fahrbefehle vor und nach den Grenzen, Halts, Board-Geschwindigkeit, Pose, Zustände). Der Knopf „Fahrt speichern“ in der Web-App schreibt sie als Datei. `scripts/abspielen.py` spielt sie am eigenen Rechner nach.
+- **Warum:** Als Nächstes soll der Roboter Türen und Hindernisse geschickt umfahren und merken, wenn er hochgehoben wird. Dafür braucht es echte Fahrten zum Prüfen, sonst wird die neue Logik nur gegen die Simulation gebaut. Eine Lidar-Karte oder GPS-Ortung wurde dafür bewusst zurückgestellt; drinnen hilft GPS nicht.
+- **Änderungen:**
+  - Neues Modul `aufzeichnung.py`: Ringpuffer (`AUFZEICHNUNG_PUFFER_S` = 60 s), Speichern als gzip-JSON-Lines über eine Zwischendatei, nur die neuesten `AUFZEICHNUNG_MAX_DATEIEN` bleiben; dazu `laden`, `Wiedergabe` (spielt Scans und Odometrie zeitrichtig vor, mit derselben Schnittstelle wie Lidar und Odometrie) und `erkunder_nachspielen`.
+  - Watchdog meldet jeden Befehl und jeden Halt an den Schreiber; ein Fehler dort ist abgefangen und stört das Fahren nicht. Scans, Odometrie und Zustände sammelt eine eigene Schleife im Server im Odometrie-Takt.
+  - Neuer Befehl `record_save` (nur ergänzt) und Endpunkte `/aufzeichnung/status`, `/liste`, `/datei/<name>` (nur gültige Dateinamen, kein Pfad-Trick).
+  - `scripts/abspielen.py`: Zusammenfassung (Scan-Rate, Lücken im Lidar, wie oft der Bremsweg-Schutz gebremst hat, Zustandswechsel), SVG mit Weg und Lidar-Punkten, Vergleich mit dem aktuellen Erkunder.
+- **Ergebnis:** Neuer Test `Marlon/autonomes_fahren/test_aufzeichnung.py`: Puffer, doppelte Scans, Speichern/Laden, Aufräumen, Dateinamen, Watchdog-Haken (auch mit absichtlich kaputtem Schreiber), Wiedergabe. Eine 30-s-Erkunderfahrt in der Simulation wird aufgezeichnet, gespeichert und nachgespielt: 600 von 600 Takten gleich. Am Mock-Server: Speichern, Liste, Herunterladen und Abspielen funktionieren. Alle anderen Tests bestehen.
+- **Probleme:** Gleich wird die Wiedergabe nur mit gleichem Zufall. Ohne ihn waren es in der Simulation 59 % (der Erkunder würfelt Wanderzeiten); bei echten Fahrten zählt deshalb nur die Quote. Der Smoke-Test „Heimfahrt startet“ schlägt in etwa 2 von 3 Läufen fehl, mit und ohne diese Änderung (gegengeprüft am Stand von Schritt E); Ursache noch offen.
+- **Offen:** Am Roboter einige Fahrten mit Türen, Engstellen und Hochheben aufnehmen; prüfen, ob das Mitschreiben den Pi spürbar belastet. Danach Schritt F2: lokales Ausweichen, an diesen Aufnahmen geprüft. Flackernden Smoke-Test „Heimfahrt startet“ untersuchen.
+
+### 03.11.2026 – Autonomie Schritt F2: lokales Ausweichen und Hochheben (Marlon, mit Claude)
+- **Was:** Der Erkunder umfährt Hindernisse in Bögen, statt anzuhalten und zu drehen. Türen fährt er mittig an. Er merkt sich kurz, was neben ihm aus dem Blickfeld rutscht, und erkennt, wenn er hochgehoben oder woandershin getragen wird.
+- **Warum:** Im Alltag wird der Roboter aufgehoben, und Türen und andere Hindernisse stehen im Weg. Vorher wendete er vor jedem Hindernis, kam schlecht durch Türen und fuhr nach dem Absetzen mit veralteten Annahmen weiter. GPS hilft drinnen nicht, eine Lidar-Karte kommt später. Deshalb lokal, nur mit dem, was Lidar und Board liefern.
+- **Änderungen:**
+  - Neues Modul `navigation/ausweichen.py`:
+    - Kurzgedächtnis für Lidar-Punkte (3 s, 1 m Umkreis), mitgeführt über die Board-Geschwindigkeit.
+    - Bogenplanung: Drehraten und etwas seitliches Schieben gut eine Sekunde vorausgerechnet, Umriss des Roboters mit Rand geprüft, danach zurück auf den Kurs.
+    - Lücken- bzw. Türsuche (Mitte freier Bereiche).
+    - Hochhebe-Erkennung (Anteil veränderter 10°-Sektoren, Eigenbewegung herausgerechnet).
+  - `explorer.py`:
+    - Fährt mit `bogen_planen`; dreht erst, wenn kein sicherer Bogen passt.
+    - Wählt beim Drehen Lückenmitten.
+    - Neuer Zustand `hochgehoben`: hält an, vergisst danach Gedächtnis, Kurs und Zähler.
+    - Kein zufälliger Richtungswechsel, solange etwas näher als 0,45 m ist (`AUSWEICH_ENG_M`).
+  - Werte als `AUSWEICH_*` in `config.py`; `docs/api.md` und `docs/architektur.md` ergänzt.
+- **Ergebnis:**
+  - Neuer Test `Marlon/autonomes_fahren/test_ausweichen.py` (simulierte Welt mit Wänden, Kreisen, Kippen und Tragen), alle Fälle bestehen:
+    - Türsuche: Tür gefunden, Richtung führt sicher an beiden Pfosten vorbei.
+    - Ausweichen ohne Wenden, mit und ohne gemessene Drehrate; Flur.
+    - Drei Türdurchfahrten mittig (Versatz ≤ 2 cm, ≥ 0,33 m Abstand).
+    - Freie Türsuche aus dem Raum: 4 von 4 Läufen in 120 s hindurch.
+    - Hochheben und Absetzen erkannt (vor 5,6 s); im Zimmer kein Fehlalarm.
+  - Alle bisherigen Tests bestehen; Nachspielen weiter 600/600 gleich. Smoke-Test 19/19, bis auf das bekannte Flackern bei „Heimfahrt startet“.
+- **Probleme:**
+  - Die freie Türsuche gelang zuerst nie. Er kam mittig vor der Tür an und drehte dann genau dort um. Der Grund war nicht das Ausweichen, sondern der zufällige Richtungswechsel, der zufällig gerade fällig war. Lösung: Der Wechsel wartet, bis die Engstelle hinter ihm liegt.
+  - Langsames Tragen fiel von Runde zu Runde nicht auf, weil sich das Bild zu wenig änderte. Lösung: Mit gemessener Lage vergleicht er über ein Fenster von 1 s (`AUSWEICH_HOCH_FENSTER_S`). Gemessen: Fahrt im Zimmer höchstens 11 % veränderte Sektoren, Tragen 40–83 %.
+  - **Grenzen:**
+    - Ohne Board-Geschwindigkeit bleibt nur der Vergleich von Runde zu Runde. Schon die eigene Fahrt ändert dann bis 22 %, langsames Tragen kann so unbemerkt bleiben.
+    - Senkrecht angehoben, ohne Kippen, ändert sich das Lidar-Bild kaum. Das erkennt er nicht.
+  - Die Türmitte des freien Bereichs liegt einige Grad neben der geometrischen Mitte (30° statt 26,6°). Der Pfosten bleibt trotzdem außerhalb des Fahrschlauchs, der Test prüft deshalb diesen Abstand statt des Winkels.
+- **Offen:**
+  - Am Roboter Fahrten durch Türen und mit Hochheben aufnehmen und mit `scripts/abspielen.py` gegen den neuen Erkunder prüfen.
+  - Heck-Maß (`AUSWEICH_HINTEN_M`) nachmessen.
+  - Gewichte der Bogenbewertung an echten Fahrten abstimmen.
+
+---
+
+### 03.11.2026 – Autonomie Schritt F3: Umfahren beim Folgen und bei der Heimfahrt (Marlon, mit Claude)
+- **Was:** Das Ausweichen aus F2 gilt jetzt auch beim Folgen, Herkommen, Weggehen und auf der Heimfahrt. Steht etwas im Weg, schiebt er schräg daran vorbei und nimmt Türen mittig. Wird er dabei hochgehoben, hält er an.
+- **Warum:** Bisher konnte nur der Erkunder ausweichen. Beim Folgen blieb er vor einem Stuhl stehen und verlor die Person, die Heimfahrt hielt vor jedem Hindernis an.
+- **Änderungen:**
+  - `navigation/ausweichen.py`: neue Funktion `richtung_waehlen` (freie Richtung möglichst nah am Ziel, mit Rand, Mitte in Engstellen, Vorsprung für die zuletzt gewählte Seite).
+  - `interaktion/verhalten.py`: Umfahren und Hochhebe-Erkennung beim Folgen, Herkommen und Weggehen. Hochgehoben → BEREIT mit Ansage.
+  - `navigation/homing.py`: Umfahren statt Anhalten. Erst wenn 3 s nirgends Platz ist, hält er an und meldet, wie weit es noch ist. Hochgehoben → Abbruch. Ohne frischen Scan wie früher.
+  - `navigation/localizer.py`: `scan()` liefert die letzte frische Runde.
+  - Werte `UMFAHREN_*` und `HOME_AUSWEICH_WARTEN_S` in `config.py`; `docs/api.md` und `docs/architektur.md` ergänzt.
+- **Ergebnis:**
+  - Neuer Test `Marlon/autonomes_fahren/test_umfahren.py`, alle Fälle bestehen:
+    - Folgen um einen Stuhl: weicht seitlich aus, mindestens 0,25 m Luft, kommt bis 1,17 m an die Person.
+    - Folgen durch eine Tür: 0,25 m Luft zu den Pfosten, Endabstand 1,16 m.
+    - Heimfahrt um eine Kiste: kommt bis 0,12 m an den Startpunkt, 0,25 m Luft.
+    - Sackgasse: hält mit „Hindernis in 0.40 m, noch 3.00 m bis zum Startpunkt“ an.
+    - Hochheben beim Folgen und bei der Heimfahrt erkannt.
+  - Alle 13 Testskripte bestehen. Smoke-Test 18/19, nur das bekannte Flackern bei „Heimfahrt startet“.
+- **Probleme:**
+  - Beim Folgen um den Stuhl blieb er an dessen Ecke mit „etwas sehr nah“ stehen. Nach dem Vorbeischieben prüfte er geradeaus ohne Rand und schwenkte zu früh zurück. Lösung: Die Prüfung geradeaus nutzt denselben Rand wie das Ausweichen.
+  - Ein Testfall „Wand quer davor“ war falsch gestellt: Schräg an einer endlichen Wand vorbei ist 1 m tatsächlich frei. Der Test verlangt jetzt 2 m.
+  - **Grenzen:** Die Heimfahrt hat keine Karte. Sie kommt um einzelne Hindernisse herum, nicht durch Labyrinthe. Nach dem Hochheben bricht sie ab, weil die Position nicht mehr stimmt.
+- **Offen:**
+  - Am Roboter Folgen um Stühle und durch Türen aufnehmen und mit `scripts/abspielen.py` prüfen.
+
+### 03.11.2026 – Zweig `autonom` in `main` zusammengeführt
+- **Was:** Die Autonomie-Schritte A bis F3 in `main` gemerged. Bei Widersprüchen hat `main` Vorrang.
+- **Konflikte:** Alle in `server.py`, `config.py`, `settings.py` und `verhalten.py` waren Ergänzungen von beiden Seiten. Beide bleiben erhalten:
+  - `server.py`: Genaue Fahrbefehle (`Manoever`, Fahrvorrang über `absender`) neben `AutonomSchutz`, Fahrtenschreiber und Odometrie für Erkunder und Interaktion.
+  - `verhalten.py`: Der sanfte Start aus `main` geht vor. Folgen per App während des Anlaufs startet erst nach der Ansage, danach gilt die Zielwahl per Antippen. Beim Suchen bleibt `FOLGEN_SUCHEN_S = 0` „ohne Zeitgrenze“ (aus `main`), dazu hält die Ziel-Sperre beim Aufgeben sicher an.
+- **Angepasst:** Die genauen Fahrbefehle schicken jetzt `quelle="autonom"`. Damit gelten für sie die engere Tempogrenze und die zentrale Bremsweg-Prüfung wie für Folgen, Erkunden und Heimfahrt. Vorher liefen sie als Handsteuerung durch.
+- **Ergebnis:** Alle geänderten Dateien am Pi geparst, das ganze Paket lässt sich importieren.
+- **Offen:** Am Boden prüfen: genaue Fahrbefehle, Folgen mit sanftem Start und Antippen. Der Zweig `feat-mapping` hat mit dem Fahrschutz eine eigene zentrale Prüfung. Beim nächsten Abgleich mit `main` müssen Fahrschutz und `AutonomSchutz` zu einer Schicht zusammengeführt werden.
+
 ---
 
 ## 3. Ergebnisse und Messwerte
@@ -553,6 +696,9 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - Später: lokales LLM auf dem Hailo, Gesichter wiedererkennen, Orbbec-Tiefe für niedrige Hindernisse.
 - Diagnoseseite am Pi prüfen (Kernel-Log-Berechtigung, echte Akku- und Überlastwerte).
 - Sanftes Fahren am Boden prüfen: Folgen ohne USB-Resets, Rampe nicht zu träge.
+- Smoke-Test „Heimfahrt startet“ schlägt im Mock zeitweise fehl (auch ohne die Änderungen vom 03.11.; am 03.11. nachmittags einmal 19/19): Die Fahrt zuvor legt nur ~0,02 m zurück, die Heimfahrt endet sofort. Ursache prüfen.
+- Drehtest 90° am Boden: Blickrichtung aus der Board-Drehrate gegen den Lidar prüfen.
+- Folgen mit zwei Personen am Boden: kreuzen, kurz verdecken, gleiche Kleidung. Merkmal-Schwellen ggf. nachstellen (`ZIEL_MERKMAL_*`).
 
 ---
 

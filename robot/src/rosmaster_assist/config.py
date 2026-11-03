@@ -60,9 +60,45 @@ CAMERA_REOPEN_MAX_S = 120.0
 # ACHTUNG: Das Fahrgestell schafft rund 1 m/s, und das Expansion Board kappt
 # intern auf seinen eigenen Bereich. Werte darüber ändern am tatsächlichen
 # Tempo nichts -- die App zeigt dann mehr an, als der Roboter fährt.
-MAX_SPEED_X = 5.0      # m/s  vorwärts / rückwärts
-MAX_SPEED_Y = 5.0      # m/s  seitwärts (Mecanum)
-MAX_SPEED_OMEGA = 5.0  # rad/s  drehen
+MAX_SPEED_X = 1.0      # m/s  vorwärts / rückwärts
+MAX_SPEED_Y = 1.0      # m/s  seitwärts (Mecanum)
+MAX_SPEED_OMEGA = 3.0  # rad/s  drehen
+
+# Zusätzliche Obergrenze für alles, was der Roboter selbst entscheidet
+# (Folgen, Erkunden, Heimfahrt). Die einzelnen Modi haben eigene, meist
+# niedrigere Werte -- diese Grenze fängt nur Rechenfehler ab, damit kein
+# autonomer Modus je schneller fährt, als der Lidar Hindernisse rechtzeitig
+# sieht (7,5 Umdrehungen/s, plus Bremsweg). Die Handsteuerung ist davon
+# ausgenommen; für sie gelten MAX_SPEED_*.
+AUTONOM_MAX_SPEED = 0.35        # m/s   vx und vy
+AUTONOM_MAX_OMEGA = 1.2         # rad/s
+
+# Akku fast leer: autonome Modi fahren langsamer. Unter Last bricht die
+# Spannung zusätzlich ein, und genau dann setzt sich am X3 der USB-Hub
+# zurück -- mit halbem Tempo zieht der Antrieb deutlich weniger Strom.
+# Faktor auf AUTONOM_MAX_SPEED, sobald der Akku unter AKKU_WARN_V liegt.
+AUTONOM_AKKU_FAKTOR = 0.5
+
+# Bremsweg-Prüfung für alle autonomen Befehle im Watchdog (AutonomSchutz in
+# safety/collision.py). Erlaubt ist nur ein Tempo, bei dem der Roboter vor
+# dem nächsten Hindernis in Fahrtrichtung noch steht:
+#   frei - RAND >= v * (LATENZ + Scan-Alter) + v² / (2 * BREMSEN)
+# Die Modi halten selbst früher an; das hier ist die letzte Bremse.
+AUTONOM_SCHUTZ_AKTIV = True
+# Abstand Lidar-Mitte -> Hindernis, bei dem v = 0 ist. Kleiner als
+# EXPLORE_BEFREIEN_STOP_M (0,30) und EXPLORE_STOP_M (0,40), sonst würde die
+# Schicht das Befreien und das normale Erkunden blockieren.
+AUTONOM_SCHUTZ_RAND_M = 0.22
+AUTONOM_SCHUTZ_HALBE_BREITE_M = 0.20  # wie EXPLORE_HALF_WIDTH_M
+# Zeit von der Messung bis die Motoren reagieren (Rechnen, Board, Rampe),
+# zusätzlich zum Alter des Scans.
+AUTONOM_SCHUTZ_LATENZ_S = 0.15
+# Angenommene Bremsverzögerung. Bewusst kleiner als RAMPE_BREMSEN_XY (2,0):
+# Mecanum-Räder rutschen auf glattem Boden, und gemessen ist der Wert nicht.
+AUTONOM_SCHUTZ_BREMSEN = 1.0      # m/s²
+# Älterer Scan = kein Fahren mehr (nur Drehen). Bei 7,5 Umdrehungen/s ist
+# ein Scan im Betrieb höchstens ~0,15 s alt; 0,5 s heißt: der Lidar hängt.
+AUTONOM_SCHUTZ_SCAN_MAX_S = 0.5
 
 # --- Sicherheit ---------------------------------------------------------------
 
@@ -190,8 +226,22 @@ COLLISION_CONE_DEG = 35.0
 # Ungenauigkeit kommt ohnehin vom Radschlupf, nicht von diesem Takt.
 ODOMETRY_HZ = 20
 
-# Tempo der automatischen Heimfahrt. Bewusst gemächlich: der Roboter fährt
-# hier ohne Hinderniserkennung, da will man nicht überrascht werden.
+# Blickrichtung aus der IMU-Lage des Boards nehmen? Aus: der Sensor-Check
+# vom 28.10. zeigt, dass get_imu_attitude_data() am X3 dauerhaft 0 liefert.
+# Damit fror der Winkel ein (theta blieb bei 0, nur der Lidar-Abgleich
+# bewegte ihn), und Heimfahrt, Erkunden und Ortung rechneten mit falscher
+# Richtung. Stattdessen wird die vom Board gemessene Drehrate aufsummiert.
+# Nur einschalten, wenn die IMU nachweislich einen echten Winkel meldet --
+# selbst dann wird sie verworfen, sobald sie beim Drehen stillsteht.
+ODOM_IMU_WINKEL = False
+
+# Ab dieser Drehrate (rad/s) muss sich ein IMU-Winkel sichtbar ändern; tut
+# er das über ODOM_IMU_PRUEF_S nicht, gilt die IMU als unbrauchbar.
+ODOM_IMU_PRUEF_OMEGA = 0.3
+ODOM_IMU_PRUEF_S = 1.0
+
+# Tempo der automatischen Heimfahrt. Bewusst gemächlich: die Position stammt
+# aus der Koppelnavigation, und Umfahren (UMFAHREN_*) braucht Zeit zum Schauen.
 HOME_SPEED = 0.25        # m/s
 
 # Ab dieser Entfernung zum Startpunkt gilt die Fahrt als beendet. Kleiner
@@ -205,8 +255,9 @@ HOME_SLOWDOWN_M = 0.4
 # der Roboter bei abgedrifteter Position endlos umherfährt.
 HOME_TIMEOUT_S = 60.0
 
-# Hält der Lidar etwas näher als das in Fahrtrichtung, wird angehalten.
-# Der Roboter weicht nicht aus -- er bleibt stehen und meldet es.
+# Abstand, der in Fahrtrichtung frei bleiben muss. Ist er es nicht, schiebt
+# er schräg vorbei (UMFAHREN_*); nur wenn HOME_AUSWEICH_WARTEN_S lang
+# nirgends Platz ist, hält er an und meldet es.
 HOME_STOP_DISTANCE_M = 0.45
 
 # Halber Öffnungswinkel des überwachten Bereichs, in Grad. Zu schmal
@@ -368,9 +419,22 @@ EXPLORE_WANDER_MIN_S = 4.0
 EXPLORE_WANDER_MAX_S = 10.0
 
 # Am Boden dreht er nur ~75 % dessen, was befohlen wird (Sensor-Check:
-# 90° befohlen, 65° gedreht). Die Drehdauer wird damit verlängert, weil sich
-# auf den IMU-Winkel der Bibliothek kein Verlass ist.
+# 90° befohlen, 65° gedreht). Die Drehdauer wird damit verlängert. Gilt nur
+# noch als Rückfall, wenn das Board keine Drehrate liefert -- sonst dreht er
+# nach gemessenem Winkel (EXPLORE_DREH_*).
 EXPLORE_TURN_FACTOR = 1.3
+
+# Drehen nach Winkel: so viele Grad vor dem Ziel den Drehbefehl beenden.
+# Befehlsverzögerung und Bremsrampe drehen ihn noch ein Stück weiter.
+EXPLORE_DREH_VORHALT_GRAD = 8.0
+
+# Obergrenze einer gemessenen Drehung als Vielfaches der rechnerischen
+# Dauer -- fängt ab, dass er sich nicht dreht (z. B. eingeklemmt).
+EXPLORE_DREH_ZEIT_FAKTOR = 2.0
+
+# Nach dem Drehen entscheidet er erst mit einer Lidar-Runde, die so lange
+# nach Drehende begonnen hat (der Roboter rollt noch kurz nach).
+EXPLORE_NACHLAUF_S = 0.25
 
 # Älter darf eine Lidar-Umdrehung nicht sein, sonst fährt er blind. Der
 # echte Lidar liefert alle ~0,13 s eine Runde.
@@ -385,6 +449,124 @@ EXPLORE_PERSON_WAIT_S = 2.0
 
 # Gesamtdauer einer Erkundung; 0 = bis jemand stoppt.
 EXPLORE_TIMEOUT_S = 0.0
+
+# Rückt etwas näher als EXPLORE_NAH_M, wartet er so lange (vielleicht ein
+# Mensch, der gleich weitergeht) und schiebt sich dann frei.
+EXPLORE_NAH_WARTEN_S = 3.0
+
+# Befreien: ohne Drehung in die freieste Richtung schieben (Mecanum). So
+# langsam, dass das Heck nichts anstößt, so lange, dass es etwas bringt.
+EXPLORE_BEFREIEN_SPEED = 0.08
+EXPLORE_BEFREIEN_S = 1.5
+# In der gewählten Richtung muss mindestens so viel frei sein (ab
+# Lidar-Mitte, der Roboter selbst reicht ~0,15 m nach vorn und hinten) ...
+EXPLORE_BEFREIEN_FREI_M = 0.45
+# ... und unter diesem Wert bricht er das Schieben ab.
+EXPLORE_BEFREIEN_STOP_M = 0.30
+# So viele Befreiungen in Folge ohne freie Fahrt dazwischen, dann gibt er auf.
+EXPLORE_BEFREIEN_MAX = 3
+# So lange muss er ungehindert geradeaus fahren, damit Fehlversuche und
+# Befreiungen wieder bei null beginnen.
+EXPLORE_FREI_ZURUECK_S = 3.0
+
+# Festfahr-Erkennung: Fährt er (Befehl vx mindestens EXPLORE_FEST_MIN_VX)
+# so lange, ohne dass das Board Bewegung meldet (unter EXPLORE_FEST_V_MS)
+# oder sich das Lidar-Bild rundum in höchstens einer Richtung um mehr als
+# EXPLORE_FEST_WEG_M (bzw. 2 % des Abstands, Messrauschen) ändert, steckt er
+# fest. Muss unter den 3 s der Odometrie bleiben, nach denen sie eine
+# Stillstand meldende Messung ganz verwirft.
+EXPLORE_FEST_S = 1.5
+EXPLORE_FEST_MIN_VX = 0.05
+EXPLORE_FEST_V_MS = 0.02
+EXPLORE_FEST_WEG_M = 0.03
+
+# --- Ausweichen (Erkunder, Schritt F2) -------------------------------------------
+#
+# Lokales Ausweichen ohne Karte: kurzes Gedächtnis für Punkte, die aus dem
+# Blickfeld rutschen, Bögen statt Wenden vor Hindernissen, Türen und Lücken
+# mittig anfahren, Hochheben erkennen. Siehe navigation/ausweichen.py.
+
+# Kurzgedächtnis: Lidar-Punkte so lange und in diesem Umkreis behalten. Die
+# Lage wird aus der Board-Geschwindigkeit fortgeschrieben, die driftet --
+# deshalb nur wenige Sekunden und nur nahe Punkte.
+AUSWEICH_GEDAECHTNIS_S = 3.0
+AUSWEICH_GEDAECHTNIS_M = 1.0
+# Ein gemerkter Punkt fällt weg, wenn der Lidar jetzt in dieser Richtung um
+# so viel weiter sieht (das Ding ist weg oder war ein Messfehler).
+AUSWEICH_FREIRAEUMEN_M = 0.10
+
+# Umriss des Roboters um die Lidar-Mitte (m) für die Bogenplanung. Breite
+# 0,245 m; vorn ~0,15 m wie bei EXPLORE_STOP_M. Heck am Roboter nachmessen.
+AUSWEICH_VORN_M = 0.15
+AUSWEICH_HINTEN_M = 0.15
+AUSWEICH_HALBE_BREITE_M = 0.13
+
+# Bogenplanung: so weit (s) und in diesen Schritten vorausrechnen. Ein Bogen
+# taugt nur, wenn der Umriss überall mindestens AUSWEICH_RAND_M Luft hat.
+AUSWEICH_HORIZONT_S = 1.2
+AUSWEICH_SCHRITT_S = 0.1
+AUSWEICH_RAND_M = 0.05
+# Kandidaten: Drehraten (rad/s) und seitliche Geschwindigkeiten (m/s).
+AUSWEICH_OMEGAS = (-0.6, -0.45, -0.3, -0.15, 0.0, 0.15, 0.3, 0.45, 0.6)
+AUSWEICH_VYS = (-0.08, 0.0, 0.08)
+# Gewichte der Bewertung: zurück auf den gewählten Kurs, Luft zum nächsten
+# Hindernis, Tempo, Weite in Fahrtrichtung am Ende des Bogens, ruhiges
+# Lenken (Sprünge in omega), seitliches Schieben nur wenn nötig. RUCK klein
+# halten, sonst wiegt er die Kurskorrektur immer auf und der Roboter lenkt
+# nie zurück; SEITLICH so, dass er neben Hindernissen (Türrahmen,
+# Stuhlbein) noch seitlich wegschiebt -- wie früher bei EXPLORE_SIDE_M.
+AUSWEICH_GEWICHT_KURS = 1.0
+AUSWEICH_GEWICHT_LUFT = 1.0
+AUSWEICH_GEWICHT_TEMPO = 0.5
+AUSWEICH_GEWICHT_WEITE = 1.5
+AUSWEICH_GEWICHT_RUCK = 0.2
+AUSWEICH_GEWICHT_SEITLICH = 0.25
+# Bis zu diesem Abstand (m) zählt mehr Luft bzw. Weite als besser.
+AUSWEICH_LUFT_GUT_M = 0.30
+AUSWEICH_WEITE_GUT_M = 2.0
+
+# Lücken und Türen: Richtungen in diesem Raster (Grad) prüfen. Von einem
+# freien Bereich nimmt er die Mitte und Richtungen mit mindestens
+# AUSWEICH_LUECKE_RAND_GRAD Abstand zum Rand -- nicht knapp am Türrahmen.
+AUSWEICH_LUECKE_RASTER_GRAD = 2
+AUSWEICH_LUECKE_RAND_GRAD = 10
+# Ist etwas näher als das (Türrahmen, Engstelle), verschiebt er den
+# zufälligen Richtungswechsel, bis er hindurch ist.
+AUSWEICH_ENG_M = 0.45
+
+# Hochheben: Aufeinanderfolgende Runden (Eigenbewegung herausgerechnet) in
+# 10°-Sektoren vergleichen. Ändert sich ein Sektor um mehr als
+# AUSWEICH_HOCH_SPRUNG_M, zählt er als verändert. Ab AUSWEICH_HOCH_ANTEIL
+# veränderter Sektoren in AUSWEICH_HOCH_RUNDEN Runden hintereinander gilt
+# er als hochgehoben; wieder abgesetzt, wenn die Runden AUSWEICH_HOCH_RUHE_S
+# lang unter AUSWEICH_HOCH_RUHIG_ANTEIL bleiben. Ein Mensch dicht daneben
+# deckt nur ~4 von 36 Sektoren ab. Mit gemessener Lage vergleicht er über
+# AUSWEICH_HOCH_FENSTER_S statt von Runde zu Runde -- so fällt auch
+# langsames Tragen auf, das die Räder nicht melden.
+AUSWEICH_HOCH_SPRUNG_M = 0.30
+AUSWEICH_HOCH_ANTEIL = 0.5
+AUSWEICH_HOCH_RUNDEN = 2
+AUSWEICH_HOCH_RUHIG_ANTEIL = 0.15
+AUSWEICH_HOCH_RUHE_S = 2.0
+AUSWEICH_HOCH_FENSTER_S = 1.0
+
+# Umfahren beim Folgen und auf der Heimfahrt (Schritt F3). Dort gibt es ein
+# Ziel; ist der Weg dorthin versperrt, schiebt er schräg daran vorbei
+# (ausweichen.richtung_waehlen). Frei sein müssen höchstens VORAUS_M plus
+# Stoppabstand -- weiter vorn sieht er es rechtzeitig wieder. Gesucht wird
+# bis MAX_GRAD neben der Zielrichtung im Raster RASTER_GRAD. Die zuletzt
+# gewählte Seite bekommt SEITE_GRAD Vorsprung (sonst Pendeln vor breiten
+# Hindernissen), und zum Rand des freien Bereichs hält er RAND_GRAD Abstand,
+# in schmalen Durchgängen nimmt er die Mitte.
+UMFAHREN_VORAUS_M = 0.8
+UMFAHREN_MAX_GRAD = 75.0
+UMFAHREN_RASTER_GRAD = 5.0
+UMFAHREN_SEITE_GRAD = 20.0
+UMFAHREN_RAND_GRAD = 10.0
+
+# Heimfahrt: So lange darf in keiner Richtung Platz sein, bevor sie aufgibt.
+# Kurz, damit ein vorbeigehender Mensch sie nicht beendet.
+HOME_AUSWEICH_WARTEN_S = 3.0
 
 # --- Hinderniserkennung ----------------------------------------------------------
 
@@ -563,6 +745,20 @@ FOLGEN_VOLL_WINKEL = 10.0
 # kein Punkt liegt.
 FOLGEN_HALTEN_S = 0.5
 
+# Abstand zur Person aus dem Lidar-Cluster statt aus dem kleinsten Wert im
+# Bildwinkel der Box: Ein Stuhl oder Tisch vor der Person würde sonst als
+# ihr Abstand gelesen, und der Roboter bliebe stehen, während sie
+# weitergeht. Gesucht werden Cluster (navigation/hindernisse.py) im
+# Winkelbereich der Box, erweitert um diesen Rand -- Kamera und Lidar sehen
+# nicht exakt zur selben Zeit, beim Drehen verschiebt sich das um einige Grad.
+FOLGEN_CLUSTER_RAND_GRAD = 5.0
+# Weicht ein Cluster um mehr als das vom letzten guten Abstand ab, ist er
+# wahrscheinlich nicht die Person (bei 0,3 m/s Schritttempo legt sie in
+# FOLGEN_CLUSTER_GUT_S höchstens ~0,3 m zurück). Gilt nur, solange der
+# letzte gute Abstand jünger ist als FOLGEN_CLUSTER_GUT_S.
+FOLGEN_CLUSTER_SPRUNG_M = 0.5
+FOLGEN_CLUSTER_GUT_S = 1.0
+
 # War etwas sehr nah (EXPLORE_NAH_M), bleibt er noch so lange stehen,
 # nachdem es frei ist -- sonst flackert er an der Grenze zwischen Halt
 # und Fahrt.
@@ -601,6 +797,50 @@ INTERAKTION_SPRUNG_GRAD = 15.0
 # zu Ende ist. Am 03.11. starteten Posenerkennung, Sprechen und Motoren in
 # derselben Sekunde, und die USB-Versorgung brach zusammen. 0 = sofort.
 INTERAKTION_ANLAUF_S = 5.0
+
+# --- Ziel-Lock beim Folgen (interaktion/ziel.py) -----------------------------
+# Früher folgte er immer der nächstgelegenen bzw. größten Person -- nach
+# einer Suche oder beim Kreuzen sprang er so auf Fremde über. Jetzt hält
+# ein Tracker IDs über Bilder hinweg, und das Ziel wird zusätzlich an der
+# Farbe des Oberkörpers (HSV-Histogramm) wiedererkannt. Im Zweifel bleibt
+# er stehen, statt zu raten.
+
+# So lange wird das Aussehen des Ziels nach dem Start gelernt, bevor es als
+# bestätigt gilt (er fährt währenddessen schon).
+ZIEL_ERFASSEN_S = 1.0
+
+# So viele Bilder in Folge muss ein Kandidat passen, bevor er nach einer
+# Verdeckung wieder als Ziel gilt -- und so viele Fehlbilder in Folge
+# lösen das Ziel von seinem Track.
+ZIEL_BESTAETIGEN_BILDER = 5
+
+# Größter Bhattacharyya-Abstand (0 = gleich, 1 = völlig verschieden), bei
+# dem ein Merkmal noch als „dieselbe Person“ gilt. Am Roboter prüfen: hängt
+# stark von Licht und Kleidung ab.
+ZIEL_MERKMAL_SCHWELLE = 0.5
+
+# Beim Wiederfinden muss der beste Kandidat um mindestens so viel besser
+# passen als der zweitbeste. Sonst sind zwei Personen zu ähnlich (z. B.
+# gleich gekleidet) -- dann hält er sicher an.
+ZIEL_MERKMAL_MARGE = 0.15
+
+# Winkelfenster um die vorhergesagte Position, in dem eine Erkennung dem
+# Track zugeordnet werden darf (wächst mit der Unsicherheit bis zum
+# Dreifachen).
+ZIEL_GATE_GRAD = 15.0
+
+# Wie stark das gelernte Merkmal je Bild nachgeführt wird (Licht ändert
+# sich beim Gehen durch den Raum). Nur bei eindeutiger Szene und gutem
+# Treffer -- sonst lernt er schleichend eine fremde Person.
+ZIEL_MERKMAL_NACHFUEHREN = 0.05
+
+# So lange bleibt ein Track ohne Messung erhalten (vorhergesagt), bevor er
+# verworfen wird.
+ZIEL_TRACK_HALTEN_S = 1.5
+
+# Höchstens so stark darf sich die Boxhöhe zwischen Vorhersage und Messung
+# ändern (Verhältnis klein/groß), sonst ist es nicht derselbe Track.
+ZIEL_HOEHE_VERHAELTNIS = 0.6
 
 # --- Diagnose (Seite /diagnose) ------------------------------------------------
 # Wie oft die schnellen Messungen laufen (Akku, USB-Überlastzähler, Geräte-
@@ -685,6 +925,18 @@ SCHLEIFENFEHLER_LOG_S = 10.0
 # Anlaufstrom mehr, sondern ein Dauerfehler an der Stromversorgung der
 # USB-Buchsen. Am 29.10. waren es im Leerlauf 300-400 pro Minute.
 USB_STURM_PRO_MIN = 20
+
+# --- Fahrtenschreiber (aufzeichnung.py, seit 03.11.) ---------------------------
+# Hält die letzten Sekunden einer Fahrt (Lidar-Runden, Fahrbefehle,
+# Board-Geschwindigkeit, Zustände) im Speicher. Erst "Fahrt speichern" in der
+# App schreibt sie auf die Karte; ausgewertet wird mit scripts/abspielen.py.
+AUFZEICHNUNG_AKTIV = True
+# Eine Minute reicht, um die Lage vor einem Fehler zu sehen, und braucht
+# rund 10 MB Speicher (450 Lidar-Runden mit je ~360 Punkten).
+AUFZEICHNUNG_PUFFER_S = 60.0
+AUFZEICHNUNG_ORDNER = Path.home() / ".rosmaster" / "aufzeichnungen"
+# Eine Datei hat gepackt einige hundert KB; ältere werden gelöscht.
+AUFZEICHNUNG_MAX_DATEIEN = 20
 
 # --- Musik ("MUKKE") ----------------------------------------------------------------
 

@@ -29,6 +29,7 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 
 from .. import config, settings
+from ..aufzeichnung import Fahrtenschreiber
 from ..diagnose import Diagnose, LogPuffer
 from ..drive.base import DriveBase
 from ..audio.mukke import Mukke, MukkeFehler
@@ -49,7 +50,7 @@ from ..protocol import (
 )
 from ..navigation import Erkunder, Hinderniserkennung, Homing, Localizer, Manoever, Odometry
 from ..navigation import manoever as mv
-from ..safety import CollisionGuard, SafetyWatchdog
+from ..safety import AutonomSchutz, CollisionGuard, SafetyWatchdog
 from ..sensors.camera import CameraService, create_cameras
 from ..sensors.lidar import LidarService, create_lidar
 from ..sensors.personen import Personenerkennung
@@ -200,12 +201,15 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     localizer = Localizer(odometry, lidar)
     homing = Homing(watchdog, odometry, localizer)
     guard = CollisionGuard(localizer)
+    if lidar is not None:
+        # Letzte Bremse für Folgen, Erkunden und Heimfahrt, siehe watchdog.py.
+        watchdog.autonom_schutz = AutonomSchutz(lidar)
     erkennung = Hinderniserkennung()
     # Personenerkennung und Posenerkennung (Gesten, Folgen) schauen beide
     # durch die Personenkamera (C270), siehe docs/interaktion.md.
     personen_kamera = kameras.get(config.PERSON_CAMERA, camera)
     personen = Personenerkennung(personen_kamera)
-    erkunder = Erkunder(watchdog, lidar, erkennung, personen)
+    erkunder = Erkunder(watchdog, lidar, erkennung, personen, odometry=odometry)
     manoever = Manoever(watchdog, driver, lidar)
     pose = Posenerkennung(personen_kamera, mock=use_mock_camera)
     mukke = Mukke()
@@ -216,7 +220,9 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     )
     # Der Antrieb wird gefragt, damit die Interaktion ohne Board gar nicht
     # erst losfährt (und nach dem Neuverbinden nicht von selbst).
-    interaktion = Interaktion(watchdog, lidar, pose, stimme, antrieb=lambda: driver.connected)
+    interaktion = Interaktion(
+        watchdog, lidar, pose, stimme, antrieb=lambda: driver.connected, odometry=odometry
+    )
     # Bekommt die Stimme, um wegzuhören, solange der Roboter selbst spricht
     # (sonst versteht er sich selbst), und MUKKE: Bei laufender Musik gilt
     # nur Stopp und "Musik aus", sonst wird der Gesang zu Befehlen.
@@ -234,6 +240,15 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         driver, watchdog, lidar, kameras, pose, log_puffer, mock=use_mock_camera
     )
     diagnose.absturz_einrichten()
+
+    # Fahrtenschreiber: hält die letzte Minute im Speicher, gespeichert wird
+    # nur auf Knopfdruck (siehe aufzeichnung.py).
+    aufzeichnung = Fahrtenschreiber() if config.AUFZEICHNUNG_AKTIV else None
+    if aufzeichnung is not None:
+        aufzeichnung.kopf = {
+            "antrieb": driver.name, "mock": bool(use_mock_camera), "lidar": lidar is not None,
+        }
+        watchdog.aufzeichnung = aufzeichnung
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -289,6 +304,14 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             (puls_task, "Puls"),
         ]:
             diagnose.task_ueberwachen(task, name)
+        aufz_task = None
+        if aufzeichnung is not None:
+            aufz_task = asyncio.create_task(
+                _aufzeichnung_loop(
+                    aufzeichnung, watchdog, odometry, lidar, erkunder, interaktion, homing
+                )
+            )
+            diagnose.task_ueberwachen(aufz_task, "Fahrtenschreiber")
         # Der Abgleich endet ohne Lidar von selbst -- nur Fehler melden.
         diagnose.task_ueberwachen(match_task, "Lidar-Abgleich", endlos=False)
         try:
@@ -299,6 +322,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             # nicht als Absturz zählen.
             diagnose.sauber_beendet()
             puls_task.cancel()
+            if aufz_task is not None:
+                aufz_task.cancel()
             # Reihenfolge ist wichtig: erst Statusmeldungen beenden, dann
             # Watchdog (der hält an), dann die Hardware trennen.
             status_task.cancel()
@@ -350,7 +375,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                 try:
                     reply = await _handle(
                         msg, watchdog, driver, hub, odometry, homing, localizer, guard,
-                        erkunder, interaktion, stimme, sprache, manoever=manoever, absender=ws,
+                        erkunder, interaktion, stimme, sprache, aufzeichnung,
+                        manoever=manoever, absender=ws,
                     )
                 except Exception:
                     # Früher trennte ein fehlerhafter Befehl die Verbindung --
@@ -619,7 +645,40 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
 
         Leer, solange die Interaktion aus ist -- dann rechnet der Hailo nicht.
         """
-        return {"personen": pose.personen(), "skelett": SKELETT}
+        # Das Aussehensmerkmal (Farbhistogramm) bleibt im Roboter -- die App
+        # braucht es nicht, und es bläht jede Antwort auf. Dazu kommen die
+        # Track-ID (zum Antippen) und ob die Person das gesperrte Ziel ist.
+        personen = interaktion.personen_mit_id(pose.personen())
+        return {"personen": personen, "skelett": SKELETT}
+
+    # --- Fahrtenschreiber ---
+
+    @app.get("/aufzeichnung/status")
+    async def aufzeichnung_status():
+        """Füllstand des Puffers und zuletzt gespeicherte Datei."""
+        if aufzeichnung is None:
+            return {"aktiv": False}
+        return aufzeichnung.status()
+
+    @app.get("/aufzeichnung/liste")
+    async def aufzeichnung_liste():
+        """Gespeicherte Fahrten, neueste zuerst."""
+        if aufzeichnung is None:
+            return {"dateien": []}
+        return {"dateien": await asyncio.to_thread(aufzeichnung.liste)}
+
+    @app.get("/aufzeichnung/datei/{name}")
+    async def aufzeichnung_datei(name: str):
+        """Eine gespeicherte Fahrt herunterladen (zum Abspielen am Rechner)."""
+        pfad = aufzeichnung.datei(name) if aufzeichnung is not None else None
+        if pfad is None:
+            return JSONResponse({"fehler": "keine solche Aufzeichnung"}, status_code=404)
+        daten = await asyncio.to_thread(pfad.read_bytes)
+        return Response(
+            daten,
+            media_type="application/gzip",
+            headers={"Content-Disposition": f'attachment; filename="{pfad.name}"'},
+        )
 
     # --- Diagnose ---
 
@@ -973,6 +1032,7 @@ async def _handle(
     interaktion: Interaktion | None = None,
     stimme: Stimme | None = None,
     sprache: Spracherkennung | None = None,
+    aufzeichnung: Fahrtenschreiber | None = None,
     manoever: Manoever | None = None,
     absender: object | None = None,
 ) -> dict[str, Any] | None:
@@ -1114,7 +1174,10 @@ async def _handle(
                 manoever.abbrechen("Interaktion gestartet")
         if kind == "follow":
             war_aktiv = interaktion.aktiv
-            if interaktion.folgen() and not war_aktiv:
+            ziel_id = msg.get("ziel_id")
+            if isinstance(ziel_id, bool) or not isinstance(ziel_id, (int, type(None))):
+                return alert_message("warning", "ziel_id muss eine Zahl sein")
+            if interaktion.folgen(ziel_id) and not war_aktiv:
                 await hub.broadcast(alert_message("info", "Interaktion an -- folge dir"))
         elif interaktion.start():
             await hub.broadcast(
@@ -1126,6 +1189,26 @@ async def _handle(
         if interaktion is not None:
             interaktion.folgen_stop()
         return None
+
+    if kind in ("follow_pause", "follow_resume"):
+        # Pause hält an, das Ziel bleibt gesperrt -- anders als follow_stop.
+        if interaktion is not None:
+            if kind == "follow_pause":
+                interaktion.pausieren()
+            else:
+                interaktion.fortsetzen()
+        return None
+
+    if kind == "record_save":
+        if aufzeichnung is None:
+            return alert_message("warning", "Fahrtenschreiber ist ausgeschaltet")
+        notiz = msg.get("notiz", "")
+        if not isinstance(notiz, str):
+            notiz = ""
+        # gzip und SD-Karte brauchen einige hundert Millisekunden -- nicht in
+        # der Ereignisschleife, sonst stockt der Watchdog-Takt.
+        pfad = await asyncio.to_thread(aufzeichnung.speichern, notiz)
+        return alert_message("info", f"Fahrt gespeichert: {pfad.name}")
 
     if kind == "interaction_stop":
         if interaktion is not None:
@@ -1340,6 +1423,43 @@ async def _odometry_loop(watchdog: SafetyWatchdog, odometry: Odometry) -> None:
             odometry.update(watchdog.current_command)
         except Exception:
             _schleifenfehler("Positionsverfolgung")
+
+
+async def _aufzeichnung_loop(
+    aufzeichnung: Fahrtenschreiber,
+    watchdog: SafetyWatchdog,
+    odometry: Odometry,
+    lidar: LidarService | None,
+    erkunder: Erkunder,
+    interaktion: Interaktion,
+    homing: Homing,
+) -> None:
+    """Füttert den Fahrtenschreiber mit Scans, Eigenbewegung und Zuständen.
+
+    Im Odometrie-Takt, damit jeder Fahrbefehl einen Odometrie-Wert in der
+    Nähe hat. Fahrbefehle selbst kommen direkt aus dem Watchdog.
+    """
+    takt = 1.0 / max(1, config.ODOMETRY_HZ)
+    while True:
+        await asyncio.sleep(takt)
+        try:
+            if lidar is not None:
+                aufzeichnung.scan(lidar.latest())
+            aufzeichnung.odo(
+                odometry.geschwindigkeit(), odometry.pose(),
+                watchdog.current_command, odometry.misst_tatsaechlich,
+            )
+            e = erkunder.zustand()
+            i = interaktion.zustand()
+            aufzeichnung.zustand(
+                erkunder=e.get("zustand"),
+                erkunder_text=e.get("text"),
+                erkunder_grund=e.get("grund"),
+                interaktion=i.get("modus") if interaktion.aktiv else None,
+                heimfahrt=bool(homing.aktiv),
+            )
+        except Exception:
+            _schleifenfehler("Fahrtenschreiber")
 
 
 async def _puls_loop(diagnose: Diagnose) -> None:

@@ -270,7 +270,15 @@ class Posenerkennung:
             self._fehler = None
 
     def _erkennen(self, hailo: "_Hailo") -> list[dict] | None:
-        frame = self._camera.latest() if self._camera is not None else None
+        if self._camera is None:
+            return None
+        # Mit Aufnahmezeit, wo die Kamera sie kennt: "zeit" einer Person soll
+        # sagen, wann das Bild entstand, nicht wann der Hailo fertig war --
+        # sonst rechnet das Folgen mit einem bis zu ~100 ms zu späten Winkel.
+        if hasattr(self._camera, "latest_mit_zeit"):
+            frame, aufnahme = self._camera.latest_mit_zeit()
+        else:
+            frame, aufnahme = self._camera.latest(), 0.0
         if frame is None:
             return None
         cv2, np = self._cv2, self._np
@@ -301,14 +309,20 @@ class Posenerkennung:
             personen.append(_person(
                 [bx[0], by[0], bx[1], by[1]],
                 [[float(x), float(y), float(c)] for x, y, c in zip(kx, ky, kp[:, 2])],
-                float(score), w / h, self.fov_deg,
+                float(score), w / h, self.fov_deg, aufnahme or None,
             ))
+            # Aussehen für den Ziel-Lock (interaktion/ziel.py). Hier, weil
+            # nur der Pose-Thread das dekodierte Bild hat.
+            merkmal = rumpf_merkmal(cv2, np, bild, personen[-1]["kp"])
+            if merkmal is not None:
+                personen[-1]["merkmal"] = merkmal
         personen.sort(key=lambda p: -(p["box"][3] - p["box"][1]))
         return personen
 
 
 def _person(
-    box, kp, score: float, seitenverhaeltnis: float, fov: float | None = None
+    box, kp, score: float, seitenverhaeltnis: float, fov: float | None = None,
+    zeit: float | None = None,
 ) -> dict:
     mitte = (box[0] + box[2]) / 2
     return {
@@ -317,8 +331,36 @@ def _person(
         "score": round(score, 2),
         "winkel": round((0.5 - mitte) * (fov if fov is not None else config.CAMERA_FOV_DEG), 1),
         "seitenverhaeltnis": round(seitenverhaeltnis, 3),
-        "zeit": time.monotonic(),
+        "zeit": zeit if zeit is not None else time.monotonic(),
     }
+
+
+def rumpf_merkmal(cv2, np, bild, kp) -> list[float] | None:
+    """Farbhistogramm (H-S, 16x8) des Oberkörpers, normiert auf Summe 1.
+
+    Der Rumpf zwischen Schultern und Hüften ist von vorn wie von hinten
+    sichtbar und trägt meist die markanteste Farbe (Oberteil). Gesichter
+    werden bewusst nicht genutzt. None, wenn Schultern/Hüften nicht sicher
+    erkannt sind -- ein Histogramm vom Hintergrund wäre schlimmer als keins.
+    """
+    punkte = [kp[i] for i in (KP_SCHULTER_L, KP_SCHULTER_R, KP_HUEFTE_L, KP_HUEFTE_R)]
+    if any(c < 0.3 for _, _, c in punkte):
+        return None
+    h, w = bild.shape[:2]
+    xs = [x * w for x, _, _ in punkte]
+    ys = [y * h for _, y, _ in punkte]
+    # Etwas nach innen, damit Arme und Hintergrund am Rand nicht mitzählen.
+    rand_x = (max(xs) - min(xs)) * 0.15
+    x1, x2 = int(min(xs) + rand_x), int(max(xs) - rand_x)
+    y1, y2 = int(min(ys)), int(max(ys))
+    if x2 - x1 < 4 or y2 - y1 < 4:
+        return None
+    hsv = cv2.cvtColor(bild[y1:y2, x1:x2], cv2.COLOR_BGR2HSV)
+    hist = cv2.calcHist([hsv], [0, 1], None, [16, 8], [0, 180, 0, 256]).flatten()
+    summe = float(hist.sum())
+    if summe <= 0:
+        return None
+    return [round(float(v) / summe, 4) for v in hist]
 
 
 # --- Hailo -----------------------------------------------------------------------
@@ -463,8 +505,62 @@ _SIM_ABLAUF = [
 ]
 
 
+#: Zweite, kleinere (weiter entfernte) Person: läuft in diesem Abschnitt
+#: des Durchlaufs einmal quer durchs Bild und kreuzt dabei die erste. So
+#: lässt sich der Ziel-Lock auch ohne Roboter beobachten.
+_SIM_ZWEITE = (20.0, 34.0)
+
+
+def _sim_merkmal(farbton: int, saettigung: int) -> list[float]:
+    """Künstliches Rumpf-Histogramm (16x8): eine Farbe, etwas verschmiert."""
+    hist = [0.0] * 128
+    for dh, ds, anteil in ((0, 0, 0.6), (1, 0, 0.15), (-1, 0, 0.15), (0, -1, 0.1)):
+        h = (farbton + dh) % 16
+        s_ = max(0, min(7, saettigung + ds))
+        hist[h * 8 + s_] += anteil
+    return hist
+
+
 def _simulierte_personen(t: float) -> list[dict]:
-    """Eine Person, die langsam hin und her geht und Gesten zeigt."""
+    """Eine Person, die langsam hin und her geht und Gesten zeigt.
+
+    Zeitweise läuft eine zweite, kleinere vorbei (``_SIM_ZWEITE``). Die
+    erste bleibt die größte und steht daher immer vorn in der Liste.
+    """
+    personen = [_sim_hauptperson(t)]
+    rest = t % sum(d for d, _ in _SIM_ABLAUF)
+    von, bis = _SIM_ZWEITE
+    if von <= rest < bis:
+        anteil = (rest - von) / (bis - von)
+        mx = 0.9 - 0.8 * anteil
+        kp, box = _sim_koerper(mx, 0.3, 0.45, 0.04)
+        zweite = _person(box, [[x, yy, 0.9] for x, yy in kp], 0.85,
+                         config.CAMERA_WIDTH / config.CAMERA_HEIGHT)
+        zweite["merkmal"] = _sim_merkmal(10, 5)  # blaues Oberteil
+        personen.append(zweite)
+    return personen
+
+
+def _sim_koerper(mx: float, oben: float, hoehe: float, e: float):
+    """Körperpunkte (ohne Geste) und Box einer stehenden Person."""
+
+    def y(anteil: float) -> float:
+        return oben + anteil * hoehe
+
+    kp = [[mx, y(0.07)], [mx + e * 0.3, y(0.05)], [mx - e * 0.3, y(0.05)],
+          [mx + e * 0.6, y(0.06)], [mx - e * 0.6, y(0.06)],
+          [mx + e, y(0.2)], [mx - e, y(0.2)],             # Schultern L, R
+          [mx + e * 1.2, y(0.35)], [mx - e * 1.2, y(0.35)],  # Ellbogen
+          [mx + e * 1.1, y(0.5)], [mx - e * 1.1, y(0.5)],    # Handgelenke
+          [mx + e * 0.7, y(0.52)], [mx - e * 0.7, y(0.52)],  # Hüften
+          [mx + e * 0.7, y(0.74)], [mx - e * 0.7, y(0.74)],
+          [mx + e * 0.7, y(0.96)], [mx - e * 0.7, y(0.96)]]
+    box = [mx - e * 2.5, oben, mx + e * 2.5, oben + hoehe]
+    return kp, box
+
+
+def _sim_hauptperson(t: float) -> dict:
+    """Die erste Person: geht langsam hin und her und zeigt die Gesten."""
     dauer = sum(d for d, _ in _SIM_ABLAUF)
     rest = t % dauer
     geste, seit = None, 0.0
@@ -485,15 +581,7 @@ def _simulierte_personen(t: float) -> list[dict]:
     def y(anteil: float) -> float:
         return oben + anteil * hoehe
 
-    kp = [[mx, y(0.07)], [mx + e * 0.3, y(0.05)], [mx - e * 0.3, y(0.05)],
-          [mx + e * 0.6, y(0.06)], [mx - e * 0.6, y(0.06)],
-          [mx + e, y(0.2)], [mx - e, y(0.2)],             # Schultern L, R
-          [mx + e * 1.2, y(0.35)], [mx - e * 1.2, y(0.35)],  # Ellbogen
-          [mx + e * 1.1, y(0.5)], [mx - e * 1.1, y(0.5)],    # Handgelenke
-          [mx + e * 0.7, y(0.52)], [mx - e * 0.7, y(0.52)],  # Hüften
-          [mx + e * 0.7, y(0.74)], [mx - e * 0.7, y(0.74)],
-          [mx + e * 0.7, y(0.96)], [mx - e * 0.7, y(0.96)]]
-
+    kp, box = _sim_koerper(mx, oben, hoehe, e)
     schulter_y = y(0.2)
     if geste == "folgen":  # rechter Arm gestreckt über den Kopf
         kp[KP_ELLBOGEN_R] = [mx - e * 1.2, schulter_y - ey * 1.2]
@@ -512,5 +600,6 @@ def _simulierte_personen(t: float) -> list[dict]:
         anteil = (seit * 1.2) % 1.0  # Sägezahn: raus, schnell zurück
         kp[KP_HAND_R] = [mx - e * (0.5 + 3.0 * anteil), schulter_y + ey * 0.8]
 
-    box = [mx - e * 2.5, oben, mx + e * 2.5, oben + hoehe]
-    return [_person(box, [[x, yy, 0.9] for x, yy in kp], 0.9, seitenverhaeltnis)]
+    person = _person(box, [[x, yy, 0.9] for x, yy in kp], 0.9, seitenverhaeltnis)
+    person["merkmal"] = _sim_merkmal(1, 6)  # rotes Oberteil
+    return person

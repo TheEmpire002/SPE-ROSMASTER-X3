@@ -163,8 +163,11 @@ Reihenfolge:
 | `home_cancel` | – | Heimfahrt abbrechen und anhalten. | `alert` an alle |
 | `interaction_start` | – | Interaktionsmodus an: Der Roboter wartet auf Handzeichen (siehe „Interaktion im Detail“). Braucht Lidar und Posenerkennung; bricht Heimfahrt und autonomes Fahren ab. | `alert` an alle; sonst `alert` (warning) |
 | `interaction_stop` | – | Interaktionsmodus aus und anhalten. | `alert` an alle |
-| `follow` | – | „Folge mir“ ohne Geste. Schaltet den Interaktionsmodus bei Bedarf mit ein. | `alert` an alle |
-| `follow_stop` | – | Folgen beenden, anhalten; der Interaktionsmodus bleibt an. | `alert` an alle |
+| `follow` | `ziel_id` (optional, Zahl) | „Folge mir“ ohne Geste. Schaltet den Interaktionsmodus bei Bedarf mit ein. Mit `ziel_id` (die `id` einer Person aus `/interaktion/pose`) folgt er genau dieser Person, auch als Wechsel während des Folgens. Ist sie nicht mehr im Bild, lehnt er ab. | `alert` an alle |
+| `follow_pause` | – | Anhalten, das Ziel bleibt gemerkt (neu 03.11.). Nur in `folgen`, `herkommen`, `weggehen`, `sucht`. | – |
+| `follow_resume` | – | Nach `follow_pause` weiterfahren, zum selben Ziel. | – |
+| `follow_stop` | – | Folgen beenden, anhalten, Ziel freigeben; der Interaktionsmodus bleibt an. Quittiert auch ein `safe_stop`. | `alert` an alle |
+| `record_save` | `notiz` (string, optional, höchstens 200 Zeichen) | Die letzte Minute des Fahrtenschreibers als Datei speichern (neu 03.11., siehe „Fahrtenschreiber“ unter HTTP). Fährt nicht. | `alert` (info) „Fahrt gespeichert: <name>“; ausgeschaltet `alert` (warning) |
 | `say` | `text` (string, höchstens 300 Zeichen), `vorrang` (bool, optional) | Über den Lautsprecher sprechen (siehe „Stimme im Detail“). `vorrang: true` bricht den laufenden Satz ab und leert die Warteschlange. | keine; ohne `text` `error`, ohne Lautsprecher/Synthese `alert` (warning) |
 | `say_stop` | – | Sofort verstummen, Warteschlange leeren. | keine |
 | `speech` | `text` (string) | Text so behandeln, als wäre er ins Mikrofon gesprochen worden (siehe „Sprachbefehle im Detail“). Zum Ausprobieren ohne Mikrofon und in `--mock`. | `alert` „Sprachbefehl: …“ an alle, wenn ein Befehl erkannt wurde; sonst `alert` (info) „Kein Befehl erkannt …“; ohne `text` `error` |
@@ -182,8 +185,15 @@ Ein unbekannter `type` liefert `{"type": "error", "text": "Unbekannter Nachricht
 **`limits`**: einmal beim Verbinden.
 
 ```json
-{"type": "limits", "max_vx": 5.0, "max_vy": 5.0, "max_omega": 5.0}
+{"type": "limits", "max_vx": 1.0, "max_vy": 1.0, "max_omega": 3.0}
 ```
+
+Das sind die Grenzen der Handsteuerung (`MAX_SPEED_*`). Folgen, Erkunden und
+Heimfahrt sind zusätzlich auf `AUTONOM_MAX_SPEED` (0,35 m/s) und
+`AUTONOM_MAX_OMEGA` (1,2 rad/s) begrenzt, bei schwachem Akku auf die Hälfte.
+Außerdem bremst der Roboter autonome Fahrt so, dass er vor dem nächsten
+Lidar-Punkt in Fahrtrichtung anhalten kann; ohne frische Lidar-Daten dreht
+er nur noch.
 
 **`state`**: alle 0,5 s an alle Clients.
 
@@ -246,8 +256,16 @@ der Roboter dafür nicht drehen. Die Werte stehen in `config.py`:
 - Tempo `HOME_SPEED` (0,25 m/s), langsamer ab 0,4 m vor dem Ziel
 - angekommen bei weniger als `HOME_TOLERANCE_M` (0,12 m) Abstand
 - bricht nach `HOME_TIMEOUT_S` (60 s) ab
-- **weicht nicht aus**: steht etwas näher als 0,45 m in Fahrtrichtung, hält
-  er an und meldet das
+- **umfährt Hindernisse** (neu 03.11., F3): Steht etwas auf dem Weg zum
+  Startpunkt, schiebt er schräg daran vorbei (bis 75° neben der Zielrichtung,
+  in Türen mittig) und kehrt danach auf die Verbindungslinie zurück. Ohne
+  Karte, also um einzelne Hindernisse herum, nicht durch Labyrinthe. Ist 3 s
+  lang nirgends Platz, hält er an: „Hindernis in 0.40 m, noch 3.00 m bis zum
+  Startpunkt“ bzw. „kein Weg frei, …“
+- **wird er hochgehoben**, bricht er ab („hochgehoben -- Position stimmt
+  nicht mehr“): die Koppelnavigation weiß vom Tragen nichts
+- ohne frischen Lidar-Scan hält er wie früher an, sobald etwas näher als
+  0,45 m in Fahrtrichtung steht
 - endet mit einem `alert` „Heimfahrt: …“ und `state.homing = false`
 
 ### Autonomes Fahren im Detail
@@ -260,9 +278,39 @@ weicht allem aus, was der Lidar sieht. Werte in `config.py` (`EXPLORE_*`):
 - frei ist ein 40 cm breiter Korridor (`EXPLORE_HALF_WIDTH_M`), nicht ein
   Kegel -- so passt er nicht in Lücken, die schmaler sind als er selbst
 - unter `EXPLORE_STOP_M` (0,4 m) vorn: anhalten und in die freieste
-  Richtung drehen. Gedreht wird nach Zeit (`EXPLORE_TURN_FACTOR`), weil
-  der Roboter seine Blickrichtung nicht misst.
+  Richtung drehen. Gedreht wird nach dem gemessenen Winkel aus der
+  Drehrate des Boards (seit 03.11.); er hört `EXPLORE_DREH_VORHALT_GRAD`
+  (8°) vor dem Ziel auf, weil er nachläuft. Eine Zeitgrenze
+  (`EXPLORE_DREH_ZEIT_FAKTOR`) fängt Hänger ab. Nur ohne Messung dreht er
+  wie früher nach Zeit (`EXPLORE_TURN_FACTOR`). Danach wartet er auf einen
+  frischen Scan, statt auf dem alten Bild weiterzufahren.
+- Punkte näher als `EXPLORE_NAH_M`: Er wartet erst `EXPLORE_NAH_WARTEN_S`
+  (3 s), weil oft ein Mensch herangetreten ist. Ist es dann nicht frei,
+  **befreit er sich** (Zustand `befreit sich`): langsam seitlich oder
+  rückwärts in die freieste Richtung, ohne zu drehen, damit das Heck nicht
+  ausschwenkt.
+- **Festfahr-Erkennung:** Fährt er laut Befehl, aber das Board meldet
+  kaum Tempo oder das Lidar-Bild rundum ändert sich über `EXPLORE_FEST_S`
+  (1,5 s) nicht, befreit er sich ebenso.
+- Erst nach `EXPLORE_BEFREIEN_MAX` (3) erfolglosen Befreiungen hintereinander
+  endet die Fahrt mit „festgefahren“.
+- **Umfahren in Bögen (seit 03.11., F2):** Vor einem Hindernis rechnet er
+  mögliche Bögen (Drehrate, etwas seitliches Schieben) gut eine Sekunde
+  voraus und nimmt den besten, bei dem sein Umriss überall Luft behält.
+  Danach lenkt er auf den alten Kurs zurück. Erst wenn kein sicherer Bogen
+  passt, hält er an und dreht.
+- **Türen und Lücken:** Beim Drehen wählt er die Mitte eines freien
+  Bereichs statt einer Richtung knapp am Rahmen vorbei.
+- **Kurzgedächtnis:** Punkte, die beim Vorbeifahren aus dem Blickfeld
+  rutschen (z. B. ein Türrahmen neben ihm), behält er wenige Sekunden
+  (`AUSWEICH_GEDAECHTNIS_S`).
 - alle 4–10 s biegt er zufällig ab, damit er nicht immer dieselbe Bahn fährt
+  -- aber nicht, solange etwas näher als `AUSWEICH_ENG_M` (0,45 m) ist
+  (Tür, Engstelle): erst hindurch
+- **Hochgehoben** (Zustand `hochgehoben`): Ändert sich das Lidar-Bild rundum
+  auf einmal (gekippt, getragen), hält er an. Steht er wieder ruhig, fängt
+  er von vorn an und vergisst Gedächtnis und Kurs. Kein Alarm, die Fahrt
+  läuft weiter.
 - steht ein **Mensch** bis 1 m vor ihm, wartet er `EXPLORE_PERSON_WAIT_S`
   (2 s), bevor er ausweicht
 - liefert der Lidar länger als 3 s nichts, endet die Fahrt
@@ -292,6 +340,7 @@ Ist OpenCV installiert, sucht die Personenkamera (Logitech C270, siehe
   "dauer_s": 42,
   "ausweichen": 5,
   "menschen": 1,
+  "befreien": 0,
   "grund": null,
   "hindernisse": [
     {"art": "Stuhl", "winkel": 31.5, "abstand": 0.84, "breite": 0.41,
@@ -306,10 +355,10 @@ Ist OpenCV installiert, sucht die Personenkamera (Logitech C270, siehe
 | Feld | Bedeutung |
 |---|---|
 | `verfuegbar` | Lidar vorhanden, `explore` möglich |
-| `zustand` | `faehrt`, `dreht`, `wartet`, `wartet auf Mensch`, `wartet auf Lidar`; `null` wenn aus |
+| `zustand` | `faehrt`, `dreht`, `wartet`, `wartet auf Mensch`, `wartet auf Lidar`, `befreit sich` (neu 03.11.), `hochgehoben` (neu 03.11., F2); `null` wenn aus |
 | `text` | Erklärung für die Anzeige |
 | `frei_vorn` | freie Strecke im Korridor vor dem Roboter (m) |
-| `ausweichen`, `menschen` | Zähler dieser Fahrt |
+| `ausweichen`, `menschen`, `befreien` | Zähler dieser Fahrt (`befreien` neu 03.11., fehlt bei älteren Servern) |
 | `grund` | warum die letzte Fahrt endete |
 | `hindernisse` | die 12 nächsten, nächstes zuerst. `winkel` in Grad wie beim Lidar, `x`/`y` Mitte in Roboterkoordinaten (m) |
 | `personen` | Personenrahmen im Bild der Personenkamera, relativ zur Bildgröße (0..1) |
@@ -337,7 +386,7 @@ Sprechen und Motoren gleichzeitig ließen die USB-Versorgung zusammenbrechen.
 | Weggehen | Hand seitlich wegwischen | `weggehen`: `WEGGEHEN_STRECKE_M` (1,0 m) rückwärts, dann `bereit` |
 
 - Die Richtung zur Person kommt aus der Kamera, der Abstand aus dem Lidar
-  in genau dieser Richtung.
+  (Cluster der Person in dieser Richtung, ein Stuhl davor zählt nicht).
 - Verliert er die Person beim Folgen länger als `FOLGEN_VERLOREN_S` (2 s),
   sucht er durch Drehen (Modus `sucht`): je `FOLGEN_SUCHEN_DREH_S` drehen,
   `FOLGEN_SUCHEN_PAUSE_S` stillhalten (im Drehen verwischt das Bild). Er
@@ -364,7 +413,9 @@ Sprechen und Motoren gleichzeitig ließen die USB-Versorgung zusammenbrechen.
   "person": {"winkel": -8.5, "abstand": 1.2},
   "personen": 1,
   "geste": "folgen",
-  "grund": null
+  "grund": null,
+  "pausiert": false,
+  "ziel": {"zustand": "following", "id": 3, "sicherheit": 0.82, "grund": null}
 }
 ```
 
@@ -372,11 +423,13 @@ Sprechen und Motoren gleichzeitig ließen die USB-Versorgung zusammenbrechen.
 |---|---|
 | `verfuegbar` | Lidar und Posenerkennung da, `interaction_start` möglich |
 | `modus` | `bereit`, `folgen`, `herkommen`, `weggehen`, `sucht`; `null` wenn aus |
-| `text` | Erklärung für die Anzeige |
+| `text` | Erklärung für die Anzeige; beim Folgen, Herkommen und Weggehen neu (03.11., F3) z. B. „umfährt Hindernis (links, 0.62 m)“ oder „hochgehoben -- wartet, bis er wieder steht“ |
 | `person` | verfolgte Person: `winkel` in Grad wie beim Lidar, `abstand` in m (`null`, wenn der Lidar dort nichts sieht); `null` ohne Person |
 | `personen` | wie viele Menschen die Kamera gerade sieht |
 | `geste` | zuletzt erkannte Geste (`folgen`, `stopp`, `herkommen`, `weggehen`), wenige Sekunden lang, sonst `null` |
-| `grund` | warum der Modus zuletzt endete |
+| `grund` | warum der Modus zuletzt endete; „hochgehoben -- angehalten“ (neu 03.11., F3), wenn er beim Fahren hochgehoben wurde -- danach `bereit` und die Ansage „Ich wurde hochgehoben. Ich bleibe stehen.“ |
+| `pausiert` | `true` nach `follow_pause`: steht, Modus und Ziel bleiben. Jeder Moduswechsel (auch die Stopp-Geste) beendet die Pause. Fehlt bei älteren Servern. |
+| `ziel` | Ziel-Lock (neu 03.11.): `zustand` ist `idle`, `acquiring_target`, `following`, `target_temporarily_lost`, `searching_for_target` oder `safe_stop`. `id` ist die Track-ID des Ziels (nur für diese Sitzung), `sicherheit` liegt bei 0..1, `grund` sagt, warum er angehalten oder abgelehnt hat (z. B. „mehrere Personen – bitte im Bild antippen“). Details in `docs/interaktion.md`. Fehlt bei älteren Servern. |
 
 ### Stimme im Detail
 
@@ -631,7 +684,43 @@ erlaubt fremden Seiten nur `GET`.
 | Endpunkt | Liefert |
 |---|---|
 | `GET /interaktion/status` | dasselbe wie `state.interaktion`, dazu `pose`: `verfuegbar`, `simuliert`, `aktiv`, `fehler`, `fps`, `bilder`, `letzte_erkennung_vor_s`, `kamera` (auf welchem Kamerabild die Punkte liegen, Name wie in `/cameras`) |
-| `GET /interaktion/pose` | `personen`: erkannte Menschen, größter zuerst, je `box` [x1, y1, x2, y2] und `kp` (17 × [x, y, Sicherheit], COCO-Reihenfolge), relativ zur Bildgröße (0..1), dazu `score`, `winkel`; `skelett`: Punktpaare zum Verbinden. Leer, solange der Modus aus ist. |
+| `GET /interaktion/pose` | `personen`: erkannte Menschen, größter zuerst, je `box` [x1, y1, x2, y2] und `kp` (17 × [x, y, Sicherheit], COCO-Reihenfolge), relativ zur Bildgröße (0..1), dazu `score`, `winkel`, `id` (Track-ID für `follow {ziel_id}`, `null` solange der Tracker die Person noch nicht kennt) und `ziel` (`true` beim gesperrten Ziel); `skelett`: Punktpaare zum Verbinden. Leer, solange der Modus aus ist. |
+
+### Fahrtenschreiber
+
+Neu 03.11. Der Server hält immer die letzte Minute (`AUFZEICHNUNG_PUFFER_S`)
+im Speicher: jeden Lidar-Scan, jeden Fahrbefehl vor und nach den Grenzen des
+Watchdogs (`soll`, `safe`, `quelle`), harte Halts, Board-Geschwindigkeit und
+Pose (20 Hz) und Zustandswechsel (Erkunder, Interaktion, Heimfahrt). Erst
+`record_save` (Knopf „Fahrt speichern“ in der Web-App) schreibt sie nach
+`AUFZEICHNUNG_ORDNER` (Standard `~/.rosmaster/aufzeichnungen/`); die
+neuesten `AUFZEICHNUNG_MAX_DATEIEN` bleiben. Wozu: auffällige Fahrten am
+eigenen Rechner mit `scripts/abspielen.py` nachsehen und neue Ausweichlogik
+an ihnen prüfen.
+
+| Endpunkt | Liefert |
+|---|---|
+| `GET /aufzeichnung/status` | `aktiv`, `puffer_s`, `ereignisse`, `scans`, `dauer_s` (was gerade im Puffer liegt), `ordner`, `gespeichert` (seit Start), `letzte_datei`. Ausgeschaltet nur `{"aktiv": false}`. |
+| `GET /aufzeichnung/liste` | `dateien`: je `name`, `bytes`, `zeit`, neueste zuerst |
+| `GET /aufzeichnung/datei/<name>` | die Datei zum Herunterladen (`application/gzip`). Unbekannter oder ungültiger Name `404`. |
+
+Dateiformat: gzip-komprimiertes JSON Lines. Erste Zeile ist der Kopf
+(`version`, `erstellt`, `notiz`, `dauer_s`, `antrieb`, `mock`, `lidar`, `config` mit den
+fahrrelevanten Einstellungen), danach ein Ereignis je Zeile mit `t`
+(Sekunden ab dem ersten Ereignis) und `art`:
+
+| `art` | Felder |
+|---|---|
+| `scan` | `zeit` (Ende der Umdrehung), `dauer`, `w` (Winkel in Zehntelgrad), `r` (Entfernung in mm) |
+| `befehl` | `quelle`, `soll` und `safe` (je `[vx, vy, omega]`) |
+| `stop` | – (harter Halt über den Watchdog) |
+| `odo` | `v` (Board-Geschwindigkeit), `pose` (`[x, y, theta_grad]`), `ist` (aktueller Befehl), `misst` (ob `v` gemessen statt geschätzt ist) |
+| `zustand` | `erkunder`, `erkunder_text`, `erkunder_grund`, `interaktion`, `heimfahrt` – nur bei Änderung |
+
+```bash
+curl -O http://<roboter>:8000/aufzeichnung/datei/fahrt_20261103_141500.jsonl.gz
+python scripts/abspielen.py fahrt_20261103_141500.jsonl.gz --svg fahrt.svg --erkunder
+```
 
 ### Diagnose
 

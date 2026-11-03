@@ -267,7 +267,9 @@ class Manoever:
                     return self._ende(hindernis, "Mir ist beim Drehen etwas zu nah, ich habe angehalten."
                                       if art == DREHEN else "Da ist etwas im Weg, ich habe angehalten.")
                 self._text = f"{beschreibung}: noch {self._rest(art, ex, ey, eth)}"
-                self._watchdog.submit(befehl)
+                # Selbstständige Fahrt: engere Tempogrenze und die zentrale
+                # Bremsweg-Prüfung (AutonomSchutz) wie bei Folgen und Erkunden.
+                self._watchdog.submit(befehl, quelle="autonom")
                 await asyncio.sleep(takt)
 
         except asyncio.CancelledError:

@@ -319,6 +319,10 @@ class RosmasterDriver(DriveBase):
             return None
 
     def read_heading(self) -> float | None:
+        # Achtung: am X3 liefert get_imu_attitude_data() dauerhaft 0
+        # (Sensor-Check 28.10.). Die Odometrie nutzt den Wert deshalb nur,
+        # wenn config.ODOM_IMU_WINKEL gesetzt ist, und prüft ihn dann auf
+        # Plausibilität.
         bot = self._bot
         if bot is None or not config.TELEMETRY_ENABLED or not self._lebt():
             return None

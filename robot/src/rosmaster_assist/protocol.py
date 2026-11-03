@@ -24,7 +24,12 @@ Von der App / vom ESP an den Roboter
 {"type": "interaction_stop"}                              Interaktion aus, anhalten
 {"type": "follow"}                                        der Person vor der Kamera folgen
                                                           (schaltet Interaktion mit ein)
+{"type": "follow", "ziel_id": 3}                          der in der App angetippten Person
+                                                          folgen (id aus /interaktion/pose)
 {"type": "follow_stop"}                                   nicht mehr folgen, Interaktion bleibt an
+{"type": "follow_pause"}                                  anhalten, Ziel bleibt gemerkt
+{"type": "follow_resume"}                                 nach der Pause weiterfahren
+{"type": "record_save", "notiz": "..."}                   letzte Minute (Fahrtenschreiber) speichern
 {"type": "say", "text": "Hallo", "vorrang": false}       über den Lautsprecher sprechen
                                                           (vorrang: Laufendes abbrechen)
 {"type": "say_stop"}                                      sofort verstummen, Schlange leeren

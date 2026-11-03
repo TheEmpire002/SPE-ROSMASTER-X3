@@ -52,6 +52,16 @@ die Rampe im Watchdog liegt, gilt sie für Handsteuerung, Erkunder,
 Heimfahrt und Interaktion gleichermaßen. `stop()` umgeht sie und hält
 sofort an.
 
+Seit dem 03.11. prüft der Watchdog autonome Fahrbefehle (`quelle="autonom"`:
+Erkunder, Heimfahrt, Folgen) zusätzlich mit dem **`AutonomSchutz`**
+(`safety/collision.py`): Das Tempo in Fahrtrichtung wird so begrenzt, dass
+der Roboter vor dem nächsten Lidar-Punkt im Fahrschlauch noch anhalten kann
+(`v·t + v²/(2a) ≤ frei − Rand`, mit Latenz plus Alter des Scans). Ohne
+frischen Scan bleibt nur die Drehung erlaubt. Gebremst wird über die Rampe,
+nicht mit `stop()`: ein harter Halt erzeugt genau die Stromspitzen, die den
+USB-Hub zurücksetzen. Die Module prüfen weiterhin selbst; der Schutz ist
+das Netz darunter. Werte: `AUTONOM_SCHUTZ_*` in `config.py`.
+
 **4. Die Notfall-Logik entscheidet nicht, sie meldet.**
 Erkennt das System einen möglichen Notfall, löst es einen Alarm an einen
 Menschen aus. Es bewertet keinen Gesundheitszustand.
@@ -65,11 +75,12 @@ Menschen aus. Es bewertet keinen Gesundheitszustand.
 | `audio/`       | Ton auf dem USB-Lautsprecher: `mukke.py` spielt YouTube-Links mit mpv ab |
 | `protocol.py`  | Nachrichtenformat — die gemeinsame Sprache aller Beteiligten |
 | `drive/`       | Fahren. `base.py` = Schnittstelle, dazu echter Treiber + Mock |
-| `safety/`      | Watchdog, Not-Aus, Geschwindigkeitsbegrenzung               |
+| `safety/`      | Watchdog, Not-Aus, Geschwindigkeitsbegrenzung, Bremsweg-Prüfung autonom (`AutonomSchutz`) |
 | `sensors/`     | Lidar, Kamera, Personenerkennung, Körperpose (Hailo)        |
-| `navigation/`  | Odometrie, Lidar-Ortung, Heimfahrt, Erkunder, Hindernis-Benennung |
+| `navigation/`  | Odometrie, Lidar-Ortung, Heimfahrt, Erkunder, Ausweichen (`ausweichen.py`), Hindernis-Benennung |
 | `interaktion/` | Gesten, Verhalten (Folgen, Herkommen, Weggehen), Stimme (Sprachausgabe) und Sprachbefehle mit dem Weckwort „Robi“; geplant: Geist — siehe [`interaktion.md`](interaktion.md) |
 | `diagnose.py`  | Sammelt Ausfälle (Akku, USB, Unterspannung, Temperatur, Geräte, Log) und macht daraus verständliche Probleme für die Seite `/diagnose` |
+| `aufzeichnung.py` | Fahrtenschreiber: letzte Minute (Scans, Befehle, Odometrie, Zustände) im Speicher, auf Knopfdruck als Datei; dazu Laden und Nachspielen für `scripts/abspielen.py` |
 | `box/`         | Motor/Servo der Transportbox *(noch leer)*                  |
 | `api/`         | WebSocket-Server, liefert auch die Web-App aus              |
 | `main.py`      | Startpunkt, baut alles zusammen                             |
@@ -95,6 +106,53 @@ mit demselben Watchdog wie die Handsteuerung. Ebenso die genauen
 Fahrbefehle („2 Meter vor“, „90 Grad drehen“, `navigation/manoever.py`):
 Sie messen Strecke und Winkel mit dem Lidar statt nach Zeit. Das ältere ROS2-Projekt liegt
 zum Vergleich unter `Marlon/autonomes_fahren/`.
+
+**Stand 03.11.:** Der Erkunder dreht nach dem gemessenen Winkel (Drehrate
+des Boards über die Odometrie), entscheidet nach dem Drehen erst auf einem
+frischen Scan und befreit sich selbst, statt stehen zu bleiben: seitlich
+oder rückwärts, wenn Punkte zu nah sind oder er nicht vorankommt (Board-
+Tempo oder unverändertes Lidar-Bild rundum). Test ohne Hardware:
+`Marlon/autonomes_fahren/test_erkunder.py` (simulierter Raum).
+
+**Fahrtenschreiber (03.11.):** Bevor das Ausweichen klüger wird, braucht
+es echte Fahrten zum Prüfen. `aufzeichnung.py` hört an zwei Stellen mit:
+am Watchdog (jeder Befehl vor und nach den Grenzen, jeder Halt) und in
+einer eigenen Schleife im Odometrie-Takt (Scan, Board-Geschwindigkeit,
+Pose, Zustände). Ein Fehler beim Mitschreiben darf nie das Fahren stören,
+deshalb ist jeder Aufruf abgefangen. `scripts/abspielen.py` fasst eine
+Datei zusammen, zeichnet sie als SVG und legt die Scans einem aktuellen
+Erkunder vor (`erkunder_nachspielen`). Im Test mit gleichem Zufall gibt
+der nachgespielte Erkunder Takt für Takt dieselben Befehle
+(`Marlon/autonomes_fahren/test_aufzeichnung.py`); bei echten Fahrten zählt
+nur die Übereinstimmungsquote, weil der Erkunder am Roboter zufällig wählt.
+
+**Ausweichen (03.11., F2):** `navigation/ausweichen.py` enthält die
+Bausteine, der Erkunder setzt sie nur zusammen. Alle sind reine Logik auf
+Lidar-Punkten und ohne Hardware testbar:
+
+- `Kurzgedaechtnis` behält Punkte wenige Sekunden und rechnet sie mit der
+  Board-Geschwindigkeit mit. Ohne Karte und ohne Ortung, deshalb nur nahe
+  Punkte und nur kurz (Drift).
+- `bogen_planen` rechnet Bögen voraus und prüft den Umriss des Roboters.
+  Bewertet werden Kurs, Luft, Tempo, Weite und ruhiges Lenken.
+- `luecken` liefert die Mitten freier Bereiche (Türen).
+- `HochhebeErkennung` vergleicht Runden in 10°-Sektoren; mit gemessener
+  Lage über ein Fenster von einer Sekunde, damit auch langsames Tragen
+  auffällt.
+
+Test: `Marlon/autonomes_fahren/test_ausweichen.py` (Türen, Flur,
+Hochheben, Zimmer ohne Fehlalarm).
+
+**Umfahren mit Ziel (03.11., F3):** Folgen, Herkommen, Weggehen und die
+Heimfahrt haben eine Zielrichtung. `ausweichen.richtung_waehlen` sucht die
+Richtung, die ihr am nächsten liegt und genug Platz für den Fahrschlauch
+plus Rand hat; in schmalen Durchgängen nimmt sie die Mitte, die zuletzt
+gewählte Seite bekommt Vorsprung (gegen Pendeln). Beide nutzen dazu das
+`Kurzgedaechtnis` und die `HochhebeErkennung` aus F2. Hochgehoben geht das
+Verhalten in BEREIT, die Heimfahrt bricht ab. Werte: `UMFAHREN_*`,
+`HOME_AUSWEICH_WARTEN_S`. Test: `Marlon/autonomes_fahren/test_umfahren.py`
+(Stuhl und Tür beim Folgen, Hindernis und Sackgasse bei der Heimfahrt,
+Hochheben).
 
 ## Interaktion
 

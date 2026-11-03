@@ -31,12 +31,29 @@ class Scan:
     damit man nicht ständig umrechnen muss.
     """
 
-    __slots__ = ("winkel", "entfernungen", "zeit")
+    __slots__ = ("winkel", "entfernungen", "zeit", "dauer")
+
+    #: Angenommene Dauer einer Umdrehung, bis eine gemessene vorliegt
+    #: (RPLIDAR A1 am X3: 7,5 Umdrehungen/s gemessen).
+    DAUER_STANDARD_S = 1.0 / 7.5
 
     def __init__(self, winkel: list[float], entfernungen: list[float]) -> None:
         self.winkel = winkel
         self.entfernungen = entfernungen
+        # Zeitpunkt, zu dem die Umdrehung fertig war -- der erste Punkt ist
+        # dann schon eine ganze Umdrehung alt.
         self.zeit = time.monotonic()
+        self.dauer = self.DAUER_STANDARD_S
+
+    @property
+    def zeit_mitte(self) -> float:
+        """Mittlerer Aufnahmezeitpunkt der Umdrehung.
+
+        Für Rechnungen mit der Eigenbewegung (Odometrie-Rückblick) genauer
+        als `zeit`: im Mittel ist ein Punkt eine halbe Umdrehung älter als
+        das Ende der Runde, bei 0,3 m/s rund 2 cm.
+        """
+        return self.zeit - self.dauer / 2.0
 
     def __len__(self) -> int:
         return len(self.winkel)
@@ -410,6 +427,12 @@ class LidarService:
                 scan = self._lidar.read()
                 if scan is not None:
                     with self._lock:
+                        # Umdrehungsdauer aus dem Abstand zur Vorgängerrunde,
+                        # nur wenn plausibel (nach Aussetzern ist er riesig).
+                        if self._scan is not None:
+                            dauer = scan.zeit - self._scan.zeit
+                            if 0.05 < dauer < 0.5:
+                                scan.dauer = dauer
                         self._scan = scan
                         self._runden += 1
                         self._letzter_fehler = None

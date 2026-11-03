@@ -73,6 +73,7 @@ const ui = {
   bpm: el("val-bpm"),
   motion: el("val-motion"),
   btnExplore: el("btn-explore"),
+  btnRecord: el("btn-record"),
   autoZustand: el("val-auto-zustand"),
   autoFrei: el("val-auto-frei"),
   autoDauer: el("val-auto-dauer"),
@@ -86,6 +87,9 @@ const ui = {
   iaModus: el("val-ia-modus"),
   iaPerson: el("val-ia-person"),
   iaGeste: el("val-ia-geste"),
+  iaZiel: el("val-ia-ziel"),
+  btnIaPause: el("btn-ia-pause"),
+  btnIaLoslassen: el("btn-ia-loslassen"),
   iaText: el("ia-text"),
   stimme: el("val-stimme"),
   sprache: el("val-sprache"),
@@ -518,6 +522,11 @@ ui.btnExplore.addEventListener("click", () => {
   setzeExploreKnopf(!autonomAktiv);
 });
 
+// Fahrtenschreiber: Der Server antwortet mit einer Meldung (Dateiname).
+ui.btnRecord.addEventListener("click", () => {
+  send({ type: "record_save" });
+});
+
 function zeigeAutonomie(a) {
   if (!a) return;
   setzeExploreKnopf(a.aktiv === true);
@@ -600,14 +609,32 @@ function hindernisseZeichnen(mitte, skala) {
  */
 function personenZeichnen() {
   kacheln.forEach((k, i) => {
-    // Die Rahmen gehören zum Bild der Personenkamera. Über einer anderen
-    // Kamera stünden sie an der falschen Stelle. Kennt der Server keine
-    // Personenkamera (älterer Stand), dann wie früher über die erste.
-    const passt = personenKamera
-      ? (k.name ?? camStandard) === personenKamera
-      : i === 0;
+    const passt = zeigtPersonenKamera(k, i);
     rahmenZeichnen(k, passt ? personenBoxen : [], passt);
+    // Antippen nur dort, wo die Skelette auch liegen.
+    k.el.classList.toggle("waehlbar", passt && interaktionAktiv && skelette.length > 0);
   });
+}
+
+// Die Rahmen gehören zum Bild der Personenkamera. Über einer anderen
+// Kamera stünden sie an der falschen Stelle. Kennt der Server keine
+// Personenkamera (älterer Stand), dann wie früher über die erste.
+function zeigtPersonenKamera(kachel, i) {
+  return personenKamera
+    ? (kachel.name ?? camStandard) === personenKamera
+    : i === 0;
+}
+
+/** Wo das Bild in der Kachel liegt (eingepasst, mit Rand). */
+function bildFlaeche(kachel, w, h) {
+  const img = kachel.img;
+  const bildVerh = img.naturalWidth / img.naturalHeight;
+  let bw = w, bh = w / bildVerh;
+  if (bh > h) {
+    bh = h;
+    bw = h * bildVerh;
+  }
+  return { ox: (w - bw) / 2, oy: (h - bh) / 2, bw, bh };
 }
 
 // zeigtPersonen: diese Kachel zeigt die Personenkamera -- nur dort gehören
@@ -626,14 +653,7 @@ function rahmenZeichnen(kachel, boxen, zeigtPersonen) {
   const skelettHier = zeigtPersonen && skelette.length > 0;
   if ((!boxen.length && !skelettHier) || !img.naturalWidth) return;
 
-  const bildVerh = img.naturalWidth / img.naturalHeight;
-  let bw = w, bh = w / bildVerh;
-  if (bh > h) {
-    bh = h;
-    bw = h * bildVerh;
-  }
-  const ox = (w - bw) / 2;
-  const oy = (h - bh) / 2;
+  const { ox, oy, bw, bh } = bildFlaeche(kachel, w, h);
 
   ctx.strokeStyle = farbe("Mensch");
   ctx.fillStyle = farbe("Mensch");
@@ -658,6 +678,10 @@ window.addEventListener("resize", personenZeichnen);
  * schickt interaction_start / interaction_stop / follow / follow_stop.
  * Die Skelette holt sie sich nur, solange die Interaktion läuft -- sonst
  * rechnet der Hailo ohnehin nicht.
+ *
+ * Ziel-Lock: Tippen auf eine Person schickt follow mit ihrer Track-ID. Nur
+ * so wird bei mehreren Personen eine bestimmte zum Ziel; der Roboter wechselt
+ * nie von selbst. Pause hält an und behält das Ziel, Loslassen gibt es frei.
  */
 const POSE_HZ = 8;
 /** Körperpunkte unter dieser Sicherheit werden nicht gezeichnet. */
@@ -671,8 +695,19 @@ const MODUS_TEXT = {
   sucht: "sucht",
 };
 
+/** Zustände des Ziel-Locks (state.interaktion.ziel.zustand). */
+const ZIEL_TEXT = {
+  idle: () => "kein Ziel",
+  acquiring_target: (id) => `erfasst Person ${id} …`,
+  following: (id) => `folgt Person ${id}`,
+  target_temporarily_lost: () => "Ziel kurz verloren",
+  searching_for_target: (id) => `sucht Person ${id} …`,
+  safe_stop: () => "sicher angehalten – bitte neu wählen",
+};
+
 let interaktionAktiv = false;
 let interaktionModus = null;
+let interaktionPausiert = false;
 let skelette = [];
 let skelettLinien = [];
 let poseLaeuft = false;
@@ -698,10 +733,72 @@ ui.btnFolgen.addEventListener("click", () => {
   setzeInteraktionKnoepfe(true, folgt ? "bereit" : "folgen");
 });
 
+ui.btnIaPause.addEventListener("click", () => {
+  send({ type: interaktionPausiert ? "follow_resume" : "follow_pause" });
+});
+
+ui.btnIaLoslassen.addEventListener("click", () => send({ type: "follow_stop" }));
+
+/** Tippen ins Kamerabild: die getroffene Person wird zum Ziel. */
+function personAntippen(kachel, ev) {
+  if (!interaktionAktiv || !skelette.length) return;
+  if (!zeigtPersonenKamera(kachel, kacheln.indexOf(kachel))) return;
+  if (!kachel.img.naturalWidth) return;
+  const r = kachel.overlay.getBoundingClientRect();
+  const { ox, oy, bw, bh } = bildFlaeche(kachel, r.width, r.height);
+  const x = (ev.clientX - r.left - ox) / bw;
+  const y = (ev.clientY - r.top - oy) / bh;
+  // Etwas Rand zugeben (Finger sind breit). Bei Überlappung die kleinere
+  // Box nehmen -- das ist meist die weiter hinten stehende, gezielt gemeinte.
+  const RAND = 0.03;
+  let treffer = null;
+  let flaeche = Infinity;
+  for (const s of skelette) {
+    const b = s.box;
+    if (!b || x < b[0] - RAND || x > b[2] + RAND || y < b[1] - RAND || y > b[3] + RAND) continue;
+    const f = (b[2] - b[0]) * (b[3] - b[1]);
+    if (f < flaeche) {
+      flaeche = f;
+      treffer = s;
+    }
+  }
+  if (!treffer) return;
+  if (treffer.id == null) {
+    logLine("Person noch nicht erfasst – gleich noch einmal antippen", "warning");
+    return;
+  }
+  send({ type: "follow", ziel_id: treffer.id });
+  logLine(`Folge Person ${treffer.id}`);
+}
+
+function zeigeZiel(ia) {
+  const z = ia.ziel;
+  const fahrend = ia.aktiv === true && !!ia.modus && ia.modus !== "bereit";
+  interaktionPausiert = ia.pausiert === true;
+  ui.btnIaPause.textContent = interaktionPausiert ? "Weiter" : "Pause";
+  ui.btnIaPause.classList.toggle("aktiv", interaktionPausiert);
+  ui.btnIaPause.disabled = !fahrend;
+  // Älterer Server ohne Ziel-Lock: keine Zielanzeige.
+  if (!z || !ia.aktiv) {
+    ui.iaZiel.textContent = "—";
+    ui.btnIaLoslassen.disabled = !fahrend;
+    return;
+  }
+  let text = (ZIEL_TEXT[z.zustand] || (() => z.zustand))(z.id);
+  if (z.id != null && z.zustand !== "idle" && z.zustand !== "safe_stop") {
+    text += ` · ${Math.round((z.sicherheit || 0) * 100)} %`;
+  }
+  if (interaktionPausiert) text += " · pausiert";
+  if (z.grund && (z.zustand === "idle" || z.zustand === "safe_stop")) text += ` (${z.grund})`;
+  ui.iaZiel.textContent = text;
+  ui.btnIaLoslassen.disabled = !fahrend && z.zustand === "idle";
+}
+
 function zeigeInteraktion(ia) {
   if (!ia) return;
   setzeInteraktionKnoepfe(ia.aktiv === true, ia.modus);
   ui.btnInteraktion.disabled = ui.btnFolgen.disabled = ia.verfuegbar === false;
+  zeigeZiel(ia);
 
   ui.iaModus.textContent = ia.aktiv
     ? (MODUS_TEXT[ia.modus] || ia.modus)
@@ -800,11 +897,19 @@ setInterval(poseHolen, 1000 / POSE_HZ);
 function skeletteZeichnen(ctx, ox, oy, bw, bh) {
   if (!skelette.length) return;
   ctx.lineWidth = 3;
-  // Die größte Person (vorn in der Liste) ist meist die verfolgte.
+  ctx.font = "13px system-ui, sans-serif";
+  // Das gesperrte Ziel grün, alle anderen grau. Ältere Server ohne Ziel-Lock
+  // liefern kein "ziel" -- dann wie früher die größte Person (vorn).
+  const mitZiel = skelette.some((s) => "ziel" in s);
   skelette.forEach((s, i) => {
-    const col = i === 0 ? "#3ddc97" : "#9aa1ad";
+    const istZiel = mitZiel ? s.ziel === true : i === 0;
+    const col = istZiel ? "#3ddc97" : "#9aa1ad";
     ctx.strokeStyle = col;
     ctx.fillStyle = col;
+    // Nummer über dem Kopf, damit „folgt Person 3“ zuzuordnen ist.
+    if (s.id != null && s.box) {
+      ctx.fillText(`Person ${s.id}`, ox + s.box[0] * bw + 3, Math.max(oy + 14, oy + s.box[1] * bh - 4));
+    }
     const kp = s.kp || [];
     for (const [a, b] of skelettLinien) {
       const pa = kp[a];
@@ -919,6 +1024,7 @@ class CamKachel {
     this.fehler.append("Kein Bild. ", nochmal);
 
     this.el.append(this.img, this.overlay, this.titel, this.fehler);
+    this.el.addEventListener("click", (ev) => personAntippen(this, ev));
 
     this.name = null; // null = Standardkamera über /camera/...
     this.modus = "aus";

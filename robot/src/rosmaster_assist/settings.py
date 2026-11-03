@@ -226,6 +226,11 @@ EINSTELLUNGEN: list[Einstellung] = [
                       "100 %, leiser wird in Software. Der Musik-Regler in der App ist ein Anteil "
                       "davon. Leiser zieht auch weniger Strom am USB."),
 
+    Einstellung("ZIEL_MERKMAL_SCHWELLE", "folgen", "Ziel: Aussehen-Schwelle", "", 0.1, 0.9, 0.05,
+                hilfe="Kleiner = strenger. Verwechselt er Personen, verkleinern; verliert er dich ständig, vergrößern."),
+    Einstellung("ZIEL_GATE_GRAD", "folgen", "Ziel: Suchfenster", "°", 5, 40, 1,
+                hilfe="So weit darf das Ziel von Bild zu Bild springen."),
+
     # --- Lidar
     Einstellung("LIDAR_ANGLE_OFFSET_DEG", "lidar", "Einbauwinkel", "°", -180, 180, 1,
                 hilfe="Hand vor den Roboter halten: Sie muss im Lidar-Bild oben erscheinen."),
