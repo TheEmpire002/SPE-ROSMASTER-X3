@@ -88,6 +88,10 @@ class SafetyWatchdog:
         # wenn kein Lidar konfiguriert ist -- dann gibt es auch keine
         # autonomen Modi, die fahren könnten.
         self.autonom_schutz = None
+        # Fahrtenschreiber (aufzeichnung.py), setzt der Server. Hält jeden
+        # Befehl vor und nach den Grenzen fest -- so sieht man später, wo
+        # der Bremsweg-Schutz eingegriffen hat.
+        self.aufzeichnung = None
 
     # --- Steuerung ------------------------------------------------------------
 
@@ -118,6 +122,12 @@ class SafetyWatchdog:
             safe = self.autonom_schutz.pruefen(safe, jetzt)
         if safe != cmd:
             log.debug("Fahrbefehl begrenzt (%s): %s -> %s", quelle, cmd, safe)
+        if self.aufzeichnung is not None:
+            try:
+                self.aufzeichnung.befehl(quelle, cmd, safe, jetzt)
+            except Exception:
+                # Die Aufzeichnung ist Beiwerk -- fahren geht vor.
+                log.debug("Aufzeichnung des Fahrbefehls fehlgeschlagen", exc_info=True)
 
         self._ziel = safe
         self._last_command_at = jetzt
@@ -176,6 +186,11 @@ class SafetyWatchdog:
         self._last_command = STOP
         self._ziel = STOP
         self._stopped = True
+        if self.aufzeichnung is not None:
+            try:
+                self.aufzeichnung.stop()
+            except Exception:
+                log.debug("Aufzeichnung des Halts fehlgeschlagen", exc_info=True)
 
     @property
     def current_command(self) -> DriveCommand:

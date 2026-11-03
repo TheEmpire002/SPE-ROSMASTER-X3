@@ -73,6 +73,7 @@ const ui = {
   bpm: el("val-bpm"),
   motion: el("val-motion"),
   btnExplore: el("btn-explore"),
+  btnRecord: el("btn-record"),
   autoZustand: el("val-auto-zustand"),
   autoFrei: el("val-auto-frei"),
   autoDauer: el("val-auto-dauer"),
@@ -519,6 +520,11 @@ ui.btnExplore.addEventListener("click", () => {
   // Wie beim Home-Knopf: sofort umschalten, die nächste Statusmeldung
   // korrigiert, falls der Server ablehnt (z. B. kein Lidar).
   setzeExploreKnopf(!autonomAktiv);
+});
+
+// Fahrtenschreiber: Der Server antwortet mit einer Meldung (Dateiname).
+ui.btnRecord.addEventListener("click", () => {
+  send({ type: "record_save" });
 });
 
 function zeigeAutonomie(a) {

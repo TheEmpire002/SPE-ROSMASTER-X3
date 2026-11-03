@@ -80,6 +80,7 @@ Menschen aus. Es bewertet keinen Gesundheitszustand.
 | `navigation/`  | Odometrie, Lidar-Ortung, Heimfahrt, Erkunder, Hindernis-Benennung |
 | `interaktion/` | Gesten, Verhalten (Folgen, Herkommen, Weggehen), Stimme (Sprachausgabe) und Sprachbefehle mit dem Weckwort „Robi“; geplant: Geist — siehe [`interaktion.md`](interaktion.md) |
 | `diagnose.py`  | Sammelt Ausfälle (Akku, USB, Unterspannung, Temperatur, Geräte, Log) und macht daraus verständliche Probleme für die Seite `/diagnose` |
+| `aufzeichnung.py` | Fahrtenschreiber: letzte Minute (Scans, Befehle, Odometrie, Zustände) im Speicher, auf Knopfdruck als Datei; dazu Laden und Nachspielen für `scripts/abspielen.py` |
 | `box/`         | Motor/Servo der Transportbox *(noch leer)*                  |
 | `api/`         | WebSocket-Server, liefert auch die Web-App aus              |
 | `main.py`      | Startpunkt, baut alles zusammen                             |
@@ -110,6 +111,18 @@ frischen Scan und befreit sich selbst, statt stehen zu bleiben: seitlich
 oder rückwärts, wenn Punkte zu nah sind oder er nicht vorankommt (Board-
 Tempo oder unverändertes Lidar-Bild rundum). Test ohne Hardware:
 `Marlon/autonomes_fahren/test_erkunder.py` (simulierter Raum).
+
+**Fahrtenschreiber (03.11.):** Bevor das Ausweichen klüger wird, braucht
+es echte Fahrten zum Prüfen. `aufzeichnung.py` hört an zwei Stellen mit:
+am Watchdog (jeder Befehl vor und nach den Grenzen, jeder Halt) und in
+einer eigenen Schleife im Odometrie-Takt (Scan, Board-Geschwindigkeit,
+Pose, Zustände). Ein Fehler beim Mitschreiben darf nie das Fahren stören,
+deshalb ist jeder Aufruf abgefangen. `scripts/abspielen.py` fasst eine
+Datei zusammen, zeichnet sie als SVG und legt die Scans einem aktuellen
+Erkunder vor (`erkunder_nachspielen`). Im Test mit gleichem Zufall gibt
+der nachgespielte Erkunder Takt für Takt dieselben Befehle
+(`Marlon/autonomes_fahren/test_aufzeichnung.py`); bei echten Fahrten zählt
+nur die Übereinstimmungsquote, weil der Erkunder am Roboter zufällig wählt.
 
 ## Interaktion
 

@@ -160,6 +160,7 @@ Reihenfolge:
 | `follow_pause` | – | Anhalten, das Ziel bleibt gemerkt (neu 03.11.). Nur in `folgen`, `herkommen`, `weggehen`, `sucht`. | – |
 | `follow_resume` | – | Nach `follow_pause` weiterfahren, zum selben Ziel. | – |
 | `follow_stop` | – | Folgen beenden, anhalten, Ziel freigeben; der Interaktionsmodus bleibt an. Quittiert auch ein `safe_stop`. | `alert` an alle |
+| `record_save` | `notiz` (string, optional, höchstens 200 Zeichen) | Die letzte Minute des Fahrtenschreibers als Datei speichern (neu 03.11., siehe „Fahrtenschreiber“ unter HTTP). Fährt nicht. | `alert` (info) „Fahrt gespeichert: <name>“; ausgeschaltet `alert` (warning) |
 | `say` | `text` (string, höchstens 300 Zeichen), `vorrang` (bool, optional) | Über den Lautsprecher sprechen (siehe „Stimme im Detail“). `vorrang: true` bricht den laufenden Satz ab und leert die Warteschlange. | keine; ohne `text` `error`, ohne Lautsprecher/Synthese `alert` (warning) |
 | `say_stop` | – | Sofort verstummen, Warteschlange leeren. | keine |
 | `speech` | `text` (string) | Text so behandeln, als wäre er ins Mikrofon gesprochen worden (siehe „Sprachbefehle im Detail“). Zum Ausprobieren ohne Mikrofon und in `--mock`. | `alert` „Sprachbefehl: …“ an alle, wenn ein Befehl erkannt wurde; sonst `alert` (info) „Kein Befehl erkannt …“; ohne `text` `error` |
@@ -600,6 +601,42 @@ erlaubt fremden Seiten nur `GET`.
 |---|---|
 | `GET /interaktion/status` | dasselbe wie `state.interaktion`, dazu `pose`: `verfuegbar`, `simuliert`, `aktiv`, `fehler`, `fps`, `bilder`, `letzte_erkennung_vor_s`, `kamera` (auf welchem Kamerabild die Punkte liegen, Name wie in `/cameras`) |
 | `GET /interaktion/pose` | `personen`: erkannte Menschen, größter zuerst, je `box` [x1, y1, x2, y2] und `kp` (17 × [x, y, Sicherheit], COCO-Reihenfolge), relativ zur Bildgröße (0..1), dazu `score`, `winkel`, `id` (Track-ID für `follow {ziel_id}`, `null` solange der Tracker die Person noch nicht kennt) und `ziel` (`true` beim gesperrten Ziel); `skelett`: Punktpaare zum Verbinden. Leer, solange der Modus aus ist. |
+
+### Fahrtenschreiber
+
+Neu 03.11. Der Server hält immer die letzte Minute (`AUFZEICHNUNG_PUFFER_S`)
+im Speicher: jeden Lidar-Scan, jeden Fahrbefehl vor und nach den Grenzen des
+Watchdogs (`soll`, `safe`, `quelle`), harte Halts, Board-Geschwindigkeit und
+Pose (20 Hz) und Zustandswechsel (Erkunder, Interaktion, Heimfahrt). Erst
+`record_save` (Knopf „Fahrt speichern“ in der Web-App) schreibt sie nach
+`AUFZEICHNUNG_ORDNER` (Standard `~/.rosmaster/aufzeichnungen/`); die
+neuesten `AUFZEICHNUNG_MAX_DATEIEN` bleiben. Wozu: auffällige Fahrten am
+eigenen Rechner mit `scripts/abspielen.py` nachsehen und neue Ausweichlogik
+an ihnen prüfen.
+
+| Endpunkt | Liefert |
+|---|---|
+| `GET /aufzeichnung/status` | `aktiv`, `puffer_s`, `ereignisse`, `scans`, `dauer_s` (was gerade im Puffer liegt), `ordner`, `gespeichert` (seit Start), `letzte_datei`. Ausgeschaltet nur `{"aktiv": false}`. |
+| `GET /aufzeichnung/liste` | `dateien`: je `name`, `bytes`, `zeit`, neueste zuerst |
+| `GET /aufzeichnung/datei/<name>` | die Datei zum Herunterladen (`application/gzip`). Unbekannter oder ungültiger Name `404`. |
+
+Dateiformat: gzip-komprimiertes JSON Lines. Erste Zeile ist der Kopf
+(`version`, `erstellt`, `notiz`, `dauer_s`, `antrieb`, `mock`, `lidar`, `config` mit den
+fahrrelevanten Einstellungen), danach ein Ereignis je Zeile mit `t`
+(Sekunden ab dem ersten Ereignis) und `art`:
+
+| `art` | Felder |
+|---|---|
+| `scan` | `zeit` (Ende der Umdrehung), `dauer`, `w` (Winkel in Zehntelgrad), `r` (Entfernung in mm) |
+| `befehl` | `quelle`, `soll` und `safe` (je `[vx, vy, omega]`) |
+| `stop` | – (harter Halt über den Watchdog) |
+| `odo` | `v` (Board-Geschwindigkeit), `pose` (`[x, y, theta_grad]`), `ist` (aktueller Befehl), `misst` (ob `v` gemessen statt geschätzt ist) |
+| `zustand` | `erkunder`, `erkunder_text`, `erkunder_grund`, `interaktion`, `heimfahrt` – nur bei Änderung |
+
+```bash
+curl -O http://<roboter>:8000/aufzeichnung/datei/fahrt_20261103_141500.jsonl.gz
+python scripts/abspielen.py fahrt_20261103_141500.jsonl.gz --svg fahrt.svg --erkunder
+```
 
 ### Diagnose
 

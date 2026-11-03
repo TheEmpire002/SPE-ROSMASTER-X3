@@ -29,6 +29,7 @@ Von der App / vom ESP an den Roboter
 {"type": "follow_stop"}                                   nicht mehr folgen, Interaktion bleibt an
 {"type": "follow_pause"}                                  anhalten, Ziel bleibt gemerkt
 {"type": "follow_resume"}                                 nach der Pause weiterfahren
+{"type": "record_save", "notiz": "..."}                   letzte Minute (Fahrtenschreiber) speichern
 {"type": "say", "text": "Hallo", "vorrang": false}       über den Lautsprecher sprechen
                                                           (vorrang: Laufendes abbrechen)
 {"type": "say_stop"}                                      sofort verstummen, Schlange leeren

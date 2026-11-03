@@ -409,6 +409,18 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Probleme:** Erste Testszenen waren zu streng gewählt (bei 0,5 m Wand sind rechnerisch noch 0,52 m/s erlaubt); Szenen angepasst, die Formel blieb. `Scan.min_abstand` überspringt Strahlen ohne Echo (r = 0) nicht; im Test vermieden, am Roboter prüfen, ob solche Strahlen ankommen.
 - **Offen:** Bodentest; `AUTONOM_SCHUTZ_BREMSEN` und `AUTONOM_SCHUTZ_LATENZ_S` am Roboter messen (Bremsweg aus 0,3 m/s).
 
+### 03.11.2026 – Autonomie Schritt F1: Fahrtenschreiber und Nachspielen (Marlon, mit Claude)
+- **Was:** Der Server hält immer die letzte Minute der Fahrt im Speicher (Lidar-Scans, Fahrbefehle vor und nach den Grenzen, Halts, Board-Geschwindigkeit, Pose, Zustände). Der Knopf „Fahrt speichern“ in der Web-App schreibt sie als Datei. `scripts/abspielen.py` spielt sie am eigenen Rechner nach.
+- **Warum:** Als Nächstes soll der Roboter Türen und Hindernisse geschickt umfahren und merken, wenn er hochgehoben wird. Dafür braucht es echte Fahrten zum Prüfen, sonst wird die neue Logik nur gegen die Simulation gebaut. Eine Lidar-Karte oder GPS-Ortung wurde dafür bewusst zurückgestellt; drinnen hilft GPS nicht.
+- **Änderungen:**
+  - Neues Modul `aufzeichnung.py`: Ringpuffer (`AUFZEICHNUNG_PUFFER_S` = 60 s), Speichern als gzip-JSON-Lines über eine Zwischendatei, nur die neuesten `AUFZEICHNUNG_MAX_DATEIEN` bleiben; dazu `laden`, `Wiedergabe` (spielt Scans und Odometrie zeitrichtig vor, mit derselben Schnittstelle wie Lidar und Odometrie) und `erkunder_nachspielen`.
+  - Watchdog meldet jeden Befehl und jeden Halt an den Schreiber; ein Fehler dort ist abgefangen und stört das Fahren nicht. Scans, Odometrie und Zustände sammelt eine eigene Schleife im Server im Odometrie-Takt.
+  - Neuer Befehl `record_save` (nur ergänzt) und Endpunkte `/aufzeichnung/status`, `/liste`, `/datei/<name>` (nur gültige Dateinamen, kein Pfad-Trick).
+  - `scripts/abspielen.py`: Zusammenfassung (Scan-Rate, Lücken im Lidar, wie oft der Bremsweg-Schutz gebremst hat, Zustandswechsel), SVG mit Weg und Lidar-Punkten, Vergleich mit dem aktuellen Erkunder.
+- **Ergebnis:** Neuer Test `Marlon/autonomes_fahren/test_aufzeichnung.py`: Puffer, doppelte Scans, Speichern/Laden, Aufräumen, Dateinamen, Watchdog-Haken (auch mit absichtlich kaputtem Schreiber), Wiedergabe. Eine 30-s-Erkunderfahrt in der Simulation wird aufgezeichnet, gespeichert und nachgespielt: 600 von 600 Takten gleich. Am Mock-Server: Speichern, Liste, Herunterladen und Abspielen funktionieren. Alle anderen Tests bestehen.
+- **Probleme:** Gleich wird die Wiedergabe nur mit gleichem Zufall. Ohne ihn waren es in der Simulation 59 % (der Erkunder würfelt Wanderzeiten); bei echten Fahrten zählt deshalb nur die Quote. Der Smoke-Test „Heimfahrt startet“ schlägt in etwa 2 von 3 Läufen fehl, mit und ohne diese Änderung (gegengeprüft am Stand von Schritt E); Ursache noch offen.
+- **Offen:** Am Roboter einige Fahrten mit Türen, Engstellen und Hochheben aufnehmen; prüfen, ob das Mitschreiben den Pi spürbar belastet. Danach Schritt F2: lokales Ausweichen, an diesen Aufnahmen geprüft. Flackernden Smoke-Test „Heimfahrt startet“ untersuchen.
+
 ---
 
 ## 3. Ergebnisse und Messwerte

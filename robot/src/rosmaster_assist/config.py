@@ -754,6 +754,18 @@ SCHLEIFENFEHLER_LOG_S = 10.0
 # USB-Buchsen. Am 29.10. waren es im Leerlauf 300-400 pro Minute.
 USB_STURM_PRO_MIN = 20
 
+# --- Fahrtenschreiber (aufzeichnung.py, seit 03.11.) ---------------------------
+# Hält die letzten Sekunden einer Fahrt (Lidar-Runden, Fahrbefehle,
+# Board-Geschwindigkeit, Zustände) im Speicher. Erst "Fahrt speichern" in der
+# App schreibt sie auf die Karte; ausgewertet wird mit scripts/abspielen.py.
+AUFZEICHNUNG_AKTIV = True
+# Eine Minute reicht, um die Lage vor einem Fehler zu sehen, und braucht
+# rund 10 MB Speicher (450 Lidar-Runden mit je ~360 Punkten).
+AUFZEICHNUNG_PUFFER_S = 60.0
+AUFZEICHNUNG_ORDNER = Path.home() / ".rosmaster" / "aufzeichnungen"
+# Eine Datei hat gepackt einige hundert KB; ältere werden gelöscht.
+AUFZEICHNUNG_MAX_DATEIEN = 20
+
 # --- Musik ("MUKKE") ----------------------------------------------------------------
 
 # YouTube-Links aus der App werden mit mpv auf dem USB-Lautsprecher
