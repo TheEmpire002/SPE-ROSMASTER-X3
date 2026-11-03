@@ -205,6 +205,23 @@
       <dt>Ohr</dt>      <dd id="val-sprache">—</dd>
     </dl>
 
+    <!-- Live-Feed vom Mikrofon (GET /sprache/live, WebSocket /sprache/ton). -->
+    <label class="switch">
+      <input type="checkbox" id="mikro-lesen">
+      <span>Mikrofon mitlesen</span>
+      <output id="mikro-lesen-state" class="switch-state">aus</output>
+    </label>
+    <label class="switch">
+      <input type="checkbox" id="mikro-hoeren">
+      <span>Mikrofon mithören</span>
+      <output id="mikro-hoeren-state" class="switch-state">aus</output>
+    </label>
+    <div id="mikro-live" class="mikro-live" hidden>
+      <div class="mikro-pegel" title="Lautstärke am Mikrofon"><div id="mikro-pegel-balken"></div></div>
+      <p id="mikro-teil" class="mikro-teil">—</p>
+      <ul id="mikro-ereignisse" class="mikro-ereignisse"></ul>
+    </div>
+
     <div class="home-buttons">
       <button type="button" id="btn-interaktion" class="btn btn-primary">
         Interaktion an
@@ -304,5 +321,6 @@
 <script src="/static/einstellungen.js"></script>
 <script src="/static/app.js"></script>
 <script src="/static/mukke.js"></script>
+<script src="/static/mikro.js"></script>
 </body>
 </html>

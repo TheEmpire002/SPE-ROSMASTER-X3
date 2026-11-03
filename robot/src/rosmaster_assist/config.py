@@ -756,6 +756,16 @@ SPRACHE_MIN_KONFIDENZ_MUSIK = 0.85
 SPRACHE_WECK_ANTWORT = "Ja?"
 SPRACHE_WECK_ANTWORT_NACH_S = 1.0
 
+# Live-Feed vom Mikrofon für die App (Mitlesen und Mithören, beides in der
+# App schaltbar). So viele zuletzt gehörte Sätze zeigt das Mitlesen ...
+SPRACHE_LIVE_EREIGNISSE = 15
+# ... und so lange (s) nach dem letzten Abruf rechnet der Hör-Thread Pegel
+# und Zwischentext noch aus. Liest niemand mit, kostet es nichts.
+SPRACHE_LIVE_HALTEN_S = 3.0
+# Mithören: so viele Blöcke (je 0,25 s) puffern, bevor welche wegfallen.
+# Klein halten, sonst hört man mit Verzögerung.
+SPRACHE_TON_PUFFER = 8
+
 # Vosk-Modelle sind auf 16 kHz trainiert. Kann das Mikrofon das nicht,
 # wird seine eigene Rate genommen und Vosk rechnet um.
 SPRACHE_ABTASTRATE = 16000

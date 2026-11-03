@@ -46,6 +46,7 @@ import collections
 import json
 import logging
 import os
+import queue
 import re
 import threading
 import time
@@ -163,6 +164,18 @@ def _ohne_weckwort(befehl: str) -> bool:
     return False
 
 
+def _pegel(roh: bytes) -> float:
+    """Lautstärke eines Blocks (16 bit) als 0..1: -60 dBFS und leiser = 0, Vollaussteuerung = 1."""
+    import numpy as np
+
+    werte = np.frombuffer(roh, dtype="<i2").astype(np.float32)
+    if werte.size == 0:
+        return 0.0
+    rms = float(np.sqrt(np.mean(werte * werte))) / 32768.0
+    db = 20.0 * np.log10(max(rms, 1e-6))
+    return max(0.0, min(1.0, (db + 60.0) / 60.0))
+
+
 def befehl_aus_text(text: str) -> str | None:
     """Nur der Befehl, ohne vorher gefallenes Weckwort."""
     return erkennen(text)[0]
@@ -191,6 +204,15 @@ class Spracherkennung:
         self._verworfen = 0
         self._zuletzt_verworfen: str | None = None
         self._fehler: str | None = None
+
+        # Live-Feed für die App (siehe live() und ton_abonnieren()). Pegel und
+        # Zwischentext werden nur ausgerechnet, solange jemand mitliest.
+        self._live_bis = 0.0  # monotonic
+        self._pegel = 0.0  # 0..1
+        self._teil = ""  # was Vosk im laufenden Satz bisher versteht
+        self._rate: int | None = None
+        self._ereignisse: collections.deque[dict] = collections.deque(maxlen=config.SPRACHE_LIVE_EREIGNISSE)
+        self._ton_abos: list[queue.Queue] = []
 
     # --- Bedienung -------------------------------------------------------------
 
@@ -260,6 +282,16 @@ class Spracherkennung:
                 self._weck_bis = jetzt + config.SPRACHE_WECK_FENSTER_S
                 if not war_geweckt:
                     self._befehle.append({"befehl": WECKEN, "text": text})
+            if befehl is not None:
+                ereignis = {"ergebnis": "befehl", "befehl": befehl}
+            elif verworfen is not None:
+                ereignis = {"ergebnis": "verworfen", "befehl": verworfen, "grund": grund}
+            elif weckwort:
+                ereignis = {"ergebnis": "weckwort"}
+            else:
+                ereignis = {"ergebnis": "ohne"}
+            self._ereignisse.append({"zeit": time.time(), "text": text, **ereignis})
+            self._teil = ""
         if befehl is not None:
             log.info("Sprachbefehl %s (gehört: %r)", befehl, text)
         elif verworfen is not None:
@@ -267,6 +299,50 @@ class Spracherkennung:
         else:
             log.debug("Gehört ohne Befehl: %r", text)
         return befehl
+
+    def live(self) -> dict:
+        """Für das Mitlesen in der App (GET /sprache/live), etwa 5x pro Sekunde.
+
+        Jeder Abruf hält die Live-Auswertung SPRACHE_LIVE_HALTEN_S lang an;
+        fragt niemand mehr, rechnet der Hör-Thread Pegel und Zwischentext
+        nicht mehr aus.
+        """
+        self._live_bis = time.monotonic() + config.SPRACHE_LIVE_HALTEN_S
+        with self._lock:
+            ereignisse = list(self._ereignisse)
+        return {
+            "verfuegbar": self.verfuegbar,
+            "zustand": self._zustand,
+            "mikrofon": self._mikrofon,
+            "rate": self._rate,
+            "pegel": round(self._pegel, 3),
+            "teil": self._teil,
+            # Während der Roboter spricht, wertet das Ohr nichts aus.
+            "taub": bool(self._stimme is not None and self._stimme.spricht),
+            "geweckt": self.geweckt,
+            "ereignisse": ereignisse,
+        }
+
+    @property
+    def ton_rate(self) -> int | None:
+        """Abtastrate des Mikrofons (Hz), None solange keins offen ist."""
+        return self._rate if self._zustand == HOERT else None
+
+    def ton_abonnieren(self) -> queue.Queue:
+        """Rohton vom Mikrofon (16 bit, mono, ``live()["rate"]`` Hz) in eine Schlange.
+
+        Für das Mithören in der App (WebSocket /sprache/ton). Kommt der
+        Empfänger nicht hinterher, fallen Blöcke weg, statt sich zu stauen.
+        """
+        abo: queue.Queue = queue.Queue(maxsize=config.SPRACHE_TON_PUFFER)
+        with self._lock:
+            self._ton_abos.append(abo)
+        return abo
+
+    def ton_abmelden(self, abo: queue.Queue) -> None:
+        with self._lock:
+            if abo in self._ton_abos:
+                self._ton_abos.remove(abo)
 
     def befehle_abholen(self) -> list[dict]:
         with self._lock:
@@ -365,6 +441,7 @@ class Spracherkennung:
             samplerate=rate, blocksize=block, device=geraet, dtype="int16", channels=1
         ) as strom:
             self._mikrofon = name
+            self._rate = rate
             self._zustand = HOERT
             if self._fehler:
                 log.info("Spracherkennung: Mikrofon wieder da (%s)", name)
@@ -375,10 +452,18 @@ class Spracherkennung:
             taub = False
             while not self._stop.is_set():
                 daten, _ = strom.read(block)
+                roh = bytes(daten)
+                # Mithören und Pegel auch, während er spricht: Das Mikrofon
+                # hört ja trotzdem, nur ausgewertet wird es nicht.
+                self._ton_verteilen(roh)
+                live = time.monotonic() < self._live_bis
+                if live:
+                    self._pegel = _pegel(roh)
                 if self._stimme is not None and self._stimme.spricht:
                     # Weiterlesen, damit kein alter Ton im Puffer bleibt,
                     # aber nichts davon auswerten.
                     taub = True
+                    self._teil = ""
                     if self.geweckt:
                         # Das Fenster nach "Robi" läuft erst ab, wenn das
                         # "Ja?" vorbei ist -- solange kann man nichts sagen.
@@ -387,8 +472,22 @@ class Spracherkennung:
                 if taub:
                     erkenner.Reset()
                     taub = False
-                if erkenner.AcceptWaveform(bytes(daten)):
+                if erkenner.AcceptWaveform(roh):
                     self._auswerten(json.loads(erkenner.Result()))
+                elif live:
+                    teil = json.loads(erkenner.PartialResult()).get("partial", "")
+                    self._teil = " ".join(teil.replace("[unk]", " ").split())
+
+    def _ton_verteilen(self, roh: bytes) -> None:
+        if not self._ton_abos:
+            return
+        with self._lock:
+            abos = list(self._ton_abos)
+        for abo in abos:
+            try:
+                abo.put_nowait(roh)
+            except queue.Full:
+                pass  # Empfänger zu langsam (WLAN): lieber Lücke als Verzögerung
 
     def _auswerten(self, ergebnis: dict) -> None:
         """Ein Ergebnis von Vosk prüfen, bevor es als Befehl gelten darf."""

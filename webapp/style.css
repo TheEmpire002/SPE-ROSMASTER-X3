@@ -287,6 +287,50 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 .hindernisse li .farbe { width: 9px; height: 9px; border-radius: 50%; }
 .hindernisse li .wo { color: var(--muted); font-variant-numeric: tabular-nums; }
 
+/* --- Mikrofon live (mikro.js) --- */
+
+.mikro-live[hidden] { display: none; }
+.mikro-live { margin-top: 0.7rem; }
+.mikro-pegel {
+  height: 8px;
+  background: #272b34;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.mikro-pegel div {
+  height: 100%;
+  width: 0;
+  background: var(--ok);
+  transition: width 0.15s linear;
+}
+/* Während der Roboter spricht, wertet das Ohr nichts aus -- grau zeigen. */
+.mikro-live.taub .mikro-pegel div { background: var(--muted); }
+.mikro-teil {
+  min-height: 1.3em;
+  margin: 0.45rem 0;
+  font-size: 0.85rem;
+  font-style: italic;
+  color: var(--muted);
+}
+.mikro-ereignisse {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.8rem;
+  max-height: 10rem;
+  overflow-y: auto;
+}
+.mikro-ereignisse li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.mikro-ereignisse .urteil { color: var(--muted); white-space: nowrap; }
+.mikro-ereignisse .befehl .urteil { color: var(--ok); }
+.mikro-ereignisse .verworfen .urteil { color: var(--warn); }
+
 /* --- Kopfzeile: Verweis auf die Einstellungen --- */
 
 .header-nav { display: flex; align-items: center; gap: 1rem; }

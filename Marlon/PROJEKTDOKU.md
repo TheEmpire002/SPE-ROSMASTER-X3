@@ -392,6 +392,15 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Ergebnis:** Am Pi: `test_gesten.py` (mit neuen Prüfungen für den sanften Start), `test_sprache.py` und `test_stimme.py` bestanden. Echter Satz über die `Stimme`-Klasse mit Lautstärke 60 % in Software: Piper spricht, Mixer steht auf 100 %, keine neue Over-Current-Meldung (16 vorher, 16 nachher).
 - **Offen:** Am Boden testen: „Robi, folge mir“ → 5 s Stille → „Jetzt folge ich dir.“ → losfahren, dabei `/diagnose` beobachten. Die Lautstärke im Raum einstellen.
 
+### 03.11.2026 – Mikrofon live in der App
+- **Was:** Zwei Schalter im Bereich „Interaktion“ der Web-App:
+  - **Mitlesen:** Pegelbalken, was Vosk im laufenden Satz gerade versteht, und die letzten 15 Sätze mit Urteil (Befehl, verworfen samt Grund, Weckwort, kein Befehl). Neu: `GET /sprache/live`, die App fragt 4x pro Sekunde.
+  - **Mithören:** der Ton des Roboter-Mikrofons im Browser. Neu: WebSocket `/sprache/ton` (Rohton 16 bit mono, Wiedergabe mit der Web-Audio-API). Hinkt die Wiedergabe hinterher, springt sie nach vorn statt immer später zu werden.
+- **Warum:** Bei den Fehlauslösern war bisher nur im Log zu sehen, was der Roboter gehört hat. Jetzt hört man live mit und sieht, warum ein Satz (nicht) als Befehl galt. Das hilft auch beim Einstellen der Konfidenz-Schwellen.
+- **Kosten:** Pegel und Zwischentext rechnet der Server nur, solange jemand mitliest (3 s nach dem letzten Abruf ist Schluss), Ton verschickt er nur an verbundene Zuhörer. Ausgeschaltet kostet beides nichts.
+- **Ergebnis:** Am Pi mit einem zweiten Server im Simulationsmodus geprüft: `/sprache/live` liefert, `mikro.js` wird ausgeliefert, der Ton-WebSocket meldet sich (ohne Mikrofon mit `{"rate": null}`; dabei ein Fehler gefunden und behoben: Die erste Meldung fehlte, die App hätte ewig „verbinde …“ gezeigt). Getippte Sätze erscheinen mit Urteil im Feed. Testskripte bestanden.
+- **Offen:** Mit echtem Mikrofon nach dem Neustart des Servers ausprobieren (Ton, Verzögerung).
+
 ---
 
 ## 3. Ergebnisse und Messwerte

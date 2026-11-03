@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import queue
 import re
 import time
 from contextlib import asynccontextmanager
@@ -700,6 +701,37 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     async def sprache_status():
         """Mikrofon, Modell, Weckwort, zuletzt Gehörtes und erkannte Befehle."""
         return sprache.status()
+
+    @app.get("/sprache/live")
+    async def sprache_live():
+        """Mitlesen: Pegel, Zwischentext und die letzten Sätze samt Urteil."""
+        return sprache.live()
+
+    @app.websocket("/sprache/ton")
+    async def sprache_ton(ws: WebSocket) -> None:
+        """Mithören: Rohton vom Mikrofon als Binär-Nachrichten (16 bit, mono).
+
+        Vorher und bei jedem Wechsel der Abtastrate kommt eine Textnachricht
+        {"rate": Hz}. Gelesen wird nur, solange jemand verbunden ist.
+        """
+        await ws.accept()
+        abo = sprache.ton_abonnieren()
+        rate: int | None = -1  # -1: noch nichts gemeldet, die erste Meldung kommt immer
+        try:
+            while True:
+                if sprache.ton_rate != rate:
+                    rate = sprache.ton_rate
+                    await ws.send_json({"rate": rate})
+                try:
+                    # Blockierendes Warten im Thread, damit der Event-Loop frei bleibt.
+                    daten = await asyncio.to_thread(abo.get, True, 1.0)
+                except queue.Empty:
+                    continue  # Mikrofon gerade weg (USB) oder Simulation
+                await ws.send_bytes(daten)
+        except (WebSocketDisconnect, RuntimeError):
+            pass  # Browser zu oder Seite verlassen
+        finally:
+            sprache.ton_abmelden(abo)
 
     async def _sprach_loop() -> None:
         """Erkannte Sprachbefehle abholen und ausführen.
