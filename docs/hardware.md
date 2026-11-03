@@ -334,9 +334,11 @@ echo "Hallo, ich bin Robi." \
 
 ## Mikrofon und Sprachbefehle
 
-Gehört wird über das USB-Mikrofon (C-Media `0d8c:0016`). Der Server sucht
-es über den Namen (`SPRACHE_MIKROFON_NAMEN`: „USB PnP“, „C-Media“,
-„Microphone“, „C270“ – in dieser Reihenfolge), nicht über die Nummer.
+Gehört wird über das USB-Mikrofon (FongLun bzw. C-Media `0d8c:0016`). Der Server sucht
+es über den Namen (`SPRACHE_MIKROFON_NAMEN`: „USB Microphone“, „USB PnP“,
+„C-Media“, „Microphone“ – in dieser Reihenfolge), nicht über die Nummer.
+Die Mikrofone in C270 und Orbbec nimmt er nie (`SPRACHE_MIKROFON_NIE`):
+Das der C270 klingt so schlecht, dass Vosk kaum etwas versteht.
 Erkannt wird mit Vosk und dem kleinen deutschen Modell (ca. 45 MB, läuft
 auf der CPU).
 

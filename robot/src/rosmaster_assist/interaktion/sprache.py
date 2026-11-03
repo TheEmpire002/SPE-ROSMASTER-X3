@@ -789,9 +789,10 @@ class Spracherkennung:
     def _besseres_pruefen(rang: int, karten_vorher: str, offen_s: float) -> None:
         """Läuft die Erkennung auf einem Ersatz-Mikrofon, zurück zum besseren.
 
-        Nach einem USB-Aussetzer meldet sich die C270 oft schneller zurück als
-        das USB-Mikrofon. Der Neuversuch fand dann nur die C270 und blieb dort,
-        auch wenn das bessere Mikrofon Sekunden später wieder da war.
+        Nach einem USB-Aussetzer melden sich die Geräte unterschiedlich schnell
+        zurück. Der Neuversuch fand dann nur das schlechtere und blieb dort,
+        auch wenn das bessere Mikrofon Sekunden später wieder da war. (Damals
+        war das die C270; die ist inzwischen ganz ausgeschlossen.)
 
         Gewechselt wird, wenn ein besseres neu angemeldet ist. War es schon beim
         Öffnen da (PortAudio fand es trotzdem nicht), nur alle
@@ -867,10 +868,17 @@ class Spracherkennung:
                 if i == wunsch:
                     return i, name
         namen = _mikrofon_namen()
-        # Nach Vorliebe suchen, nicht nach Geräteliste: Das USB-Mikrofon
-        # soll vor den Mikrofonen in den Kameras gewinnen.
+        # Kamera-Mikrofone nie von selbst nehmen: Das der C270 sprang nach
+        # USB-Aussetzern ein und verstand kaum etwas. Ein fest eingetragenes
+        # Mikrofon hat der Mensch bewusst gewählt, das gilt trotzdem.
+        kandidaten = geraete if wunsch else [
+            (i, name) for i, name in geraete
+            if not any(nie.lower() in name.lower() for nie in config.SPRACHE_MIKROFON_NIE)
+        ]
+        # Nach Vorliebe suchen, nicht nach Geräteliste: Das bevorzugte
+        # Mikrofon soll gewinnen, egal unter welcher Nummer es hängt.
         for teil in namen:
-            for i, name in geraete:
+            for i, name in kandidaten:
                 if teil.lower() in name.lower():
                     return i, name
         raise RuntimeError(

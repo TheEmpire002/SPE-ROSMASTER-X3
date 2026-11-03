@@ -794,9 +794,17 @@ SPRACHE_MODELL = "~/vosk-model-small-de-0.15"
 # Gerätenamens (str) oder die Gerätenummer von sounddevice (int).
 SPRACHE_MIKROFON = None
 
-# Reihenfolge = Vorliebe: das USB-Mikrofon (C-Media "USB PnP Sound Device")
-# vor den Mikrofonen in C270 und Orbbec, die weiter weg vom Sprecher zeigen.
-SPRACHE_MIKROFON_NAMEN = ("USB PnP", "C-Media", "Microphone", "C270")
+# Reihenfolge = Vorliebe. Nur angesteckte USB-Mikrofone: das FongLun
+# ("USB Microphone", hw:5 am 03.11.) bzw. C-Media ("USB PnP Sound Device").
+# Die Kamera-Mikrofone sind bewusst nicht dabei: Das der C270 klingt so
+# schlecht, dass Vosk kaum etwas versteht -- lieber taub und ehrlich
+# "kein Mikrofon" in /sprache/status als halb hörend.
+SPRACHE_MIKROFON_NAMEN = ("USB Microphone", "USB PnP", "C-Media", "Microphone")
+
+# Geräte mit diesen Namensteilen nimmt die automatische Suche nie, auch wenn
+# ein Eintrag oben passt (etwa "Webcam Microphone"). Ein fest eingetragenes
+# SPRACHE_MIKROFON gilt trotzdem.
+SPRACHE_MIKROFON_NIE = ("C270", "Logi", "WebCam", "ORBBEC", "Depth Sensor")
 
 # Der Name des Roboters. Vosk kennt "robi" nicht als Wort; es hört je nach
 # Aussprache eine der Varianten. Nur die, die im Modell stehen, werden benutzt.
@@ -861,10 +869,11 @@ SPRACHE_ABTASTRATE = 16000
 # Wartezeit (s) vor dem nächsten Versuch, wenn das Mikrofon weg ist.
 SPRACHE_NEUVERSUCH_S = 3.0
 
-# Failsafe nach USB-Aussetzern. Nach einem Absturz meldet sich die C270
+# Failsafe nach USB-Aussetzern. Nach einem Absturz meldete sich die C270
 # schneller zurück als das USB-Mikrofon, und die Erkennung blieb dann auf
-# der schlechteren C270 hängen. Läuft sie auf einem Ersatz, schaut sie so
-# oft (s) nach, ob ein besseres wieder angemeldet ist, und wechselt ...
+# der schlechteren C270 hängen (deshalb ist sie jetzt ganz ausgeschlossen).
+# Läuft sie auf einem weniger bevorzugten Mikrofon, schaut sie so oft (s)
+# nach, ob ein besseres wieder angemeldet ist, und wechselt ...
 SPRACHE_MIKROFON_PRUEFEN_S = 5.0
 # ... war es schon beim Öffnen da und PortAudio fand es trotzdem nicht,
 # versucht sie es erst nach dieser Zeit (s) erneut (kein Dauerwechsel).

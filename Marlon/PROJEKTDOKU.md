@@ -475,6 +475,13 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
     - `server.log` gehört root, seit der Server als `pi` läuft, landet nichts mehr darin.
 - **Offen:** Nachgebesserte Version am Boden prüfen. Winkel mit einer Linie am Boden gegenmessen, das Lidar kontrolliert sich bisher nur selbst.
 
+### 03.11.2026 – Spracherkennung nur noch über das angesteckte Mikrofon
+- **Problem:** Manchmal hörte die Spracherkennung über das Mikrofon der Logitech C270. Das klingt so schlecht, dass kaum ein Befehl ankam.
+- **Ursache:** In `SPRACHE_MIKROFON_NAMEN` stand „C270“ als letzter Ersatz. War das USB-Mikrofon nach einem USB-Aussetzer kurz weg, nahm der Neuversuch die C270.
+- **Was:** „C270“ aus der Liste gestrichen, das angesteckte FongLun („USB Microphone“, am Pi Karte 5) steht vorn. Neu `SPRACHE_MIKROFON_NIE` (C270, Logi, WebCam, Orbbec): Diese Geräte nimmt die automatische Suche nie, auch wenn ein allgemeiner Name wie „Microphone“ passt. Ist das USB-Mikrofon weg, ist die Erkennung lieber aus und sucht alle 3 s neu.
+- **Ergebnis:** Am Pi mit den echten Gerätenamen nachgeprüft: C270 und Orbbec fallen heraus, übrig bleiben nur „pulse“ und „default“, die zu keinem Namen passen. Das USB-Mikrofon hält der laufende Server belegt (`/sprache/status`: „USB Microphone (hw:5,0)“).
+- **Offen:** Nach dem nächsten Server-Neustart in `/sprache/status` prüfen, dass `mikrofon` das USB-Mikrofon ist. Mikrofon kurz abziehen: Die Erkennung muss „kein Mikrofon“ melden statt auf die C270 zu wechseln.
+
 ---
 
 ## 3. Ergebnisse und Messwerte
