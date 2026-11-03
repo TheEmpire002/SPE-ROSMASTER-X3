@@ -21,7 +21,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "robot" / "
 
 from rosmaster_assist.drive.mock_driver import MockDriver  # noqa: E402
 from rosmaster_assist.navigation import manoever as mv  # noqa: E402
-from rosmaster_assist.safety import SafetyWatchdog  # noqa: E402
+from rosmaster_assist.safety import Fahrschutz, SafetyWatchdog  # noqa: E402
 from rosmaster_assist.sensors.lidar import LidarService, MockLidar  # noqa: E402
 
 fehler = 0
@@ -78,6 +78,7 @@ async def main():
     lidar = LidarService(MockLidar(antrieb.wahre_pose))
     lidar.start()
     watchdog = SafetyWatchdog(antrieb)
+    watchdog.fahrschutz = Fahrschutz(lidar)  # wie im Server
     watchdog.start()
     m = mv.Manoever(watchdog, antrieb, lidar)
     for _ in range(50):

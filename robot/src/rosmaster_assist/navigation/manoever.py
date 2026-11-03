@@ -40,6 +40,7 @@ from collections import deque
 from .. import config
 from ..protocol import DriveCommand
 from ..safety import SafetyWatchdog
+from ..safety.fahrschutz import KEIN_LIDAR
 from .explorer import frei_in_richtung
 from .scan_matching import match
 
@@ -210,8 +211,11 @@ class Manoever:
             if scan is None:
                 return self._ende("keine frische Lidar-Aufnahme",
                                   "Mein Lidar sieht gerade nichts, ich fahre lieber nicht.")
-            if art == DREHEN and scan.min_abstand(0.0, 180.0) < config.MANOEVER_DREH_FREI_M:
-                return self._ende("zum Drehen zu wenig Platz", "Zum Drehen ist es mir hier zu eng.")
+            if art == DREHEN:
+                eng = self._drehen_eng(scan, math.radians(wert))
+                if eng is not None:
+                    return self._ende(f"zum Drehen zu wenig Platz ({eng})",
+                                      "Zum Drehen ist es mir hier zu eng.")
             self._pose = (0.0, 0.0, 0.0)
             self._bezug = _ausduennen(scan.punkte(), config.MANOEVER_MAX_PUNKTE)
             self._bezug_pose = self._pose
@@ -222,6 +226,7 @@ class Manoever:
             self._abgleiche = self._fehlschlaege = 0
             erkannt = time.monotonic()
             nachgebessert = 0
+            gesperrt_seit: float | None = None
             log.info("Fahrbefehl %s gestartet", beschreibung)
 
             while True:
@@ -262,14 +267,30 @@ class Manoever:
                                       "Das hat zu lange gedauert, ich habe aufgehört.")
 
                 befehl = self._befehl(art, ex, ey, eth)
+                ansage = ("Mir ist beim Drehen etwas zu nah, ich habe angehalten."
+                          if art == DREHEN else "Da ist etwas im Weg, ich habe angehalten.")
                 hindernis = self._hindernis(art, befehl)
                 if hindernis is not None:
-                    return self._ende(hindernis, "Mir ist beim Drehen etwas zu nah, ich habe angehalten."
-                                      if art == DREHEN else "Da ist etwas im Weg, ich habe angehalten.")
+                    return self._ende(hindernis, ansage)
                 self._text = f"{beschreibung}: noch {self._rest(art, ex, ey, eth)}"
-                # Selbstständige Fahrt: engere Tempogrenze und die zentrale
-                # Bremsweg-Prüfung (AutonomSchutz) wie bei Folgen und Erkunden.
+                # Selbstständige Fahrt wie Folgen und Erkunden: engere
+                # Tempogrenze, und der Fahrschutz im Watchdog prüft die ganze
+                # Grundfläche samt ausschwenkender Ecken. Die Prüfung oben kennt
+                # nur einen Streifen in Fahrtrichtung.
                 self._watchdog.submit(befehl, quelle="autonom")
+                pruefung = self._watchdog.letzte_pruefung
+                if (pruefung is not None and pruefung.anteil == 0.0
+                        and pruefung.grund != KEIN_LIDAR and not befehl.is_stop()):
+                    # Kurz warten (jemand läuft vorbei), dann aufgeben statt
+                    # bis zur Frist vor dem Hindernis zu stehen. Ohne Lidar
+                    # greift MANOEVER_BLIND_S.
+                    jetzt = time.monotonic()
+                    gesperrt_seit = gesperrt_seit or jetzt
+                    if jetzt - gesperrt_seit > config.MANOEVER_GESPERRT_S:
+                        return self._ende(f"Fahrschutz: {pruefung.grund} -- angehalten", ansage)
+                    self._text += f" (Fahrschutz: {pruefung.grund})"
+                else:
+                    gesperrt_seit = None
                 await asyncio.sleep(takt)
 
         except asyncio.CancelledError:
@@ -444,12 +465,29 @@ class Manoever:
                 omega = math.copysign(config.MANOEVER_MIN_DREH, eth)
         return DriveCommand(vx, vy, omega)
 
+    def _drehen_eng(self, scan, winkel_rad: float) -> str | None:
+        """Vor dem Drehen: Grund, warum der Platz nicht reicht, sonst None.
+
+        Mit Fahrschutz wird die Grundfläche über den ganzen Winkel geprüft.
+        Der frühere Kreis von 30 cm um den Lidar sperrte im Bodentest oft
+        grundlos (Beine, Möbel vorn) -- vorn ragt der Roboter nur 15 cm über.
+        """
+        fahrschutz = self._watchdog.fahrschutz
+        if fahrschutz is not None:
+            return fahrschutz.drehen_frei(winkel_rad)
+        nah = scan.min_abstand(0.0, 180.0)
+        if nah < config.MANOEVER_DREH_FREI_M:
+            return f"etwas in {nah:.2f} m"
+        return None
+
     def _hindernis(self, art: str, befehl: DriveCommand) -> str | None:
         """Grund zum Anhalten, oder None."""
         scan = self._lidar.latest()
         if scan is None:
             return None  # MANOEVER_BLIND_S greift
         if art == DREHEN:
+            if self._watchdog.fahrschutz is not None:
+                return None  # prüft der Fahrschutz über die Grundfläche
             nah = scan.min_abstand(0.0, 180.0)
             if nah < config.MANOEVER_DREH_FREI_M:
                 return f"beim Drehen etwas in {nah:.2f} m -- angehalten"

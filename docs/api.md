@@ -49,8 +49,8 @@ warum der Roboter stehen bleibt.
    `distance - ROBOTER_VORN_M` Luft. Was der Roboter tatsächlich ausführt,
    steht in der `state`-Nachricht, nicht unbedingt das, was man geschickt
    hat. Selbstständige Fahrten (Erkunden, Kartierfahrt, Heimfahrt,
-   Interaktion) prüft der Fahrschutz immer, mit `FAHRSCHUTZ_RAND_M`, und
-   ohne frischen Lidar-Scan fahren sie nicht.
+   Interaktion, genaue Fahrbefehle) prüft der Fahrschutz immer, mit
+   `FAHRSCHUTZ_RAND_M`, und ohne frischen Lidar-Scan fahren sie nicht.
 5. **Alle Clients sind gleichberechtigt.** Es gibt keine Steuerhoheit. Fahren
    zwei Clients gleichzeitig, gilt der jeweils letzte Befehl. Zustand und
    Meldungen gehen an alle.
@@ -483,9 +483,12 @@ nach Zeit oder Radumdrehungen (`navigation/manoever.py`).
   daneben.
 - Tempo `MANOEVER_SPEED` (0,2 m/s), drehen `MANOEVER_DREH` (0,6 rad/s).
 - **Sicherheit:** Er hält an, wenn in Fahrtrichtung etwas näher als
-  `EXPLORE_STOP_M` (0,4 m) kommt, beim Drehen, wenn ringsum etwas näher als
-  `MANOEVER_DREH_FREI_M` (0,3 m) ist, und wenn das Lidar die Umgebung
-  `MANOEVER_BLIND_S` (2 s) lang nicht wiedererkennt.
+  `EXPLORE_STOP_M` (0,4 m) kommt und wenn das Lidar die Umgebung
+  `MANOEVER_BLIND_S` (2 s) lang nicht wiedererkennt. Gedreht wird nur, wenn
+  über den ganzen Winkel keine Ecke der Grundfläche näher als
+  `FAHRSCHUTZ_RAND_M` an etwas herankommt (vorher geprüft). Zusätzlich läuft
+  jeder Befehl durch den Fahrschutz; sperrt der `MANOEVER_GESPERRT_S`
+  (1,5 s) am Stück, gibt er auf und sagt, warum.
 - `GET /manoever/status`: `aktiv`, `art`, `wert`, `text` (Fortschritt),
   `grund` (wie der letzte endete), `erfolgreich`, `gefahren_m`,
   `gedreht_grad` (laut Lidar, gegenüber dem Start), `abgleiche`,

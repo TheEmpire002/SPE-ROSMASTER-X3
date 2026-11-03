@@ -32,6 +32,7 @@ import time
 
 from .. import config
 from ..protocol import STOP, DriveCommand
+from .fahrschutz import KEIN_LIDAR
 
 log = logging.getLogger(__name__)
 
@@ -101,7 +102,7 @@ class CollisionGuard:
         rand = max(0.02, self.distance - config.ROBOTER_VORN_M)
         pruefung = self._fahrschutz.pruefen(cmd, rand)
 
-        if pruefung.grund == "keine frischen Lidar-Daten":
+        if pruefung.grund == KEIN_LIDAR:
             # Ohne Lidar kann der Schutz nicht helfen. Wer von Hand steuert,
             # sieht den Roboter -- also nicht auch noch die Handsteuerung
             # lahmlegen. Selbstständige Fahrten halten dagegen an.

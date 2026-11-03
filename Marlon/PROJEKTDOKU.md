@@ -663,6 +663,15 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Ergebnis (Simulation):** Vollgas auf eine Wand mit 0,22 s Befehlsverzögerung: Bei 0,2, 0,5 und 0,8 m/s steht er jedes Mal 6 cm vor der Kante. Tischbein vorn rechts wird erkannt, der alte Kegel hätte es übersehen. Drehen dicht neben einer Wand wird gesperrt, Wegfahren nicht. Die Kartierfahrt mit Schutz deckt jetzt den ganzen Raum ab (6 Bahnen, auch neben der Säule). Am Ende liegt die Lidar-Odometrie 0,19 m und 3° neben der Wirklichkeit.
 - **Offen:** `ROBOTER_HINTEN_M` am Roboter nachmessen. Am Boden prüfen: Hindernisstopp in der App einschalten und auf Wand, Stuhl und Tischbein zufahren. Niedrige Hindernisse sieht der Lidar nicht.
 
+### 03.11.2026 – Mapping-Zweig auf main gebracht, genaue Fahrbefehle mit Fahrschutz
+- **Was:** Den Zweig `feat-mapping` auf den aktuellen Stand von `main` gesetzt (Rebase). Dort waren inzwischen die genauen Fahrbefehle (`manoever.py`) dazugekommen. Konflikte gab es nur in diesem Tagebuch, in `server.py` und in `navigation/__init__.py`. In allen drei Fällen bleiben beide Seiten erhalten.
+- **Angepasst an den Fahrschutz:**
+  - Die genauen Fahrbefehle schickten ihre Befehle ohne Fahrschutz an den Watchdog. Jetzt laufen sie wie alle selbstständigen Fahrten mit `schutz=True`. Sperrt der Schutz 1,5 s am Stück (`MANOEVER_GESPERRT_S`), gibt der Befehl auf und sagt, dass etwas im Weg ist.
+  - Vor dem Drehen wurde bisher ein Kreis von 30 cm um den Lidar geprüft. Im Bodentest sperrte der oft ohne Grund, wenn Beine oder Möbel vorn standen, obwohl der Roboter vorn nur 15 cm übersteht. Jetzt prüft `Fahrschutz.drehen_frei()` die Grundfläche über den ganzen Winkel. Der alte Kreis greift nur noch, wenn es keinen Fahrschutz gibt.
+  - Startet eine Kartierfahrt, bricht sie einen laufenden genauen Fahrbefehl ab. Vorher hätten zwei Programme gleichzeitig gelenkt.
+  - `test_manoever.py` verdrahtet den Fahrschutz wie der Server.
+- **Offen:** Am Boden prüfen: „90 Grad drehen“ mit Möbeln 20–30 cm vor dem Roboter (muss jetzt gehen) und direkt neben einer Wand (muss abgelehnt werden). `test_manoever.py` am Pi laufen lassen.
+
 ---
 
 ## 3. Ergebnisse und Messwerte

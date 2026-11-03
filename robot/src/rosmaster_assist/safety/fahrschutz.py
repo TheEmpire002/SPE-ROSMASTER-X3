@@ -43,6 +43,10 @@ _MAX_VORAUS_S = 4.0
 _SCHRITT_M = 0.02
 _SCHRITT_RAD = math.radians(2.0)
 
+#: Grund, wenn kein frischer Scan da ist. Aufrufer unterscheiden daran
+#: "blind" von "Hindernis".
+KEIN_LIDAR = "keine frischen Lidar-Daten"
+
 
 class Pruefung(NamedTuple):
     """Ergebnis einer Prüfung."""
@@ -69,24 +73,11 @@ class Fahrschutz:
             return Pruefung(cmd, 1.0, None, None)
         rand = config.FAHRSCHUTZ_RAND_M if rand_m is None else rand_m
 
-        scan = self._lidar.latest() if self._lidar is not None else None
-        alter = time.monotonic() - scan.zeit if scan is not None else None
-        if scan is None or alter > config.FAHRSCHUTZ_SCAN_MAX_S:
+        punkte, alter = self._punkte()
+        if punkte is None:
             # Blind wird nicht gefahren: Ein alter Scan zeigt eine Welt, in
             # der der Roboter längst woanders steht.
-            return Pruefung(STOP, 0.0, None, "keine frischen Lidar-Daten")
-
-        import numpy as np
-
-        punkte = scan.punkte()
-        if len(punkte):
-            punkte = punkte[np.hypot(punkte[:, 0], punkte[:, 1]) < _REICHWEITE_M]
-        # Punkte innerhalb der Grundfläche selbst kann es nicht geben -- das
-        # sind Teile des Roboters oder Fehlmessungen. Mitgezählt würden sie
-        # den Abstand dauerhaft auf null setzen und damit den Schutz
-        # ausschalten (näher als null geht nicht).
-        if len(punkte):
-            punkte = punkte[_abstand_zur_flaeche(punkte[:, 0], punkte[:, 1]) > 0.01]
+            return Pruefung(STOP, 0.0, None, KEIN_LIDAR)
         if len(punkte) == 0:
             return Pruefung(cmd, 1.0, None, None)
 
@@ -118,6 +109,60 @@ class Fahrschutz:
             DriveCommand(cmd.vx * anteil, cmd.vy * anteil, cmd.omega * anteil),
             anteil, frei_m, "bremst vor Hindernis",
         )
+
+    def drehen_frei(self, winkel_rad: float, rand_m: float | None = None) -> str | None:
+        """Ob eine Drehung auf der Stelle um ``winkel_rad`` ganz durchgeht.
+
+        Für Drehungen mit festem Ziel ("90 Grad nach links"): vorher prüfen,
+        statt nach der Hälfte stehen zu bleiben. Geprüft wird die
+        Grundfläche über den ganzen Winkel -- ein Kreis um den Lidar wäre
+        vorn viel zu groß (dort ragt der Roboter nur 15 cm über) und sperrte
+        schon bei Möbeln, an denen keine Ecke vorbeistreift.
+
+        Gibt den Grund zurück, warum es nicht geht, sonst None.
+        """
+        import numpy as np
+
+        rand = config.FAHRSCHUTZ_RAND_M if rand_m is None else rand_m
+        punkte, _ = self._punkte()
+        if punkte is None:
+            return KEIN_LIDAR
+        if len(punkte) == 0 or abs(winkel_rad) < 1e-6:
+            return None
+        # Nach einer ganzen Umdrehung wiederholt sich alles.
+        bogen = min(abs(winkel_rad), 2.0 * math.pi)
+        schritte = max(2, math.ceil(bogen / _SCHRITT_RAD))
+        theta = math.copysign(1.0, winkel_rad) * np.linspace(0.0, bogen, schritte + 1)
+        cs, sn = np.cos(theta)[:, None], np.sin(theta)[:, None]
+        px = cs * punkte[None, :, 0] + sn * punkte[None, :, 1]
+        py = -sn * punkte[None, :, 0] + cs * punkte[None, :, 1]
+        abstand = _abstand_zur_flaeche(px, py).min(axis=1)
+        # Gleiche Regel wie beim Fahren: nur Annähern unter den Rand zählt.
+        kritisch = (abstand[1:] < rand) & (abstand[1:] < abstand[:-1] - 1e-4)
+        if not kritisch.any():
+            return None
+        nach = math.degrees(abs(theta[int(np.argmax(kritisch)) + 1]))
+        return f"eine Ecke stößt nach {nach:.0f}° an"
+
+    def _punkte(self):
+        """Lidar-Punkte im Nahbereich und Alter des Scans; (None, None) ohne frischen Scan."""
+        scan = self._lidar.latest() if self._lidar is not None else None
+        alter = time.monotonic() - scan.zeit if scan is not None else None
+        if scan is None or alter > config.FAHRSCHUTZ_SCAN_MAX_S:
+            return None, None
+
+        import numpy as np
+
+        punkte = scan.punkte()
+        if len(punkte):
+            punkte = punkte[np.hypot(punkte[:, 0], punkte[:, 1]) < _REICHWEITE_M]
+        # Punkte innerhalb der Grundfläche selbst kann es nicht geben -- das
+        # sind Teile des Roboters oder Fehlmessungen. Mitgezählt würden sie
+        # den Abstand dauerhaft auf null setzen und damit den Schutz
+        # ausschalten (näher als null geht nicht).
+        if len(punkte):
+            punkte = punkte[_abstand_zur_flaeche(punkte[:, 0], punkte[:, 1]) > 0.01]
+        return punkte, alter
 
     @staticmethod
     def _freie_zeit(cmd: DriveCommand, punkte, rand: float, alter: float) -> float | None:

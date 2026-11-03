@@ -432,8 +432,12 @@ MANOEVER_BLIND_S = 2.0
 MANOEVER_MAX_M = 5.0
 MANOEVER_MAX_GRAD = 720.0
 # Drehen nur, wenn ringsum so viel Platz ist (Ecken schwenken aus), m ab
-# Lidar-Mitte.
+# Lidar-Mitte. Nur noch Rückfall ohne Fahrschutz; sonst prüft der die
+# Grundfläche über den ganzen Winkel (FAHRSCHUTZ_RAND_M Luft).
 MANOEVER_DREH_FREI_M = 0.30
+# Sperrt der Fahrschutz so lange (s) am Stück, gibt der Befehl auf. Kurz,
+# denn wer "2 Meter vor" sagt, wartet auf eine Antwort.
+MANOEVER_GESPERRT_S = 1.5
 # Für den Abgleich höchstens so viele Lidar-Punkte (Rechenzeit am Pi).
 MANOEVER_MAX_PUNKTE = 300
 

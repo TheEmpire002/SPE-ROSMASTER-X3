@@ -428,6 +428,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             homing.abbrechen("Kartierfahrt gestartet")
             erkunder.abbrechen("Kartierfahrt gestartet")
             interaktion.abbrechen("Kartierfahrt gestartet")
+            manoever.abbrechen("Kartierfahrt gestartet")
             if not erkunder.start(KARTE):
                 return "Die Kartierfahrt ließ sich nicht starten."
             asyncio.get_running_loop().create_task(

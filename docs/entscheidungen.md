@@ -402,8 +402,12 @@ sobald ein Lidar-Punkt den Rand unterschreitet *und* näher kommt. Das Tempo
 wird dann so weit gesenkt, dass der Anhalteweg (Reaktionszeit plus Alter
 des Scans plus Bremsweg) ins Freie passt. Alle Anteile des Befehls werden
 gleich skaliert, die Bahn bleibt also dieselbe, nur langsamer.
-- Gilt immer für Erkunder, Kartierfahrt, Heimfahrt und Interaktion: im
-  Watchdog, `submit(..., schutz=True)`.
+- Gilt immer für Erkunder, Kartierfahrt, Heimfahrt, Interaktion und die
+  genauen Fahrbefehle (`manoever.py`): im Watchdog,
+  `submit(..., schutz=True)`. Für Drehungen mit festem Winkel prüft
+  `Fahrschutz.drehen_frei()` vorab die Grundfläche über den ganzen Winkel;
+  das ersetzt den 30-cm-Kreis um den Lidar, der im Bodentest grundlos
+  sperrte.
 - Gilt für die Handsteuerung, wenn der Hindernisstopp an ist. Der Regler
   `distance` behält seine Bedeutung (ab Lidar-Mitte nach vorn).
 - Selbstständige Fahrten fahren ohne frischen Scan (`FAHRSCHUTZ_SCAN_MAX_S`)
