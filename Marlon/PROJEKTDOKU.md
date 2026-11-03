@@ -384,6 +384,14 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Ergebnis:** Am Pi gemessen: Mit nur einem Kern ist Piper kaum langsamer (1,27 statt 1,28 s für 3,5 s Sprache). Ein Testsatz mit Kerstin bei 70 % lief vollständig und ohne eine neue Over-Current-Meldung (7 vorher, 7 nachher). `test_stimme.py` bestanden.
 - **Offen:** Im Betrieb beobachten, ob beim Sprechen noch USB-Ausfälle kommen (`/diagnose`). Die eigentliche Abhilfe bleibt die Versorgung (Board V3.0 oder eigener 5-V/5-A-Wandler).
 
+### 03.11.2026 – Absturz bei „folge mir“: sanfter Start, ein Lautstärkeregler
+- **Was:**
+  - **Sanfter Start der Interaktion:** Erst läuft 5 s nur die Posenerkennung warm (`INTERAKTION_ANLAUF_S`, still, im Stand), dann sagt er „Jetzt folge ich dir.“, und gefahren wird erst, wenn der Satz zu Ende ist. Befehle in dieser Zeit (z. B. Stopp) gelten danach.
+  - **Ein Lautstärkeregler:** `LAUTSTAERKE` auf der Einstellungsseite (Gruppe „Ton & Lautstärke“) gilt für Stimme und Musik. Der Mixer des Lautsprechers steht immer auf 100 % (`TON_MIXER`) und wird vor jeder Satzfolge neu gesetzt (nach einem USB-Aussetzer kommt der Lautsprecher mit seinem Standardwert zurück). Leiser wird in Software: Piper-Töne rechnet der Server herunter, espeak bekommt `-a`, mpv bekommt Musik-Regler × Gesamtlautstärke.
+- **Warum:** Im Log stand um 08:50:25 alles in derselben Sekunde: „ruby folge mir“ → Interaktion an, Posenerkennung an, Ansage „Ich folge dir.“, Motoren an. Eine Sekunde später brach die USB-Versorgung zusammen, kurz darauf startete der ganze Pi neu (Uptime danach 5 min). Nacheinander statt gleichzeitig verteilt die Lastsprünge.
+- **Ergebnis:** Am Pi: `test_gesten.py` (mit neuen Prüfungen für den sanften Start), `test_sprache.py` und `test_stimme.py` bestanden. Echter Satz über die `Stimme`-Klasse mit Lautstärke 60 % in Software: Piper spricht, Mixer steht auf 100 %, keine neue Over-Current-Meldung (16 vorher, 16 nachher).
+- **Offen:** Am Boden testen: „Robi, folge mir“ → 5 s Stille → „Jetzt folge ich dir.“ → losfahren, dabei `/diagnose` beobachten. Die Lautstärke im Raum einstellen.
+
 ---
 
 ## 3. Ergebnisse und Messwerte

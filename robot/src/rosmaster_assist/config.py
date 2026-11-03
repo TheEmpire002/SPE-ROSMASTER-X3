@@ -519,6 +519,13 @@ INTERAKTION_VERHALTEN_MAX_S = 20.0
 # ist es vermutlich eine andere -- dann beginnt die Gestenerkennung neu.
 INTERAKTION_SPRUNG_GRAD = 15.0
 
+# Sanfter Start (s): Wird die Interaktion eingeschaltet, läuft erst nur die
+# Posenerkennung warm, der Roboter steht still und schweigt. Danach sagt er
+# den Startsatz ("Jetzt folge ich dir.") und fährt erst los, wenn der Satz
+# zu Ende ist. Am 03.11. starteten Posenerkennung, Sprechen und Motoren in
+# derselben Sekunde, und die USB-Versorgung brach zusammen. 0 = sofort.
+INTERAKTION_ANLAUF_S = 5.0
+
 # --- Diagnose (Seite /diagnose) ------------------------------------------------
 # Wie oft die schnellen Messungen laufen (Akku, USB-Überlastzähler, Geräte-
 # zustand) und wie oft die langsamen (Temperatur, vcgencmd, Kernel-Log,
@@ -618,8 +625,21 @@ MUKKE_ENABLED = True
 # die der Lautsprecher nicht selbst kann. "auto" nimmt das Standardgerät.
 MUKKE_AUDIO_DEVICE = "alsa/plughw:CARD=UACDemoV10,DEV=0"
 
-# Lautstärke beim Start in Prozent (0..100). In der App verstellbar.
+# Lautstärke der Musik in Prozent (0..100), als Anteil von LAUTSTAERKE.
+# In der App verstellbar.
 MUKKE_LAUTSTAERKE = 60
+
+# --- Ton -----------------------------------------------------------------------
+
+# Gesamtlautstärke in Prozent (0..100): der eine Regler für alles, was aus dem
+# Lautsprecher kommt (Stimme und Musik). Gerechnet wird in Software, der
+# Mixer des Lautsprechers steht fest auf TON_MIXER. Auf der Einstellungsseite
+# verstellbar. Leiser heißt auch: weniger Strom am USB des Pi.
+LAUTSTAERKE = 70
+
+# Hardware-Mixer des Lautsprechers (amixer) in Prozent. Bleibt immer gleich,
+# damit es nur einen Regler gibt (LAUTSTAERKE).
+TON_MIXER = 100
 
 # --- Stimme (USB-Lautsprecher) ------------------------------------------------
 # Sprachausgabe über den USB-Lautsprecher „UACDemoV1.0“. Siehe
@@ -649,12 +669,6 @@ STIMME_KERNE = "3"
 # wenn sich USB-Geräte nach einem Spannungseinbruch neu anmelden.
 # „plughw“ wandelt Abtastrate und Kanäle passend um.
 STIMME_GERAET = "plughw:CARD=UACDemoV10,DEV=0"
-
-# Lautstärke in Prozent; wird beim Start per amixer gesetzt (falls möglich).
-# Der Lautsprecher hängt am USB des Pi: Je lauter, desto mehr Strom zieht er
-# aus dem gemeinsamen 1,6-A-Schalter. 70 statt 80, solange das Treiberboard
-# V1 den Pi versorgt (siehe docs/hardware.md).
-STIMME_LAUTSTAERKE = 70
 
 # Sprechtempo für Piper: >1 langsamer. Etwas langsamer ist im Raum mit
 # Motorgeräusch besser zu verstehen.

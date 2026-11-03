@@ -212,6 +212,7 @@ Mikrofon hört die Musik mit; „Robi, Musik aus“ hilft.
 - **Freier Text** geht später nur nach dem Weckwort an `denken.py`.
 - **Ausgabe (umgesetzt):** über den USB-Lautsprecher mit **Piper** (offline, weibliche Stimme `de_DE-kerstin-low`, nur auf einem CPU-Kern). Fehlt Piper, spricht espeak-ng, fehlt auch das, bleibt es beim Log. Der zuletzt gesagte Satz steht in `state.stimme` und in der App. Einrichtung: [`hardware.md`](hardware.md).
   - Er sagt kurz, was er tut: „Ich folge dir.“, „Ich komme.“, „Da bin ich.“, „Wo bist du?“, „Okay, ich halte an.“ und beim Not-Stopp „Halt.“. Die Sätze stehen in `verhalten.py` (`_GESTE_SAGEN` und die Aufrufe von `_wechseln(..., sagen=…)`).
+  - **Sanfter Start:** Beim Einschalten läuft erst die Posenerkennung `INTERAKTION_ANLAUF_S` (5 s) warm, still und im Stand. Dann kommt der Startsatz („Jetzt folge ich dir.“), und gefahren wird erst, wenn er zu Ende ist (`Stimme.beschaeftigt`). Wünsche in dieser Zeit (Sprache, App) merkt sich die Interaktion (`_start_modus`) und führt sie danach aus. Grund: Am 03.11. starteten Pose, Ansage und Motoren in derselben Sekunde, die USB-Versorgung brach zusammen, und der Pi startete neu.
   - Beim Start sagt er „Ich bin bereit.“. So hört man sofort, ob der Lautsprecher geht.
   - Aus der App: Feld „Sagen“ im Interaktionsbereich (Befehl `say`).
   - Gleiche Sätze innerhalb von `STIMME_WIEDERHOLUNG_S` werden verschluckt. Die Schlange hält höchstens `STIMME_MAX_WARTESCHLANGE` Sätze, das Älteste fällt weg. Stopp hat Vorrang und schneidet den laufenden Satz ab.

@@ -320,8 +320,11 @@ echo "Hallo, ich bin Robi." \
 - Piper ist ein Systemprogramm, keine pip-Abhängigkeit. Fehlt es (oder das
   Modell), weicht der Server auf espeak-ng aus und meldet das im Log. Fehlt
   auch das, spricht er nicht, läuft aber normal weiter.
-- Beim Start stellt der Server die Lautstärke per `amixer` auf
-  `STIMME_LAUTSTAERKE` (70 %, weniger Strom am USB) und sagt „Ich bin bereit.“. Hört man das,
+- Der Server stellt den Mixer per `amixer` fest auf `TON_MIXER` (100 %),
+  vor jeder Satzfolge neu, weil der Lautsprecher nach einem USB-Aussetzer
+  mit seinem Standardwert zurückkommt. Leiser wird in Software
+  (`LAUTSTAERKE`, Einstellungsseite): Piper-Töne rechnet der Server selbst
+  herunter, espeak bekommt `-a`, mpv `--volume`. Beim Start sagt er „Ich bin bereit.“. Hört man das,
   funktioniert die ganze Kette.
 - Diagnose: `curl localhost:8000/stimme/status`. `ausgabe` zeigt, welche
   Stimme benutzt wird, und `fehler` die letzte Meldung von aplay (z. B.

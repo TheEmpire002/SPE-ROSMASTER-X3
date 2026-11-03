@@ -100,6 +100,7 @@ GRUPPEN = [
     ("personen", "Personenerkennung", "Sucht während des autonomen Fahrens im Bild der Personenkamera."),
     ("gesten", "Interaktion: Pose & Gesten", "Körperpose auf dem Hailo (Personenkamera), daraus die Handzeichen."),
     ("folgen", "Interaktion: Folgen, Herkommen, Weggehen", "Wie der Roboter auf die Handzeichen reagiert."),
+    ("ton", "Ton & Lautstärke", "Stimme und Musik über den USB-Lautsprecher."),
     ("lidar", "Lidar", "RPLIDAR A1: Einbaulage und Messbereich."),
     ("ortung", "Ortung (Lidar-Abgleich)", "Korrigiert die Position durch Vergleich mit der Aufnahme am Startpunkt."),
     ("hindernisse", "Hinderniserkennung", "Benennt, was der Lidar sieht (Wand, Stuhl, Mensch …)."),
@@ -213,6 +214,16 @@ EINSTELLUNGEN: list[Einstellung] = [
     Einstellung("WEGGEHEN_STRECKE_M", "folgen", "Weggehen: Strecke", "m", 0.2, 3.0, 0.1),
     Einstellung("WEGGEHEN_SPEED", "folgen", "Weggehen: Tempo", "m/s", 0.05, 0.4, 0.01),
     Einstellung("INTERAKTION_VERHALTEN_MAX_S", "folgen", "Herkommen/Weggehen höchstens", "s", 5, 120, 5),
+    Einstellung("INTERAKTION_ANLAUF_S", "folgen", "Sanfter Start: aufwärmen", "s", 0, 15, 1,
+                hilfe="Beim Einschalten erst die Posenerkennung warmlaufen lassen, dann ansagen, "
+                      "dann losfahren -- nicht alles in derselben Sekunde. Beugt USB-Aussetzern "
+                      "vor. 0 = sofort."),
+
+    # --- Ton
+    Einstellung("LAUTSTAERKE", "ton", "Gesamtlautstärke", "%", 0, 100, 5,
+                hilfe="Ein Regler für Stimme und Musik. Der Mixer des Lautsprechers bleibt auf "
+                      "100 %, leiser wird in Software. Der Musik-Regler in der App ist ein Anteil "
+                      "davon. Leiser zieht auch weniger Strom am USB."),
 
     # --- Lidar
     Einstellung("LIDAR_ANGLE_OFFSET_DEG", "lidar", "Einbauwinkel", "°", -180, 180, 1,

@@ -547,6 +547,9 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         if "CAMERA_RESOLUTION" in geaendert:
             for kamera in kameras.values():
                 kamera.neu_oeffnen()
+        if "LAUTSTAERKE" in geaendert:
+            # Die Stimme liest den Wert bei jedem Satz, mpv muss man es sagen.
+            await asyncio.to_thread(mukke.lautstaerke_anwenden)
 
     async def _einstellungen_antwort(geaendert: list[str]) -> dict[str, Any]:
         await _einstellungen_wirken(geaendert)

@@ -15,10 +15,12 @@ Getestet wird:
 Braucht nur numpy.
 """
 
+import asyncio
 import math
 import pathlib
 import random
 import sys
+import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "robot" / "src"))
 
@@ -570,6 +572,52 @@ verbunden[0] = False
 b = ia._schritt(0.1)
 pruefe("Schritt ohne Antrieb: kein Fahrbefehl, bereit",
        (b is None or b.is_stop()) and ia._modus == vh.BEREIT, (b, ia._modus))
+
+# --- Sanfter Start (03.11.): aufwärmen, ansagen, erst dann fahren ----------------
+class StimmeAttrappe:
+    """Spricht jeden Satz 0,3 s lang."""
+
+    def __init__(self):
+        self.gesagt, self.bis = [], 0.0
+
+    def sagen(self, text, vorrang=False):
+        self.gesagt.append(text)
+        self.bis = time.monotonic() + 0.3
+        return True
+
+    @property
+    def beschaeftigt(self):
+        return time.monotonic() < self.bis
+
+
+async def sanft_starten(stopp_waehrend_anlauf=False):
+    alt = config.INTERAKTION_ANLAUF_S
+    config.INTERAKTION_ANLAUF_S = 0.3
+    st = StimmeAttrappe()
+    ia = vh.Interaktion(Watchdog(), Lidar([(-5, 5, 2.0)]), Pose(), st)
+    try:
+        ia.start(vh.FOLGEN)
+        await asyncio.sleep(0.15)
+        if stopp_waehrend_anlauf:
+            ia.wechseln_zu(vh.BEREIT, "angehalten (per Sprache)")
+        anlauf = (ia._modus, list(st.gesagt))
+        await asyncio.sleep(0.3)   # Anlauf vorbei, Ansage läuft
+        ansage = (ia._modus, list(st.gesagt))
+        await asyncio.sleep(0.45)  # ausgeredet
+        return anlauf, ansage, ia._modus
+    finally:
+        ia.abbrechen()
+        config.INTERAKTION_ANLAUF_S = alt
+
+
+anlauf, ansage, danach = asyncio.run(sanft_starten())
+pruefe("Sanfter Start: erst still und stehend", anlauf == (vh.BEREIT, []), anlauf)
+pruefe("Sanfter Start: dann Ansage, noch stehend",
+       ansage == (vh.BEREIT, ["Jetzt folge ich dir."]), ansage)
+pruefe("Sanfter Start: nach der Ansage folgt er", danach == vh.FOLGEN, danach)
+anlauf, ansage, danach = asyncio.run(sanft_starten(stopp_waehrend_anlauf=True))
+pruefe("Sanfter Start: Stopp im Anlauf gilt", danach == vh.BEREIT and ansage[1] != ["Jetzt folge ich dir."],
+       (ansage, danach))
 
 print("\nalles bestanden" if not fehler else f"\n{fehler} Fehler")
 sys.exit(1 if fehler else 0)

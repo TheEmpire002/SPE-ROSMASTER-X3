@@ -315,6 +315,13 @@ dann und wartet auf ein Handzeichen vor der Kamera (Modus `bereit`). Die
 Körperpunkte rechnet der Hailo-Chip (YOLOv8-Pose); er arbeitet nur, solange
 der Modus an ist. **Nur am Boden benutzen.**
 
+**Sanfter Start:** Nach dem Einschalten läuft erst
+`INTERAKTION_ANLAUF_S` (5 s) nur die Posenerkennung warm, der Roboter steht
+und schweigt (`text`: „startet …“). Dann sagt er den Startsatz (z. B.
+„Jetzt folge ich dir.“) und fährt erst los, wenn der Satz zu Ende ist.
+Befehle in dieser Zeit (Folgen, Stopp …) gelten danach. Grund: Pose,
+Sprechen und Motoren gleichzeitig ließen die USB-Versorgung zusammenbrechen.
+
 | Handzeichen | Wie | Modus danach |
 |---|---|---|
 | Folgen | einen Arm über den Kopf halten (1 s) | `folgen`: bleibt `FOLGEN_ABSTAND_M` (1,0 m) hinter der Person |
@@ -367,6 +374,11 @@ Am Roboter hängt ein USB-Lautsprecher. Der Roboter sagt von selbst kurz,
 was er tut: „Ich bin bereit.“ beim Start, „Ich folge dir.“, „Ich komme.“,
 „Da bin ich.“, „Wo bist du?“, „Okay, ich halte an.“, beim `stop` „Halt.“.
 Mit `say` lässt sich beliebiger Text vorlesen.
+
+**Lautstärke:** Ein Regler für alles, `LAUTSTAERKE` (0–100 %) auf der
+Einstellungsseite (Gruppe „Ton & Lautstärke“, `POST /einstellungen`). Der
+Mixer des Lautsprechers steht fest auf 100 %, leiser wird in Software. Die
+Musik-Lautstärke (`/mukke/volume`) ist ein Anteil davon.
 
 - Gesprochen wird mit Piper (offline, deutsche Stimme). Fehlt Piper, spricht
   espeak-ng, fehlt auch das, landet der Text nur im Log (`verfuegbar: false`).
@@ -659,7 +671,7 @@ der Knopf „MUKKE“ oben links das Fenster dafür.
 | `POST /mukke/play` | Body `{"url": "https://youtu.be/…"}`. Ersetzt, was gerade läuft. Nur Links von youtube.com, music.youtube.com und youtu.be, sonst `400` mit `{"fehler": "…"}`. |
 | `POST /mukke/pause` | Pause an/aus |
 | `POST /mukke/stop` | anhalten |
-| `POST /mukke/volume` | Body `{"lautstaerke": 70}` |
+| `POST /mukke/volume` | Body `{"lautstaerke": 70}`: Anteil der Gesamtlautstärke `LAUTSTAERKE` (mpv bekommt beides multipliziert) |
 
 Alle `POST` antworten mit dem neuen Zustand wie `/mukke/status`. Bis der
 Titel bekannt ist, vergehen ein paar Sekunden (yt-dlp muss die Tonspur erst
