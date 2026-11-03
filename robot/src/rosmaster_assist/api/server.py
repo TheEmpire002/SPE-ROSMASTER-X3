@@ -712,7 +712,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         """Mithören: Rohton vom Mikrofon als Binär-Nachrichten (16 bit, mono).
 
         Vorher und bei jedem Wechsel der Abtastrate kommt eine Textnachricht
-        {"rate": Hz}. Gelesen wird nur, solange jemand verbunden ist.
+        {"rate": Hz}, ohne Ton zusätzlich jede Sekunde als Lebenszeichen.
+        Gelesen wird nur, solange jemand verbunden ist.
         """
         await ws.accept()
         abo = sprache.ton_abonnieren()
@@ -726,7 +727,11 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                     # Blockierendes Warten im Thread, damit der Event-Loop frei bleibt.
                     daten = await asyncio.to_thread(abo.get, True, 1.0)
                 except queue.Empty:
-                    continue  # Mikrofon gerade weg (USB) oder Simulation
+                    # Mikrofon gerade weg (USB) oder Simulation. Trotzdem ein
+                    # Lebenszeichen: Daran merkt die App, dass die Verbindung
+                    # steht, und verbindet sonst selbst neu.
+                    await ws.send_json({"rate": rate})
+                    continue
                 await ws.send_bytes(daten)
         except (WebSocketDisconnect, RuntimeError):
             pass  # Browser zu oder Seite verlassen

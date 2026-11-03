@@ -25,6 +25,11 @@ const TAKT_MS = 250;
 /** Mithören: so weit im Voraus planen und höchstens so weit hinterherhängen. */
 const VORLAUF_S = 0.15;
 const MAX_RUECKSTAND_S = 1.0;
+/** Der Roboter meldet sich mindestens jede Sekunde (Ton oder Lebenszeichen).
+ *  Kommt so lange gar nichts, hängt die Verbindung: neu verbinden. */
+const STILLE_MS = 5000;
+/** Länger als das wartet das Mitlesen nicht auf eine Antwort. */
+const ABFRAGE_FRIST_MS = 2000;
 
 function status(el, text, an) {
   el.textContent = text;
@@ -70,7 +75,9 @@ function zeigeLive(d) {
 
 async function abfragen() {
   try {
-    const antwort = await fetch("/sprache/live");
+    // Mit Frist: Hängt der Roboter, bliebe fetch sonst ewig offen und das
+    // Mitlesen stünde, auch wenn er längst wieder da ist.
+    const antwort = await fetch("/sprache/live", { signal: AbortSignal.timeout(ABFRAGE_FRIST_MS) });
     if (antwort.ok) zeigeLive(await antwort.json());
   } catch {
     status(lesenStatus, "Roboter nicht erreichbar", false);
@@ -94,6 +101,8 @@ let ws = null;
 let ctx = null;
 let rate = 16000;
 let naechster = 0;
+let zuletzt = 0;  // wann zuletzt etwas vom Roboter kam (performance.now)
+let neuTimer = null;
 
 function abspielen(puffer) {
   const werte = new Int16Array(puffer);
@@ -124,8 +133,13 @@ function mithoerenAn() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   ws = new WebSocket(`${proto}://${location.host}/sprache/ton`);
   ws.binaryType = "arraybuffer";
+  zuletzt = performance.now();
   status(hoerenStatus, "verbinde …", false);
   ws.onmessage = (ev) => {
+    zuletzt = performance.now();
+    // Der Browser hält den Ton gelegentlich an (Tab im Hintergrund,
+    // Bildschirmsperre); dann still wieder anwerfen.
+    if (ctx.state === "suspended") ctx.resume();
     if (typeof ev.data === "string") {
       const msg = JSON.parse(ev.data);
       if (msg.rate) {
@@ -140,21 +154,41 @@ function mithoerenAn() {
   };
   ws.onclose = () => {
     ws = null;
-    if (hoeren.checked) {
-      // Server neu gestartet oder WLAN weg: still wieder versuchen.
-      status(hoerenStatus, "getrennt -- verbinde neu …", false);
-      setTimeout(() => { if (hoeren.checked && !ws) mithoerenAn(); }, 2000);
-    }
+    neuVerbinden("getrennt");
   };
 }
 
-function mithoerenAus() {
-  if (ws) {
-    const alt = ws;
-    ws = null;
-    alt.onclose = null;
-    alt.close();
+/** Alte Verbindung fallen lassen, ohne auf ihr Ende zu warten. */
+function trennen() {
+  if (!ws) return;
+  const alt = ws;
+  ws = null;
+  alt.onclose = null;
+  alt.onmessage = null;
+  alt.close();
+}
+
+function neuVerbinden(grund) {
+  if (!hoeren.checked) return;
+  // Server neu gestartet, Pi hing oder WLAN weg: still wieder versuchen,
+  // so lange, bis er wieder da ist.
+  status(hoerenStatus, `${grund} -- verbinde neu …`, false);
+  clearTimeout(neuTimer);
+  neuTimer = setTimeout(() => { if (hoeren.checked && !ws) mithoerenAn(); }, 2000);
+}
+
+// Eine hängende Verbindung meldet sich nicht von selbst (kein onclose, wenn
+// der Pi stehen bleibt). Daher selbst auf Lebenszeichen achten.
+setInterval(() => {
+  if (ws && performance.now() - zuletzt > STILLE_MS) {
+    trennen();
+    neuVerbinden("keine Antwort");
   }
+}, 1000);
+
+function mithoerenAus() {
+  clearTimeout(neuTimer);
+  trennen();
   if (ctx) ctx.suspend();
   status(hoerenStatus, "aus", false);
 }

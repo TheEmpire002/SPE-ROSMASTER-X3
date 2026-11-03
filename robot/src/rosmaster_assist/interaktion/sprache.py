@@ -258,6 +258,14 @@ class Spracherkennung:
         self._ereignisse: collections.deque[dict] = collections.deque(maxlen=config.SPRACHE_LIVE_EREIGNISSE)
         self._ton_abos: list[queue.Queue] = []
 
+        # Wache über den Hör-Thread (siehe _wachen()): Bleibt er in PortAudio
+        # stecken, übernimmt ein neuer. Der alte merkt an _generation, dass er
+        # abgelöst ist, falls er je wieder aufwacht.
+        self._generation = 0
+        self._lebt = 0.0  # monotonic, 0 = Modell lädt noch
+        self._modell = None  # (Modell, Grammatik), damit ein Nachfolger nicht neu lädt
+        self._wache: threading.Thread | None = None
+
     # --- Bedienung -------------------------------------------------------------
 
     @property
@@ -278,11 +286,54 @@ class Spracherkennung:
             return
         self._stop.clear()
         self._zustand = LAEDT
-        self._thread = threading.Thread(target=self._loop, name="sprache", daemon=True)
+        self._lebt = 0.0
+        self._hoer_thread_starten()
+        self._wache = threading.Thread(target=self._wachen, name="sprache-wache", daemon=True)
+        self._wache.start()
+
+    def _hoer_thread_starten(self) -> None:
+        self._generation += 1
+        self._thread = threading.Thread(
+            target=self._loop, args=(self._generation,), name="sprache", daemon=True
+        )
         self._thread.start()
+
+    def _wachen(self) -> None:
+        """Startet den Hör-Thread neu, wenn er feststeckt.
+
+        Die Fristen in _hoeren_bis_fehler() helfen nur, solange der Thread
+        selbst noch läuft. Nach einem USB-Aussetzer kann aber schon das
+        Öffnen des Mikrofons in PortAudio hängen bleiben; dann käme ohne
+        Wache nie wieder ein Befehl an, bis jemand den Server neu startet.
+        Einen Thread abbrechen geht in Python nicht -- er bleibt liegen.
+        """
+        neu = 0
+        while not self._stop.wait(1.0):
+            if not self._lebt:
+                continue  # Modell lädt noch, das darf dauern
+            if self._zustand == HOERT:
+                neu = 0
+            if time.monotonic() - self._lebt < config.SPRACHE_THREAD_HAENGT_S:
+                continue
+            if neu >= config.SPRACHE_THREAD_MAX_NEU:
+                aufgegeben = "Mikrofon hängt in PortAudio fest -- Server neu starten"
+                if self._fehler != aufgegeben:  # nur einmal laut
+                    self._fehler = aufgegeben
+                    log.error("Spracherkennung: %s", aufgegeben)
+                self._zustand = FEHLER
+                continue
+            neu += 1
+            log.warning("Spracherkennung: Hör-Thread hängt seit %.0f s -- starte einen neuen (%d/%d)",
+                        time.monotonic() - self._lebt, neu, config.SPRACHE_THREAD_MAX_NEU)
+            self._zustand = FEHLER
+            self._lebt = time.monotonic()
+            self._hoer_thread_starten()
 
     def stop(self) -> None:
         self._stop.set()
+        if self._wache is not None:
+            self._wache.join(timeout=2.0)
+            self._wache = None
         if self._thread is not None:
             self._thread.join(timeout=3.0)
             self._thread = None
@@ -428,7 +479,46 @@ class Spracherkennung:
 
     # --- Hör-Thread -------------------------------------------------------------------
 
-    def _loop(self) -> None:
+    def _loop(self, generation: int) -> None:
+        if self._modell is None:
+            self._modell = self._modell_laden()
+            if self._modell is None:
+                return
+        sd, vosk, modell, grammatik = self._modell
+        abgeloest = lambda: generation != self._generation  # noqa: E731
+
+        while not self._stop.is_set() and not abgeloest():
+            self._lebt = time.monotonic()
+            warten = config.SPRACHE_NEUVERSUCH_S
+            try:
+                self._hoeren_bis_fehler(sd, vosk, modell, grammatik, abgeloest)
+            except _MikrofonWechsel as exc:
+                log.info("Spracherkennung: %s -- wechsle", exc)
+                warten = 0.5  # kein Fehler, nur umstecken
+            except Exception as exc:  # Mikrofon weg, ALSA-Fehler, ...
+                if abgeloest():
+                    return  # ein Nachfolger hört schon
+                meldung = f"{type(exc).__name__}: {exc}"
+                if meldung != self._fehler:
+                    # Nur einmal laut, nicht alle paar Sekunden.
+                    log.warning("Spracherkennung: %s -- versuche es neu", meldung)
+                self._fehler = meldung
+                self._zustand = FEHLER
+            self._lebt = time.monotonic()
+            self._stop.wait(warten)
+            # PortAudio merkt sich die Geräteliste vom Start; ein neu
+            # angemeldetes Mikrofon sieht es erst nach einem Neustart.
+            def neu_starten() -> None:
+                try:
+                    sd._terminate()
+                    sd._initialize()
+                except Exception:
+                    pass
+
+            _ohne_warten(neu_starten, "PortAudio neu starten")
+
+    def _modell_laden(self):
+        """Vosk und Modell laden; None (und Zustand aus), wenn etwas fehlt."""
         try:
             import sounddevice as sd
             import vosk
@@ -452,34 +542,9 @@ class Spracherkennung:
             self._aus(f"Vosk-Modell lässt sich nicht laden: {exc}")
             return
         grammatik = json.dumps(self._grammatik(modell_pfad, modell), ensure_ascii=False)
+        return sd, vosk, modell, grammatik
 
-        while not self._stop.is_set():
-            warten = config.SPRACHE_NEUVERSUCH_S
-            try:
-                self._hoeren_bis_fehler(sd, vosk, modell, grammatik)
-            except _MikrofonWechsel as exc:
-                log.info("Spracherkennung: %s -- wechsle", exc)
-                warten = 0.5  # kein Fehler, nur umstecken
-            except Exception as exc:  # Mikrofon weg, ALSA-Fehler, ...
-                meldung = f"{type(exc).__name__}: {exc}"
-                if meldung != self._fehler:
-                    # Nur einmal laut, nicht alle paar Sekunden.
-                    log.warning("Spracherkennung: %s -- versuche es neu", meldung)
-                self._fehler = meldung
-                self._zustand = FEHLER
-            self._stop.wait(warten)
-            # PortAudio merkt sich die Geräteliste vom Start; ein neu
-            # angemeldetes Mikrofon sieht es erst nach einem Neustart.
-            def neu_starten() -> None:
-                try:
-                    sd._terminate()
-                    sd._initialize()
-                except Exception:
-                    pass
-
-            _ohne_warten(neu_starten, "PortAudio neu starten")
-
-    def _hoeren_bis_fehler(self, sd, vosk, modell, grammatik: str) -> None:
+    def _hoeren_bis_fehler(self, sd, vosk, modell, grammatik: str, abgeloest=lambda: False) -> None:
         geraet, name = self._mikrofon_finden(sd)
         rate = self._abtastrate(sd, geraet)
         # Vosk rechnet intern auf 16 kHz um; das Mikrofon darf bei seiner
@@ -522,14 +587,14 @@ class Spracherkennung:
             karten_vorher = _angemeldete_karten()
             naechste_pruefung = geoeffnet + config.SPRACHE_MIKROFON_PRUEFEN_S
             stumm_seit: float | None = None
-            while not self._stop.is_set():
+            while not self._stop.is_set() and not abgeloest():
                 try:
                     roh = bloecke.get(timeout=config.SPRACHE_HAENGT_S)
                 except queue.Empty:
                     raise RuntimeError(
                         f"{name} liefert seit {config.SPRACHE_HAENGT_S:.0f} s keinen Ton (Stream hängt)"
                     ) from None
-                jetzt = time.monotonic()
+                jetzt = self._lebt = time.monotonic()
                 # Ein echtes Mikrofon rauscht immer ein wenig; lauter exakte
                 # Nullen heißen: Der Stream lebt noch, das Gerät nicht mehr.
                 if roh.strip(b"\x00"):

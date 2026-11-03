@@ -410,6 +410,14 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Ergebnis:** Am Pi: Lesen per Callback mit dem echten Mikrofon geht (keine reinen Nullen, also keine Fehlauslösung der Stille-Erkennung). Neuer Test in `test_sprache.py`: Ein Stream, der nie liefert, wird nach der Frist erkannt und geschlossen. Alle drei Testskripte bestanden.
 - **Offen:** Server neu starten und bei einem echten Aussetzer im Log auf „Stream hängt“ und „Mikrofon wieder da“ achten.
 
+### 03.11.2026 – Mithören bleibt an, auch nach Befehlen und Hängern
+- **Was:**
+  - **Server:** Eine Wache über den Hör-Thread. Kommt er 15 s nicht voran (z. B. hängt schon das Öffnen des Mikrofons in PortAudio), startet sie einen neuen, höchstens dreimal hintereinander. Das Vosk-Modell wird dafür nicht neu geladen. Der Ton-WebSocket schickt ohne Ton jede Sekunde ein Lebenszeichen.
+  - **App:** Mithören verbindet selbst neu, wenn 5 s nichts kommt, auch wenn die Verbindung nicht sauber geschlossen wurde (Pi hängt). Das Mitlesen fragt mit 2 s Frist. Hält der Browser den Ton an, läuft er beim nächsten Paket weiter.
+- **Warum:** Nach einem Befehl konnte man nicht mehr mithören. Der Roboter antwortet auf einen Befehl, der Lautsprecher zieht Strom, und das USB-Mikrofon fällt ab (im Kernel-Log achtmal in acht Sekunden). Mit dem alten Code hing der Hör-Thread danach für immer.
+- **Ergebnis:** Am laufenden Server nach dem Neustart: „Robi, folge mir“ → Mikrofon fällt beim Sprechen ab → nach 3 s „Mikrofon wieder da“, die Erkennung hört weiter. Neuer Test: Ein Hör-Thread, der beim Öffnen für immer hängt, wird dreimal ersetzt, danach meldet `/sprache/status` „Server neu starten“. Alle Testskripte bestanden.
+- **Offen:** Die eigentliche Ursache bleibt die Versorgung (Board V3.0 oder eigener 5-V/5-A-Wandler). Bis dahin gibt es nach jedem Satz des Roboters eine Lücke von etwa 3 s im Mithören.
+
 ---
 
 ## 3. Ergebnisse und Messwerte

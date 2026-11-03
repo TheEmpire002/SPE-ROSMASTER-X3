@@ -794,3 +794,10 @@ SPRACHE_BLOCK_PUFFER = 20
 # So lange (s) darf das Schließen eines toten Streams dauern. Hängt auch
 # das, wird er liegen gelassen, damit der Neuversuch nicht mit hängt.
 SPRACHE_SCHLIESSEN_S = 2.0
+# Kommt der Hör-Thread selbst so lange (s) nicht voran (z. B. hängt schon das
+# Öffnen des Mikrofons in PortAudio), startet die Wache einen neuen. Muss
+# länger sein als ein ganzer Neuversuch (Frist + Schließen + Warten).
+SPRACHE_THREAD_HAENGT_S = 15.0
+# Höchstens so oft hintereinander; danach Zustand "fehler" mit dem Hinweis,
+# den Server neu zu starten (jeder hängende Thread bleibt liegen).
+SPRACHE_THREAD_MAX_NEU = 3

@@ -162,6 +162,33 @@ pruefe("hängender Stream wird erkannt", "hängt" in meldung, meldung)
 pruefe("nach der Frist, nicht ewig", dauer < config.SPRACHE_HAENGT_S + 2, dauer)
 pruefe("toter Stream wird geschlossen", _TotesSd.RawInputStream.geschlossen)
 
+
+# --- Hör-Thread steckt fest: Wache startet neu, dann Fehler ----------------------------
+class _HaengendesSd:
+    _terminate = _initialize = staticmethod(lambda: None)
+
+    class RawInputStream:
+        def __init__(self, **kw):
+            threading.Event().wait()  # Öffnen hängt in PortAudio, für immer
+
+
+import threading  # noqa: E402
+
+alt = config.SPRACHE_THREAD_HAENGT_S, config.SPRACHE_ENABLED
+config.SPRACHE_THREAD_HAENGT_S, config.SPRACHE_ENABLED = 0.5, True
+s = sp.Spracherkennung(mock=False)
+s._modell = (_HaengendesSd, _Vosk, None, "[]")  # Modell "schon geladen"
+s._mikrofon_finden = lambda sd: (0, "USB Microphone")
+s._abtastrate = lambda sd, g: 16000
+s.start()
+time.sleep(config.SPRACHE_THREAD_MAX_NEU + 3)
+st = s.status()
+pruefe("Wache startet hängenden Hör-Thread neu",
+       s._generation == 1 + config.SPRACHE_THREAD_MAX_NEU, s._generation)
+pruefe("danach Fehler mit Hinweis", st["zustand"] == sp.FEHLER and "neu starten" in (st["fehler"] or ""), st)
+s.stop()
+config.SPRACHE_THREAD_HAENGT_S, config.SPRACHE_ENABLED = alt
+
 # --- Ohne Vosk: aus, aber kein Absturz -------------------------------------------------
 sys.modules["vosk"] = None  # Import schlägt dann sicher fehl
 s = sp.Spracherkennung(mock=False)
