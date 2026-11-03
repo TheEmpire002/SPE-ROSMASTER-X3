@@ -127,6 +127,8 @@ class SafetyWatchdog:
             if self.fahrschutz is not None and config.AUTONOM_SCHUTZ_AKTIV:
                 self.letzte_pruefung = self.fahrschutz.pruefen(safe)
                 safe = self.letzte_pruefung.befehl
+                if self.letzte_pruefung.grund is not None:
+                    self.fahrschutz.eingriff_melden(self.letzte_pruefung.grund, jetzt)
         if safe != cmd:
             log.debug("Fahrbefehl begrenzt (%s): %s -> %s", quelle, cmd, safe)
         if self.aufzeichnung is not None:

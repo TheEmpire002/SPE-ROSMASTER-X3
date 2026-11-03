@@ -403,8 +403,8 @@ wird dann so weit gesenkt, dass der Anhalteweg (Reaktionszeit plus Alter
 des Scans plus Bremsweg) ins Freie passt. Alle Anteile des Befehls werden
 gleich skaliert, die Bahn bleibt also dieselbe, nur langsamer.
 - Gilt immer für Erkunder, Kartierfahrt, Heimfahrt, Interaktion und die
-  genauen Fahrbefehle (`manoever.py`): im Watchdog,
-  `submit(..., schutz=True)`. Für Drehungen mit festem Winkel prüft
+  genauen Fahrbefehle (`manoever.py`): im Watchdog bei
+  `submit(..., quelle="autonom")`. Für Drehungen mit festem Winkel prüft
   `Fahrschutz.drehen_frei()` vorab die Grundfläche über den ganzen Winkel;
   das ersetzt den 30-cm-Kreis um den Lidar, der im Bodentest grundlos
   sperrte.
@@ -416,8 +416,24 @@ gleich skaliert, die Bahn bleibt also dieselbe, nur langsamer.
 
 **Gemessen** (Simulation, Antrieb mit 0,22 s Verzögerung, Vollgas auf eine
 Wand): Bei 0,2, 0,5 und 0,8 m/s steht er jedes Mal 6 cm vor der Kante, das
-ist genau der Rand `FAHRSCHUTZ_RAND_M`. Die Kartierfahrt läuft mit Schutz
-genauso durch wie ohne.
+ist genau der Rand `FAHRSCHUTZ_RAND_M` (damals 6 cm). Die Kartierfahrt läuft
+mit Schutz genauso durch wie ohne.
+
+**Zusammengeführt mit `AutonomSchutz` (03.11.).** Parallel war in `main` eine
+zweite Schicht entstanden: `AutonomSchutz` begrenzte das Tempo nach dem
+Bremsweg bis zum nächsten Punkt in einem Streifen in Fahrtrichtung und ließ
+jede Drehung durch. Zwei Schichten im Watchdog hätten doppelt und
+unterschiedlich geprüft. Übrig bleibt eine:
+- Die Schnittstelle aus `main`: `quelle="autonom"` (dazu engere Tempogrenze,
+  Akku-Drossel, Fahrtenschreiber), abschaltbar mit `AUTONOM_SCHUTZ_AKTIV`.
+- Darin prüft der Fahrschutz, weil er Bögen und ausschwenkende Ecken sieht.
+  Übernommen aus `AutonomSchutz`: Alter des ältesten Punkts der Runde statt
+  ihres Zeitstempels, Aufbereiten der Punkte einmal pro Runde, gezählte und
+  entprellt geloggte Eingriffe.
+- Eine Grundfläche (`ROBOTER_*`) für Fahrschutz und Bogenplanung
+  (`AUSWEICH_*`). Der Fahrschutz-Rand (4 cm) liegt bewusst unter dem des
+  Planers (5 cm): Die Sicherheitsschicht ist die innere Grenze. Wäre sie
+  strenger als der Planer, würgte sie dessen Bögen ab.
 
 **Konsequenzen.**
 - *Gut:* Eine Stelle für alles. Sie bremst weich statt hart und hält den

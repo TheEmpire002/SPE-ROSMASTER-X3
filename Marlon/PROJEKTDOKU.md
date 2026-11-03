@@ -672,6 +672,17 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
   - `test_manoever.py` verdrahtet den Fahrschutz wie der Server.
 - **Offen:** Am Boden prüfen: „90 Grad drehen“ mit Möbeln 20–30 cm vor dem Roboter (muss jetzt gehen) und direkt neben einer Wand (muss abgelehnt werden). `test_manoever.py` am Pi laufen lassen.
 
+### 03.11.2026 – Eine Schutzschicht: Fahrschutz und AutonomSchutz zusammengeführt
+- **Problem:** Nach dem Merge von `autonom` in `main` gab es zwei zentrale Prüfungen für autonome Fahrt im Watchdog: Marlons `AutonomSchutz` (`quelle="autonom"`) und den Fahrschutz aus `feat-mapping` (`schutz=True`). Beide hätten doppelt und unterschiedlich geprüft.
+- **Vergleich:**
+  - `AutonomSchutz`: Tempo nach Bremsweg bis zum nächsten Punkt in einem Streifen in Fahrtrichtung. Drehen immer erlaubt, Bögen nicht vorausgerechnet. Gut eingebunden: Tempogrenze, Akku-Drossel, Fahrtenschreiber, abschaltbar.
+  - Fahrschutz: rechnet die Grundfläche voraus, auch im Bogen und beim Drehen. Genau dabei stößt der X3 mit den Ecken an (Erkunden, Wenden beim Kartieren, „90 Grad drehen“).
+- **Entscheidung:** Marlons Schnittstelle bleibt (`quelle="autonom"`, `AUTONOM_SCHUTZ_AKTIV`), darin prüft der Fahrschutz. `AutonomSchutz` und `schutz=True` entfallen. Übernommen aus `AutonomSchutz`: Alter des ältesten Scan-Punkts, Punkte einmal pro Runde aufbereiten, Eingriffe zählen und entprellt loggen (Entscheidung E10).
+- **Gemeinsame Grundfläche:** Bogenplaner und Fahrschutz rechneten mit verschiedenen Maßen (hinten 0,15 statt 0,17 m, seitlich 0,13 statt 0,125 m) und Rändern (5 bzw. 6 cm). Seitlich und hinten wäre der Fahrschutz strenger gewesen als der Planer und hätte dessen Bögen abgebremst. Jetzt nutzt `AUSWEICH_*` die Werte `ROBOTER_*`, und der Fahrschutz-Rand ist auf 4 cm gesenkt, unter die 5 cm des Planers.
+- **Rebase:** `feat-mapping` auf `main` gesetzt. Im Erkunder bleibt Marlons Ablauf (Lidar-Prüfung, Hochheben, Nahbereich, Befreien) der Rahmen, die Kartierfahrt hängt sich danach ein. So gelten Befreien und Hochheben auch beim Kartieren.
+- **Ergebnis:** Am Pi lässt sich das ganze Paket importieren, die Testskripte kompilieren. `test_schutz.py` prüft jetzt den Fahrschutz (dazu neu: Drehen neben der Wand, Tischbein neben dem Rad).
+- **Offen:** `test_schutz.py`, `test_erkunder.py`, `test_ausweichen.py`, `test_umfahren.py` und `test_manoever.py` am Pi laufen lassen. Am Boden: Erkunden und Folgen in engen Räumen. Der Fahrschutz sperrt jetzt auch Drehungen, bei denen eine Ecke anstößt, was `AutonomSchutz` immer durchließ. Heck-Maß `ROBOTER_HINTEN_M` nachmessen.
+
 ---
 
 ## 3. Ergebnisse und Messwerte

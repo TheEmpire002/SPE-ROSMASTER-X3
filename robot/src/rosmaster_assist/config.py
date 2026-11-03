@@ -79,26 +79,11 @@ AUTONOM_MAX_OMEGA = 1.2         # rad/s
 # Faktor auf AUTONOM_MAX_SPEED, sobald der Akku unter AKKU_WARN_V liegt.
 AUTONOM_AKKU_FAKTOR = 0.5
 
-# Bremsweg-Prüfung für alle autonomen Befehle im Watchdog (AutonomSchutz in
-# safety/collision.py). Erlaubt ist nur ein Tempo, bei dem der Roboter vor
-# dem nächsten Hindernis in Fahrtrichtung noch steht:
-#   frei - RAND >= v * (LATENZ + Scan-Alter) + v² / (2 * BREMSEN)
-# Die Modi halten selbst früher an; das hier ist die letzte Bremse.
+# Letzte Bremse für alle autonomen Befehle im Watchdog: der Fahrschutz
+# (safety/fahrschutz.py, Werte FAHRSCHUTZ_* weiter unten). Die Modi halten
+# selbst früher an; das hier fängt ab, was sie übersehen. Bis 03.11. war das
+# AutonomSchutz (Streifen in Fahrtrichtung, ohne Drehung), siehe E10.
 AUTONOM_SCHUTZ_AKTIV = True
-# Abstand Lidar-Mitte -> Hindernis, bei dem v = 0 ist. Kleiner als
-# EXPLORE_BEFREIEN_STOP_M (0,30) und EXPLORE_STOP_M (0,40), sonst würde die
-# Schicht das Befreien und das normale Erkunden blockieren.
-AUTONOM_SCHUTZ_RAND_M = 0.22
-AUTONOM_SCHUTZ_HALBE_BREITE_M = 0.20  # wie EXPLORE_HALF_WIDTH_M
-# Zeit von der Messung bis die Motoren reagieren (Rechnen, Board, Rampe),
-# zusätzlich zum Alter des Scans.
-AUTONOM_SCHUTZ_LATENZ_S = 0.15
-# Angenommene Bremsverzögerung. Bewusst kleiner als RAMPE_BREMSEN_XY (2,0):
-# Mecanum-Räder rutschen auf glattem Boden, und gemessen ist der Wert nicht.
-AUTONOM_SCHUTZ_BREMSEN = 1.0      # m/s²
-# Älterer Scan = kein Fahren mehr (nur Drehen). Bei 7,5 Umdrehungen/s ist
-# ein Scan im Betrieb höchstens ~0,15 s alt; 0,5 s heißt: der Lidar hängt.
-AUTONOM_SCHUTZ_SCAN_MAX_S = 0.5
 
 # --- Sicherheit ---------------------------------------------------------------
 
@@ -305,19 +290,25 @@ COLLISION_MAX_M = 1.5
 
 # --- Fahrschutz: Kollisionsprüfung über die Grundfläche (safety/fahrschutz.py) ---
 #
-# Gilt für alles, was selbst fährt (Erkunder, Kartierfahrt, Heimfahrt,
-# Interaktion), und für die Handsteuerung, wenn dort der Hindernisstopp an
-# ist. Für jeden Befehl wird vorausgerechnet, wo die Grundfläche hinfährt;
-# ragt ein Lidar-Punkt hinein, bremst er rechtzeitig.
+# Gilt für alles, was selbst fährt (quelle="autonom": Erkunder,
+# Kartierfahrt, Heimfahrt, Interaktion, genaue Fahrbefehle), und für die
+# Handsteuerung, wenn dort der Hindernisstopp an ist. Für jeden Befehl wird
+# vorausgerechnet, wo die Grundfläche hinfährt -- auch im Bogen und beim
+# Drehen; ragt ein Lidar-Punkt hinein, bremst er rechtzeitig.
 
 # Grundfläche, gemessen ab Lidar-Mitte. Vorn ragt der X3 ~0,15 m über, die
-# Breite ist 0,245 m. Hinten ist geschätzt -- am Roboter nachmessen.
+# Breite ist 0,245 m. Hinten ist geschätzt -- am Roboter nachmessen. Die
+# einzige Stelle dafür: Die Bogenplanung (AUSWEICH_*) nutzt dieselben Werte,
+# sonst bremste der Fahrschutz Bögen, die der Planer für sicher hält.
 ROBOTER_VORN_M = 0.15
 ROBOTER_HINTEN_M = 0.17
 ROBOTER_HALBE_BREITE_M = 0.125
 
 # So viel Luft hält die Roboterkante beim selbstständigen Fahren mindestens.
-FAHRSCHUTZ_RAND_M = 0.06
+# Muss kleiner sein als AUSWEICH_RAND_M (Planer): Die Sicherheitsschicht
+# ist die innere Grenze. Gleich groß, und jedes Rauschen im Scan würgte
+# geplante Bögen ab.
+FAHRSCHUTZ_RAND_M = 0.04
 
 # Vom Befehl bis zur Wirkung vergehen am X3 ~0,22 s (Sensor-Check 28.10.);
 # dazu kommt das Alter des Scans. Solange fährt er ungebremst weiter.
@@ -618,14 +609,15 @@ AUSWEICH_GEDAECHTNIS_M = 1.0
 # so viel weiter sieht (das Ding ist weg oder war ein Messfehler).
 AUSWEICH_FREIRAEUMEN_M = 0.10
 
-# Umriss des Roboters um die Lidar-Mitte (m) für die Bogenplanung. Breite
-# 0,245 m; vorn ~0,15 m wie bei EXPLORE_STOP_M. Heck am Roboter nachmessen.
-AUSWEICH_VORN_M = 0.15
-AUSWEICH_HINTEN_M = 0.15
-AUSWEICH_HALBE_BREITE_M = 0.13
+# Umriss des Roboters um die Lidar-Mitte (m) für die Bogenplanung: derselbe
+# wie beim Fahrschutz (ROBOTER_*), Heck am Roboter nachmessen.
+AUSWEICH_VORN_M = ROBOTER_VORN_M
+AUSWEICH_HINTEN_M = ROBOTER_HINTEN_M
+AUSWEICH_HALBE_BREITE_M = ROBOTER_HALBE_BREITE_M
 
 # Bogenplanung: so weit (s) und in diesen Schritten vorausrechnen. Ein Bogen
-# taugt nur, wenn der Umriss überall mindestens AUSWEICH_RAND_M Luft hat.
+# taugt nur, wenn der Umriss überall mindestens AUSWEICH_RAND_M Luft hat
+# (größer als FAHRSCHUTZ_RAND_M, siehe dort).
 AUSWEICH_HORIZONT_S = 1.2
 AUSWEICH_SCHRITT_S = 0.1
 AUSWEICH_RAND_M = 0.05

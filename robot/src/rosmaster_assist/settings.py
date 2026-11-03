@@ -145,7 +145,9 @@ EINSTELLUNGEN: list[Einstellung] = [
     Einstellung("FAHRSCHUTZ_RAND_M", "sicherheit", "Fahrschutz: Abstand beim selbstständigen Fahren",
                 "m", 0.02, 0.3, 0.01,
                 hilfe="So viel Luft hält die Roboterkante beim Erkunden, Kartieren, bei der "
-                      "Heimfahrt und beim Folgen mindestens. Gebremst wird vorher stufenlos."),
+                      "Heimfahrt und beim Folgen mindestens. Gebremst wird vorher stufenlos. "
+                      "Unter dem Rand der Bogenplanung (AUSWEICH_RAND_M, 5 cm) lassen, sonst "
+                      "bremst er geplante Bögen ab."),
 
     # --- Kameras
     Einstellung("CAMERA_FPS", "kamera", "Bilder pro Sekunde", "fps", 1, config.CAMERA_MAX_FPS, 1,

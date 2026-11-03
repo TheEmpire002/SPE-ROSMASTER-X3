@@ -53,14 +53,18 @@ Heimfahrt und Interaktion gleichermaßen. `stop()` umgeht sie und hält
 sofort an.
 
 Seit dem 03.11. prüft der Watchdog autonome Fahrbefehle (`quelle="autonom"`:
-Erkunder, Heimfahrt, Folgen) zusätzlich mit dem **`AutonomSchutz`**
-(`safety/collision.py`): Das Tempo in Fahrtrichtung wird so begrenzt, dass
-der Roboter vor dem nächsten Lidar-Punkt im Fahrschlauch noch anhalten kann
-(`v·t + v²/(2a) ≤ frei − Rand`, mit Latenz plus Alter des Scans). Ohne
-frischen Scan bleibt nur die Drehung erlaubt. Gebremst wird über die Rampe,
-nicht mit `stop()`: ein harter Halt erzeugt genau die Stromspitzen, die den
-USB-Hub zurücksetzen. Die Module prüfen weiterhin selbst; der Schutz ist
-das Netz darunter. Werte: `AUTONOM_SCHUTZ_*` in `config.py`.
+Erkunder, Kartierfahrt, Heimfahrt, Folgen, genaue Fahrbefehle) zusätzlich
+mit dem **Fahrschutz** (`safety/fahrschutz.py`, Entscheidung E10): Er
+rechnet voraus, wo die Grundfläche des Roboters bei diesem Befehl hinfährt,
+auch im Bogen und beim Drehen, und senkt das Tempo so, dass der Anhalteweg
+(Reaktionszeit plus Alter des ältesten Scan-Punkts plus Bremsweg) ins Freie
+passt. Wegfahren bleibt erlaubt. Ohne frischen Scan fährt kein autonomer
+Modus. Gebremst wird über die Rampe, nicht mit `stop()`: ein harter Halt
+erzeugt genau die Stromspitzen, die den USB-Hub zurücksetzen. Die Module
+prüfen weiterhin selbst; der Schutz ist das Netz darunter. Werte:
+`ROBOTER_*`, `FAHRSCHUTZ_*`, abschaltbar mit `AUTONOM_SCHUTZ_AKTIV`. Bis
+zum Zusammenführen am 03.11. tat das ein `AutonomSchutz` mit einem Streifen
+in Fahrtrichtung, der Drehungen nicht prüfte.
 
 **4. Die Notfall-Logik entscheidet nicht, sie meldet.**
 Erkennt das System einen möglichen Notfall, löst es einen Alarm an einen
@@ -75,7 +79,7 @@ Menschen aus. Es bewertet keinen Gesundheitszustand.
 | `audio/`       | Ton auf dem USB-Lautsprecher: `mukke.py` spielt YouTube-Links mit mpv ab |
 | `protocol.py`  | Nachrichtenformat — die gemeinsame Sprache aller Beteiligten |
 | `drive/`       | Fahren. `base.py` = Schnittstelle, dazu echter Treiber + Mock |
-| `safety/`      | Watchdog, Not-Aus, Geschwindigkeitsbegrenzung, Bremsweg-Prüfung autonom (`AutonomSchutz`) |
+| `safety/`      | Watchdog, Not-Aus, Geschwindigkeitsbegrenzung, Fahrschutz über die Grundfläche (`fahrschutz.py`) |
 | `sensors/`     | Lidar, Kamera, Personenerkennung, Körperpose (Hailo)        |
 | `navigation/`  | Odometrie, Lidar-Ortung, Heimfahrt, Erkunder, Ausweichen (`ausweichen.py`), Hindernis-Benennung |
 | `interaktion/` | Gesten, Verhalten (Folgen, Herkommen, Weggehen), Stimme (Sprachausgabe) und Sprachbefehle mit dem Weckwort „Robi“; geplant: Geist — siehe [`interaktion.md`](interaktion.md) |
