@@ -625,6 +625,17 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Ergebnis:** Alle geänderten Dateien am Pi geparst, das ganze Paket lässt sich importieren.
 - **Offen:** Am Boden prüfen: genaue Fahrbefehle, Folgen mit sanftem Start und Antippen. Der Zweig `feat-mapping` hat mit dem Fahrschutz eine eigene zentrale Prüfung. Beim nächsten Abgleich mit `main` müssen Fahrschutz und `AutonomSchutz` zu einer Schicht zusammengeführt werden.
 
+### 03.11.2026 – Mapping: SLAM bekam keine Lidar-Daten
+- **Problem:** Auf `/map` ließ sich das Mapping starten, es entstand aber nie eine Karte, und es kam keine Rückmeldung.
+- **Ursache:** Das Mapping-Modul startete im Container `x3` nur slam_toolbox. Das ist nur der Kartenbauer und braucht `/scan` und die Position als TF. Die kämen von `sllidar_node` und `yahboomcar_bringup`, die bei uns nicht laufen dürfen, weil unser Server Lidar und Board offen hat. slam_toolbox wartete also endlos. Dass niemand es merkte, lag an drei Dingen: Der Start galt als gelungen, wenn der Prozess nach 0,3 s noch lebte. Das SLAM-Protokoll lag unbeachtet im Container. Und es gab keine Zeitgrenze für die erste Karte.
+- **Was:**
+  - Neu `mapping/einspeisung.py`: Unser Server reicht Scans und Odometrie per `docker exec -i` als JSON-Zeilen an einen kleinen ROS-Knoten im Container. Der veröffentlicht `/scan`, `/odom`, `/tf` und `/tf_static` für slam_toolbox (Entscheidung E8).
+  - Der Scan geht auf ein festes Raster von 360 Strahlen, weil slam_toolbox Scans mit wechselnder Strahlzahl verwirft. Die Position zum Messzeitpunkt geht mit. Sprünge durch einen neu gesetzten Startpunkt werden ausgeblendet.
+  - Vor dem Start wird geprüft, ob slam_toolbox installiert ist. Der Status nennt den ersten Schritt, der hakt (Lidar, Weitergabe, SLAM, Karte). Die Seite zeigt das samt SLAM-Protokoll.
+  - Beim Beenden des Servers läuft das Stoppen des Mappings erst nach dem Anhalten und in einem `try`. Ein Fehler darin (Docker nicht da) übersprang vorher das Trennen der Hardware.
+- **Ergebnis:** Am Laptop mit Attrappen statt Docker und ROS getestet: Raster, Sprungausgleich, Weitergabe an das echte Knoten-Skript (gegen nachgebaute ROS-Klassen), Neustart nach abgestürztem Knoten, alle Hinweistexte. Am Roboter noch nicht.
+- **Offen:** Am Pi prüfen: `docker exec x3 bash -lc "source /opt/ros/foxy/setup.bash; ros2 pkg prefix slam_toolbox"`, dann Mapping starten, durch den Raum fahren, Karte speichern.
+
 ---
 
 ## 3. Ergebnisse und Messwerte
@@ -678,6 +689,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 | Roboter startet die Interaktion von selbst | Vosk mit Grammatik macht aus Musik und Gesprächen erlaubte Sätze („robbie hallo“) | Konfidenz- und `[unk]`-Prüfung; bei Musik nur Stopp und „Musik aus“ (03.11.) |
 | Drehen/Strecke nach Zeit ungenau | Fahrbefehl überschätzt 10–30 %, Mecanum rutscht, Gyro unbrauchbar | Genaue Fahrbefehle messen mit dem Lidar (`navigation/manoever.py`, 03.11.) |
 | Fährt nach dem Folgen nur langsam und stotternd | Zweite offene App schickt im Leerlauf laufend „vx=0“ zwischen die Befehle des Lenkenden | Fahrvorrang für das lenkende Gerät, `DRIVE_VORRANG_S` (03.11.) |
+| Mapping startet, aber keine Karte und keine Rückmeldung | slam_toolbox bekam weder `/scan` noch TF, weil unser Server Lidar und Board hält; Start galt nach 0,3 s als gelungen | Server speist Scans und Odometrie in den Container ein, Status nennt den hakenden Schritt (E8, 03.11.). **Offen:** am Pi prüfen |
 | Nach einem Absturz keine Sprachbefehle mehr | Mikrofon fiel kurz vom USB ab, `strom.read()` blieb ohne Fehler für immer hängen | Lesen per Callback mit Frist, Neuöffnen nach 3 s ohne Ton; Rückwechsel von der C270 zum USB-Mikrofon (03.11.) |
 
 ---
@@ -686,6 +698,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 
 - **USB-Überlast im Leerlauf eingrenzen** (29.10.): alle Geräte ab, einzeln wieder an (Lidar zuletzt), Lidar-Kabel tauschen, Board-USB abziehen; Wert „USB-Überlast pro Minute“ auf `/diagnose`. Journal am Pi dauerhaft machen.
 - Bodentest des Erkunders mit Hindernissen.
+- Mapping am Pi: slam_toolbox im Container `x3` vorhanden? Dann auf `/map` starten, Raum abfahren, Karte speichern (E8).
 - **Stresstest am Boden** (Räder mit Last): erst am Netzteil, dann am Akku. Auf dem Podest gibt es mit beiden 0 Resets (29.10.), deshalb ist offen, ob das Netzteil unter Last hilft. Bleiben am Boden Resets, braucht es die getrennte 5-V-Versorgung für Pi bzw. Hub (siehe `docs/hardware.md`, „Was am Roboter tun“).
 - Stresstest mit eingeschalteter Interaktion (Hailo-Pose und Gesten unter Fahrlast) wiederholen.
 - Interaktion: Hailo-Pose am Pi prüfen, Fahrtest Folgen/Herkommen am Boden; danach Stufen 4–5 (Sprache, Geist).

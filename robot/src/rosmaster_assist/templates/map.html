@@ -60,6 +60,11 @@
     .metric strong { display: block; margin-top: 4px; overflow-wrap: anywhere; font-size: 13px; }
     .message { min-height: 38px; padding: 10px; border-radius: 8px; background: #111923; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
     .message.error { color: #ffb4ba; background: #2b171c; }
+    .hinweis { padding: 10px; border-radius: 8px; border: 1px solid #23845c; background: #11291f; color: #c9f2dd; font-size: 13px; overflow-wrap: anywhere; }
+    .hinweis.error { border-color: #8b424c; background: #2b171c; color: #ffb4ba; }
+    .hinweis.idle { border-color: var(--border); background: #111923; color: var(--muted); }
+    details.log summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+    details.log pre { margin: 8px 0 0; padding: 9px; max-height: 220px; overflow: auto; border-radius: 8px; background: #0b1016; color: #c3ccd6; font-size: 11px; line-height: 1.35; white-space: pre-wrap; overflow-wrap: anywhere; }
     .help { color: var(--muted); font-size: 12px; }
     .saved-list { display: grid; gap: 7px; max-height: 190px; overflow: auto; }
     .saved-item { padding: 8px 9px; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
@@ -113,9 +118,13 @@
             </div>
           </div>
 
+          <div class="hinweis idle full" id="hinweis">Mapping ist gestoppt.</div>
+
           <div class="metrics full">
             <div class="metric"><span>Docker-Container</span><strong id="containerState">Unbekannt</strong></div>
-            <div class="metric"><span>ROS-Bridge</span><strong id="bridgeState">Unbekannt</strong></div>
+            <div class="metric"><span>Lidar → ROS</span><strong id="feedState">Unbekannt</strong></div>
+            <div class="metric"><span>Kartenempfang</span><strong id="bridgeState">Unbekannt</strong></div>
+            <div class="metric"><span>Letzte Karte</span><strong id="lastMap">–</strong></div>
             <div class="metric"><span>Kartengröße</span><strong id="mapSize">–</strong></div>
             <div class="metric"><span>Auflösung</span><strong id="resolution">–</strong></div>
           </div>
@@ -133,6 +142,10 @@
           </div>
 
           <div class="message full" id="message">Warte auf Verbindung zur Mapping-API.</div>
+          <details class="log full" id="logBox" hidden>
+            <summary>SLAM-Protokoll (letzte Zeilen)</summary>
+            <pre id="slamLog"></pre>
+          </details>
           <div class="help full">Mausrad: Zoom · Ziehen: Karte verschieben · Doppelklick: Ansicht einpassen</div>
         </div>
       </aside>
@@ -152,6 +165,7 @@
       let ws = null;
       let reconnectTimer = null;
       let pointer = null;
+      let problemGezeigt = false;
 
       function message(text, error = false) {
         $('message').textContent = text;
@@ -168,16 +182,44 @@
         return body;
       }
 
+      function feedText(f) {
+        if (!f) return '–';
+        if (f.laeuft && f.bereit) return `Läuft · ${f.scans} Scans`;
+        if (f.laeuft) return 'Verbindet …';
+        return f.fehler ? 'Unterbrochen' : 'Aus';
+      }
+
       function setStatus(s) {
         const running = !!s.mapping_running;
+        // "aktiv" heißt gestartet und nicht gestoppt, auch wenn SLAM
+        // inzwischen abgestürzt ist. Stoppen muss dann trotzdem gehen.
+        const aktiv = !!s.aktiv;
         $('statusBadge').classList.toggle('running', running);
-        $('statusText').textContent = running ? 'Mapping aktiv' : 'Mapping gestoppt';
+        $('statusText').textContent = running ? 'Mapping aktiv' : (aktiv ? 'SLAM beendet' : 'Mapping gestoppt');
         $('containerState').textContent = s.container_running ? 'Läuft' : 'Gestoppt';
+        $('feedState').textContent = feedText(s.einspeisung);
         $('bridgeState').textContent = s.bridge_running ? 'Verbunden' : 'Getrennt';
-        $('startButton').disabled = running;
-        $('stopButton').disabled = !running && !s.bridge_running;
+        $('lastMap').textContent = s.last_map_at
+          ? `vor ${Math.max(0, Math.round(Date.now() / 1000 - s.last_map_at))} s` : '–';
+        $('startButton').disabled = running || aktiv;
+        $('stopButton').disabled = !running && !aktiv && !s.bridge_running;
         $('saveButton').disabled = !s.map_available;
-        if (s.error) message(s.error, true);
+
+        if (s.hinweis) {
+          const h = $('hinweis');
+          h.textContent = s.hinweis;
+          h.classList.toggle('error', !!s.hinweis_fehler);
+          h.classList.toggle('idle', !aktiv && !s.hinweis_fehler);
+        }
+        const log = s.slam_log || [];
+        $('logBox').hidden = !log.length;
+        $('slamLog').textContent = log.join('\n');
+        // Bei einem neuen Problem einmal aufklappen, dort steht meist die
+        // Ursache. Nicht bei jeder Meldung wieder, sonst lässt es sich
+        // nicht zuklappen.
+        if (s.hinweis_fehler && log.length && !problemGezeigt) $('logBox').open = true;
+        problemGezeigt = !!s.hinweis_fehler;
+        if (s.error && !aktiv) message(s.error, true);
       }
 
       function updateMap(payload) {

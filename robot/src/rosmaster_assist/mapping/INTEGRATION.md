@@ -1,5 +1,11 @@
 # Mapping-Weboberfläche integrieren
 
+> **Stand 03.11.2026: bereits eingebaut** (`api/server.py`). Diese Anleitung
+> ist nur noch zur Geschichte da. Wichtig: `/scan` und TF liefert inzwischen
+> unser Server selbst über `einspeisung.py`, siehe E8 in
+> `docs/entscheidungen.md` und den Abschnitt „Kartierung“ in `docs/api.md`.
+> `sllidar_node` und `yahboomcar_bringup` dürfen dafür **nicht** laufen.
+
 Diese Ergänzung überschreibt keine bestehende `api.py`.
 
 ## 1. Dateien kopieren

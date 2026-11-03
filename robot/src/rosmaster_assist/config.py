@@ -201,6 +201,41 @@ MATCH_TRUST = 0.55
 # rund fünfmal pro Sekunde.
 MATCH_HZ = 4.0
 
+# --- Kartierung (SLAM im ROS-Container) -----------------------------------------
+
+# Die Karte baut slam_toolbox in ROS2 Foxy im Docker-Container. Lidar und
+# Board hält aber unser Server; er speist Scans und Position in den
+# Container ein (mapping/einspeisung.py, Begründung: E8). Die Umgebungs-
+# variablen ROSMAP_* aus mapping/manager.py überschreiben die ersten Werte.
+MAP_CONTAINER = "x3"
+MAP_ROS_SETUP = "/opt/ros/foxy/setup.bash"
+MAP_SCAN_TOPIC = "/scan"
+
+# So oft (Hz) geht die Position an ROS. slam_toolbox braucht zu jedem Scan
+# die Position zu genau diesem Zeitpunkt; dichter als die Lidar-Umdrehung
+# (5,5 Hz) muss sie deshalb sein.
+MAP_FEED_HZ = 20.0
+
+# Winkelraster des eingespeisten Scans: so viele Strahlen pro Umdrehung.
+# slam_toolbox legt die Strahlzahl beim ersten Scan fest und verwirft jeden
+# späteren mit anderer Zahl. Der A1 liefert aber jedes Mal etwas anders
+# viele Punkte -- deshalb wird auf ein festes Raster gelegt.
+MAP_SCAN_STRAHLEN = 360
+
+# Springt die Position zwischen zwei Takten weiter als das, war es kein
+# Fahren, sondern ein Neusetzen des Startpunkts. SLAM bekommt den Sprung
+# nicht zu sehen -- es hielte ihn für echte Bewegung und zerrisse die Karte.
+MAP_SPRUNG_M = 0.3
+MAP_SPRUNG_GRAD = 30.0
+
+# Kommt so lange (s) nach dem Start keine Karte, meldet die Seite das
+# zusammen mit dem SLAM-Protokoll. slam_toolbox veröffentlicht die Karte
+# alle 5 s; die erste sollte also nach wenigen Sekunden da sein.
+MAP_ERSTE_KARTE_S = 20.0
+
+# So viele letzte Zeilen des SLAM-Protokolls zeigt die Seite.
+MAP_LOG_ZEILEN = 15
+
 # --- Kollisionsvermeidung bei manueller Steuerung -------------------------------
 
 # Standardmäßig aus: wer von Hand steuert, sieht den Roboter meistens und

@@ -154,6 +154,12 @@ Verhalten in BEREIT, die Heimfahrt bricht ab. Werte: `UMFAHREN_*`,
 (Stuhl und Tür beim Folgen, Hindernis und Sackgasse bei der Heimfahrt,
 Hochheben).
 
+**Stand 03.11.:** Für die Karte kommt doch ROS2 dazu, aber nur als
+Kartenbauer. slam_toolbox läuft im Container `x3`. Unser Server bleibt der
+einzige Leser von Lidar und Board und speist Scans und Odometrie über
+`docker exec -i` ein (`mapping/einspeisung.py`, Begründung: E8). Bedienung
+und Rückmeldung über die Seite `/map`.
+
 ## Interaktion
 
 Gesten, Sprache und eine „Geist“-Schicht sitzen als eigene Ebene über den

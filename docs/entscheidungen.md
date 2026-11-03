@@ -253,3 +253,56 @@ Sekunden, die Fahrschleife läuft mit 10 Hz.
 
 **Neu bewerten, wenn:** die Verzögerung im Gespräch (Stufe 5) stört, oder
 wenn Spracherkennung und Ausgabe gemeinsam ein Audio-Framework brauchen.
+
+---
+
+## E8 — Karte mit slam_toolbox im Container, unser Server speist Lidar und Position ein
+
+**Datum:** 2026-11-03
+**Status:** umgesetzt (`mapping/einspeisung.py`), am Roboter noch zu prüfen
+
+**Kontext.** Das Mapping-Modul (`mapping/`) startete im Docker-Container `x3`
+nur slam_toolbox. Das ist aber nur der Kartenbauer: Er braucht Lidar-Scans auf
+`/scan` und die Position als TF (`odom → base_footprint`). Die liefern im
+Yahboom-Stack `sllidar_node` und `yahboomcar_bringup`. Beide laufen bei uns
+nicht und dürfen es auch nicht, weil unser Server Lidar und Board offen hat
+(E1a, E4). slam_toolbox wartete deshalb endlos, es entstand nie eine Karte,
+und keine Stelle meldete das.
+
+**Entscheidung.** Unser Server bleibt der einzige Leser von Lidar und Board.
+Er reicht Scans und Odometrie an einen kleinen ROS-Knoten im Container weiter.
+Der Knoten wird über `docker exec -i` gestartet, liest JSON-Zeilen von stdin
+und veröffentlicht `/scan`, `/odom`, `/tf` und `/tf_static`. slam_toolbox
+läuft unverändert mit seiner Standard-Konfiguration.
+
+Andere Wege wurden nicht genommen:
+- *Zum Kartieren unseren Server beenden und den Yahboom-Stack starten:* Dann
+  fallen App, Watchdog und Totmannschaltung während der Kartierung weg.
+- *Karte selbst in Python bauen:* weniger Aufwand, aber ohne Schleifenschluss.
+  Die Karte driftet mit der Odometrie.
+
+**Einzelheiten, die zählen.**
+- Der A1 liefert jede Umdrehung etwas andere Punkte, slam_toolbox verwirft
+  aber jeden Scan mit anderer Strahlzahl als der erste. Deshalb geht der Scan
+  auf ein festes Raster (`MAP_SCAN_STRAHLEN` = 360), ohne Echo als `inf`.
+- Zu jedem Scan geht die Position zum Messzeitpunkt mit (`pose_bei`), denn
+  slam_toolbox fragt TF genau für den Zeitstempel des Scans ab.
+- Wird der Startpunkt neu gesetzt, springt die Odometrie auf (0, 0). Dieser
+  Sprung wird ausgeblendet (`MAP_SPRUNG_M`, `MAP_SPRUNG_GRAD`), sonst trüge
+  SLAM die Wände doppelt ein.
+- Stirbt der Knoten, startet die Einspeisung ihn mit wachsender Pause neu.
+  Endet unser Server, bekommt er EOF und beendet sich selbst.
+
+**Konsequenzen.**
+- *Gut:* Die Karte entsteht mit Schleifenschluss. Fahren, Watchdog und App
+  laufen dabei normal weiter.
+- *Gut:* Die Seite `/map` sagt jetzt, an welchem Schritt es hängt (Lidar,
+  Weitergabe, SLAM, Karte), und zeigt das SLAM-Protokoll.
+- *Schlecht:* Wir hängen doch an ROS2 Foxy (EOL) und am Container `x3`.
+  slam_toolbox muss dort installiert sein.
+- *Schlecht:* Die Odometrie bekommt weiterhin Korrekturen vom Lidar-Abgleich
+  (E4). Für SLAM sind das kleine Sprünge. Sie sind klein genug, dass
+  slam_toolbox sie abfängt, sauberer wäre aber reine Koppelnavigation.
+
+**Neu bewerten, wenn:** die Karte zur Navigation genutzt werden soll. Dann
+gehört auch die Position aus SLAM (`map → odom`) zurück in unseren Server.

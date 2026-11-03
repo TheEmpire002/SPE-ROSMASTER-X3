@@ -18,6 +18,11 @@ The default launch uses slam_toolbox. It requires a working laser topic and TF
 chain in ROS 2 (normally /scan and odom -> base frame). If Yahboom provides a
 specific SLAM launch file, configure ROSMAP_SLAM_PACKAGE and ROSMAP_SLAM_LAUNCH
 without changing this module.
+
+/scan und TF kommen von unserem eigenen Server: Er hält Lidar und Board und
+speist beides über ``einspeisung.py`` in den Container ein (E8 in
+docs/entscheidungen.md). sllidar_node und yahboomcar_bringup dürfen dafür
+nicht laufen.
 """
 
 from __future__ import annotations
@@ -31,6 +36,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .. import config
+from .einspeisung import Einspeisung
 from .map_service import MapService
 from .ros_bridge import ROSMapBridge
 
@@ -48,11 +55,11 @@ class MappingManager:
         map_topic: str | None = None,
         storage_dir: str | Path | None = None,
         docker_bin: str | None = None,
+        lidar=None,
+        odometry=None,
     ) -> None:
-        self.container = container or os.getenv("ROSMAP_CONTAINER", "x3")
-        self.setup_file = setup_file or os.getenv(
-            "ROSMAP_ROS_SETUP", "/opt/ros/foxy/setup.bash"
-        )
+        self.container = container or os.getenv("ROSMAP_CONTAINER", config.MAP_CONTAINER)
+        self.setup_file = setup_file or os.getenv("ROSMAP_ROS_SETUP", config.MAP_ROS_SETUP)
         self.slam_package = slam_package or os.getenv("ROSMAP_SLAM_PACKAGE", "slam_toolbox")
         self.slam_launch = slam_launch or os.getenv(
             "ROSMAP_SLAM_LAUNCH", "online_async_launch.py"
@@ -69,6 +76,13 @@ class MappingManager:
             docker_bin=self.docker_bin,
         )
         self.map_service = MapService(storage_dir=storage_dir)
+        # Ohne Odometrie (etwa in Tests) gibt es nichts einzuspeisen; dann
+        # muss ROS /scan und TF selbst liefern.
+        self.einspeisung = (
+            Einspeisung(lidar, odometry, self.container, self.setup_file, self.docker_bin)
+            if odometry is not None
+            else None
+        )
         self._lock = threading.RLock()
         self._started_at: float | None = None
         self._last_error: str | None = None
@@ -112,6 +126,36 @@ class MappingManager:
             raise RuntimeError(
                 f"ROS-2-Setup fehlt im Container: {self.setup_file}"
             )
+
+    def _slam_paket_pruefen(self) -> None:
+        """Vorab prüfen, ob es das SLAM-Paket im Container gibt.
+
+        Sonst startete ``ros2 launch`` scheinbar erfolgreich und scheiterte
+        erst danach, ohne dass es irgendwo zu sehen war.
+        """
+        result = self._docker(
+            "exec", self.container, "bash", "-lc",
+            f"source {shlex.quote(self.setup_file)} && "
+            f"ros2 pkg prefix {shlex.quote(self.slam_package)}",
+            timeout=20.0,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Das ROS-Paket '{self.slam_package}' fehlt im Container "
+                f"'{self.container}'. Installieren mit: docker exec -it "
+                f"{self.container} apt install ros-foxy-slam-toolbox "
+                f"({(result.stderr or result.stdout).strip()[-300:]})"
+            )
+
+    def _slam_log(self) -> list[str]:
+        """Letzte Zeilen des SLAM-Protokolls, das im Container liegt."""
+        result = self._docker(
+            "exec", self.container, "bash", "-lc",
+            f"tail -n {int(config.MAP_LOG_ZEILEN)} "
+            f"{shlex.quote(self._slam_log_file)} 2>/dev/null",
+            timeout=5.0,
+        )
+        return [z for z in result.stdout.splitlines() if z.strip()]
 
     def _slam_is_running(self) -> bool:
         command = (
@@ -180,6 +224,11 @@ class MappingManager:
         with self._lock:
             try:
                 self._ensure_container()
+                self._slam_paket_pruefen()
+                # Zuerst die Einspeisung: slam_toolbox soll beim Anlaufen
+                # schon Scans und TF vorfinden.
+                if self.einspeisung is not None:
+                    self.einspeisung.start()
                 self.bridge.start()
                 self._start_slam()
                 self._started_at = time.time()
@@ -189,6 +238,8 @@ class MappingManager:
                 self._last_error = str(exc)
                 # Avoid leaving the bridge running after a failed SLAM launch.
                 self.bridge.stop()
+                if self.einspeisung is not None:
+                    self.einspeisung.stop()
                 raise
 
     def stop(self) -> dict[str, Any]:
@@ -198,6 +249,8 @@ class MappingManager:
                 self._stop_slam()
             finally:
                 self.bridge.stop()
+                if self.einspeisung is not None:
+                    self.einspeisung.stop()
             self._started_at = None
             return self.status()
 
@@ -230,6 +283,17 @@ class MappingManager:
             docker_error = None
         slam_running = container_running and self._slam_is_running()
         bridge_status = self.bridge.status()
+        einspeisung = self.einspeisung.status() if self.einspeisung is not None else None
+        aktiv = self._started_at is not None
+        slam_log: list[str] = []
+        if aktiv and container_running:
+            try:
+                slam_log = self._slam_log()
+            except (OSError, subprocess.SubprocessError):
+                pass
+        hinweis, hinweis_fehler = self._hinweis(
+            aktiv, slam_running, bridge_status, einspeisung
+        )
         return {
             "container": self.container,
             "container_running": container_running,
@@ -241,4 +305,60 @@ class MappingManager:
             "started_at": self._started_at,
             "error": self._last_error or bridge_status.get("error") or docker_error,
             "slam_log_file": self._slam_log_file if container_running else None,
+            # Ab hier: Rückmeldung, woran es gerade hängt (für die Seite /map)
+            "aktiv": aktiv,
+            "einspeisung": einspeisung,
+            "slam_log": slam_log,
+            "hinweis": hinweis,
+            "hinweis_fehler": hinweis_fehler,
         }
+
+    def _hinweis(
+        self,
+        aktiv: bool,
+        slam_running: bool,
+        bridge: dict[str, Any],
+        einspeisung: dict[str, Any] | None,
+    ) -> tuple[str, bool]:
+        """In einem Satz: was gerade passiert oder woran es hängt.
+
+        Die Prüfungen folgen dem Weg der Daten -- Lidar, Einspeisung, SLAM,
+        Karte. Der erste Schritt, der hakt, ist die Ursache.
+        """
+        if not aktiv:
+            return "Mapping ist gestoppt.", False
+        if not slam_running:
+            return (
+                "Der SLAM-Prozess hat sich beendet. Die Ursache steht im "
+                "SLAM-Protokoll unten.", True,
+            )
+        if einspeisung is not None:
+            lidar_alter = einspeisung["lidar_scan_vor_s"]
+            if lidar_alter is None or lidar_alter > 2.0:
+                return (
+                    "Der Lidar liefert keine Daten, ohne Scans keine Karte. "
+                    "Zustand: /lidar/status", True,
+                )
+            if not einspeisung["laeuft"]:
+                return (
+                    "Die Weitergabe des Lidars an ROS ist unterbrochen und "
+                    f"startet neu. {einspeisung['fehler'] or ''}".strip(), True,
+                )
+            if not einspeisung["bereit"]:
+                return "Verbinde den Lidar mit ROS …", False
+        if not bridge["running"]:
+            return (
+                "Der Kartenempfang ist beendet. "
+                f"{bridge.get('error') or ''}".strip(), True,
+            )
+        if not bridge["map_available"]:
+            seit = time.time() - (self._started_at or time.time())
+            scans = f" {einspeisung['scans']} Scans an ROS gegeben." if einspeisung else ""
+            if seit < config.MAP_ERSTE_KARTE_S:
+                return f"SLAM läuft, warte auf die erste Karte ({seit:.0f} s).{scans}", False
+            return (
+                f"Seit {seit:.0f} s keine Karte.{scans} Die Ursache steht "
+                "vermutlich im SLAM-Protokoll unten.", True,
+            )
+        alter = time.time() - (bridge["last_map_at"] or time.time())
+        return f"Karte wird aufgebaut, letzte Aktualisierung vor {alter:.0f} s.", False

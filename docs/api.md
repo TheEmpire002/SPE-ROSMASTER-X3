@@ -822,6 +822,40 @@ finden). Voraussetzungen auf dem Pi: `mpv` und `yt-dlp`, siehe
 | `WS /sprache/ton` | Mithören (App: Schalter „Mikrofon mithören“): erst eine Textnachricht `{"rate": 16000}` (`null`, solange kein Mikrofon offen ist; bei jedem Wechsel neu und ohne Ton jede Sekunde als Lebenszeichen: Kommt 5 s gar nichts, verbindet die App neu), dann der Rohton als Binärnachrichten, 16 bit little-endian, mono, Blöcke à 0,25 s. Kommt der Browser nicht hinterher, fallen Blöcke weg (`SPRACHE_TON_PUFFER`). Nur solange jemand verbunden ist, wird etwas verschickt. |
 | `WS /sprache/durchsage` | Durchsage (App: Schalter „Über den Roboter sprechen“): Ton aus dem Browser-Mikrofon live über den Lautsprecher des Roboters. Der Server antwortet zuerst `{"bereit": true|false, "grund": …}`, später erneut, wenn der Lautsprecher ausfällt oder wieder geht. Der Client schickt `{"rate": 16000}` und danach Rohton als Binärnachrichten (16 bit little-endian, mono). Läuft in der Warteschlange der Stimme: Musik pausiert, die Spracherkennung hört so lange weg, ein Stopp bricht ab. Nach `DURCHSAGE_PAUSE_S` (2 s) ohne Ton ist der Lautsprecher wieder frei. Browser geben das Mikrofon nur über HTTPS frei, deshalb läuft dieselbe App zusätzlich unter `https://<roboter>:8443` (`HTTPS_PORT`, selbst unterschriebenes Zertifikat in `~/.rosmaster/https`, die Warnung im Browser einmal bestätigen). |
 
+### Kartierung (SLAM)
+
+Die Karte baut slam_toolbox im ROS-Container `x3`. Lidar und Position
+speist der Server selbst ein (E8 in [`entscheidungen.md`](entscheidungen.md)).
+Bedienoberfläche: `GET /map`.
+
+| Endpunkt | Liefert |
+|---|---|
+| `GET /api/mapping/status` | Zustand (siehe unten) |
+| `POST /api/mapping/start` | startet Einspeisung, Kartenempfang und SLAM; Fehler kommen als 503 mit Text |
+| `POST /api/mapping/stop` | beendet alles wieder, die letzte Karte bleibt abrufbar |
+| `GET /api/mapping/map` | letzte Karte (`nav_msgs/OccupancyGrid`, Zellen als Base64), 404 vor der ersten |
+| `POST /api/mapping/save` | speichert die letzte Karte als PGM + YAML, Body `{"name": "wohnzimmer"}` |
+| `GET /api/mapping/maps` | gespeicherte Karten |
+| `WS /api/mapping/ws` | alle 3 s `{"type": "status"}`, bei jeder neuen Karte `{"type": "map"}` |
+
+Für die Rückmeldung im Status:
+
+```json
+{
+  "aktiv": true, "mapping_running": true, "map_available": false,
+  "hinweis": "SLAM läuft, warte auf die erste Karte (6 s). 31 Scans an ROS gegeben.",
+  "hinweis_fehler": false,
+  "einspeisung": {"laeuft": true, "bereit": true, "scans": 31,
+                  "letzter_scan_vor_s": 0.1, "lidar_scan_vor_s": 0.1,
+                  "neustarts": 0, "fehler": null},
+  "slam_log": ["[INFO] [launch]: ...", "..."]
+}
+```
+
+`hinweis` nennt den ersten Schritt, der hakt: Lidar, Weitergabe an ROS,
+SLAM-Prozess, Kartenempfang. Bei `hinweis_fehler` steht die Ursache meist
+in `slam_log`.
+
 ### Sonstiges
 
 | Endpunkt | Liefert |

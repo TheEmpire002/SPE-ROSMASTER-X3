@@ -333,12 +333,18 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             match_task.cancel()
             hw_task.cancel()
             sprach_task.cancel()
-            mapping_manager.stop()
             homing.abbrechen("Server wird beendet")
             erkunder.abbrechen("Server wird beendet")
             manoever.abbrechen("Server wird beendet")
             interaktion.abbrechen("Server wird beendet")
             await watchdog.shutdown()
+            # Erst nach dem Anhalten: Das Beenden im Container kann dauern,
+            # und ein Fehler darin (Docker schon weg, auf dem Laptop gar
+            # nicht da) darf das Trennen der Hardware nicht verhindern.
+            try:
+                mapping_manager.stop()
+            except Exception:
+                log.exception("Mapping ließ sich beim Beenden nicht sauber stoppen")
             personen.stop()
             pose.stop()
             mukke.stoppen()
@@ -360,7 +366,9 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     # WLAN ist, kann den Roboter steuern.
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"])
 
-    mapping_manager = MappingManager()
+    # Bekommt Lidar und Odometrie, um sie in ROS einzuspeisen: slam_toolbox
+    # im Container braucht /scan und TF, und beides hält dieser Server.
+    mapping_manager = MappingManager(lidar=lidar, odometry=odometry)
     app.state.mapping_manager = mapping_manager
     app.include_router(create_mapping_router(mapping_manager))
 
