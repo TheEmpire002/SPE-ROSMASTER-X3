@@ -548,6 +548,50 @@ INTERAKTION_VERHALTEN_MAX_S = 20.0
 # ist es vermutlich eine andere -- dann beginnt die Gestenerkennung neu.
 INTERAKTION_SPRUNG_GRAD = 15.0
 
+# --- Ziel-Lock beim Folgen (interaktion/ziel.py) -----------------------------
+# Früher folgte er immer der nächstgelegenen bzw. größten Person -- nach
+# einer Suche oder beim Kreuzen sprang er so auf Fremde über. Jetzt hält
+# ein Tracker IDs über Bilder hinweg, und das Ziel wird zusätzlich an der
+# Farbe des Oberkörpers (HSV-Histogramm) wiedererkannt. Im Zweifel bleibt
+# er stehen, statt zu raten.
+
+# So lange wird das Aussehen des Ziels nach dem Start gelernt, bevor es als
+# bestätigt gilt (er fährt währenddessen schon).
+ZIEL_ERFASSEN_S = 1.0
+
+# So viele Bilder in Folge muss ein Kandidat passen, bevor er nach einer
+# Verdeckung wieder als Ziel gilt -- und so viele Fehlbilder in Folge
+# lösen das Ziel von seinem Track.
+ZIEL_BESTAETIGEN_BILDER = 5
+
+# Größter Bhattacharyya-Abstand (0 = gleich, 1 = völlig verschieden), bei
+# dem ein Merkmal noch als „dieselbe Person“ gilt. Am Roboter prüfen: hängt
+# stark von Licht und Kleidung ab.
+ZIEL_MERKMAL_SCHWELLE = 0.5
+
+# Beim Wiederfinden muss der beste Kandidat um mindestens so viel besser
+# passen als der zweitbeste. Sonst sind zwei Personen zu ähnlich (z. B.
+# gleich gekleidet) -- dann hält er sicher an.
+ZIEL_MERKMAL_MARGE = 0.15
+
+# Winkelfenster um die vorhergesagte Position, in dem eine Erkennung dem
+# Track zugeordnet werden darf (wächst mit der Unsicherheit bis zum
+# Dreifachen).
+ZIEL_GATE_GRAD = 15.0
+
+# Wie stark das gelernte Merkmal je Bild nachgeführt wird (Licht ändert
+# sich beim Gehen durch den Raum). Nur bei eindeutiger Szene und gutem
+# Treffer -- sonst lernt er schleichend eine fremde Person.
+ZIEL_MERKMAL_NACHFUEHREN = 0.05
+
+# So lange bleibt ein Track ohne Messung erhalten (vorhergesagt), bevor er
+# verworfen wird.
+ZIEL_TRACK_HALTEN_S = 1.5
+
+# Höchstens so stark darf sich die Boxhöhe zwischen Vorhersage und Messung
+# ändern (Verhältnis klein/groß), sonst ist es nicht derselbe Track.
+ZIEL_HOEHE_VERHAELTNIS = 0.6
+
 # --- Diagnose (Seite /diagnose) ------------------------------------------------
 # Wie oft die schnellen Messungen laufen (Akku, USB-Überlastzähler, Geräte-
 # zustand) und wie oft die langsamen (Temperatur, vcgencmd, Kernel-Log,

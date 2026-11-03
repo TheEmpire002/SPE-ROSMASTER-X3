@@ -213,6 +213,10 @@ EINSTELLUNGEN: list[Einstellung] = [
     Einstellung("WEGGEHEN_STRECKE_M", "folgen", "Weggehen: Strecke", "m", 0.2, 3.0, 0.1),
     Einstellung("WEGGEHEN_SPEED", "folgen", "Weggehen: Tempo", "m/s", 0.05, 0.4, 0.01),
     Einstellung("INTERAKTION_VERHALTEN_MAX_S", "folgen", "Herkommen/Weggehen höchstens", "s", 5, 120, 5),
+    Einstellung("ZIEL_MERKMAL_SCHWELLE", "folgen", "Ziel: Aussehen-Schwelle", "", 0.1, 0.9, 0.05,
+                hilfe="Kleiner = strenger. Verwechselt er Personen, verkleinern; verliert er dich ständig, vergrößern."),
+    Einstellung("ZIEL_GATE_GRAD", "folgen", "Ziel: Suchfenster", "°", 5, 40, 1,
+                hilfe="So weit darf das Ziel von Bild zu Bild springen."),
 
     # --- Lidar
     Einstellung("LIDAR_ANGLE_OFFSET_DEG", "lidar", "Einbauwinkel", "°", -180, 180, 1,

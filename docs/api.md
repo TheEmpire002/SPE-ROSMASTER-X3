@@ -351,7 +351,8 @@ der Modus an ist. **Nur am Boden benutzen.**
   "person": {"winkel": -8.5, "abstand": 1.2},
   "personen": 1,
   "geste": "folgen",
-  "grund": null
+  "grund": null,
+  "ziel": {"zustand": "following", "id": 3, "sicherheit": 0.82, "grund": null}
 }
 ```
 
@@ -364,6 +365,7 @@ der Modus an ist. **Nur am Boden benutzen.**
 | `personen` | wie viele Menschen die Kamera gerade sieht |
 | `geste` | zuletzt erkannte Geste (`folgen`, `stopp`, `herkommen`, `weggehen`), wenige Sekunden lang, sonst `null` |
 | `grund` | warum der Modus zuletzt endete |
+| `ziel` | Ziel-Lock (neu 03.11.): `zustand` ist `idle`, `acquiring_target`, `following`, `target_temporarily_lost`, `searching_for_target` oder `safe_stop`. `id` ist die Track-ID des Ziels (nur für diese Sitzung), `sicherheit` liegt bei 0..1, `grund` sagt, warum er angehalten oder abgelehnt hat (z. B. „mehrere Personen – bitte im Bild antippen“). Details in `docs/interaktion.md`. Fehlt bei älteren Servern. |
 
 ### Stimme im Detail
 

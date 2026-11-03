@@ -359,6 +359,19 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Probleme:** Erste Smoke-Läufe zeigten 14/19, weil `main.py --mock` automatisch einen Browser öffnet: die Web-App verbindet sich und schickt eigene Fahr- und Stoppbefehle dazwischen. Mit `--no-browser` laufen die Tests sauber.
 - **Offen:** Drehtest 90° am Boden gegen den Lidar (stimmt `theta`?).
 
+### 03.11.2026 – Autonomie Schritt B: Ziel-Lock beim Folgen (Marlon, mit Claude)
+- **Was:** Personen-Tracker mit Track-IDs und ein Ziel-Lock mit Zustandsautomat (`interaktion/ziel.py`, neu). Die Pose liefert ein Farbmerkmal des Rumpfs, die Mock-Pose zeigt zeitweise eine zweite Person.
+- **Warum:** Beim Folgen sprang der Roboter auf andere Personen über. Die Zuordnung lief nur über den Kamerawinkel, und nach jeder Suche nahm er die größte Person im Bild.
+- **Änderungen:**
+  - Tracker: Kalman auf dem Winkel, Eigendrehung aus der Odometrie herausgerechnet, gierige Zuordnung.
+  - `ZielSperre` mit den Zuständen idle → acquiring_target → following ↔ target_temporarily_lost → searching_for_target → safe_stop. Wiederfinden nur mit passendem Merkmal, klarer Marge und 5 bestätigten Bildern. Bei Zweifel steht er.
+  - Gesten werden je Person erkannt: Die Folgen-Geste macht den Gestikulierenden zum Ziel. Beim Folgen zählen nur die Gesten des Ziels, Stopp darf jeder.
+  - Neues Feld `state.interaktion.ziel`. Das Merkmal bleibt im Roboter (nicht in `/interaktion/pose`), nur im RAM.
+- **Ergebnis:** Neuer Test `Marlon/interaktion/test_ziel.py` besteht, ebenso alle bisherigen Tests (`test_gesten`, `test_sprache`, `test_stimme`, `test_hindernisse`, `test_odometrie`, `test_diagnose`, `test_explorer_sim`). Smoke-Test 18/19, unverändert.
+- **Probleme:** Zwei Testannahmen waren falsch, nicht der Code. Ohne Eigendrehung reißt die Zuordnung nicht ab, weil das Gate mitwächst; der Test prüft jetzt die geschätzte Geschwindigkeit. Nach 1 s Verdeckung lebt der Track noch, das Ziel ist also sofort wieder da; geprüft wird jetzt kurz (sofort) und lang (2 s, neue Bestätigung).
+- **Bewusst anders als geplant:** Die Zeiten heißen weiter `FOLGEN_VERLOREN_S`/`FOLGEN_SUCHEN_S`. Er fährt schon während der Erfassung los, sobald das Ziel eindeutig ist.
+- **Offen:** Antippen in der Web-App (Schritt C), Bodentest mit zwei Personen (kreuzen, verdecken, gleiche Kleidung).
+
 ---
 
 ## 3. Ergebnisse und Messwerte
@@ -428,6 +441,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - Sanftes Fahren am Boden prüfen: Folgen ohne USB-Resets, Rampe nicht zu träge.
 - Smoke-Test „Heimfahrt startet“ schlägt im Mock fehl (auch ohne die Änderungen vom 03.11.): Die Fahrt zuvor legt nur ~0,02 m zurück, die Heimfahrt endet sofort. Ursache prüfen.
 - Drehtest 90° am Boden: Blickrichtung aus der Board-Drehrate gegen den Lidar prüfen.
+- Folgen mit zwei Personen am Boden: kreuzen, kurz verdecken, gleiche Kleidung. Merkmal-Schwellen ggf. nachstellen (`ZIEL_MERKMAL_*`).
 
 ---
 

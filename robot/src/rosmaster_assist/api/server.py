@@ -212,7 +212,9 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     )
     # Der Antrieb wird gefragt, damit die Interaktion ohne Board gar nicht
     # erst losfährt (und nach dem Neuverbinden nicht von selbst).
-    interaktion = Interaktion(watchdog, lidar, pose, stimme, antrieb=lambda: driver.connected)
+    interaktion = Interaktion(
+        watchdog, lidar, pose, stimme, antrieb=lambda: driver.connected, odometry=odometry
+    )
     # Bekommt die Stimme, um wegzuhören, solange der Roboter selbst spricht
     # (sonst versteht er sich selbst).
     sprache = Spracherkennung(mock=use_mock_camera, stimme=stimme)
@@ -604,7 +606,10 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
 
         Leer, solange die Interaktion aus ist -- dann rechnet der Hailo nicht.
         """
-        return {"personen": pose.personen(), "skelett": SKELETT}
+        # Das Aussehensmerkmal (Farbhistogramm) bleibt im Roboter -- die App
+        # braucht es nicht, und es bläht jede Antwort auf.
+        personen = [{k: v for k, v in p.items() if k != "merkmal"} for p in pose.personen()]
+        return {"personen": personen, "skelett": SKELETT}
 
     # --- Diagnose ---
 
