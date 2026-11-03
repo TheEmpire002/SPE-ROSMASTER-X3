@@ -164,6 +164,50 @@ def _ohne_weckwort(befehl: str) -> bool:
     return False
 
 
+class _MikrofonWechsel(Exception):
+    """Ein besseres Mikrofon ist (wieder) da -- Stream schließen und neu suchen."""
+
+
+def _mikrofon_namen() -> list[str]:
+    """Namensteile der Mikrofone in der Reihenfolge der Vorliebe."""
+    wunsch = config.SPRACHE_MIKROFON
+    if isinstance(wunsch, int):
+        return []
+    return [wunsch] if wunsch else list(config.SPRACHE_MIKROFON_NAMEN)
+
+
+def _rang(name: str) -> int | None:
+    """Platz des Mikrofons in der Vorliebe (0 = bestes), None = unbekannt."""
+    for i, teil in enumerate(_mikrofon_namen()):
+        if teil.lower() in name.lower():
+            return i
+    return None
+
+
+def _angemeldete_karten() -> str:
+    """Soundkarten laut Kernel. Billig und ohne PortAudio, das sich seine
+    Geräteliste beim Start merkt und neue Geräte erst nach einem Neustart sieht."""
+    try:
+        with open("/proc/asound/cards", encoding="utf-8", errors="replace") as f:
+            return f.read().lower()
+    except OSError:
+        return ""
+
+
+def _ohne_warten(aufgabe, was: str) -> None:
+    """Aufräumen, das an einem toten USB-Gerät hängen bleiben kann.
+
+    PortAudio wartet beim Schließen auf ALSA; ist das Gerät mitten im Lauf
+    verschwunden, kommt das unter Umständen nie zurück. Dann bleibt der Rest
+    liegen (Daemon-Thread), statt dass die Spracherkennung mit hängt.
+    """
+    t = threading.Thread(target=aufgabe, name="sprache-aufraeumen", daemon=True)
+    t.start()
+    t.join(config.SPRACHE_SCHLIESSEN_S)
+    if t.is_alive():
+        log.warning("Spracherkennung: %s hängt -- lasse es liegen", was)
+
+
 def _pegel(roh: bytes) -> float:
     """Lautstärke eines Blocks (16 bit) als 0..1: -60 dBFS und leiser = 0, Vollaussteuerung = 1."""
     import numpy as np
@@ -410,8 +454,12 @@ class Spracherkennung:
         grammatik = json.dumps(self._grammatik(modell_pfad, modell), ensure_ascii=False)
 
         while not self._stop.is_set():
+            warten = config.SPRACHE_NEUVERSUCH_S
             try:
                 self._hoeren_bis_fehler(sd, vosk, modell, grammatik)
+            except _MikrofonWechsel as exc:
+                log.info("Spracherkennung: %s -- wechsle", exc)
+                warten = 0.5  # kein Fehler, nur umstecken
             except Exception as exc:  # Mikrofon weg, ALSA-Fehler, ...
                 meldung = f"{type(exc).__name__}: {exc}"
                 if meldung != self._fehler:
@@ -419,14 +467,17 @@ class Spracherkennung:
                     log.warning("Spracherkennung: %s -- versuche es neu", meldung)
                 self._fehler = meldung
                 self._zustand = FEHLER
-            self._stop.wait(config.SPRACHE_NEUVERSUCH_S)
+            self._stop.wait(warten)
             # PortAudio merkt sich die Geräteliste vom Start; ein neu
             # angemeldetes Mikrofon sieht es erst nach einem Neustart.
-            try:
-                sd._terminate()
-                sd._initialize()
-            except Exception:
-                pass
+            def neu_starten() -> None:
+                try:
+                    sd._terminate()
+                    sd._initialize()
+                except Exception:
+                    pass
+
+            _ohne_warten(neu_starten, "PortAudio neu starten")
 
     def _hoeren_bis_fehler(self, sd, vosk, modell, grammatik: str) -> None:
         geraet, name = self._mikrofon_finden(sd)
@@ -437,9 +488,23 @@ class Spracherkennung:
         # Einzelne Wörter mit Konfidenz, siehe _auswerten().
         erkenner.SetWords(True)
         block = int(rate * 0.25)
-        with sd.RawInputStream(
-            samplerate=rate, blocksize=block, device=geraet, dtype="int16", channels=1
-        ) as strom:
+        # Callback statt strom.read(): Ein blockierendes read() kam nach einem
+        # USB-Aussetzer manchmal nie wieder zurück, ohne Fehler -- kein
+        # Neuversuch griff. Aus der Warteschlange lässt sich mit Frist lesen.
+        bloecke: queue.Queue[bytes] = queue.Queue(maxsize=config.SPRACHE_BLOCK_PUFFER)
+
+        def rein(daten, _frames, _zeit, _status) -> None:
+            try:
+                bloecke.put_nowait(bytes(daten))
+            except queue.Full:
+                pass  # Auswertung hängt kurz hinterher: lieber Lücke als Stau
+
+        strom = sd.RawInputStream(
+            samplerate=rate, blocksize=block, device=geraet, dtype="int16", channels=1,
+            callback=rein,
+        )
+        try:
+            strom.start()
             self._mikrofon = name
             self._rate = rate
             self._zustand = HOERT
@@ -450,9 +515,32 @@ class Spracherkennung:
                          name, rate, config.SPRACHE_WECKWORT)
             self._fehler = None
             taub = False
+            # Failsafe nach USB-Aussetzern: toter Stream (nur Stille) und
+            # Ersatz-Mikrofon, obwohl das bessere wieder da ist.
+            rang = _rang(name)
+            geoeffnet = time.monotonic()
+            karten_vorher = _angemeldete_karten()
+            naechste_pruefung = geoeffnet + config.SPRACHE_MIKROFON_PRUEFEN_S
+            stumm_seit: float | None = None
             while not self._stop.is_set():
-                daten, _ = strom.read(block)
-                roh = bytes(daten)
+                try:
+                    roh = bloecke.get(timeout=config.SPRACHE_HAENGT_S)
+                except queue.Empty:
+                    raise RuntimeError(
+                        f"{name} liefert seit {config.SPRACHE_HAENGT_S:.0f} s keinen Ton (Stream hängt)"
+                    ) from None
+                jetzt = time.monotonic()
+                # Ein echtes Mikrofon rauscht immer ein wenig; lauter exakte
+                # Nullen heißen: Der Stream lebt noch, das Gerät nicht mehr.
+                if roh.strip(b"\x00"):
+                    stumm_seit = None
+                elif stumm_seit is None:
+                    stumm_seit = jetzt
+                elif jetzt - stumm_seit > config.SPRACHE_STUMM_S:
+                    raise RuntimeError(f"{name} liefert seit {config.SPRACHE_STUMM_S:.0f} s nur Stille")
+                if rang and jetzt >= naechste_pruefung:
+                    naechste_pruefung = jetzt + config.SPRACHE_MIKROFON_PRUEFEN_S
+                    self._besseres_pruefen(rang, karten_vorher, jetzt - geoeffnet)
                 # Mithören und Pegel auch, während er spricht: Das Mikrofon
                 # hört ja trotzdem, nur ausgewertet wird es nicht.
                 self._ton_verteilen(roh)
@@ -477,6 +565,28 @@ class Spracherkennung:
                 elif live:
                     teil = json.loads(erkenner.PartialResult()).get("partial", "")
                     self._teil = " ".join(teil.replace("[unk]", " ").split())
+        finally:
+            _ohne_warten(strom.close, "Mikrofon-Stream schließen")
+
+    @staticmethod
+    def _besseres_pruefen(rang: int, karten_vorher: str, offen_s: float) -> None:
+        """Läuft die Erkennung auf einem Ersatz-Mikrofon, zurück zum besseren.
+
+        Nach einem USB-Aussetzer meldet sich die C270 oft schneller zurück als
+        das USB-Mikrofon. Der Neuversuch fand dann nur die C270 und blieb dort,
+        auch wenn das bessere Mikrofon Sekunden später wieder da war.
+
+        Gewechselt wird, wenn ein besseres neu angemeldet ist. War es schon beim
+        Öffnen da (PortAudio fand es trotzdem nicht), nur alle
+        SPRACHE_MIKROFON_ERNEUT_S -- sonst stünde der Hör-Thread im Dauerwechsel.
+        """
+        karten = _angemeldete_karten()
+        for teil in _mikrofon_namen()[:rang]:
+            teil = teil.lower()
+            if teil not in karten:
+                continue
+            if teil not in karten_vorher or offen_s > config.SPRACHE_MIKROFON_ERNEUT_S:
+                raise _MikrofonWechsel(f"besseres Mikrofon ({teil!r}) wieder da")
 
     def _ton_verteilen(self, roh: bytes) -> None:
         if not self._ton_abos:
@@ -536,12 +646,10 @@ class Spracherkennung:
         ]
         wunsch = config.SPRACHE_MIKROFON
         if isinstance(wunsch, int):
-            namen: list[str] = []
             for i, name in geraete:
                 if i == wunsch:
                     return i, name
-        else:
-            namen = [wunsch] if wunsch else list(config.SPRACHE_MIKROFON_NAMEN)
+        namen = _mikrofon_namen()
         # Nach Vorliebe suchen, nicht nach Geräteliste: Das USB-Mikrofon
         # soll vor den Mikrofonen in den Kameras gewinnen.
         for teil in namen:

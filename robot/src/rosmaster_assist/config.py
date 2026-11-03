@@ -772,3 +772,25 @@ SPRACHE_ABTASTRATE = 16000
 
 # Wartezeit (s) vor dem nächsten Versuch, wenn das Mikrofon weg ist.
 SPRACHE_NEUVERSUCH_S = 3.0
+
+# Failsafe nach USB-Aussetzern. Nach einem Absturz meldet sich die C270
+# schneller zurück als das USB-Mikrofon, und die Erkennung blieb dann auf
+# der schlechteren C270 hängen. Läuft sie auf einem Ersatz, schaut sie so
+# oft (s) nach, ob ein besseres wieder angemeldet ist, und wechselt ...
+SPRACHE_MIKROFON_PRUEFEN_S = 5.0
+# ... war es schon beim Öffnen da und PortAudio fand es trotzdem nicht,
+# versucht sie es erst nach dieser Zeit (s) erneut (kein Dauerwechsel).
+SPRACHE_MIKROFON_ERNEUT_S = 30.0
+# Liefert das Mikrofon so lange (s) nur exakte Nullen, ist der Stream tot
+# (das Gerät ist weg, ohne dass PortAudio einen Fehler meldet): neu öffnen.
+SPRACHE_STUMM_S = 5.0
+# Kommt so lange (s) gar kein Block mehr, hängt der Stream: Nach einem
+# USB-Aussetzer blieb das Lesen ohne Fehler für immer stehen (Pegel
+# eingefroren, Zustand "hoert", keine Befehle mehr). Dann neu öffnen.
+SPRACHE_HAENGT_S = 3.0
+# So viele Blöcke (je 0,25 s) puffert der Hör-Thread, wenn die Auswertung
+# kurz nicht hinterherkommt (Piper rechnet); ältere fallen weg.
+SPRACHE_BLOCK_PUFFER = 20
+# So lange (s) darf das Schließen eines toten Streams dauern. Hängt auch
+# das, wird er liegen gelassen, damit der Neuversuch nicht mit hängt.
+SPRACHE_SCHLIESSEN_S = 2.0

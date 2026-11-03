@@ -123,6 +123,45 @@ with tempfile.TemporaryDirectory() as ordner:
     pruefe("alle Wörter bekannt", all(w in wortschatz or w == "[unk]" for s in g for w in s.split()))
     pruefe("Rest als [unk]", g[-1] == "[unk]")
 
+# --- Hängender Stream: Fehler statt ewig warten ----------------------------------------
+# Nach einem USB-Aussetzer kam vom Mikrofon nichts mehr, ohne Fehlermeldung.
+class _TotesSd:
+    class RawInputStream:
+        geschlossen = False
+
+        def __init__(self, **kw):
+            self.callback = kw["callback"]  # wird nie aufgerufen
+
+        def start(self):
+            pass
+
+        def close(self):
+            type(self).geschlossen = True
+
+
+class _Vosk:
+    class KaldiRecognizer:
+        def __init__(self, *a):
+            pass
+
+        def SetWords(self, _):
+            pass
+
+
+s = sp.Spracherkennung(mock=False)
+s._mikrofon_finden = lambda sd: (0, "USB Microphone")
+s._abtastrate = lambda sd, g: 16000
+t0 = time.monotonic()
+try:
+    s._hoeren_bis_fehler(_TotesSd, _Vosk, None, "[]")
+    meldung = ""
+except RuntimeError as exc:
+    meldung = str(exc)
+dauer = time.monotonic() - t0
+pruefe("hängender Stream wird erkannt", "hängt" in meldung, meldung)
+pruefe("nach der Frist, nicht ewig", dauer < config.SPRACHE_HAENGT_S + 2, dauer)
+pruefe("toter Stream wird geschlossen", _TotesSd.RawInputStream.geschlossen)
+
 # --- Ohne Vosk: aus, aber kein Absturz -------------------------------------------------
 sys.modules["vosk"] = None  # Import schlägt dann sicher fehl
 s = sp.Spracherkennung(mock=False)

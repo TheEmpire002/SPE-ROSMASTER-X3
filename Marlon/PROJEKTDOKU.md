@@ -401,6 +401,15 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Ergebnis:** Am Pi mit einem zweiten Server im Simulationsmodus geprüft: `/sprache/live` liefert, `mikro.js` wird ausgeliefert, der Ton-WebSocket meldet sich (ohne Mikrofon mit `{"rate": null}`; dabei ein Fehler gefunden und behoben: Die erste Meldung fehlte, die App hätte ewig „verbinde …“ gezeigt). Getippte Sätze erscheinen mit Urteil im Feed. Testskripte bestanden.
 - **Offen:** Mit echtem Mikrofon nach dem Neustart des Servers ausprobieren (Ton, Verzögerung).
 
+### 03.11.2026 – Sprachbefehle nach einem Absturz: Failsafe
+- **Was:** Die Spracherkennung erholt sich jetzt auch dann von einem USB-Aussetzer, wenn keine Fehlermeldung kommt:
+  - Das Mikrofon wird per Callback mit Warteschlange gelesen statt mit blockierendem `read()`. Kommt 3 s kein Ton (`SPRACHE_HAENGT_S`), wird es neu geöffnet. Hängt das Schließen des toten Streams, bleibt er liegen.
+  - 5 s nur exakte Nullen (`SPRACHE_STUMM_S`) gelten als toter Stream.
+  - Läuft die Erkennung nach einem Aussetzer auf der C270, wechselt sie zurück zum USB-Mikrofon, sobald es wieder angemeldet ist.
+- **Warum:** Nach einem Absturz reagierte der Roboter nicht mehr auf Sprache. Am laufenden Server zeigte `/sprache/live` einen eingefrorenen Pegel, Zustand „hoert“ und keine neuen Sätze, `/sprache/ton` lieferte keinen Ton. Im Kernel-Log hatte sich das USB-Mikrofon um 09:12 und 09:13 ab- und wieder angemeldet. Der Hör-Thread hing in `strom.read()`, ohne Fehler. Der alte Failsafe (Neuversuch alle 3 s) greift nur bei einer Fehlermeldung und kam deshalb nie zum Zug.
+- **Ergebnis:** Am Pi: Lesen per Callback mit dem echten Mikrofon geht (keine reinen Nullen, also keine Fehlauslösung der Stille-Erkennung). Neuer Test in `test_sprache.py`: Ein Stream, der nie liefert, wird nach der Frist erkannt und geschlossen. Alle drei Testskripte bestanden.
+- **Offen:** Server neu starten und bei einem echten Aussetzer im Log auf „Stream hängt“ und „Mikrofon wieder da“ achten.
+
 ---
 
 ## 3. Ergebnisse und Messwerte
@@ -452,6 +461,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 | Push aus dem Laptop hängt | Git Credential Manager wartet auf Login-Fenster | Nutzer pusht selbst, der Pi zieht nur (`git pull`) |
 | MUKKE: mpv meldet „Failed to recognize file format“ | mpvs ytdl-Skript findet yt-dlp in der venv nicht und gibt den YouTube-Link roh weiter | Server löst den Link selbst mit der yt-dlp-Bibliothek auf, mpv bekommt nur noch die direkte Tonspur; YouTube-Fehler erscheinen im Fenster |
 | Roboter startet die Interaktion von selbst | Vosk mit Grammatik macht aus Musik und Gesprächen erlaubte Sätze („robbie hallo“) | Konfidenz- und `[unk]`-Prüfung; bei Musik nur Stopp und „Musik aus“ (03.11.) |
+| Nach einem Absturz keine Sprachbefehle mehr | Mikrofon fiel kurz vom USB ab, `strom.read()` blieb ohne Fehler für immer hängen | Lesen per Callback mit Frist, Neuöffnen nach 3 s ohne Ton; Rückwechsel von der C270 zum USB-Mikrofon (03.11.) |
 
 ---
 
