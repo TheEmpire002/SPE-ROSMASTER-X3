@@ -410,6 +410,76 @@ EXPLORE_FEST_MIN_VX = 0.05
 EXPLORE_FEST_V_MS = 0.02
 EXPLORE_FEST_WEG_M = 0.03
 
+# --- Ausweichen (Erkunder, Schritt F2) -------------------------------------------
+#
+# Lokales Ausweichen ohne Karte: kurzes Gedächtnis für Punkte, die aus dem
+# Blickfeld rutschen, Bögen statt Wenden vor Hindernissen, Türen und Lücken
+# mittig anfahren, Hochheben erkennen. Siehe navigation/ausweichen.py.
+
+# Kurzgedächtnis: Lidar-Punkte so lange und in diesem Umkreis behalten. Die
+# Lage wird aus der Board-Geschwindigkeit fortgeschrieben, die driftet --
+# deshalb nur wenige Sekunden und nur nahe Punkte.
+AUSWEICH_GEDAECHTNIS_S = 3.0
+AUSWEICH_GEDAECHTNIS_M = 1.0
+# Ein gemerkter Punkt fällt weg, wenn der Lidar jetzt in dieser Richtung um
+# so viel weiter sieht (das Ding ist weg oder war ein Messfehler).
+AUSWEICH_FREIRAEUMEN_M = 0.10
+
+# Umriss des Roboters um die Lidar-Mitte (m) für die Bogenplanung. Breite
+# 0,245 m; vorn ~0,15 m wie bei EXPLORE_STOP_M. Heck am Roboter nachmessen.
+AUSWEICH_VORN_M = 0.15
+AUSWEICH_HINTEN_M = 0.15
+AUSWEICH_HALBE_BREITE_M = 0.13
+
+# Bogenplanung: so weit (s) und in diesen Schritten vorausrechnen. Ein Bogen
+# taugt nur, wenn der Umriss überall mindestens AUSWEICH_RAND_M Luft hat.
+AUSWEICH_HORIZONT_S = 1.2
+AUSWEICH_SCHRITT_S = 0.1
+AUSWEICH_RAND_M = 0.05
+# Kandidaten: Drehraten (rad/s) und seitliche Geschwindigkeiten (m/s).
+AUSWEICH_OMEGAS = (-0.6, -0.45, -0.3, -0.15, 0.0, 0.15, 0.3, 0.45, 0.6)
+AUSWEICH_VYS = (-0.08, 0.0, 0.08)
+# Gewichte der Bewertung: zurück auf den gewählten Kurs, Luft zum nächsten
+# Hindernis, Tempo, Weite in Fahrtrichtung am Ende des Bogens, ruhiges
+# Lenken (Sprünge in omega), seitliches Schieben nur wenn nötig. RUCK klein
+# halten, sonst wiegt er die Kurskorrektur immer auf und der Roboter lenkt
+# nie zurück; SEITLICH so, dass er neben Hindernissen (Türrahmen,
+# Stuhlbein) noch seitlich wegschiebt -- wie früher bei EXPLORE_SIDE_M.
+AUSWEICH_GEWICHT_KURS = 1.0
+AUSWEICH_GEWICHT_LUFT = 1.0
+AUSWEICH_GEWICHT_TEMPO = 0.5
+AUSWEICH_GEWICHT_WEITE = 1.5
+AUSWEICH_GEWICHT_RUCK = 0.2
+AUSWEICH_GEWICHT_SEITLICH = 0.25
+# Bis zu diesem Abstand (m) zählt mehr Luft bzw. Weite als besser.
+AUSWEICH_LUFT_GUT_M = 0.30
+AUSWEICH_WEITE_GUT_M = 2.0
+
+# Lücken und Türen: Richtungen in diesem Raster (Grad) prüfen. Von einem
+# freien Bereich nimmt er die Mitte und Richtungen mit mindestens
+# AUSWEICH_LUECKE_RAND_GRAD Abstand zum Rand -- nicht knapp am Türrahmen.
+AUSWEICH_LUECKE_RASTER_GRAD = 2
+AUSWEICH_LUECKE_RAND_GRAD = 10
+# Ist etwas näher als das (Türrahmen, Engstelle), verschiebt er den
+# zufälligen Richtungswechsel, bis er hindurch ist.
+AUSWEICH_ENG_M = 0.45
+
+# Hochheben: Aufeinanderfolgende Runden (Eigenbewegung herausgerechnet) in
+# 10°-Sektoren vergleichen. Ändert sich ein Sektor um mehr als
+# AUSWEICH_HOCH_SPRUNG_M, zählt er als verändert. Ab AUSWEICH_HOCH_ANTEIL
+# veränderter Sektoren in AUSWEICH_HOCH_RUNDEN Runden hintereinander gilt
+# er als hochgehoben; wieder abgesetzt, wenn die Runden AUSWEICH_HOCH_RUHE_S
+# lang unter AUSWEICH_HOCH_RUHIG_ANTEIL bleiben. Ein Mensch dicht daneben
+# deckt nur ~4 von 36 Sektoren ab. Mit gemessener Lage vergleicht er über
+# AUSWEICH_HOCH_FENSTER_S statt von Runde zu Runde -- so fällt auch
+# langsames Tragen auf, das die Räder nicht melden.
+AUSWEICH_HOCH_SPRUNG_M = 0.30
+AUSWEICH_HOCH_ANTEIL = 0.5
+AUSWEICH_HOCH_RUNDEN = 2
+AUSWEICH_HOCH_RUHIG_ANTEIL = 0.15
+AUSWEICH_HOCH_RUHE_S = 2.0
+AUSWEICH_HOCH_FENSTER_S = 1.0
+
 # --- Hinderniserkennung ----------------------------------------------------------
 
 # Springt der Abstand zwischen zwei Nachbarpunkten um mehr als das, beginnt

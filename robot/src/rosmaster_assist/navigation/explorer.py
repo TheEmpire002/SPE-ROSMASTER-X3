@@ -1,8 +1,11 @@
 """Autonomes Erkunden (Test 1): zufällig umherfahren, allem ausweichen.
 
-Der Roboter fährt geradeaus, bis vorn etwas im Weg ist, dreht sich dann in
-die freieste Richtung und fährt weiter. Damit er nicht ewig dieselbe Bahn
-abfährt, wechselt er ab und zu ohne Anlass die Richtung.
+Der Roboter fährt auf einem gewählten Kurs, umfährt Hindernisse in Bögen
+und dreht sich erst, wenn kein sicherer Bogen mehr passt, in eine freie
+Richtung (eine Tür oder Lücke möglichst mittig). Damit er nicht ewig
+dieselbe Bahn abfährt, wechselt er ab und zu ohne Anlass die Richtung. Die
+Bausteine dafür (Kurzgedächtnis, Bögen, Lücken, Hochheben) stehen in
+``ausweichen.py``.
 
 Entscheidungen, die das Verhalten prägen:
 
@@ -28,6 +31,10 @@ schwenken die Ecken nach außen. Dasselbe, wenn er trotz Fahrbefehl nicht
 vorankommt (etwas unterhalb der Lidar-Ebene). Erst wenn mehrere
 Befreiungen hintereinander nichts bringen, gibt er auf.
 
+**Hochgehoben heißt neu anfangen.** Trägt ihn jemand woandershin, passt
+nichts Gelerntes mehr (Gedächtnis, Kurs, Zähler). Er hält an, bis das
+Lidar-Bild wieder ruhig ist, und beginnt dann von vorn.
+
 Jeder Fahrbefehl läuft über den ``SafetyWatchdog`` -- bleibt diese Schleife
 hängen, hält der Roboter nach 0,5 s von selbst an.
 """
@@ -45,6 +52,7 @@ from typing import TYPE_CHECKING
 from .. import config
 from ..protocol import DriveCommand
 from ..safety import SafetyWatchdog
+from . import ausweichen
 from . import hindernisse as hd
 
 if TYPE_CHECKING:  # nur für die Typangaben -- vermeidet Ringimporte
@@ -61,6 +69,7 @@ WARTET = "wartet"
 MENSCH_WARTEN = "wartet auf Mensch"
 KEIN_LIDAR = "wartet auf Lidar"
 BEFREIT = "befreit sich"
+HOCHGEHOBEN = "hochgehoben"
 
 #: Kandidaten für die neue Fahrtrichtung, in Grad (0 = geradeaus).
 _RICHTUNGEN = list(range(-180, 181, 10))
@@ -155,6 +164,12 @@ class Erkunder:
         self._fest_bild: dict[int, float] = {}
         self._fest_still_s = 0.0
         self._fest_takt = 0.0
+        # Ausweichen (F2): Kurzgedächtnis, Hochheben und der Kurs, auf den
+        # er nach dem Umfahren zurücklenkt (None: beim nächsten Geradeaus-
+        # fahren den aktuellen übernehmen).
+        self._gedaechtnis = ausweichen.Kurzgedaechtnis(self._odometry)
+        self._hoch = ausweichen.HochhebeErkennung()
+        self._ziel_kurs: float | None = None
 
     # --- Bedienung (wie Homing) ------------------------------------------------
 
@@ -273,6 +288,8 @@ class Erkunder:
         drehrate = self._drehrate_gemessen()
         if self._zustand == DREHT and drehrate is not None:
             self._gedreht += math.degrees(drehrate) * dt
+        # Eigene Lage fürs Kurzgedächtnis -- jeden Takt, auch ohne neue Runde.
+        self._gedaechtnis.fortschreiben(dt)
 
         # Ohne frische Lidar-Runde fährt er nicht. Kurze Aussetzer (USB-Reset)
         # werden abgewartet, längere beenden die Fahrt.
@@ -292,7 +309,21 @@ class Erkunder:
             return halt
         self._ohne_lidar_seit = None
 
-        punkte = scan.punkte()
+        # Hochgehoben oder getragen: anhalten, bis er wieder ruhig steht.
+        lage = self._gedaechtnis.lage if self._gedaechtnis.misst else None
+        if self._hoch.pruefen(scan, lage):
+            if self._zustand != HOCHGEHOBEN:
+                self._hochgehoben()
+            return halt
+        if self._zustand == HOCHGEHOBEN:
+            self._naechster_wechsel = jetzt + self._wanderzeit()
+            self._setzen(FAEHRT, "wieder abgesetzt")
+
+        # Die rohe Runde für alles, was "jetzt" meint (Festfahren); die Runde
+        # samt Gedächtnis fürs Ausweichen -- dort zählt auch, was gerade aus
+        # dem Blickfeld gerutscht ist.
+        roh = scan.punkte()
+        punkte = self._gedaechtnis.punkte(scan)
         breite = config.EXPLORE_HALF_WIDTH_M
         vorn = frei_in_richtung(punkte, 0.0, breite)
         self._frei_vorn = vorn
@@ -343,12 +374,15 @@ class Erkunder:
         if vorn < config.EXPLORE_STOP_M:
             return self._wenden(jetzt, punkte, f"Hindernis in {vorn:.2f} m")
 
-        fest = self._festgefahren(jetzt, dt, punkte)
+        fest = self._festgefahren(jetzt, dt, roh)
         if fest is not None:
             # Nach vorn geht es offenbar nicht -- also seitlich oder zurück.
             return self._befreien_beginnen(jetzt, punkte, fest, vorwaerts=False)
 
-        if jetzt >= self._naechster_wechsel:
+        # Den zufälligen Wechsel nicht mitten in einer Tür oder Engstelle:
+        # erst hindurch, sonst dreht er genau dort um, wo er hinwollte.
+        eng = min(scan.entfernungen, default=config.OBSTACLE_RANGE_M) < config.AUSWEICH_ENG_M
+        if jetzt >= self._naechster_wechsel and not eng:
             return self._wenden(jetzt, punkte, "zufälliger Richtungswechsel", zufall=True)
 
         # Eine Weile frei gefahren: Fehlversuche und Befreiungen zählen neu.
@@ -359,37 +393,36 @@ class Erkunder:
         elif jetzt - self._frei_seit >= config.EXPLORE_FREI_ZURUECK_S:
             self._fehlversuche = 0
             self._befreiungen = 0
-        self._setzen(FAEHRT, "fährt" if vorn >= config.EXPLORE_SLOW_M else f"bremst, frei {vorn:.2f} m")
-        return self._geradeaus(punkte, vorn)
+        return self._geradeaus(jetzt, punkte, vorn)
 
-    def _geradeaus(self, punkte, vorn: float) -> DriveCommand:
+    def _geradeaus(self, jetzt: float, punkte, vorn: float) -> DriveCommand:
+        """Den besten sicheren Bogen fahren; passt keiner, wenden."""
         # Vor Hindernissen abbremsen, aber nicht unter ~1/3: Sehr kleine
         # Werte setzen die Motoren am Boden nicht mehr um.
         spanne = config.EXPLORE_SLOW_M - config.EXPLORE_STOP_M
         anteil = min(1.0, max(0.35, (vorn - config.EXPLORE_STOP_M) / spanne))
-        vx = config.EXPLORE_SPEED * anteil
+        vx_max = config.EXPLORE_SPEED * anteil
 
-        # Sachte zur offeneren Seite lenken, solange vorn etwas näher kommt
-        # -- so fährt er um Hindernisse herum, statt erst davor zu wenden.
-        omega = 0.0
-        if vorn < config.EXPLORE_SLOW_M:
-            links = frei_in_richtung(punkte, 30.0, config.EXPLORE_HALF_WIDTH_M)
-            rechts = frei_in_richtung(punkte, -30.0, config.EXPLORE_HALF_WIDTH_M)
-            if abs(links - rechts) > 0.15:
-                omega = 0.35 * (1.0 - anteil + 0.3) * (1 if links > rechts else -1)
+        # Den Kurs vom letzten Losfahren halten: Nach dem Umfahren lenkt er
+        # zurück, statt im Bogen weiterzudrehen. Ohne gemessene Drehrate
+        # gibt es keinen Kurs -- dann zählt nur, wenig zu lenken.
+        kurs = self._gedaechtnis.kurs
+        if kurs is None:
+            self._ziel_kurs = None
+        elif self._ziel_kurs is None:
+            self._ziel_kurs = kurs
+        fehler = 0.0 if kurs is None else ausweichen._winkel_normieren(self._ziel_kurs - kurs)
 
-        # Mecanum: seitlich zu nahe Dinge schiebt er weg, statt anzuhalten.
-        # Nur der Bereich neben dem Roboter zählt (x zwischen Heck und Bug).
-        vy = 0.0
-        if len(punkte):
-            x, y = punkte[:, 0], punkte[:, 1]
-            neben = (x > -0.15) & (x < 0.25)
-            links_nah = neben & (y > 0) & (y < config.EXPLORE_SIDE_M)
-            rechts_nah = neben & (y < 0) & (y > -config.EXPLORE_SIDE_M)
-            if links_nah.any() and not rechts_nah.any():
-                vy = -0.08
-            elif rechts_nah.any() and not links_nah.any():
-                vy = 0.08
+        wahl = ausweichen.bogen_planen(punkte, vx_max, fehler, self._letzter_befehl.omega)
+        if wahl is None:
+            return self._wenden(jetzt, punkte, "kein sicherer Bogen")
+        (vx, vy, omega), _luft = wahl
+        gerade = omega == 0.0 and vy == 0.0
+        if vorn >= config.EXPLORE_SLOW_M:
+            text = "fährt" if gerade else "fährt Bogen"
+        else:
+            text = f"bremst, frei {vorn:.2f} m" if gerade else f"umfährt, frei {vorn:.2f} m"
+        self._setzen(FAEHRT, text)
         return DriveCommand(vx, vy, omega)
 
     # --- Drehen ------------------------------------------------------------------
@@ -452,8 +485,9 @@ class Erkunder:
         if vorn >= config.EXPLORE_GO_M:
             self._fehlversuche = 0
             self._naechster_wechsel = jetzt + self._wanderzeit()
+            self._ziel_kurs = None  # neuer Kurs: der nach der Drehung
             self._setzen(FAEHRT, "Weg frei")
-            return self._geradeaus(punkte, vorn)
+            return self._geradeaus(jetzt, punkte, vorn)
         # Gedreht, aber vorn immer noch zu eng (Drehung zu kurz geraten oder
         # die Welt hat sich bewegt) -- neu wählen.
         self._fehlversuche += 1
@@ -483,17 +517,21 @@ class Erkunder:
         langen Flur ewig zwischen den beiden Enden.
         """
         breite = config.EXPLORE_HALF_WIDTH_M
-        kandidaten = []
-        for r in _RICHTUNGEN:
-            # Beim Ausweichen ist geradeaus ja gerade versperrt; beim
-            # zufälligen Wechsel soll es eine echte Wende sein.
-            if abs(r) < (45 if zufall else 20):
-                continue
-            kandidaten.append((r, min(frei_in_richtung(punkte, r, breite), config.OBSTACLE_RANGE_M)))
-
-        weit = [k for k in kandidaten if k[1] >= config.EXPLORE_GO_M + 0.5]
+        # Beim Ausweichen ist geradeaus ja gerade versperrt; beim
+        # zufälligen Wechsel soll es eine echte Wende sein.
+        grenze = 45 if zufall else 20
+        # Gute Richtungen kommen aus den freien Bereichen: die Mitte einer
+        # Tür statt knapp am Rahmen vorbei.
+        weit = [
+            k for k in ausweichen.luecken(punkte, breite, config.EXPLORE_GO_M + 0.5, config.OBSTACLE_RANGE_M)
+            if abs(k[0]) >= grenze
+        ]
         if weit:
             return random.choice(weit)
+        kandidaten = [
+            (r, min(frei_in_richtung(punkte, r, breite), config.OBSTACLE_RANGE_M))
+            for r in _RICHTUNGEN if abs(r) >= grenze
+        ]
         return max(kandidaten, key=lambda k: k[1])
 
     # --- Befreien ----------------------------------------------------------------
@@ -547,6 +585,7 @@ class Erkunder:
         self._nah_seit = None
         if vorn >= config.EXPLORE_GO_M:
             self._naechster_wechsel = jetzt + self._wanderzeit()
+            self._ziel_kurs = None
             self._setzen(FAEHRT, "frei, fährt weiter")
             return DriveCommand(0.0, 0.0, 0.0)
         return self._wenden(jetzt, punkte, "nach dem Befreien")
@@ -618,6 +657,23 @@ class Erkunder:
         self._fest_start = jetzt
         self._fest_bild = bild
         return None
+
+    # --- Hochgehoben -------------------------------------------------------------
+
+    def _hochgehoben(self) -> None:
+        """Alles vergessen, was am alten Ort galt -- danach beginnt er neu."""
+        self._gedaechtnis.leeren()
+        self._ziel_kurs = None
+        self._nah_seit = None
+        self._frei_seit = None
+        self._fest_start = None
+        self._fest_still_s = 0.0
+        self._fehlversuche = 0
+        self._befreiungen = 0
+        self._dreh_fertig = None
+        self._gedreht = 0.0
+        self._setzen(HOCHGEHOBEN, "hochgehoben -- wartet, bis er wieder steht")
+        log.info("Erkundung: hochgehoben (%.0f %% des Lidar-Bilds verändert)", 100 * self._hoch.anteil)
 
     # --- Hilfen ------------------------------------------------------------------
 

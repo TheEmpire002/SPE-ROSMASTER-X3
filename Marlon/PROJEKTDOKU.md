@@ -421,6 +421,41 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Probleme:** Gleich wird die Wiedergabe nur mit gleichem Zufall. Ohne ihn waren es in der Simulation 59 % (der Erkunder würfelt Wanderzeiten); bei echten Fahrten zählt deshalb nur die Quote. Der Smoke-Test „Heimfahrt startet“ schlägt in etwa 2 von 3 Läufen fehl, mit und ohne diese Änderung (gegengeprüft am Stand von Schritt E); Ursache noch offen.
 - **Offen:** Am Roboter einige Fahrten mit Türen, Engstellen und Hochheben aufnehmen; prüfen, ob das Mitschreiben den Pi spürbar belastet. Danach Schritt F2: lokales Ausweichen, an diesen Aufnahmen geprüft. Flackernden Smoke-Test „Heimfahrt startet“ untersuchen.
 
+### 03.11.2026 – Autonomie Schritt F2: lokales Ausweichen und Hochheben (Marlon, mit Claude)
+- **Was:** Der Erkunder umfährt Hindernisse in Bögen, statt anzuhalten und zu drehen. Türen fährt er mittig an. Er merkt sich kurz, was neben ihm aus dem Blickfeld rutscht, und erkennt, wenn er hochgehoben oder woandershin getragen wird.
+- **Warum:** Im Alltag wird der Roboter aufgehoben, und Türen und andere Hindernisse stehen im Weg. Vorher wendete er vor jedem Hindernis, kam schlecht durch Türen und fuhr nach dem Absetzen mit veralteten Annahmen weiter. GPS hilft drinnen nicht, eine Lidar-Karte kommt später. Deshalb lokal, nur mit dem, was Lidar und Board liefern.
+- **Änderungen:**
+  - Neues Modul `navigation/ausweichen.py`:
+    - Kurzgedächtnis für Lidar-Punkte (3 s, 1 m Umkreis), mitgeführt über die Board-Geschwindigkeit.
+    - Bogenplanung: Drehraten und etwas seitliches Schieben gut eine Sekunde vorausgerechnet, Umriss des Roboters mit Rand geprüft, danach zurück auf den Kurs.
+    - Lücken- bzw. Türsuche (Mitte freier Bereiche).
+    - Hochhebe-Erkennung (Anteil veränderter 10°-Sektoren, Eigenbewegung herausgerechnet).
+  - `explorer.py`:
+    - Fährt mit `bogen_planen`; dreht erst, wenn kein sicherer Bogen passt.
+    - Wählt beim Drehen Lückenmitten.
+    - Neuer Zustand `hochgehoben`: hält an, vergisst danach Gedächtnis, Kurs und Zähler.
+    - Kein zufälliger Richtungswechsel, solange etwas näher als 0,45 m ist (`AUSWEICH_ENG_M`).
+  - Werte als `AUSWEICH_*` in `config.py`; `docs/api.md` und `docs/architektur.md` ergänzt.
+- **Ergebnis:**
+  - Neuer Test `Marlon/autonomes_fahren/test_ausweichen.py` (simulierte Welt mit Wänden, Kreisen, Kippen und Tragen), alle Fälle bestehen:
+    - Türsuche: Tür gefunden, Richtung führt sicher an beiden Pfosten vorbei.
+    - Ausweichen ohne Wenden, mit und ohne gemessene Drehrate; Flur.
+    - Drei Türdurchfahrten mittig (Versatz ≤ 2 cm, ≥ 0,33 m Abstand).
+    - Freie Türsuche aus dem Raum: 4 von 4 Läufen in 120 s hindurch.
+    - Hochheben und Absetzen erkannt (vor 5,6 s); im Zimmer kein Fehlalarm.
+  - Alle bisherigen Tests bestehen; Nachspielen weiter 600/600 gleich. Smoke-Test 19/19, bis auf das bekannte Flackern bei „Heimfahrt startet“.
+- **Probleme:**
+  - Die freie Türsuche gelang zuerst nie. Er kam mittig vor der Tür an und drehte dann genau dort um. Der Grund war nicht das Ausweichen, sondern der zufällige Richtungswechsel, der zufällig gerade fällig war. Lösung: Der Wechsel wartet, bis die Engstelle hinter ihm liegt.
+  - Langsames Tragen fiel von Runde zu Runde nicht auf, weil sich das Bild zu wenig änderte. Lösung: Mit gemessener Lage vergleicht er über ein Fenster von 1 s (`AUSWEICH_HOCH_FENSTER_S`). Gemessen: Fahrt im Zimmer höchstens 11 % veränderte Sektoren, Tragen 40–83 %.
+  - **Grenzen:**
+    - Ohne Board-Geschwindigkeit bleibt nur der Vergleich von Runde zu Runde. Schon die eigene Fahrt ändert dann bis 22 %, langsames Tragen kann so unbemerkt bleiben.
+    - Senkrecht angehoben, ohne Kippen, ändert sich das Lidar-Bild kaum. Das erkennt er nicht.
+  - Die Türmitte des freien Bereichs liegt einige Grad neben der geometrischen Mitte (30° statt 26,6°). Der Pfosten bleibt trotzdem außerhalb des Fahrschlauchs, der Test prüft deshalb diesen Abstand statt des Winkels.
+- **Offen:**
+  - Am Roboter Fahrten durch Türen und mit Hochheben aufnehmen und mit `scripts/abspielen.py` gegen den neuen Erkunder prüfen.
+  - Heck-Maß (`AUSWEICH_HINTEN_M`) nachmessen.
+  - Gewichte der Bogenbewertung an echten Fahrten abstimmen.
+
 ---
 
 ## 3. Ergebnisse und Messwerte

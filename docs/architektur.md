@@ -77,7 +77,7 @@ Menschen aus. Es bewertet keinen Gesundheitszustand.
 | `drive/`       | Fahren. `base.py` = Schnittstelle, dazu echter Treiber + Mock |
 | `safety/`      | Watchdog, Not-Aus, Geschwindigkeitsbegrenzung, Bremsweg-Prüfung autonom (`AutonomSchutz`) |
 | `sensors/`     | Lidar, Kamera, Personenerkennung, Körperpose (Hailo)        |
-| `navigation/`  | Odometrie, Lidar-Ortung, Heimfahrt, Erkunder, Hindernis-Benennung |
+| `navigation/`  | Odometrie, Lidar-Ortung, Heimfahrt, Erkunder, Ausweichen (`ausweichen.py`), Hindernis-Benennung |
 | `interaktion/` | Gesten, Verhalten (Folgen, Herkommen, Weggehen), Stimme (Sprachausgabe) und Sprachbefehle mit dem Weckwort „Robi“; geplant: Geist — siehe [`interaktion.md`](interaktion.md) |
 | `diagnose.py`  | Sammelt Ausfälle (Akku, USB, Unterspannung, Temperatur, Geräte, Log) und macht daraus verständliche Probleme für die Seite `/diagnose` |
 | `aufzeichnung.py` | Fahrtenschreiber: letzte Minute (Scans, Befehle, Odometrie, Zustände) im Speicher, auf Knopfdruck als Datei; dazu Laden und Nachspielen für `scripts/abspielen.py` |
@@ -123,6 +123,23 @@ Erkunder vor (`erkunder_nachspielen`). Im Test mit gleichem Zufall gibt
 der nachgespielte Erkunder Takt für Takt dieselben Befehle
 (`Marlon/autonomes_fahren/test_aufzeichnung.py`); bei echten Fahrten zählt
 nur die Übereinstimmungsquote, weil der Erkunder am Roboter zufällig wählt.
+
+**Ausweichen (03.11., F2):** `navigation/ausweichen.py` enthält die
+Bausteine, der Erkunder setzt sie nur zusammen. Alle sind reine Logik auf
+Lidar-Punkten und ohne Hardware testbar:
+
+- `Kurzgedaechtnis` behält Punkte wenige Sekunden und rechnet sie mit der
+  Board-Geschwindigkeit mit. Ohne Karte und ohne Ortung, deshalb nur nahe
+  Punkte und nur kurz (Drift).
+- `bogen_planen` rechnet Bögen voraus und prüft den Umriss des Roboters.
+  Bewertet werden Kurs, Luft, Tempo, Weite und ruhiges Lenken.
+- `luecken` liefert die Mitten freier Bereiche (Türen).
+- `HochhebeErkennung` vergleicht Runden in 10°-Sektoren; mit gemessener
+  Lage über ein Fenster von einer Sekunde, damit auch langsames Tragen
+  auffällt.
+
+Test: `Marlon/autonomes_fahren/test_ausweichen.py` (Türen, Flur,
+Hochheben, Zimmer ohne Fehlalarm).
 
 ## Interaktion
 

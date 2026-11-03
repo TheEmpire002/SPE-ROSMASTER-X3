@@ -279,7 +279,23 @@ weicht allem aus, was der Lidar sieht. Werte in `config.py` (`EXPLORE_*`):
   (1,5 s) nicht, befreit er sich ebenso.
 - Erst nach `EXPLORE_BEFREIEN_MAX` (3) erfolglosen Befreiungen hintereinander
   endet die Fahrt mit „festgefahren“.
+- **Umfahren in Bögen (seit 03.11., F2):** Vor einem Hindernis rechnet er
+  mögliche Bögen (Drehrate, etwas seitliches Schieben) gut eine Sekunde
+  voraus und nimmt den besten, bei dem sein Umriss überall Luft behält.
+  Danach lenkt er auf den alten Kurs zurück. Erst wenn kein sicherer Bogen
+  passt, hält er an und dreht.
+- **Türen und Lücken:** Beim Drehen wählt er die Mitte eines freien
+  Bereichs statt einer Richtung knapp am Rahmen vorbei.
+- **Kurzgedächtnis:** Punkte, die beim Vorbeifahren aus dem Blickfeld
+  rutschen (z. B. ein Türrahmen neben ihm), behält er wenige Sekunden
+  (`AUSWEICH_GEDAECHTNIS_S`).
 - alle 4–10 s biegt er zufällig ab, damit er nicht immer dieselbe Bahn fährt
+  -- aber nicht, solange etwas näher als `AUSWEICH_ENG_M` (0,45 m) ist
+  (Tür, Engstelle): erst hindurch
+- **Hochgehoben** (Zustand `hochgehoben`): Ändert sich das Lidar-Bild rundum
+  auf einmal (gekippt, getragen), hält er an. Steht er wieder ruhig, fängt
+  er von vorn an und vergisst Gedächtnis und Kurs. Kein Alarm, die Fahrt
+  läuft weiter.
 - steht ein **Mensch** bis 1 m vor ihm, wartet er `EXPLORE_PERSON_WAIT_S`
   (2 s), bevor er ausweicht
 - liefert der Lidar länger als 3 s nichts, endet die Fahrt
@@ -324,7 +340,7 @@ Ist OpenCV installiert, sucht die Personenkamera (Logitech C270, siehe
 | Feld | Bedeutung |
 |---|---|
 | `verfuegbar` | Lidar vorhanden, `explore` möglich |
-| `zustand` | `faehrt`, `dreht`, `wartet`, `wartet auf Mensch`, `wartet auf Lidar`, `befreit sich` (neu 03.11.); `null` wenn aus |
+| `zustand` | `faehrt`, `dreht`, `wartet`, `wartet auf Mensch`, `wartet auf Lidar`, `befreit sich` (neu 03.11.), `hochgehoben` (neu 03.11., F2); `null` wenn aus |
 | `text` | Erklärung für die Anzeige |
 | `frei_vorn` | freie Strecke im Korridor vor dem Roboter (m) |
 | `ausweichen`, `menschen`, `befreien` | Zähler dieser Fahrt (`befreien` neu 03.11., fehlt bei älteren Servern) |
