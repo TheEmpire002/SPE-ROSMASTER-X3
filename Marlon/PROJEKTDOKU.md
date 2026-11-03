@@ -458,6 +458,23 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
   - Gefunden: War Port 8443 belegt, riss der HTTPS-Teil den ganzen Server mit. Jetzt läuft HTTP trotzdem weiter.
 - **Offen:** Am Boden testen (echter Lidar, Teppich/glatter Boden). Tempo und Toleranzen ggf. anpassen. In großen, leeren Räumen oder langen Fluren findet das Lidar weniger Halt.
 
+### 03.11.2026 – Bodentest genaue Fahrbefehle, Drehen nachgebessert
+- **Was:** Erster Test am Boden, per App, per Sprache und per Fernsteuerung über SSH.
+- **Ergebnis:**
+  - 1 m und 2 m vor: laut Lidar 1 cm daneben. Sprachbefehle („Robi, fahr zwei Meter nach vorne“) laufen durch.
+  - Drehen bei freier Fläche: 45° auf 0,1° genau, 90° links auf 0,9°, 90° rechts auf 1,1°, 180° auf 0,4°, 360° auf 0,0°. Dabei wandert er 3–12 cm (Mecanum).
+- **Probleme:**
+  - Beim Drehen sagte er oft „Das hat nicht ganz geklappt“. Dahinter steckten zwei Ursachen:
+    - Etwas stand näher als 30 cm (Beine, Möbel). Er dreht dann aus Sicherheitsgründen nicht.
+    - Er besserte dreimal nach (+1,3°, +2,2°, +1,7°) und bewegte sich dabei nicht. Die Schätzung hielt 1–2° schon nach einem Takt für erledigt, obwohl die Rampe erst 0,3 rad/s ausgab und die Motoren aus dem Stand nicht anliefen.
+  - Gelöst:
+    - Aus dem Stand zählt eine Drehung erst nach `MANOEVER_ANLAUF_S` (0,25 s).
+    - Er sagt jetzt den Grund: „Zum Drehen ist es mir hier zu eng“, „Da ist etwas im Weg …“, „Fast geschafft, ich liege 2 Grad daneben“.
+  - Nebenbei gefunden:
+    - `motor.py` im Repo am Pi steuert das Board direkt an. Läuft es neben dem Server, streiten beide um den Port, und die Bewegungsmessung fällt aus (Log 10:51).
+    - `server.log` gehört root, seit der Server als `pi` läuft, landet nichts mehr darin.
+- **Offen:** Nachgebesserte Version am Boden prüfen. Winkel mit einer Linie am Boden gegenmessen, das Lidar kontrolliert sich bisher nur selbst.
+
 ---
 
 ## 3. Ergebnisse und Messwerte

@@ -212,6 +212,10 @@ erkennt nur die ausgeschriebenen Zahlen aus `_manoever_saetze()` (1–5 Meter,
 halber und anderthalb Meter, 20/50 Zentimeter; 30–360 Grad). Getippt
 (Feld „Hören“, `speech`) geht jede Zahl, auch „fahr 1,5 m vor“. „Robi, fahr
 zwei Meter zurück“ ist ein Fahrbefehl, „Robi, fahr zurück“ bleibt Weggehen.
+Klappt ein Fahrbefehl nicht, sagt er den Grund („Zum Drehen ist es mir hier
+zu eng“, „Da ist etwas im Weg, ich habe angehalten“, „Fast geschafft, ich
+liege 2 Grad daneben“). Drehen braucht ringsum 30 cm Platz
+(`MANOEVER_DREH_FREI_M`).
 
 Die Wendungen stehen in `sprache.py` (`BEFEHLE`); die Reihenfolge dort ist
 die Rangfolge. „Musik stopp“ steht deshalb vor „Stopp“.
