@@ -634,8 +634,16 @@ STIMME_ENABLED = True
 # Orte für das Programm, der erste gefundene gilt. Das Release von
 # github.com/rhasspy/piper wird nach ~/piper/piper/ entpackt.
 STIMME_PIPER = ("~/piper/piper/piper", "piper")
-STIMME_MODELL = "~/piper/de_DE-thorsten-medium.onnx"
+# Weibliche Stimme "Kerstin" (16 kHz). Liegt auch noch Thorsten (männlich)
+# unter ~/piper/de_DE-thorsten-medium.onnx, zum Umschalten nur hier ändern.
+STIMME_MODELL = "~/piper/de_DE-kerstin-low.onnx"
 STIMME_ESPEAK = "espeak-ng"
+
+# Piper nur auf diesen CPU-Kernen rechnen lassen (taskset; None = alle).
+# Auf allen vier Kernen war jeder Satz ein Lastsprung, und am 03.11. fielen
+# genau beim Sprechen alle USB-Geräte ab (Over-Current). Mit einem Kern ist
+# Piper kaum langsamer (gemessen 1,27 statt 1,28 s für 3,5 s Sprache).
+STIMME_KERNE = "3"
 
 # ALSA-Gerät über den Kartennamen statt der Nummer: die Nummer ändert sich,
 # wenn sich USB-Geräte nach einem Spannungseinbruch neu anmelden.
@@ -643,7 +651,10 @@ STIMME_ESPEAK = "espeak-ng"
 STIMME_GERAET = "plughw:CARD=UACDemoV10,DEV=0"
 
 # Lautstärke in Prozent; wird beim Start per amixer gesetzt (falls möglich).
-STIMME_LAUTSTAERKE = 80
+# Der Lautsprecher hängt am USB des Pi: Je lauter, desto mehr Strom zieht er
+# aus dem gemeinsamen 1,6-A-Schalter. 70 statt 80, solange das Treiberboard
+# V1 den Pi versorgt (siehe docs/hardware.md).
+STIMME_LAUTSTAERKE = 70
 
 # Sprechtempo für Piper: >1 langsamer. Etwas langsamer ist im Raum mit
 # Motorgeräusch besser zu verstehen.

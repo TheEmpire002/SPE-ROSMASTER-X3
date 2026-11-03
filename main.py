@@ -293,12 +293,33 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def _heim_unter_sudo() -> None:
+    """Mit ``sudo`` gestartet: ``~`` trotzdem auf den eigentlichen Benutzer.
+
+    Unter sudo ist HOME=/root. Dann fehlen Piper (~/piper), das Vosk-Modell
+    und ~/.rosmaster -- am 03.11. sprach der Roboter deshalb wieder mit
+    espeak statt Piper. Der Server erbt die Umgebung, also reicht es hier.
+    """
+    benutzer = os.environ.get("SUDO_USER")
+    if not benutzer or not hasattr(os, "geteuid") or os.geteuid() != 0:
+        return
+    import pwd
+    try:
+        heim = pwd.getpwnam(benutzer).pw_dir
+    except KeyError:
+        return
+    os.environ["HOME"] = heim
+    info(f"Mit sudo gestartet -- nutze trotzdem {heim} (Piper, Vosk, Diagnose).")
+    info("sudo ist nicht nötig: python3 main.py reicht.")
+
+
 def main() -> int:
     enable_utf8_output()
     args = parse_args()
 
     print("\n  ROSMASTER X3 — Hilfsroboter")
     print("  " + "─" * 40)
+    _heim_unter_sudo()
 
     if sys.version_info < MIN_PYTHON:
         fail(

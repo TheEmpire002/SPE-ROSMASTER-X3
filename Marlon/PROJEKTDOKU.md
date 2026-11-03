@@ -376,6 +376,14 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Offen:** Am Roboter ausprobieren: „Robi“ → „Ja?“ → „folge mir“; während eines Lieds „Robi, stopp“ und „Robi, komm her“. Klang der neuen Stimme im Raum beurteilen.
 - **Nebenbefund:** Die Absturzerfassung (`~/.rosmaster/diagnose/server.log`) liegt nur auf dem Branch `fehlersuche-abstuerze`. Auf `main` schrieb der Server deshalb kein Log, nur in das Terminal. Am selben Tag in `main` gemergt (Konflikte nur in der Doku, beide Seiten behalten).
 
+### 03.11.2026 – Weibliche Stimme, und warum Thorsten nicht sprach
+- **Was:** Stimme auf „Kerstin“ umgestellt (weiblich, `de_DE-kerstin-low`). Piper rechnet nur noch auf einem CPU-Kern (`STIMME_KERNE`, per `taskset`), die Lautstärke steht auf 70 statt 80 %. `main.py` nutzt bei einem Start mit `sudo` das Home-Verzeichnis des eigentlichen Benutzers.
+- **Warum:** Thorsten sprach aus zwei Gründen nicht:
+  1. **Over-Current beim Sprechen:** Im Log brach jeder längere Satz mit `aplay: write error: No such device` ab. Im Kernel-Log stand in derselben Sekunde ein Over-Current-Sturm, alle USB-Geräte fielen ab, auch der Lautsprecher. Piper auf vier Kernen plus Lautsprecher bei 80 % war ein Lastsprung, den die schwache Versorgung (Treiberboard V1) nicht abfing.
+  2. **Start mit `sudo`:** Der Server lief danach als root, `~` zeigte auf `/root`, Piper wurde nicht gefunden, und er sprach wieder mit espeak.
+- **Ergebnis:** Am Pi gemessen: Mit nur einem Kern ist Piper kaum langsamer (1,27 statt 1,28 s für 3,5 s Sprache). Ein Testsatz mit Kerstin bei 70 % lief vollständig und ohne eine neue Over-Current-Meldung (7 vorher, 7 nachher). `test_stimme.py` bestanden.
+- **Offen:** Im Betrieb beobachten, ob beim Sprechen noch USB-Ausfälle kommen (`/diagnose`). Die eigentliche Abhilfe bleibt die Versorgung (Board V3.0 oder eigener 5-V/5-A-Wandler).
+
 ---
 
 ## 3. Ergebnisse und Messwerte

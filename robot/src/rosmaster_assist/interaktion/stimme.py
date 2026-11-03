@@ -230,6 +230,8 @@ class Stimme:
                 "--length_scale", str(config.STIMME_TEMPO),
                 "--output-raw",
             ]
+            if config.STIMME_KERNE and shutil.which("taskset"):
+                erzeuger = ["taskset", "-c", str(config.STIMME_KERNE), *erzeuger]
             aplay += ["-r", str(self._abtastrate), "-f", "S16_LE", "-c", "1", "-t", "raw"]
         else:
             erzeuger = [config.STIMME_ESPEAK, "-v", "de", "-s", "150", "--stdout"]

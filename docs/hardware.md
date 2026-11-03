@@ -293,26 +293,35 @@ sudo apt install alsa-utils espeak-ng      # aplay/amixer, Ersatzstimme
 aplay -L | grep UACDemo                    # Lautsprecher da?
 
 # Piper: Release für aarch64 nach ~/piper/piper/ entpacken (der Server
-# sucht dort zuerst, siehe STIMME_PIPER), dazu die Stimme Thorsten medium.
+# sucht dort zuerst, siehe STIMME_PIPER), dazu die weibliche Stimme Kerstin.
 mkdir -p ~/piper && cd ~/piper
 curl -fsSL https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_aarch64.tar.gz | tar xz
-B=https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/de/de_DE/thorsten/medium
-curl -fsSLO $B/de_DE-thorsten-medium.onnx && curl -fsSLO $B/de_DE-thorsten-medium.onnx.json
+B=https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/de/de_DE/kerstin/low
+curl -fsSLO $B/de_DE-kerstin-low.onnx && curl -fsSLO $B/de_DE-kerstin-low.onnx.json
 
-# Test ohne Server:
-echo "Hallo, ich bin der Rosmaster." \
-  | ~/piper/piper/piper --model ~/piper/de_DE-thorsten-medium.onnx --output-raw \
-  | aplay -D plughw:CARD=UACDemoV10,DEV=0 -r 22050 -f S16_LE -c 1 -t raw
+# Test ohne Server (Kerstin hat 16 kHz, steht in der .onnx.json):
+echo "Hallo, ich bin Robi." \
+  | taskset -c 3 ~/piper/piper/piper --model ~/piper/de_DE-kerstin-low.onnx --output-raw \
+  | aplay -D plughw:CARD=UACDemoV10,DEV=0 -r 16000 -f S16_LE -c 1 -t raw
 ```
 
-- Am Pi eingerichtet am 03.11. Gemessen: „medium“ rechnet etwa doppelt so
-  schnell wie Echtzeit (3,5 s Satz in 1,75 s, „Ja?“ in 0,85 s), „high“ ist
-  langsamer als Echtzeit (5,7 s) und erzeugt Lastspitzen. Deshalb medium.
+- Am Pi eingerichtet am 03.11., dort liegt auch noch Thorsten (männlich,
+  `de_DE-thorsten-medium`). Umschalten über `STIMME_MODELL`. Gemessen für
+  3,5 s Sprache: Kerstin 1,3 s, Thorsten medium 1,1 s, Thorsten high 5,7 s
+  (langsamer als Echtzeit, deshalb nicht genommen).
+- **Piper rechnet nur auf einem Kern** (`STIMME_KERNE`, per `taskset`). Auf
+  allen vier Kernen fielen am 03.11. genau beim Sprechen alle USB-Geräte ab
+  (Over-Current, `aplay: No such device`). Mit einem Kern ist Piper kaum
+  langsamer, und ein Testsatz bei 70 % lief ohne neue Over-Current-Meldung.
+- **Nicht mit `sudo` starten.** Unter sudo ist `~` gleich `/root`, dann fehlen
+  Piper, Vosk-Modell und `~/.rosmaster` (der Roboter sprach so wieder mit
+  espeak). `main.py` biegt das inzwischen selbst auf den eigentlichen
+  Benutzer um, nötig ist sudo aber nicht.
 - Piper ist ein Systemprogramm, keine pip-Abhängigkeit. Fehlt es (oder das
   Modell), weicht der Server auf espeak-ng aus und meldet das im Log. Fehlt
   auch das, spricht er nicht, läuft aber normal weiter.
 - Beim Start stellt der Server die Lautstärke per `amixer` auf
-  `STIMME_LAUTSTAERKE` (80 %) und sagt „Ich bin bereit.“. Hört man das,
+  `STIMME_LAUTSTAERKE` (70 %, weniger Strom am USB) und sagt „Ich bin bereit.“. Hört man das,
   funktioniert die ganze Kette.
 - Diagnose: `curl localhost:8000/stimme/status`. `ausgabe` zeigt, welche
   Stimme benutzt wird, und `fehler` die letzte Meldung von aplay (z. B.

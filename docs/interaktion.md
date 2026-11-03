@@ -210,7 +210,7 @@ an derselben Stelle weiter (Pause allein gibt das Gerät nicht frei). Das
 Mikrofon hört die Musik mit; „Robi, Musik aus“ hilft.
 
 - **Freier Text** geht später nur nach dem Weckwort an `denken.py`.
-- **Ausgabe (umgesetzt):** über den USB-Lautsprecher mit **Piper** (offline, Stimme `de_DE-thorsten-medium`). Fehlt Piper, spricht espeak-ng, fehlt auch das, bleibt es beim Log. Der zuletzt gesagte Satz steht in `state.stimme` und in der App. Einrichtung: [`hardware.md`](hardware.md).
+- **Ausgabe (umgesetzt):** über den USB-Lautsprecher mit **Piper** (offline, weibliche Stimme `de_DE-kerstin-low`, nur auf einem CPU-Kern). Fehlt Piper, spricht espeak-ng, fehlt auch das, bleibt es beim Log. Der zuletzt gesagte Satz steht in `state.stimme` und in der App. Einrichtung: [`hardware.md`](hardware.md).
   - Er sagt kurz, was er tut: „Ich folge dir.“, „Ich komme.“, „Da bin ich.“, „Wo bist du?“, „Okay, ich halte an.“ und beim Not-Stopp „Halt.“. Die Sätze stehen in `verhalten.py` (`_GESTE_SAGEN` und die Aufrufe von `_wechseln(..., sagen=…)`).
   - Beim Start sagt er „Ich bin bereit.“. So hört man sofort, ob der Lautsprecher geht.
   - Aus der App: Feld „Sagen“ im Interaktionsbereich (Befehl `say`).
