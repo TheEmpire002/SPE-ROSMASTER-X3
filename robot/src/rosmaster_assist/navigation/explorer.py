@@ -283,14 +283,34 @@ class Erkunder:
             self._personen.aktivieren(True)
         log.info("Erkundung gestartet (%s)", self._modus)
 
+        gesperrt_seit: float | None = None
         try:
             while True:
-                befehl = self._schritt(time.monotonic())
+                jetzt = time.monotonic()
+                befehl = self._schritt(jetzt)
                 if befehl is None:  # fertig, Grund steht in self._grund
                     self._watchdog.stop()
                     log.info("Erkundung beendet -- %s", self._grund)
                     return
+                # Letzte Instanz: Der Fahrschutz im Watchdog prüft die ganze
+                # Grundfläche samt Drehung und bremst, was die Logik oben übersah.
                 self._watchdog.submit(befehl, quelle="autonom")
+                pruefung = self._watchdog.letzte_pruefung
+                if pruefung is not None and pruefung.grund and not befehl.is_stop():
+                    # Nicht jeder Takt setzt den Text neu (Drehen läuft weiter).
+                    if "Fahrschutz" not in self._text:
+                        self._text = f"{self._text} (Fahrschutz: {pruefung.grund})"
+                    if pruefung.anteil == 0.0:
+                        gesperrt_seit = gesperrt_seit or jetzt
+                        if jetzt - gesperrt_seit > config.FAHRSCHUTZ_FEST_S:
+                            self._watchdog.stop()
+                            self._grund = f"kommt nicht weiter -- {pruefung.grund}"
+                            log.info("Erkundung beendet -- %s", self._grund)
+                            return
+                    else:
+                        gesperrt_seit = None
+                else:
+                    gesperrt_seit = None
                 await asyncio.sleep(takt)
 
         except asyncio.CancelledError:

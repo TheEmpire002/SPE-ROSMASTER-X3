@@ -40,10 +40,17 @@ warum der Roboter stehen bleibt.
 3. **Der Server begrenzt, nicht der Client.** Jeder Befehl wird auf die
    Werte aus der `limits`-Nachricht gekappt. Physikalisch schafft das
    Fahrgestell ohnehin nur rund 1 m/s.
-4. **Die Kollisionsvermeidung kann eingreifen.** Ist sie eingeschaltet und
-   steht etwas zu nah in Fahrtrichtung, werden `vx`/`vy` auf 0 gesetzt. Die
-   Drehung bleibt erlaubt. Was der Roboter tatsächlich ausführt, steht in
-   der `state`-Nachricht, nicht unbedingt das, was man geschickt hat.
+4. **Die Kollisionsvermeidung kann eingreifen.** Ist sie eingeschaltet,
+   prüft der Fahrschutz, ob die Grundfläche des Roboters bei diesem Befehl
+   etwas berühren würde. Er bremst dann stufenlos, so dass der Roboter mit
+   Reaktionszeit und Bremsweg vorher steht, und sperrt zuletzt die Fahrt.
+   Wegfahren und Drehen, bei dem keine Ecke anstößt, bleiben erlaubt.
+   `distance` gilt ab Lidar-Mitte nach vorn; rundum hält die Roboterkante
+   `distance - ROBOTER_VORN_M` Luft. Was der Roboter tatsächlich ausführt,
+   steht in der `state`-Nachricht, nicht unbedingt das, was man geschickt
+   hat. Selbstständige Fahrten (Erkunden, Kartierfahrt, Heimfahrt,
+   Interaktion) prüft der Fahrschutz immer, mit `FAHRSCHUTZ_RAND_M`, und
+   ohne frischen Lidar-Scan fahren sie nicht.
 5. **Alle Clients sind gleichberechtigt.** Es gibt keine Steuerhoheit. Fahren
    zwei Clients gleichzeitig, gilt der jeweils letzte Befehl. Zustand und
    Meldungen gehen an alle.
@@ -941,7 +948,8 @@ Vorbild ist `navigation/homing.py`.
 | `api/server.py` | alle Endpunkte, WebSocket-Verarbeitung, Hintergrundschleifen |
 | `config.py` | alle Grenzwerte und Einstellungen an einer Stelle |
 | `safety/watchdog.py` | Begrenzung, Totmannschaltung und Anfahrrampe |
-| `safety/collision.py` | Kollisionsvermeidung bei manueller Fahrt |
+| `safety/collision.py` | Kollisionsvermeidung bei manueller Fahrt (über den Fahrschutz) |
+| `safety/fahrschutz.py` | Kollisionsprüfung über die Grundfläche für alle Fahrten |
 | `navigation/odometry.py` | Positionsschätzung |
 | `navigation/localizer.py` | Lidar-Abgleich gegen die Startpunkt-Aufnahme |
 | `navigation/homing.py` | Heimfahrt |

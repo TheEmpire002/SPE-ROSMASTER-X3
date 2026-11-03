@@ -292,7 +292,10 @@ MAP_LOG_ZEILEN = 15
 # will nicht bevormundet werden. In der App zuschaltbar.
 COLLISION_ENABLED = False
 
-# Mindestabstand in Fahrtrichtung. In der App per Regler verstellbar.
+# Mindestabstand in Fahrtrichtung, gemessen ab Lidar-Mitte wie bisher. In
+# der App per Regler verstellbar. Geprüft wird über den Fahrschutz (unten):
+# Die Roboterkante hält rundum (Abstand - ROBOTER_VORN_M) Luft, vorn also
+# genau diesen Abstand ab Lidar-Mitte.
 COLLISION_DISTANCE_M = 0.35
 
 # Grenzen des Reglers. Unter 15 cm sieht der Lidar nichts Verlässliches
@@ -300,10 +303,41 @@ COLLISION_DISTANCE_M = 0.35
 COLLISION_MIN_M = 0.15
 COLLISION_MAX_M = 1.5
 
-# Halber Öffnungswinkel des überwachten Bereichs in Grad. Siehe
-# HOME_CONE_DEG -- dieselbe Abwägung zwischen "übersieht Tischbeine" und
-# "hält vor jeder Wand an, an der man vorbeifahren will".
-COLLISION_CONE_DEG = 35.0
+# --- Fahrschutz: Kollisionsprüfung über die Grundfläche (safety/fahrschutz.py) ---
+#
+# Gilt für alles, was selbst fährt (Erkunder, Kartierfahrt, Heimfahrt,
+# Interaktion), und für die Handsteuerung, wenn dort der Hindernisstopp an
+# ist. Für jeden Befehl wird vorausgerechnet, wo die Grundfläche hinfährt;
+# ragt ein Lidar-Punkt hinein, bremst er rechtzeitig.
+
+# Grundfläche, gemessen ab Lidar-Mitte. Vorn ragt der X3 ~0,15 m über, die
+# Breite ist 0,245 m. Hinten ist geschätzt -- am Roboter nachmessen.
+ROBOTER_VORN_M = 0.15
+ROBOTER_HINTEN_M = 0.17
+ROBOTER_HALBE_BREITE_M = 0.125
+
+# So viel Luft hält die Roboterkante beim selbstständigen Fahren mindestens.
+FAHRSCHUTZ_RAND_M = 0.06
+
+# Vom Befehl bis zur Wirkung vergehen am X3 ~0,22 s (Sensor-Check 28.10.);
+# dazu kommt das Alter des Scans. Solange fährt er ungebremst weiter.
+FAHRSCHUTZ_REAKTION_S = 0.25
+
+# Verzögerung, mit der beim Bremsen gerechnet wird. Bewusst unter der
+# Bremsrampe (RAMPE_BREMSEN_XY): Mecanum-Räder rutschen beim Bremsen.
+FAHRSCHUTZ_BREMSEN = 1.0       # m/s²
+FAHRSCHUTZ_BREMSEN_DREH = 3.0  # rad/s²
+
+# Älter darf der Scan nicht sein, sonst steht er (blind fährt er nicht).
+FAHRSCHUTZ_SCAN_MAX_S = 0.5
+
+# Unter diesem Anteil des Tempos hält er ganz an: So langsam setzen die
+# Motoren es am Boden nicht mehr um.
+FAHRSCHUTZ_MIN_ANTEIL = 0.2
+
+# Kommt eine autonome Fahrt so lange (s) wegen des Fahrschutzes nicht
+# weiter, gibt sie auf, statt ewig vor dem Hindernis zu stehen.
+FAHRSCHUTZ_FEST_S = 10.0
 
 # --- Heimfahrt ---------------------------------------------------------------------
 

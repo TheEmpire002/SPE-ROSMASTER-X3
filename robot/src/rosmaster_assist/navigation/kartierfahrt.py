@@ -48,6 +48,7 @@ ECKE = "dreht in der Ecke"
 UM_DIE_ECKE = "fährt um die Ecke"
 BAHN = "fährt Bahnen"
 VERSATZ = "versetzt zur nächsten Bahn"
+LUECKE = "sucht Platz für den Versatz"
 
 #: Fenster rechts neben dem Roboter, in dem die Wand gesucht wird (Meter,
 #: Roboterrahmen). Vorn und hinten knapp über die Roboterlänge hinaus.
@@ -58,6 +59,9 @@ _MIN_WANDPUNKTE = 8
 _MAX_DREHEN_S = 15.0
 #: Höchstens so lange um eine Ecke herum suchen (einmal im Kreis und etwas).
 _MAX_UM_DIE_ECKE_S = 30.0
+#: So weit fährt er auf einer Bahn höchstens zurück, um eine Lücke für den
+#: Versatz zu finden (etwa Sofalänge).
+_MAX_LUECKE_M = 2.5
 
 
 class Kartierfahrt:
@@ -85,6 +89,8 @@ class Kartierfahrt:
         self._bahn_ursprung = (0.0, 0.0)
         self._bahn_winkel = 0.0
         self._bahn_wand: float | None = None
+        self._luecke_gesucht = False
+        self._luecke_ab = 0.0
         self._bahn_nr = 0
         self._bahn_richtung = 1
         self._bahnen_fertig = 0
@@ -125,7 +131,7 @@ class Kartierfahrt:
             return self._ausrichten(jetzt, scan, pose)
         if name in (RAND, ECKE, UM_DIE_ECKE):
             return self._randfahrt(jetzt, punkte, pose)
-        if name in (BAHN, VERSATZ):
+        if name in (BAHN, VERSATZ, LUECKE):
             return self._bahnen(jetzt, punkte, pose)
         return halt
 
@@ -314,10 +320,37 @@ class Kartierfahrt:
             fehler = _normalisieren(self._bahn_winkel - pose[2])
         omega = max(-0.4, min(0.4, 1.5 * fehler))
 
+        ziel = (self._bahn_nr + 1) * config.MAP_FAHRT_BAHNABSTAND_M
+        links = frei_in_richtung(punkte, 90.0, config.MAP_FAHRT_HALBE_LAENGE_M)
+
+        if self._schritt_name == LUECKE:
+            # Auf der Bahn zurück, bis links genug Platz für den Versatz ist.
+            richtung = -self._bahn_richtung
+            frei = frei_in_richtung(punkte, 0.0 if richtung > 0 else 180.0,
+                                    config.EXPLORE_HALF_WIDTH_M)
+            if links >= (ziel - quer) + config.EXPLORE_STOP_M:
+                self._wechseln(VERSATZ, f"Lücke gefunden, Bahn {self._bahn_nr + 1}", jetzt)
+                return DriveCommand(0.0, 0.0, omega)
+            if frei < config.EXPLORE_STOP_M or abs(entlang - self._luecke_ab) > _MAX_LUECKE_M:
+                self._fertig(
+                    f"seitlich kein Platz mehr, {self._bahnen_fertig} Bahnen gefahren"
+                )
+                return DriveCommand(0.0, 0.0, 0.0)
+            soll_quer = self._bahn_nr * config.MAP_FAHRT_BAHNABSTAND_M
+            vy = max(-0.08, min(0.08, -1.0 * (quer - soll_quer)))
+            self._text = f"links {links:.2f} m frei, sucht weiter"
+            return DriveCommand(richtung * self._tempo(frei, config.EXPLORE_STOP_M), vy, omega)
+
         if self._schritt_name == VERSATZ:
-            ziel = (self._bahn_nr + 1) * config.MAP_FAHRT_BAHNABSTAND_M
-            links = frei_in_richtung(punkte, 90.0, config.MAP_FAHRT_HALBE_LAENGE_M)
             if links < config.EXPLORE_STOP_M:
+                if not self._luecke_gesucht:
+                    # Links ist es eng -- vielleicht nur ein Möbel, an dem die
+                    # Bahn endete, und nicht die gegenüberliegende Wand. Ein
+                    # Stück auf der Bahn zurück und dort versetzen.
+                    self._luecke_gesucht = True
+                    self._luecke_ab = entlang
+                    self._wechseln(LUECKE, "links zu eng, fährt ein Stück zurück", jetzt)
+                    return DriveCommand(0.0, 0.0, omega)
                 self._fertig(
                     f"gegenüberliegende Wand erreicht, {self._bahnen_fertig} Bahnen gefahren"
                 )
@@ -325,6 +358,9 @@ class Kartierfahrt:
             dauer_max = 3.0 * config.MAP_FAHRT_BAHNABSTAND_M / config.MAP_FAHRT_SEITE_TEMPO
             if quer >= ziel - 0.03 or jetzt - self._schritt_seit > dauer_max:
                 self._bahn_nr += 1
+                self._luecke_gesucht = False
+                # Nach einer Lückensuche zeigt er schon in die Gegenrichtung
+                # der letzten Bahn; die neue Bahn läuft dann in diese weiter.
                 self._bahn_richtung = -self._bahn_richtung
                 self._bahn_start_s = entlang
                 self._wechseln(

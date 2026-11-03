@@ -242,6 +242,8 @@
         $('startButton').disabled = running || aktiv;
         $('stopButton').disabled = !running && !aktiv && !s.bridge_running;
         mappingAktiv = aktiv;
+        // Karte aus einem früheren Lauf (etwa in einem zweiten Tab)? Weg damit.
+        if (mapPayload && s.started_at && (mapPayload.received_at || 0) < s.started_at) karteLeeren();
         if (s.fahrt) setFahrt(s.fahrt);
         $('fahrtButton').disabled = !fahrtAktiv && !mappingAktiv;
         $('saveButton').disabled = !s.map_available;
@@ -414,8 +416,21 @@
         ws.onerror = () => { try { ws.close(); } catch {} };
       }
 
+      function karteLeeren() {
+        // Ein neuer Start ist eine neue Karte -- die alte nicht stehen lassen.
+        mapPayload = null;
+        view.fitted = false;
+        $('emptyState').style.display = '';
+        $('mapMeta').textContent = 'Noch keine Kartendaten';
+        $('mapSize').textContent = '–';
+        $('resolution').textContent = '–';
+        $('saveButton').disabled = true;
+        draw();
+      }
+
       $('startButton').addEventListener('click', async () => {
         $('startButton').disabled = true;
+        karteLeeren();
         message('Starte ROS 2 und SLAM …');
         try {
           setStatus(await api('/api/mapping/start', { method: 'POST' }));

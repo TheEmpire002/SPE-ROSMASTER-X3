@@ -374,3 +374,55 @@ Wandrichtung ausgerichtet sind, laufen sie parallel.
 **Neu bewerten, wenn:** die Heimfahrt dieselbe Drehung braucht. Die
 Lidar-Odometrie könnte dann dauerhaft laufen und die Koppelnavigation
 ersetzen, wenn die CPU es hergibt.
+
+---
+
+## E10 — Fahrschutz über die Grundfläche statt Kegel in Fahrtrichtung
+
+**Datum:** 2026-11-03
+**Status:** umgesetzt (`safety/fahrschutz.py`), getestet ohne Roboter
+
+**Kontext.** Die Kollisionsvermeidung lief nicht zuverlässig. Bei der
+Handsteuerung prüfte sie einen Kegel von ±35° ab Lidar-Mitte:
+- Nah am Roboter ist so ein Kegel schmal und übersieht das Tischbein vor dem
+  Rad. Weit weg ist er breit und hält vor Wänden, an denen der Roboter
+  vorbeikäme.
+- Sie sperrte hart erst an der Grenze. Bei 0,22 s Befehlsverzögerung rollt
+  der Roboter dann noch weiter.
+- Drehen war immer erlaubt, obwohl die Ecken dabei ausschwenken.
+- Sie nahm Scans an, die bis zu 2 s alt waren.
+
+Die selbstständigen Fahrten prüften jeweils nur einzelne Richtungen. Eine
+Mischung aus vor, seitwärts und drehen prüfte niemand als Ganzes.
+
+**Entscheidung.** Eine gemeinsame Prüfung für alle Bewegungen. Für den
+Befehl wird vorausgerechnet, wo die rechteckige Grundfläche des Roboters in
+den nächsten Sekunden ist, auch im Bogen und beim Drehen. Bremsen muss er,
+sobald ein Lidar-Punkt den Rand unterschreitet *und* näher kommt. Das Tempo
+wird dann so weit gesenkt, dass der Anhalteweg (Reaktionszeit plus Alter
+des Scans plus Bremsweg) ins Freie passt. Alle Anteile des Befehls werden
+gleich skaliert, die Bahn bleibt also dieselbe, nur langsamer.
+- Gilt immer für Erkunder, Kartierfahrt, Heimfahrt und Interaktion: im
+  Watchdog, `submit(..., schutz=True)`.
+- Gilt für die Handsteuerung, wenn der Hindernisstopp an ist. Der Regler
+  `distance` behält seine Bedeutung (ab Lidar-Mitte nach vorn).
+- Selbstständige Fahrten fahren ohne frischen Scan (`FAHRSCHUTZ_SCAN_MAX_S`)
+  nicht. Die Handsteuerung lässt der Schutz dann durch: Wer von Hand fährt,
+  sieht den Roboter.
+
+**Gemessen** (Simulation, Antrieb mit 0,22 s Verzögerung, Vollgas auf eine
+Wand): Bei 0,2, 0,5 und 0,8 m/s steht er jedes Mal 6 cm vor der Kante, das
+ist genau der Rand `FAHRSCHUTZ_RAND_M`. Die Kartierfahrt läuft mit Schutz
+genauso durch wie ohne.
+
+**Konsequenzen.**
+- *Gut:* Eine Stelle für alles. Sie bremst weich statt hart und hält den
+  Roboter nicht neben Hindernissen fest.
+- *Schlecht:* Sie sieht nur, was der Lidar auf seiner Höhe sieht. Niedrige
+  Dinge (Kabel, Stuhlkufen, Bettgestell) und überhängende (Tischplatte)
+  bleiben unsichtbar.
+- *Schlecht:* Die Maße der Grundfläche sind teils geschätzt
+  (`ROBOTER_HINTEN_M`). Sie müssen am Roboter nachgemessen werden.
+
+**Neu bewerten, wenn:** die Orbbec-Tiefe eingebunden wird. Ihre Punkte
+können in dieselbe Prüfung gehen.

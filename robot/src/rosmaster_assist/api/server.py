@@ -55,7 +55,7 @@ from ..navigation import manoever as mv
 from ..navigation.explorer import KARTE
 from ..navigation.kartierfahrt import Kartierfahrt
 from ..navigation.scan_odometrie import ScanOdometrie
-from ..safety import AutonomSchutz, CollisionGuard, SafetyWatchdog
+from ..safety import CollisionGuard, Fahrschutz, SafetyWatchdog
 from ..sensors.camera import CameraService, create_cameras
 from ..sensors.lidar import LidarService, create_lidar
 from ..sensors.personen import Personenerkennung
@@ -205,10 +205,13 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     )
     localizer = Localizer(odometry, lidar)
     homing = Homing(watchdog, odometry, localizer)
-    guard = CollisionGuard(localizer)
-    if lidar is not None:
-        # Letzte Bremse für Folgen, Erkunden und Heimfahrt, siehe watchdog.py.
-        watchdog.autonom_schutz = AutonomSchutz(lidar)
+    # Fahrschutz: prüft jeden autonomen Befehl über die Grundfläche des
+    # Roboters (im Watchdog, quelle="autonom") und die Handsteuerung, wenn
+    # der Hindernisstopp an ist. Ohne Lidar gibt es ihn nicht -- dann
+    # fahren nur Heimfahrt (blind wie bisher) und Hand.
+    fahrschutz = Fahrschutz(lidar) if lidar is not None else None
+    watchdog.fahrschutz = fahrschutz
+    guard = CollisionGuard(localizer, fahrschutz)
     erkennung = Hinderniserkennung()
     # Personenerkennung und Posenerkennung (Gesten, Folgen) schauen beide
     # durch die Personenkamera (C270), siehe docs/interaktion.md.

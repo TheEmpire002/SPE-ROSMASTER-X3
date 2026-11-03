@@ -24,11 +24,12 @@ genau die Situation, in der oben nichts mehr funktioniert.
    einmal reduziert. So kann kein Rechenfehler in Folgen, Erkunden oder
    Heimfahrt den Roboter schneller machen, als der Lidar Hindernisse sieht.
 
-5. **Bremsweg autonom.** Danach prüft `autonom_schutz` (ein
-   `AutonomSchutz` aus `collision.py`, vom Server gesetzt), ob der Roboter
-   bei diesem Tempo vor dem nächsten Hindernis in Fahrtrichtung noch
-   anhalten kann, und bremst sonst. Ohne frische Lidar-Daten fährt kein
-   autonomer Modus, drehen darf er.
+5. **Fahrschutz autonom.** Danach prüft `fahrschutz` (`fahrschutz.py`,
+   vom Server gesetzt), ob die Grundfläche des Roboters bei diesem Befehl
+   etwas berühren würde -- auch im Bogen und beim Drehen, wenn die Ecken
+   ausschwenken -- und bremst stufenlos so, dass er mit Reaktionszeit und
+   Bremsweg vorher steht. Wegfahren bleibt erlaubt. Ohne frische
+   Lidar-Daten fährt kein autonomer Modus.
 """
 
 from __future__ import annotations
@@ -84,13 +85,16 @@ class SafetyWatchdog:
         # langsam, und submit() läuft im 20-Hz-Takt.
         self._akku_v: float | None = None
         self._akku_at = -1e9
-        # Bremsweg-Prüfung für autonome Befehle (Punkt 5). Bleibt None,
-        # wenn kein Lidar konfiguriert ist -- dann gibt es auch keine
-        # autonomen Modi, die fahren könnten.
-        self.autonom_schutz = None
+        # Kollisionsprüfung über die Grundfläche für autonome Befehle
+        # (Punkt 5, safety/fahrschutz.py). Bleibt None, wenn kein Lidar
+        # konfiguriert ist -- dann gibt es auch keine autonomen Modi, die
+        # fahren könnten. letzte_pruefung: Ergebnis des letzten autonomen
+        # Befehls, damit die Modi sehen, ob und warum gebremst wurde.
+        self.fahrschutz = None
+        self.letzte_pruefung = None
         # Fahrtenschreiber (aufzeichnung.py), setzt der Server. Hält jeden
         # Befehl vor und nach den Grenzen fest -- so sieht man später, wo
-        # der Bremsweg-Schutz eingegriffen hat.
+        # der Fahrschutz eingegriffen hat.
         self.aufzeichnung = None
 
     # --- Steuerung ------------------------------------------------------------
@@ -99,7 +103,10 @@ class SafetyWatchdog:
         """Fahrbefehl ausführen. Gibt den tatsächlich gefahrenen Befehl zurück.
 
         `quelle` ist "hand" (App, ESP32) oder "autonom" (Folgen, Erkunden,
-        Heimfahrt). Für autonome Befehle gilt die engere Grenze.
+        Kartierfahrt, Heimfahrt, genaue Fahrbefehle). Für autonome Befehle
+        gilt die engere Grenze, und der Fahrschutz prüft sie. Die
+        Handsteuerung prüft vorher über den ``CollisionGuard`` (abschaltbar
+        in der App).
         """
         jetzt = time.monotonic()
         grenze_xy_x, grenze_xy_y = config.MAX_SPEED_X, config.MAX_SPEED_Y
@@ -114,12 +121,12 @@ class SafetyWatchdog:
             vy=_clamp(cmd.vy, grenze_xy_y),
             omega=_clamp(cmd.omega, grenze_w),
         )
-        if (
-            quelle == "autonom"
-            and self.autonom_schutz is not None
-            and config.AUTONOM_SCHUTZ_AKTIV
-        ):
-            safe = self.autonom_schutz.pruefen(safe, jetzt)
+        if quelle == "autonom":
+            # Ohne Prüfung None, sonst sähen die Modi ein veraltetes Ergebnis.
+            self.letzte_pruefung = None
+            if self.fahrschutz is not None and config.AUTONOM_SCHUTZ_AKTIV:
+                self.letzte_pruefung = self.fahrschutz.pruefen(safe)
+                safe = self.letzte_pruefung.befehl
         if safe != cmd:
             log.debug("Fahrbefehl begrenzt (%s): %s -> %s", quelle, cmd, safe)
         if self.aufzeichnung is not None:

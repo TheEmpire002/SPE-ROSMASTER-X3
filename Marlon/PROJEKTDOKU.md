@@ -650,6 +650,19 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
   - Wandrichtung versagte bei 3 cm Messrauschen → längere Wandstücke, seitdem höchstens 1° Fehler.
 - **Offen:** Am Boden prüfen. Erst mit niedrigem Tempo zusehen: Randfahrt, Ecken, Versatz, Rückwärtsbahnen. Dann prüfen, ob „einmal rundherum“ erkannt wird, und wie die Karte aussieht.
 
+### 03.11.2026 – Fahrschutz über die Grundfläche, alte Karte weg
+- **Problem 1:** Die Kollisionsvermeidung lief nicht zuverlässig. Sie prüfte einen Kegel ab Lidar-Mitte (übersieht Tischbeine neben den Rädern) und sperrte hart an der Grenze (rollt bei 0,22 s Verzögerung noch weiter). Drehen war immer erlaubt, Scans durften 2 s alt sein. Selbstständige Fahrten prüften nur einzelne Richtungen.
+- **Problem 2:** Nach einem neuen Start war die alte Karte noch da. Lief SLAM aus einem früheren Lauf noch im Container, wurde er einfach weiterbenutzt, mit alter Karte und altem Ursprung. Kartenempfang und Seite behielten die letzte Karte.
+- **Was:**
+  - Neu `safety/fahrschutz.py`: Für jeden Befehl wird vorausgerechnet, wo die Grundfläche des Roboters hinfährt, auch im Bogen und beim Drehen. Er bremst stufenlos, so dass der Anhalteweg ins Freie passt. Wegfahren bleibt erlaubt.
+  - Der Schutz gilt immer für Erkunder, Kartierfahrt, Heimfahrt und Interaktion (im Watchdog) und für die Handsteuerung, wenn der Hindernisstopp an ist. Der Regler behält seine Bedeutung.
+  - Neue Werte in `config.py` (`ROBOTER_*`, `FAHRSCHUTZ_*`). Der Abstand beim selbstständigen Fahren ist auf der Einstellungsseite verstellbar, der alte Kegelwinkel entfällt.
+  - Kommt eine autonome Fahrt 10 s lang nicht am Hindernis vorbei, gibt sie auf.
+  - Jeder Mapping-Start ist eine neue Karte: alter SLAM-Prozess beenden, Kartenempfang und Seite leeren.
+  - Kartierfahrt: Ist es beim Versatz seitlich zu eng (Möbel statt Wand), fährt er bis 2,5 m auf der Bahn zurück und versetzt dort. Vorher hörte er an der Säule zu früh auf.
+- **Ergebnis (Simulation):** Vollgas auf eine Wand mit 0,22 s Befehlsverzögerung: Bei 0,2, 0,5 und 0,8 m/s steht er jedes Mal 6 cm vor der Kante. Tischbein vorn rechts wird erkannt, der alte Kegel hätte es übersehen. Drehen dicht neben einer Wand wird gesperrt, Wegfahren nicht. Die Kartierfahrt mit Schutz deckt jetzt den ganzen Raum ab (6 Bahnen, auch neben der Säule). Am Ende liegt die Lidar-Odometrie 0,19 m und 3° neben der Wirklichkeit.
+- **Offen:** `ROBOTER_HINTEN_M` am Roboter nachmessen. Am Boden prüfen: Hindernisstopp in der App einschalten und auf Wand, Stuhl und Tischbein zufahren. Niedrige Hindernisse sieht der Lidar nicht.
+
 ---
 
 ## 3. Ergebnisse und Messwerte

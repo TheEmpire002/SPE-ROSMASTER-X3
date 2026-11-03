@@ -190,7 +190,11 @@ class MappingManager:
 
     def _start_slam(self) -> None:
         if self._slam_is_running():
-            return
+            # Läuft noch einer aus einem früheren Lauf (Server neu gestartet,
+            # ohne vorher zu stoppen), nicht weiterbenutzen: Er hat die alte
+            # Karte im Kopf und einen Ursprung, der nicht zur neu bei (0, 0)
+            # beginnenden Position passt. Jeder Start ist eine neue Karte.
+            self._stop_slam()
 
         args = shlex.split(self.slam_args)
         ros_command = ["ros2", "launch", self.slam_package, self.slam_launch, *args]

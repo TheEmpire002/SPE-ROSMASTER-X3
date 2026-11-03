@@ -142,8 +142,10 @@ EINSTELLUNGEN: list[Einstellung] = [
     Einstellung("COLLISION_DISTANCE_M", "sicherheit", "Hindernisstopp: Mindestabstand", "m",
                 config.COLLISION_MIN_M, config.COLLISION_MAX_M, 0.05,
                 hilfe="Startwert des Reglers in der App. Wird hier geändert, gilt es auch sofort."),
-    Einstellung("COLLISION_CONE_DEG", "sicherheit", "Hindernisstopp: halber Öffnungswinkel", "°", 10, 90, 1,
-                hilfe="Zu schmal übersieht Tischbeine, zu breit hält vor jeder Wand."),
+    Einstellung("FAHRSCHUTZ_RAND_M", "sicherheit", "Fahrschutz: Abstand beim selbstständigen Fahren",
+                "m", 0.02, 0.3, 0.01,
+                hilfe="So viel Luft hält die Roboterkante beim Erkunden, Kartieren, bei der "
+                      "Heimfahrt und beim Folgen mindestens. Gebremst wird vorher stufenlos."),
 
     # --- Kameras
     Einstellung("CAMERA_FPS", "kamera", "Bilder pro Sekunde", "fps", 1, config.CAMERA_MAX_FPS, 1,
