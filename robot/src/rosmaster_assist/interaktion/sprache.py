@@ -18,6 +18,12 @@ Ablauf:
   einem überhörten Namen scheitern.
 * Während die eigene Stimme spricht, wird nicht zugehört, sonst versteht
   der Roboter sich selbst ("Ich folge dir" -> "folge").
+* Die Grammatik hat eine Kehrseite: Vosk presst jedes Geräusch in einen
+  erlaubten Satz. Musik und Gespräche im Raum wurden so zu "robbie hallo"
+  und schalteten die Interaktion ein. Deshalb lässt unsicher Gehörtes
+  (``SPRACHE_MIN_KONFIDENZ``, ``SPRACHE_MAX_UNK_ANTEIL``) und Wortsalat
+  aus mehreren Sätzen (``SPRACHE_MAX_ZUSATZWOERTER``) nur Stopp durch,
+  laufende Musik nur Stopp und "Musik aus".
 
 Das Modul fährt nicht selbst. Es legt erkannte Befehle in eine Schlange;
 der Server holt sie ab und behandelt sie wie Knöpfe der App (über den
@@ -117,6 +123,27 @@ def erkennen(text: str, geweckt: bool = False) -> tuple[str | None, bool]:
     return None, weckwort
 
 
+def wortsalat(text: str, befehl: str) -> str | None:
+    """Warum ``text`` kein sauberer Befehl ist, oder None.
+
+    Ein gesprochener Befehl kommt von Vosk als genau ein Grammatik-Satz
+    ("robbie komm her"). Hängt Vosk aus Geräuschen mehrere Sätze
+    aneinander, entsteht Salat wie "robin hallo hause zu weg ruby": das
+    Weckwort doppelt oder Wörter, die zu keiner Wendung des Befehls gehören.
+    """
+    woerter = normalisieren(text)
+    weck = {w.lower() for w in config.SPRACHE_WECKWORT_VARIANTEN} | {config.SPRACHE_WECKWORT.lower()}
+    rest = [w for w in woerter if w not in weck]
+    if len(woerter) - len(rest) > 1:
+        return "Weckwort mehrfach"
+    wendungen = [w.replace("ß", "ss").split() for w in BEFEHLE.get(befehl, ())]
+    laengste = max((len(w) for w in wendungen if _enthaelt(rest, w)), default=0)
+    zusatz = len(rest) - laengste
+    if zusatz > config.SPRACHE_MAX_ZUSATZWOERTER:
+        return f"{zusatz} Wörter zu viel"
+    return None
+
+
 def _ohne_weckwort(befehl: str) -> bool:
     """Befehle, die auch ohne "Robi" gelten (siehe config)."""
     if befehl == STOPP:
@@ -132,10 +159,12 @@ def befehl_aus_text(text: str) -> str | None:
 
 
 class Spracherkennung:
-    def __init__(self, mock: bool = False, stimme=None) -> None:
+    def __init__(self, mock: bool = False, stimme=None, mukke=None) -> None:
         self._mock = mock
         # Nur ``spricht`` wird gebraucht: solange schweigt das Ohr.
         self._stimme = stimme
+        # Nur ``laeuft`` wird gebraucht: Das Mikrofon hört die Musik mit.
+        self._mukke = mukke
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -148,6 +177,9 @@ class Spracherkennung:
         self._befehl: str | None = None
         self._befehl_zeit = 0.0
         self._erkannt = 0
+        self._konfidenz: float | None = None
+        self._verworfen = 0
+        self._zuletzt_verworfen: str | None = None
         self._fehler: str | None = None
 
     # --- Bedienung -------------------------------------------------------------
@@ -181,15 +213,30 @@ class Spracherkennung:
         if self._zustand != FEHLER:
             self._zustand = AUS_GESCHALTET
 
-    def hoeren(self, text: str) -> str | None:
-        """Einen gehörten (oder getippten) Satz auswerten. Gibt den Befehl zurück."""
+    def hoeren(
+        self, text: str, erlaubt: tuple[str, ...] | None = None, grund: str | None = None
+    ) -> str | None:
+        """Einen gehörten (oder getippten) Satz auswerten. Gibt den Befehl zurück.
+
+        ``erlaubt``: Nur diese Befehle gelten (unsicher Gehörtes, Musik);
+        ``grund`` steht dann im Log. Ein so gehörtes Weckwort weckt nicht,
+        sonst reichte danach ein einzelnes "komm" aus dem Lied.
+        """
         text = " ".join(str(text).split())
         if not text:
             return None
         befehl, weckwort = erkennen(text, self.geweckt)
+        verworfen = None
+        if erlaubt is not None:
+            weckwort = False
+            if befehl is not None and befehl not in erlaubt:
+                verworfen, befehl = befehl, None
         jetzt = time.monotonic()
         with self._lock:
             self._gehoert = text
+            if verworfen is not None:
+                self._verworfen += 1
+                self._zuletzt_verworfen = f"{verworfen}: {text!r} ({grund})"
             if befehl is not None:
                 self._weck_bis = 0.0  # verbraucht; der nächste Befehl braucht wieder "Robi"
                 self._befehl, self._befehl_zeit = befehl, jetzt
@@ -199,6 +246,8 @@ class Spracherkennung:
                 self._weck_bis = jetzt + config.SPRACHE_WECK_FENSTER_S
         if befehl is not None:
             log.info("Sprachbefehl %s (gehört: %r)", befehl, text)
+        elif verworfen is not None:
+            log.info("Sprachbefehl %s verworfen, %s (gehört: %r)", verworfen, grund, text)
         else:
             log.debug("Gehört ohne Befehl: %r", text)
         return befehl
@@ -233,6 +282,10 @@ class Spracherkennung:
                 "zuletzt_gehoert": self._gehoert,
                 "letzter_befehl": self._befehl,
                 "erkannt": self._erkannt,
+                # Kleinste Wort-Konfidenz des letzten Satzes vom Mikrofon
+                "konfidenz": self._konfidenz,
+                "verworfen": self._verworfen,
+                "zuletzt_verworfen": self._zuletzt_verworfen,
                 "befehle": {b: list(w) for b, w in BEFEHLE.items()},
                 "fehler": self._fehler,
             }
@@ -289,6 +342,8 @@ class Spracherkennung:
         # Vosk rechnet intern auf 16 kHz um; das Mikrofon darf bei seiner
         # eigenen Rate bleiben, wenn es 16 kHz nicht kann.
         erkenner = vosk.KaldiRecognizer(modell, rate, grammatik)
+        # Einzelne Wörter mit Konfidenz, siehe _auswerten().
+        erkenner.SetWords(True)
         block = int(rate * 0.25)
         with sd.RawInputStream(
             samplerate=rate, blocksize=block, device=geraet, dtype="int16", channels=1
@@ -313,10 +368,30 @@ class Spracherkennung:
                     erkenner.Reset()
                     taub = False
                 if erkenner.AcceptWaveform(bytes(daten)):
-                    text = json.loads(erkenner.Result()).get("text", "")
-                    text = text.replace("[unk]", " ")
-                    if text.strip():
-                        self.hoeren(text)
+                    self._auswerten(json.loads(erkenner.Result()))
+
+    def _auswerten(self, ergebnis: dict) -> None:
+        """Ein Ergebnis von Vosk prüfen, bevor es als Befehl gelten darf."""
+        text = ergebnis.get("text", "").replace("[unk]", " ")
+        if not text.strip():
+            return
+        woerter = ergebnis.get("result") or []
+        bekannt = [w for w in woerter if w.get("word") != "[unk]"]
+        konfidenz = min((float(w.get("conf", 1.0)) for w in bekannt), default=1.0)
+        self._konfidenz = round(konfidenz, 2)
+        unbekannt = len(woerter) - len(bekannt)
+        befehl = erkennen(text, self.geweckt)[0]
+        salat = wortsalat(text, befehl) if befehl is not None else None
+        if self._mukke is not None and self._mukke.laeuft:
+            self.hoeren(text, erlaubt=(STOPP, MUSIK_AUS), grund="Musik läuft")
+        elif salat is not None:
+            self.hoeren(text, erlaubt=(STOPP,), grund=f"Wortsalat, {salat}")
+        elif konfidenz < config.SPRACHE_MIN_KONFIDENZ:
+            self.hoeren(text, erlaubt=(STOPP,), grund=f"unsicher ({konfidenz:.2f})")
+        elif woerter and unbekannt / len(woerter) > config.SPRACHE_MAX_UNK_ANTEIL:
+            self.hoeren(text, erlaubt=(STOPP,), grund=f"{unbekannt} von {len(woerter)} Wörtern unbekannt")
+        else:
+            self.hoeren(text)
 
     def _aus(self, grund: str) -> None:
         self._fehler = grund

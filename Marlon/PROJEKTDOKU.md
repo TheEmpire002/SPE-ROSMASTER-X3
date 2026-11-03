@@ -329,6 +329,25 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Nachtrag – „Robi, Beatbox“:** spielt das Lied aus `SPRACHE_BEATBOX_URL` (mit Weckwort). Die Lied-Befehle laufen im Server jetzt über einen gemeinsamen Zweig. „Beatbox“ steht vermutlich nicht im Vosk-Modell; Varianten („beat box“, „bit box“ …) sind hinterlegt, unbekannte fallen weg.
 - **Offen:** Am Pi testen: Musik an, „Robi, hallo“ → Musik pausiert, Antwort, Musik läuft weiter. „La da da“ ohne Robi. Ob Vosk „la da da“ zuverlässig hört, zeigt `/sprache/status` (`zuletzt_gehoert`).
 
+### 03.11.2026 – Roboter schaltet die Interaktion von selbst ein
+- **Was:** Die Spracherkennung prüft jeden Satz, bevor er als Befehl gilt (`Spracherkennung._auswerten`). Bei laufender Musik zählen nur Stopp und „Musik aus“. Ist Vosk sich bei einem Wort unsicher (`SPRACHE_MIN_KONFIDENZ` = 0,7) oder war mehr als die Hälfte des Satzes unbekannt (`SPRACHE_MAX_UNK_ANTEIL`), zählt nur Stopp. Dasselbe gilt für Wortsalat: Weckwort doppelt oder Wörter neben Weckwort und Wendung (`SPRACHE_MAX_ZUSATZWOERTER` = 0). `/sprache/status` zeigt jetzt `konfidenz`, `verworfen` und `zuletzt_verworfen`.
+- **Warum:** Der Roboter startete ohne Zutun die Interaktion. Ursache: Vosk mit fester Grammatik macht aus *jedem* Geräusch einen erlaubten Satz. Das Mikrofon hört die eigene Musik (MUKKE) und Gespräche im Raum mit. Abgeschaltet wurde es bisher nur, solange die Stimme spricht. Im Serverlog vom Morgen (per SSH ausgewertet) stehen innerhalb von zwei Minuten vier solche Befehle, die niemand gesagt hat: „aufwachen morgen“ → `start`, „robin hallo hause zu weg ruby“ → `weggehen`, „heim ruby zurück“ → `weggehen`, „ruby komm da fahr mir la ruby leise box“ → `herkommen`. Jeder davon schaltete die Interaktion ein, zwei ließen den Roboter fahren.
+- **Ergebnis:** Mit den Original-Sätzen am Pi geprüft: Alle vier werden verworfen, „robbie komm her“, „folge mir robbie“, „robbie fahr nach hause“, „stopp“ und „halt an“ gelten weiter.
+- **Offen:** Am Pi prüfen, welche Konfidenzen echte Befehle bekommen (`/sprache/status`, Feld `konfidenz`). Werden echte Befehle verworfen, `SPRACHE_MIN_KONFIDENZ` senken. Als Mikrofon lief die C270 (das USB-Mikrofon war nicht angesteckt); sie hört weiter weg und rauschiger.
+
+### 03.11.2026 – USB-Überlast per SSH untersucht
+- **Was:** Kernel-Log, Versorgung und Serverlog am Pi ausgewertet (Uptime 15 min, Server lief im Stand).
+- **Ergebnis:**
+  - Über 400 „over-current“-Meldungen in 15 min, immer auf **allen** Root-Ports gleichzeitig (auch dem leeren `usb4-port1`). Der gemeinsame 1,6-A-Schalter der Pi-Buchsen löst aus, nicht ein einzelnes Gerät.
+  - Versorgung des Pi selbst in Ordnung: `throttled=0x0`, EXT5V 5,09 V, 51 °C, `arm_freq=2000`, `usb_max_current_enable=1`, `PSU_MAX_CURRENT=5000`. Mehr lässt sich in Software nicht freigeben.
+  - Schon **vor** dem Serverstart 24 Überlasten (beim Booten melden sich alle Geräte gleichzeitig an). Der erste Zusammenbruch im Lauf kam in derselben Sekunde, in der Hailo, Lidar-Motor, beide Kameras und die Ansage „Ich bin bereit“ starteten. Danach Dauerschleife (Geräte melden sich an, ziehen Anlaufstrom, Schalter löst wieder aus).
+  - Die **Orbbec steckt wieder** (seit 28.10. war sie abgezogen). Sie ist der größte Verbraucher am Hub und bringt einen eigenen internen Hub mit (Genesys `05e3:0608`).
+  - **Der Hub:** VIA VL817 (`2109:2817`/`0817`, Firmware 0.50), meldet sich als *self powered* (0 mA vom Pi). Uns wurde gesagt, es sei die veraltete V1 mit Stromproblemen. Das passt zum Muster (Überlast auf allen Pi-Ports gleichzeitig, auch auf leeren). Per Software lässt sich die Version nicht ablesen.
+  - Das USB-Mikrofon steckt nicht, die Spracherkennung nutzt das Mikrofon der C270.
+  - Fallstrick beim Lesen der Logs: Der Pi hat keine Echtzeituhr. Bis die Netzwerkzeit greift, stehen im Log alte Zeiten (heute „29.10. 15:04“ statt 07:5x).
+- **Folgerung:** Wie am 28./29.10.: Die Ursache ist die gemeinsame 5-V-Versorgung, Abhilfe schafft nur Hardware (`docs/hardware.md`, „Was am Roboter tun“, Punkt 4: aktiver Hub mit eigener Versorgung bzw. VBUS zwischen Pi und Hub trennen). Bis dahin die Orbbec wieder abziehen. Mit dem Hinweis auf den V1-Hub ist der Tausch gegen eine neuere Version bzw. einen Hub mit sauberer eigener Versorgung der naheliegende Schritt. Gegenprobe vorher: Hub ab, Board und Lidar direkt an den Pi.
+- **Nachtrag – Treiberboard V1:** Der Hinweis „V1 mit Stromproblemen“ bezog sich auf das Treiberboard (Yahboom ROS Driver Board). Laut Yahboom kann erst V3.0 das Stromprotokoll des Pi 5 (5,1 V/5 A). Am Pi bestätigt: Es wurde nichts ausgehandelt (`usbpd_power_data_objects` = 0). Die 5 A stehen nur von Hand im EEPROM (`PSU_MAX_CURRENT=5000`), der Pi gibt deshalb 1,6 A für USB frei, die das V1-Board unter Last nicht liefert. Board-Firmware 2.4, Akku 11,9 V. Ein Firmware-Update hilft nicht: Die Firmware steuert Motoren und IMU, die Versorgung ist Hardware. Abhilfe: Board V3.0 oder ein eigener 5-V/5-A-Wandler mit Pi-5-Protokoll für den Pi.
+
 ---
 
 ## 3. Ergebnisse und Messwerte
@@ -377,6 +396,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 | Ausfälle nur per SSH auffindbar | Kernel-Log, vcgencmd und Serverlog getrennt | Diagnoseseite `/diagnose` mit Problemen, Zeitleiste und Log (29.10.) |
 | Push aus dem Laptop hängt | Git Credential Manager wartet auf Login-Fenster | Nutzer pusht selbst, der Pi zieht nur (`git pull`) |
 | MUKKE: mpv meldet „Failed to recognize file format“ | mpvs ytdl-Skript findet yt-dlp in der venv nicht und gibt den YouTube-Link roh weiter | Server löst den Link selbst mit der yt-dlp-Bibliothek auf, mpv bekommt nur noch die direkte Tonspur; YouTube-Fehler erscheinen im Fenster |
+| Roboter startet die Interaktion von selbst | Vosk mit Grammatik macht aus Musik und Gesprächen erlaubte Sätze („robbie hallo“) | Konfidenz- und `[unk]`-Prüfung; bei Musik nur Stopp und „Musik aus“ (03.11.) |
 
 ---
 

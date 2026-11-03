@@ -465,6 +465,45 @@ keine Meldung mehr beim Beenden. Daraus folgt auch: Das Öffnen des Hailo
 ist ein Lastsprung. Beim Einschalten der Interaktion während der Fahrt auf
 neue Meldungen achten.
 
+**Befund vom 03.11. (im Stand, Orbbec wieder angesteckt).** Über 400
+Over-Current-Meldungen in 15 min, immer alle Root-Ports gleichzeitig.
+Unterspannung lag keine vor (`throttled=0x0`, EXT5V 5,09 V), und
+`usb_max_current_enable=1` und `PSU_MAX_CURRENT=5000` waren schon gesetzt.
+Schon beim Booten kamen 24 Meldungen. Der erste Zusammenbruch im Serverlauf
+kam beim Start, wo Hailo, Lidar-Motor, Kameras und die erste Ansage in
+derselben Sekunde anlaufen. Danach lief eine Dauerschleife. Fazit: wie
+oben, Punkt 4 ist nötig, bis dahin die Orbbec abziehen. Beim Lesen der Logs
+beachten: Der Pi hat keine Echtzeituhr, bis zur Netzwerkzeit stehen alte
+Uhrzeiten im Log.
+
+**Der Hub.** Der USB-Hub am X3 ist ein VIA VL817 (`2109:2817` USB 2,
+`2109:0817` USB 3, Firmware 0.50). Laut Deskriptor ist er *self powered*
+(0 mA vom Pi), versorgt also über das Expansion-Board. Uns wurde gesagt, es
+sei die alte Version V1 mit bekannten Stromproblemen. Das passt zum Muster
+oben: Ein selbstversorgter Hub, dessen Schiene einbricht oder zurückspeist,
+lässt den gemeinsamen Schalter des Pi auf allen Ports auslösen, auch auf
+leeren und an der C270, die nicht am Hub hängt. Der Genesys-Hub
+(`05e3:0608`) dahinter ist der interne Hub der Orbbec, kein zweiter Hub.
+Gegenprobe: Hub ab, Board und Lidar direkt an den Pi (Orbbec ab). Verschwinden
+die Meldungen, ist der Hub die Ursache.
+
+**Das Treiberboard (Expansion-Board).** Uns wurde gesagt, es sei die
+Version V1. Laut Yahboom kann erst V3.0 das Stromprotokoll des Pi 5
+(5,1 V/5 A über Type-C), V1.0 liefert nur „5 V“ ohne Angabe des Stroms. Am
+Pi bestätigt (03.11.): `/proc/device-tree/chosen/power/usbpd_power_data_objects`
+ist komplett 0, es wurde nichts ausgehandelt. Die 5 A „kennt“ der Pi nur,
+weil `PSU_MAX_CURRENT=5000` von Hand im EEPROM steht. Damit gibt er 1,6 A
+für USB frei, die das V1-Board unter Last nicht sicher liefert, und bei jedem
+Lastsprung löst der Schalter aus. Board-Firmware: 2.4 (`get_version()`).
+
+Ein **Firmware-Update hilft dagegen nicht.** Die Firmware läuft auf dem STM32
+(Motoren, IMU, Servos), die 5-V-Versorgung und das Pi-5-Protokoll sind
+Hardware (Spannungswandler bzw. Protokoll-Chip von V3.0). Yahboom rät ohne
+Not vom Flashen ab (Windows-Werkzeug mcuisp/FlyMcu, BOOT0 + RESET von Hand),
+und eine neue Firmware kann das Protokoll zu `Rosmaster_Lib` und unserem
+Treiber ändern. Abhilfe: Board V3.0, oder den Pi aus einem eigenen
+5-V/5-A-Wandler mit Pi-5-Protokoll (USB-PD) aus dem Akku versorgen.
+
 ### Was am Roboter tun (Hardware)
 
 Nach Wirkung sortiert, das Einfachste zuerst:

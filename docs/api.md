@@ -384,6 +384,10 @@ Der Roboter hört über das USB-Mikrofon zu (Vosk, offline). Befehle gelten
 nur mit dem Weckwort **„Robi“** im selben Satz oder bis zu 5 s
 (`SPRACHE_WECK_FENSTER_S`), nachdem „Robi“ allein gesagt wurde. „Stopp“,
 „Halt“ und „Bleib stehen“ gelten auch ohne Weckwort, ebenso „La da da“.
+Hört Vosk unsicher (Wort-Konfidenz unter `SPRACHE_MIN_KONFIDENZ` oder
+überwiegend unbekannte Wörter) oder kommt mehr als Weckwort plus Wendung
+(Wortsalat wie „robin hallo hause zu weg ruby“), gilt nur Stopp; während MUKKE spielt, nur
+Stopp und „Musik aus“. Sonst würden Musik und Gespräche zu Befehlen.
 
 | Befehl | Beispiele | wirkt wie |
 |---|---|---|
@@ -650,7 +654,7 @@ finden). Voraussetzungen auf dem Pi: `mpv` und `yt-dlp`, siehe
 
 | Endpunkt | Liefert |
 |---|---|
-| `GET /sprache/status` | `aktiviert`, `verfuegbar`, `simuliert`, `zustand` (`aus`, `laedt`, `hoert`, `fehler`, `simuliert`), `mikrofon` (Gerätename), `modell` (Pfad), `weckwort`, `geweckt`, `zuletzt_gehoert`, `letzter_befehl`, `erkannt` (Anzahl), `befehle` (alle Wendungen je Befehl), `fehler` (z. B. „vosk fehlt (pip install vosk sounddevice)“, „Vosk-Modell fehlt: …“ oder „kein Mikrofon gefunden (vorhanden: …)“) |
+| `GET /sprache/status` | `aktiviert`, `verfuegbar`, `simuliert`, `zustand` (`aus`, `laedt`, `hoert`, `fehler`, `simuliert`), `mikrofon` (Gerätename), `modell` (Pfad), `weckwort`, `geweckt`, `zuletzt_gehoert`, `letzter_befehl`, `erkannt` (Anzahl), `konfidenz` (kleinste Wort-Konfidenz des letzten Satzes, 0..1), `verworfen` (Anzahl), `zuletzt_verworfen` (Befehl, Text, Grund), `befehle` (alle Wendungen je Befehl), `fehler` (z. B. „vosk fehlt (pip install vosk sounddevice)“, „Vosk-Modell fehlt: …“ oder „kein Mikrofon gefunden (vorhanden: …)“) |
 
 ### Sonstiges
 

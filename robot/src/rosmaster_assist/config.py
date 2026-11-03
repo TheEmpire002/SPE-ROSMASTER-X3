@@ -661,6 +661,22 @@ SPRACHE_LADADA_OHNE_WECKWORT = True
 # "Robi, Beatbox" spielt dieses Lied (mit Weckwort, wie die anderen Befehle).
 SPRACHE_BEATBOX_URL = "https://www.youtube.com/watch?v=EfSp8EjZikE"
 
+# Mit fester Grammatik macht Vosk aus jedem Geräusch einen erlaubten Satz:
+# Musik, Fernseher und Gespräche wurden zu "robbie hallo" und schalteten die
+# Interaktion ein. Deshalb gilt ein Satz nur, wenn Vosk sich bei jedem Wort
+# mindestens so sicher ist (0..1) ...
+SPRACHE_MIN_KONFIDENZ = 0.7
+# ... und höchstens dieser Anteil der Wörter unbekannt war ([unk]). Mehr
+# heißt: Da hat jemand geredet, und "komm" war nur ein Wort darin.
+SPRACHE_MAX_UNK_ANTEIL = 0.5
+# ... und neben Weckwort und Wendung höchstens so viele weitere Wörter
+# kamen. Am 03.11. wurde aus Geräuschen "robin hallo hause zu weg ruby"
+# (-> weggehen); ein gesprochener Befehl ist genau ein Grammatik-Satz.
+SPRACHE_MAX_ZUSATZWOERTER = 0
+# Unsicher Gehörtes lässt nur Stopp durch, laufende Musik zusätzlich
+# "Musik aus". Beim Einstellen helfen "konfidenz" und "zuletzt_verworfen"
+# in /sprache/status.
+
 # Vosk-Modelle sind auf 16 kHz trainiert. Kann das Mikrofon das nicht,
 # wird seine eigene Rate genommen und Vosk rechnet um.
 SPRACHE_ABTASTRATE = 16000

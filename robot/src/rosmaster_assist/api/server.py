@@ -180,8 +180,9 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     # erst losfährt (und nach dem Neuverbinden nicht von selbst).
     interaktion = Interaktion(watchdog, lidar, pose, stimme, antrieb=lambda: driver.connected)
     # Bekommt die Stimme, um wegzuhören, solange der Roboter selbst spricht
-    # (sonst versteht er sich selbst).
-    sprache = Spracherkennung(mock=use_mock_camera, stimme=stimme)
+    # (sonst versteht er sich selbst), und MUKKE: Bei laufender Musik gilt
+    # nur Stopp und "Musik aus", sonst wird der Gesang zu Befehlen.
+    sprache = Spracherkennung(mock=use_mock_camera, stimme=stimme, mukke=mukke)
 
     # Die Diagnoseseite zeigt auch die Server-Meldungen. Ein alter Puffer
     # (create_app ein zweites Mal, etwa in Tests) wird ersetzt, sonst
