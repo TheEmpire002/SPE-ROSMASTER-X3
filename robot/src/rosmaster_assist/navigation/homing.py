@@ -6,9 +6,13 @@ Richtung zum Startpunkt ausrechnen, in diese Richtung fahren, fertig. Das
 Drehen ist bei der Koppelnavigation die größte Fehlerquelle, und genau das
 entfällt hier.
 
-**Der Roboter weicht nichts aus.** Es gibt noch keine Hinderniserkennung;
-er fährt stur die Verbindungslinie. Deshalb das gemächliche Tempo und die
-Zeitbegrenzung. Mit dem Lidar ließe sich das später ergänzen.
+**Ausweichen (03.11.2026, F3):** Steht etwas auf der Verbindungslinie,
+schiebt er schräg daran vorbei, bis der Weg wieder frei ist
+(``ausweichen.richtung_waehlen``). Ohne Karte, also um einzelne Hindernisse
+herum, nicht durch Labyrinthe. Ist ``HOME_AUSWEICH_WARTEN_S`` lang nirgends
+Platz, hält er an und meldet es. Wird er hochgehoben, bricht er ab: Die
+Koppelnavigation weiß vom Tragen nichts, die Richtung nach Hause stimmt dann
+nicht mehr. Deshalb weiter das gemächliche Tempo und die Zeitbegrenzung.
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ from typing import TYPE_CHECKING
 from .. import config
 from ..protocol import DriveCommand
 from ..safety import SafetyWatchdog
+from . import ausweichen
 from .odometry import Odometry
 
 if TYPE_CHECKING:  # nur für die Typangabe -- vermeidet einen Ringimport
@@ -45,6 +50,12 @@ class Homing:
         self._localizer = localizer
         self._task: asyncio.Task[None] | None = None
         self._grund: str | None = None
+        # Ausweichen (F3): Kurzgedächtnis, Hochheben, zuletzt gewählte Seite
+        # (gegen Pendeln vor breiten Hindernissen).
+        self._gedaechtnis = ausweichen.Kurzgedaechtnis(odometry)
+        self._hoch = ausweichen.HochhebeErkennung()
+        self._seite = 0.0
+        self._blockiert_seit: float | None = None
 
     @property
     def aktiv(self) -> bool:
@@ -74,6 +85,10 @@ class Homing:
     async def _fahren(self) -> None:
         takt = 1.0 / max(1, config.ODOMETRY_HZ)
         frist = time.monotonic() + config.HOME_TIMEOUT_S
+        self._gedaechtnis.leeren()
+        self._hoch.zuruecksetzen()
+        self._seite = 0.0
+        self._blockiert_seit = None
 
         start_x, start_y, _ = self._odometry.pose()
         entfernung = math.hypot(start_x, start_y)
@@ -103,8 +118,40 @@ class Homing:
                     return
 
                 befehl = self._schritt(x, y, winkel_grad, abstand)
+                self._gedaechtnis.fortschreiben(takt)
+                scan = self._localizer.scan() if self._localizer is not None else None
 
-                # Erst kurz vor dem Losfahren prüfen, nicht vorher: die
+                if scan is not None:
+                    lage = self._gedaechtnis.lage if self._gedaechtnis.misst else None
+                    if self._hoch.pruefen(scan, lage):
+                        self._watchdog.stop()
+                        self._grund = "hochgehoben -- Position stimmt nicht mehr"
+                        log.warning("Heimfahrt abgebrochen -- %s", self._grund)
+                        return
+                    frei = self._umfahren(befehl, abstand, scan)
+                    if frei is None:
+                        # Kurz warten: Ein vorbeigehender Mensch soll die
+                        # Heimfahrt nicht beenden.
+                        jetzt = time.monotonic()
+                        if self._blockiert_seit is None:
+                            self._blockiert_seit = jetzt
+                        if jetzt - self._blockiert_seit > config.HOME_AUSWEICH_WARTEN_S:
+                            self._watchdog.stop()
+                            blockiert = self._hindernis(befehl)
+                            ort = f"Hindernis in {blockiert:.2f} m" if blockiert is not None else "kein Weg frei"
+                            self._grund = f"{ort}, noch {abstand:.2f} m bis zum Startpunkt"
+                            log.warning("Heimfahrt angehalten -- %s", self._grund)
+                            return
+                        self._watchdog.submit(DriveCommand(0.0, 0.0, 0.0), quelle="autonom")
+                        await asyncio.sleep(takt)
+                        continue
+                    self._blockiert_seit = None
+                    self._watchdog.submit(frei, quelle="autonom")
+                    await asyncio.sleep(takt)
+                    continue
+
+                # Ohne frische Runde: wie früher nur prüfen und anhalten.
+                # Erst kurz vor dem Losfahren, nicht vorher: die
                 # Fahrtrichtung ergibt sich aus dem Befehl.
                 blockiert = self._hindernis(befehl)
                 if blockiert is not None:
@@ -131,9 +178,8 @@ class Homing:
     def _hindernis(self, befehl: DriveCommand) -> float | None:
         """Steht etwas im Weg? Gibt die Entfernung zurück, sonst None.
 
-        Der Roboter weicht nicht aus, er hält an. Ausweichen ohne Karte
-        endet leicht darin, dass er sich in einer Ecke festfährt -- lieber
-        stehenbleiben und Bescheid geben.
+        Rückfall ohne frische Runde fürs Umfahren -- dann hält er an, statt
+        auszuweichen -- und Entfernung für die Meldung, wenn kein Weg frei ist.
         """
         if self._localizer is None:
             return None
@@ -147,6 +193,37 @@ class Homing:
         if abstand is None:
             return None
         return abstand if abstand < config.HOME_STOP_DISTANCE_M else None
+
+    def _umfahren(self, befehl: DriveCommand, abstand: float, scan) -> DriveCommand | None:
+        """Den Befehl in eine freie Richtung drehen; None, wenn keine frei ist.
+
+        Gebraucht wird Platz bis knapp hinter den Startpunkt (Front plus
+        Rand), höchstens ``UMFAHREN_VORAUS_M`` plus Halteabstand: Eine Wand
+        kurz hinter dem Startpunkt soll ihn nicht vom Ziel abhalten. Ist
+        dafür nirgends Platz, reicht der Halteabstand -- dann fährt er wie
+        früher, bis es eng wird.
+        """
+        if befehl.is_stop():
+            return befehl
+        tempo = math.hypot(befehl.vx, befehl.vy)
+        richtung = math.degrees(math.atan2(befehl.vy, befehl.vx))
+        punkte = self._gedaechtnis.punkte(scan)
+        weit = min(abstand + config.AUSWEICH_VORN_M + config.AUSWEICH_RAND_M,
+                   config.UMFAHREN_VORAUS_M + config.HOME_STOP_DISTANCE_M)
+        wahl = None
+        for noetig in (weit, min(weit, config.HOME_STOP_DISTANCE_M)):
+            wahl = ausweichen.richtung_waehlen(
+                punkte, richtung, noetig, config.EXPLORE_HALF_WIDTH_M, self._seite
+            )
+            if wahl is not None:
+                break
+        if wahl is None:
+            return None
+        neu, _frei = wahl
+        versatz = ausweichen._winkel_normieren(math.radians(neu - richtung))
+        self._seite = 0.0 if abs(versatz) < 1e-6 else math.copysign(1.0, versatz)
+        a = math.radians(neu)
+        return DriveCommand(vx=tempo * math.cos(a), vy=tempo * math.sin(a), omega=0.0)
 
     def _schritt(self, x: float, y: float, winkel_grad: float, abstand: float) -> DriveCommand:
         """Fahrbefehl für diesen Moment."""

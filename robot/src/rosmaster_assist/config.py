@@ -224,8 +224,8 @@ ODOM_IMU_WINKEL = False
 ODOM_IMU_PRUEF_OMEGA = 0.3
 ODOM_IMU_PRUEF_S = 1.0
 
-# Tempo der automatischen Heimfahrt. Bewusst gemächlich: der Roboter fährt
-# hier ohne Hinderniserkennung, da will man nicht überrascht werden.
+# Tempo der automatischen Heimfahrt. Bewusst gemächlich: die Position stammt
+# aus der Koppelnavigation, und Umfahren (UMFAHREN_*) braucht Zeit zum Schauen.
 HOME_SPEED = 0.25        # m/s
 
 # Ab dieser Entfernung zum Startpunkt gilt die Fahrt als beendet. Kleiner
@@ -239,8 +239,9 @@ HOME_SLOWDOWN_M = 0.4
 # der Roboter bei abgedrifteter Position endlos umherfährt.
 HOME_TIMEOUT_S = 60.0
 
-# Hält der Lidar etwas näher als das in Fahrtrichtung, wird angehalten.
-# Der Roboter weicht nicht aus -- er bleibt stehen und meldet es.
+# Abstand, der in Fahrtrichtung frei bleiben muss. Ist er es nicht, schiebt
+# er schräg vorbei (UMFAHREN_*); nur wenn HOME_AUSWEICH_WARTEN_S lang
+# nirgends Platz ist, hält er an und meldet es.
 HOME_STOP_DISTANCE_M = 0.45
 
 # Halber Öffnungswinkel des überwachten Bereichs, in Grad. Zu schmal
@@ -479,6 +480,24 @@ AUSWEICH_HOCH_RUNDEN = 2
 AUSWEICH_HOCH_RUHIG_ANTEIL = 0.15
 AUSWEICH_HOCH_RUHE_S = 2.0
 AUSWEICH_HOCH_FENSTER_S = 1.0
+
+# Umfahren beim Folgen und auf der Heimfahrt (Schritt F3). Dort gibt es ein
+# Ziel; ist der Weg dorthin versperrt, schiebt er schräg daran vorbei
+# (ausweichen.richtung_waehlen). Frei sein müssen höchstens VORAUS_M plus
+# Stoppabstand -- weiter vorn sieht er es rechtzeitig wieder. Gesucht wird
+# bis MAX_GRAD neben der Zielrichtung im Raster RASTER_GRAD. Die zuletzt
+# gewählte Seite bekommt SEITE_GRAD Vorsprung (sonst Pendeln vor breiten
+# Hindernissen), und zum Rand des freien Bereichs hält er RAND_GRAD Abstand,
+# in schmalen Durchgängen nimmt er die Mitte.
+UMFAHREN_VORAUS_M = 0.8
+UMFAHREN_MAX_GRAD = 75.0
+UMFAHREN_RASTER_GRAD = 5.0
+UMFAHREN_SEITE_GRAD = 20.0
+UMFAHREN_RAND_GRAD = 10.0
+
+# Heimfahrt: So lange darf in keiner Richtung Platz sein, bevor sie aufgibt.
+# Kurz, damit ein vorbeigehender Mensch sie nicht beendet.
+HOME_AUSWEICH_WARTEN_S = 3.0
 
 # --- Hinderniserkennung ----------------------------------------------------------
 

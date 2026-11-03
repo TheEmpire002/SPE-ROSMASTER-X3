@@ -141,6 +141,17 @@ Lidar-Punkten und ohne Hardware testbar:
 Test: `Marlon/autonomes_fahren/test_ausweichen.py` (Türen, Flur,
 Hochheben, Zimmer ohne Fehlalarm).
 
+**Umfahren mit Ziel (03.11., F3):** Folgen, Herkommen, Weggehen und die
+Heimfahrt haben eine Zielrichtung. `ausweichen.richtung_waehlen` sucht die
+Richtung, die ihr am nächsten liegt und genug Platz für den Fahrschlauch
+plus Rand hat; in schmalen Durchgängen nimmt sie die Mitte, die zuletzt
+gewählte Seite bekommt Vorsprung (gegen Pendeln). Beide nutzen dazu das
+`Kurzgedaechtnis` und die `HochhebeErkennung` aus F2. Hochgehoben geht das
+Verhalten in BEREIT, die Heimfahrt bricht ab. Werte: `UMFAHREN_*`,
+`HOME_AUSWEICH_WARTEN_S`. Test: `Marlon/autonomes_fahren/test_umfahren.py`
+(Stuhl und Tür beim Folgen, Hindernis und Sackgasse bei der Heimfahrt,
+Hochheben).
+
 ## Interaktion
 
 Gesten, Sprache und eine „Geist“-Schicht sitzen als eigene Ebene über den

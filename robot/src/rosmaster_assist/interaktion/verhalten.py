@@ -22,6 +22,13 @@ nur, wenn hinten frei ist; rückt etwas ganz nah heran, steht er; ohne
 frische Lidar-Daten steht er. Bleibt diese Schleife hängen, hält der
 Watchdog nach 0,5 s an.
 
+Umfahren (03.11.2026, F3): Steht etwas zwischen ihm und der Person (Stuhl,
+Türrahmen), schiebt er schräg daran vorbei und behält die Person dabei im
+Blick (``ausweichen.richtung_waehlen``, Mecanum). Was beim Vorbeifahren
+seitlich aus dem Blickfeld rutscht, merkt er sich kurz (Kurzgedächtnis).
+Wird er hochgehoben, hält er an und geht nach dem Absetzen in BEREIT --
+von selbst weiterfahren tut er dann nicht.
+
 Sanft fahren (29.10.2026): Sprünge im Fahrbefehl ziehen Stromspitzen, die
 am X3 USB-Resets auslösen. Daher wird der Kamerawinkel geglättet, Drehrate
 und Geschwindigkeit wachsen stetig mit dem Fehler (keine harten Grenzen),
@@ -56,6 +63,7 @@ import time
 from typing import TYPE_CHECKING, Callable
 
 from .. import config
+from ..navigation import ausweichen
 from ..navigation import hindernisse as hd
 from ..navigation.explorer import frei_in_richtung
 from ..protocol import DriveCommand
@@ -176,6 +184,12 @@ class Interaktion:
         self._abstand_quelle: str | None = None
         self._hinderniserkennung = hd.Hinderniserkennung()
         self._nah_zuletzt = -1e9
+        # Ausweichen (F3): dieselben Bausteine wie beim Erkunder.
+        self._gedaechtnis = ausweichen.Kurzgedaechtnis(odometry)
+        self._hoch = ausweichen.HochhebeErkennung()
+        self._hoch_gemeldet = False
+        self._umfahr_seite = 0.0  # +1 links, -1 rechts, 0: fährt direkt
+        self._letzter_takt: float | None = None
 
         # Ziel-Lock (nur im RAM, wird beim Ausschalten gelöscht)
         self._tracker = PersonenTracker()
@@ -379,6 +393,11 @@ class Interaktion:
         self._winkel_glatt, self._glatt_bild = None, -1.0
         self._abstand_gut, self._abstand_gut_zeit = None, -1e9
         self._nah_zuletzt = -1e9
+        self._gedaechtnis.leeren()
+        self._hoch.zuruecksetzen()
+        self._hoch_gemeldet = False
+        self._umfahr_seite = 0.0
+        self._letzter_takt = None
         self._ziel_vergessen()
         self._modus = BEREIT
         text, satz = _START_TEXT.get(modus, _START_TEXT[BEREIT])
@@ -412,6 +431,11 @@ class Interaktion:
     def _schritt(self, jetzt: float) -> DriveCommand | None:
         """Ein Takt: Person und Geste ansehen, Fahrbefehl zurückgeben."""
         halt = DriveCommand(0.0, 0.0, 0.0)
+
+        # Eigene Lage fürs Kurzgedächtnis -- jeden Takt, auch ohne neue Runde.
+        dt = 0.0 if self._letzter_takt is None else min(0.5, max(0.0, jetzt - self._letzter_takt))
+        self._letzter_takt = jetzt
+        self._gedaechtnis.fortschreiben(dt)
 
         ziel = self._ziel_waehlen(jetzt)
         self._geste_pruefen(ziel, jetzt)
@@ -463,7 +487,30 @@ class Interaktion:
             return halt
         self._ohne_lidar_seit = None
 
-        punkte = scan.punkte()
+        # Hochgehoben oder getragen: anhalten. Nach dem Absetzen stimmt
+        # nichts mehr (wo die Person ist, was im Weg war) -- also nicht von
+        # selbst weiterfahren, sondern auf eine neue Geste warten.
+        lage = self._gedaechtnis.lage if self._gedaechtnis.misst else None
+        if self._hoch.pruefen(scan, lage):
+            if not self._hoch_gemeldet:
+                self._hoch_gemeldet = True
+                self._gedaechtnis.leeren()
+                self._umfahr_seite = 0.0
+                log.info("Interaktion: hochgehoben (%.0f %% des Lidar-Bilds verändert)",
+                         100 * self._hoch.anteil)
+            self._text = "hochgehoben -- wartet, bis er wieder steht"
+            self._letzter_befehl = None
+            return halt
+        if self._hoch_gemeldet:
+            self._hoch_gemeldet = False
+            return self._wechseln(BEREIT, "hochgehoben -- angehalten", jetzt, melden=True,
+                                 sagen="Ich wurde hochgehoben. Ich bleibe stehen.")
+
+        # Die rohe Runde für "jetzt ganz nah"; samt Gedächtnis fürs Fahren --
+        # dort zählt auch der Türrahmen, der gerade neben ihm aus dem Blick
+        # gerutscht ist.
+        roh = scan.punkte()
+        punkte = self._gedaechtnis.punkte(scan)
         self._abstand = self._abstand_zu(ziel, scan, jetzt)
         if self._abstand is not None and math.isfinite(self._abstand):
             self._abstand_gut, self._abstand_gut_zeit = self._abstand, jetzt
@@ -474,14 +521,14 @@ class Interaktion:
             self._abstand = self._abstand_gut
 
         if self._modus == WEGGEHEN:
-            return self._weggehen(jetzt, ziel, punkte)
+            return self._weggehen(jetzt, ziel, punkte, roh)
 
         # Folgen, Herkommen, Suchen: alles, was nach vorn oder im Stand
         # dreht. Ganz nah etwas -> gar nicht bewegen (die Ecken schwenken
         # beim Drehen aus). Erst ab drei Punkten, ein Fehlstrahl zählt nicht.
         # Nach "nah" noch kurz stehen bleiben, damit er an der Grenze nicht
         # zwischen Halt und Fahrt flackert.
-        if self._nah(punkte):
+        if self._nah(roh):
             self._nah_zuletzt = jetzt
         if jetzt - self._nah_zuletzt < config.FOLGEN_NAH_HALTEN_S:
             self._text = "etwas sehr nah -- warte"
@@ -538,7 +585,8 @@ class Interaktion:
             spanne = max(1e-6, config.FOLGEN_MAX_WINKEL_FAHREN - config.FOLGEN_VOLL_WINKEL)
             anteil = max(0.0, (config.FOLGEN_MAX_WINKEL_FAHREN - betrag) / spanne)
 
-        vx = 0.0
+        vx = vy = 0.0
+        umfahren: str | None = None
         abstand = self._abstand
         if abstand is not None and math.isfinite(abstand) and anteil > 0.0:
             fehler = abstand - soll
@@ -546,17 +594,40 @@ class Interaktion:
             breite = config.EXPLORE_HALF_WIDTH_M
             # Auch hier ab der Totzone gerechnet, damit vx dort bei 0 anfängt.
             if fehler > tot:
-                vorn = frei_in_richtung(punkte, 0.0, breite)
-                # Nie näher als die Stoppgrenze an irgendetwas im Fahrschlauch.
-                platz = vorn - config.EXPLORE_STOP_M
-                vx = min(config.FOLGEN_MAX_SPEED, config.FOLGEN_KP_V * (fehler - tot)) * anteil
-                vx = min(vx, max(0.0, platz))
+                v = min(config.FOLGEN_MAX_SPEED, config.FOLGEN_KP_V * (fehler - tot)) * anteil
+                # Mit demselben Rand wie beim Ausweichen: Sonst schwenkt er
+                # nach dem Vorbeischieben zu früh zurück und streift die Ecke.
+                vorn = frei_in_richtung(punkte, 0.0, breite + config.AUSWEICH_RAND_M)
+                # Platz für das nächste Stück. Es endet vor der Person, sie
+                # selbst versperrt sich also nie den Weg.
+                noetig = min(fehler - tot, config.UMFAHREN_VORAUS_M) + config.EXPLORE_STOP_M
+                wahl = None
+                if vorn >= noetig:
+                    self._umfahr_seite = 0.0
+                else:
+                    # Geradeaus versperrt: schräg vorbeischieben, der Blick
+                    # bleibt (omega) auf der Person.
+                    wahl = ausweichen.richtung_waehlen(punkte, winkel, noetig, breite, self._umfahr_seite)
+                if wahl is None:
+                    # Nie näher als die Stoppgrenze an irgendetwas im Fahrschlauch.
+                    vx = min(v, max(0.0, vorn - config.EXPLORE_STOP_M))
+                else:
+                    richtung, frei = wahl
+                    v = min(v, max(0.0, frei - config.EXPLORE_STOP_M))
+                    a = math.radians(richtung)
+                    vx, vy = v * math.cos(a), v * math.sin(a)
+                    versatz = ausweichen._winkel_normieren(math.radians(richtung - winkel))
+                    if abs(versatz) > 1e-6:
+                        self._umfahr_seite = math.copysign(1.0, versatz)
+                        umfahren = "links" if versatz > 0 else "rechts"
             elif fehler < -tot and rueckwaerts:
                 hinten = frei_in_richtung(punkte, 180.0, breite)
                 if hinten > config.EXPLORE_STOP_M:
                     vx = -min(config.FOLGEN_RUECK_SPEED, config.FOLGEN_KP_V * (-fehler - tot)) * anteil
 
-        if vx > 0:
+        if umfahren is not None and vx > 0:
+            self._text = f"umfährt Hindernis ({umfahren}, {abstand:.2f} m)"
+        elif vx > 0:
             self._text = f"fährt zur Person ({abstand:.2f} m)"
         elif vx < 0:
             self._text = f"weicht zurück ({abstand:.2f} m)"
@@ -564,7 +635,7 @@ class Interaktion:
             self._text = "richtet sich aus (Abstand unbekannt)"
         else:
             self._text = f"hält Abstand ({abstand:.2f} m)"
-        return DriveCommand(vx, 0.0, omega)
+        return DriveCommand(vx, vy, omega)
 
     def _ausrollen(self, jetzt: float, punkte) -> DriveCommand | None:
         """Person für einen Moment weg: den letzten Befehl auslaufen lassen.
@@ -582,16 +653,21 @@ class Interaktion:
         anteil = 1.0 - seit / config.FOLGEN_HALTEN_S
         letzter = self._letzter_befehl
         breite = config.EXPLORE_HALF_WIDTH_M
-        vx = letzter.vx * anteil
+        vx, vy = letzter.vx * anteil, letzter.vy * anteil
         if vx > 0:
-            platz = frei_in_richtung(punkte, 0.0, breite) - config.EXPLORE_STOP_M
-            vx = min(vx, max(0.0, platz))
+            # Beim Umfahren schräg: in Fahrtrichtung prüfen und beide
+            # Anteile gemeinsam kürzen, damit die Richtung bleibt.
+            richtung = math.degrees(math.atan2(vy, vx))
+            platz = max(0.0, frei_in_richtung(punkte, richtung, breite) - config.EXPLORE_STOP_M)
+            v = math.hypot(vx, vy)
+            if v > platz:
+                vx, vy = vx * platz / v, vy * platz / v
         elif vx < 0 and frei_in_richtung(punkte, 180.0, breite) <= config.EXPLORE_STOP_M:
-            vx = 0.0
+            vx = vy = 0.0
         self._text = "Person kurz nicht zu sehen -- rollt aus"
-        return DriveCommand(vx, 0.0, letzter.omega * anteil)
+        return DriveCommand(vx, vy, letzter.omega * anteil)
 
-    def _weggehen(self, jetzt: float, ziel: dict | None, punkte) -> DriveCommand:
+    def _weggehen(self, jetzt: float, ziel: dict | None, punkte, roh) -> DriveCommand:
         dauer = config.WEGGEHEN_STRECKE_M / max(0.01, config.WEGGEHEN_SPEED)
         if jetzt - self._modus_seit >= dauer:
             self._wechseln(BEREIT, "Abstand genommen", jetzt, melden=True, sagen="So, genug Abstand.")
@@ -599,7 +675,7 @@ class Interaktion:
         # Rückwärts zählt nur, was hinten ist -- vorn steht ja gerade der
         # Mensch, der ihn weggeschickt hat.
         hinten = frei_in_richtung(punkte, 180.0, config.EXPLORE_HALF_WIDTH_M)
-        if hinten <= config.EXPLORE_STOP_M or self._nah(punkte, nur_hinten=True):
+        if hinten <= config.EXPLORE_STOP_M or self._nah(roh, nur_hinten=True):
             self._wechseln(BEREIT, "hinten kein Platz -- bleibe stehen", jetzt, melden=True,
                           sagen="Hinter mir ist kein Platz.")
             return DriveCommand(0.0, 0.0, 0.0)

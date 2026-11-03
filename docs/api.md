@@ -249,8 +249,16 @@ der Roboter dafür nicht drehen. Die Werte stehen in `config.py`:
 - Tempo `HOME_SPEED` (0,25 m/s), langsamer ab 0,4 m vor dem Ziel
 - angekommen bei weniger als `HOME_TOLERANCE_M` (0,12 m) Abstand
 - bricht nach `HOME_TIMEOUT_S` (60 s) ab
-- **weicht nicht aus**: steht etwas näher als 0,45 m in Fahrtrichtung, hält
-  er an und meldet das
+- **umfährt Hindernisse** (neu 03.11., F3): Steht etwas auf dem Weg zum
+  Startpunkt, schiebt er schräg daran vorbei (bis 75° neben der Zielrichtung,
+  in Türen mittig) und kehrt danach auf die Verbindungslinie zurück. Ohne
+  Karte, also um einzelne Hindernisse herum, nicht durch Labyrinthe. Ist 3 s
+  lang nirgends Platz, hält er an: „Hindernis in 0.40 m, noch 3.00 m bis zum
+  Startpunkt“ bzw. „kein Weg frei, …“
+- **wird er hochgehoben**, bricht er ab („hochgehoben -- Position stimmt
+  nicht mehr“): die Koppelnavigation weiß vom Tragen nichts
+- ohne frischen Lidar-Scan hält er wie früher an, sobald etwas näher als
+  0,45 m in Fahrtrichtung steht
 - endet mit einem `alert` „Heimfahrt: …“ und `state.homing = false`
 
 ### Autonomes Fahren im Detail
@@ -398,11 +406,11 @@ der Modus an ist. **Nur am Boden benutzen.**
 |---|---|
 | `verfuegbar` | Lidar und Posenerkennung da, `interaction_start` möglich |
 | `modus` | `bereit`, `folgen`, `herkommen`, `weggehen`, `sucht`; `null` wenn aus |
-| `text` | Erklärung für die Anzeige |
+| `text` | Erklärung für die Anzeige; beim Folgen, Herkommen und Weggehen neu (03.11., F3) z. B. „umfährt Hindernis (links, 0.62 m)“ oder „hochgehoben -- wartet, bis er wieder steht“ |
 | `person` | verfolgte Person: `winkel` in Grad wie beim Lidar, `abstand` in m (`null`, wenn der Lidar dort nichts sieht); `null` ohne Person |
 | `personen` | wie viele Menschen die Kamera gerade sieht |
 | `geste` | zuletzt erkannte Geste (`folgen`, `stopp`, `herkommen`, `weggehen`), wenige Sekunden lang, sonst `null` |
-| `grund` | warum der Modus zuletzt endete |
+| `grund` | warum der Modus zuletzt endete; „hochgehoben -- angehalten“ (neu 03.11., F3), wenn er beim Fahren hochgehoben wurde -- danach `bereit` und die Ansage „Ich wurde hochgehoben. Ich bleibe stehen.“ |
 | `pausiert` | `true` nach `follow_pause`: steht, Modus und Ziel bleiben. Jeder Moduswechsel (auch die Stopp-Geste) beendet die Pause. Fehlt bei älteren Servern. |
 | `ziel` | Ziel-Lock (neu 03.11.): `zustand` ist `idle`, `acquiring_target`, `following`, `target_temporarily_lost`, `searching_for_target` oder `safe_stop`. `id` ist die Track-ID des Ziels (nur für diese Sitzung), `sicherheit` liegt bei 0..1, `grund` sagt, warum er angehalten oder abgelehnt hat (z. B. „mehrere Personen – bitte im Bild antippen“). Details in `docs/interaktion.md`. Fehlt bei älteren Servern. |
 

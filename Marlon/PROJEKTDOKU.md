@@ -458,6 +458,32 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 
 ---
 
+### 03.11.2026 – Autonomie Schritt F3: Umfahren beim Folgen und bei der Heimfahrt (Marlon, mit Claude)
+- **Was:** Das Ausweichen aus F2 gilt jetzt auch beim Folgen, Herkommen, Weggehen und auf der Heimfahrt. Steht etwas im Weg, schiebt er schräg daran vorbei und nimmt Türen mittig. Wird er dabei hochgehoben, hält er an.
+- **Warum:** Bisher konnte nur der Erkunder ausweichen. Beim Folgen blieb er vor einem Stuhl stehen und verlor die Person, die Heimfahrt hielt vor jedem Hindernis an.
+- **Änderungen:**
+  - `navigation/ausweichen.py`: neue Funktion `richtung_waehlen` (freie Richtung möglichst nah am Ziel, mit Rand, Mitte in Engstellen, Vorsprung für die zuletzt gewählte Seite).
+  - `interaktion/verhalten.py`: Umfahren und Hochhebe-Erkennung beim Folgen, Herkommen und Weggehen. Hochgehoben → BEREIT mit Ansage.
+  - `navigation/homing.py`: Umfahren statt Anhalten. Erst wenn 3 s nirgends Platz ist, hält er an und meldet, wie weit es noch ist. Hochgehoben → Abbruch. Ohne frischen Scan wie früher.
+  - `navigation/localizer.py`: `scan()` liefert die letzte frische Runde.
+  - Werte `UMFAHREN_*` und `HOME_AUSWEICH_WARTEN_S` in `config.py`; `docs/api.md` und `docs/architektur.md` ergänzt.
+- **Ergebnis:**
+  - Neuer Test `Marlon/autonomes_fahren/test_umfahren.py`, alle Fälle bestehen:
+    - Folgen um einen Stuhl: weicht seitlich aus, mindestens 0,25 m Luft, kommt bis 1,17 m an die Person.
+    - Folgen durch eine Tür: 0,25 m Luft zu den Pfosten, Endabstand 1,16 m.
+    - Heimfahrt um eine Kiste: kommt bis 0,12 m an den Startpunkt, 0,25 m Luft.
+    - Sackgasse: hält mit „Hindernis in 0.40 m, noch 3.00 m bis zum Startpunkt“ an.
+    - Hochheben beim Folgen und bei der Heimfahrt erkannt.
+  - Alle 13 Testskripte bestehen. Smoke-Test 18/19, nur das bekannte Flackern bei „Heimfahrt startet“.
+- **Probleme:**
+  - Beim Folgen um den Stuhl blieb er an dessen Ecke mit „etwas sehr nah“ stehen. Nach dem Vorbeischieben prüfte er geradeaus ohne Rand und schwenkte zu früh zurück. Lösung: Die Prüfung geradeaus nutzt denselben Rand wie das Ausweichen.
+  - Ein Testfall „Wand quer davor“ war falsch gestellt: Schräg an einer endlichen Wand vorbei ist 1 m tatsächlich frei. Der Test verlangt jetzt 2 m.
+  - **Grenzen:** Die Heimfahrt hat keine Karte. Sie kommt um einzelne Hindernisse herum, nicht durch Labyrinthe. Nach dem Hochheben bricht sie ab, weil die Position nicht mehr stimmt.
+- **Offen:**
+  - Am Roboter Folgen um Stühle und durch Türen aufnehmen und mit `scripts/abspielen.py` prüfen.
+
+---
+
 ## 3. Ergebnisse und Messwerte
 
 | Thema | Ergebnis | Quelle |

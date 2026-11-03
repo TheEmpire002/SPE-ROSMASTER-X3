@@ -1,4 +1,5 @@
-"""Lokales Ausweichen für den Erkunder (Schritt F2) -- ohne Karte.
+"""Lokales Ausweichen -- ohne Karte. Für den Erkunder (Schritt F2), für
+Folgen/Herkommen und die Heimfahrt (Schritt F3).
 
 Vier Bausteine, alle reine Rechnung auf Lidar-Runden und der vom Board
 gemessenen Geschwindigkeit, damit sie sich ohne Roboter prüfen und an
@@ -236,6 +237,55 @@ def luecken(punkte, halbe_breite: float, schwelle: float, reichweite: float) -> 
             ergebnis[normiert(r)] = frei_bei(r)
             r += 10
     return sorted(ergebnis.items())
+
+
+def richtung_waehlen(punkte, ziel_grad: float, noetig: float, halbe_breite: float,
+                     letzte_seite: float = 0.0) -> tuple[float, float] | None:
+    """Freie Fahrtrichtung möglichst nah an ``ziel_grad``: (Grad, frei in m).
+
+    Für Folgen und Heimfahrt: Dort gibt es ein Ziel (Person, Startpunkt),
+    und der Mecanum-Antrieb kann schräg daran vorbeischieben, ohne den
+    Blick abzuwenden. Frei heißt: ``noetig`` Meter im Fahrschlauch, mit
+    ``AUSWEICH_RAND_M`` zusätzlich zur halben Breite.
+
+    - Ist die Zielrichtung selbst frei, kommt sie unverändert zurück.
+    - Sonst die nächste freie Richtung bis ``UMFAHREN_MAX_GRAD`` daneben.
+      Die zuletzt gewählte Seite bekommt einen Vorsprung von
+      ``UMFAHREN_SEITE_GRAD``, sonst pendelt er vor einem breiten
+      Hindernis zwischen links und rechts.
+    - Abstand zum Rand des freien Bereichs: mindestens
+      ``UMFAHREN_RAND_GRAD``; ist der Bereich schmaler (Tür), seine Mitte.
+
+    None, wenn nichts frei ist -- dann anhalten, nicht raten.
+    """
+    raster = config.UMFAHREN_RASTER_GRAD
+    n = int(config.UMFAHREN_MAX_GRAD // raster)
+    versatz = np.arange(-n, n + 1) * raster
+    frei = frei_je_richtung(punkte, ziel_grad + versatz, halbe_breite + config.AUSWEICH_RAND_M)
+    gut = frei >= noetig
+    if gut[n]:
+        return float(ziel_grad), float(frei[n])
+    if not gut.any():
+        return None
+
+    kosten = np.abs(versatz).astype(float)
+    if letzte_seite:
+        kosten += np.where(np.sign(versatz) == -np.sign(letzte_seite), config.UMFAHREN_SEITE_GRAD, 0.0)
+    i = int(np.argmin(np.where(gut, kosten, np.inf)))
+
+    # Zusammenhängenden freien Bereich um i suchen und vom Rand wegrücken.
+    a = i
+    while a > 0 and gut[a - 1]:
+        a -= 1
+    b = i
+    while b < len(gut) - 1 and gut[b + 1]:
+        b += 1
+    k = int(math.ceil(config.UMFAHREN_RAND_GRAD / raster))
+    if b - a < 2 * k:
+        i = (a + b) // 2
+    else:
+        i = min(max(i, a + k), b - k)
+    return float(_winkel_normieren(math.radians(ziel_grad + versatz[i])) * 180.0 / math.pi), float(frei[i])
 
 
 # --- Bogenplanung ----------------------------------------------------------------

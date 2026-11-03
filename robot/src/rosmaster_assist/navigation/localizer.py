@@ -172,6 +172,19 @@ class Localizer:
 
     # --- Hindernisse ---------------------------------------------------------------
 
+    def scan(self):
+        """Die letzte Lidar-Runde, wenn sie frisch ist (sonst None).
+
+        Für das Umfahren auf der Heimfahrt: dieselbe Frischegrenze wie
+        ``hindernis_voraus``.
+        """
+        if self._lidar is None:
+            return None
+        scan = self._lidar.latest()
+        if scan is None or time.monotonic() - scan.zeit > 2.0:
+            return None
+        return scan
+
     def hindernis_voraus(
         self, richtung_grad: float, oeffnung_grad: float | None = None
     ) -> float | None:
