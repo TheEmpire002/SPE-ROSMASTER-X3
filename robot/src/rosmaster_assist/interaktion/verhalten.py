@@ -177,6 +177,9 @@ class Interaktion:
         self._auswahl_id: int | None = None  # beim nächsten Start zu sperrender Track
         self._gesten_je_track: dict[int, gs.Gestenerkennung] = {}
         self._geste_anzeige: tuple[str | None, float | None] = (None, None)
+        # Pause aus der App: Ziel bleibt gesperrt und wird weiter verfolgt,
+        # aber er fährt nicht.
+        self._pausiert = False
 
     # --- Bedienung ---------------------------------------------------------------
 
@@ -214,15 +217,78 @@ class Interaktion:
             self._sagen("Interaktion beendet.")
         self._task = None
 
-    def folgen(self) -> bool:
-        """Folgen per App-Knopf statt per Geste. Schaltet den Modus nötigenfalls ein."""
+    def folgen(self, ziel_id: int | None = None) -> bool:
+        """Folgen per App-Knopf statt per Geste. Schaltet den Modus nötigenfalls ein.
+
+        ``ziel_id``: die in der App angetippte Person (Track-ID aus
+        ``/interaktion/pose``). Ohne ID nur, wenn genau eine Person im Bild
+        ist -- sonst lehnt die ZielSperre ab. False, wenn die angetippte
+        Person nicht mehr im Bild ist.
+        """
         if not self.aktiv:
             # Den Modus gleich mitgeben -- die Schleife startet erst im
             # nächsten Durchlauf des Event-Loops und würde ihn sonst auf
-            # BEREIT zurücksetzen.
+            # BEREIT zurücksetzen. Eine ID gibt es hier noch nicht: Tracks
+            # entstehen erst, wenn der Modus läuft.
             return self.start(FOLGEN)
-        self._wechseln(FOLGEN, "folgt (per App)", time.monotonic(), sagen="Ich folge dir.")
+        jetzt = time.monotonic()
+        if ziel_id is not None:
+            if self._tracker.track(ziel_id) is None:
+                self._meldungen.append("Diese Person ist nicht mehr im Bild -- bitte neu antippen")
+                return False
+            # Ausdrückliche Wahl: ein gesperrtes Ziel wird ersetzt. Das ist
+            # der einzige Weg, auf dem eine andere Person zum Ziel wird.
+            if self._sperre.id != ziel_id:
+                self._sperre.freigeben()
+            self._auswahl_id = ziel_id
+        text = f"folgt Person {ziel_id} (per App)" if ziel_id is not None else "folgt (per App)"
+        self._wechseln(FOLGEN, text, jetzt, sagen="Ich folge dir.")
         return True
+
+    def pausieren(self) -> bool:
+        """Anhalten, Ziel aber behalten. False, wenn gerade nichts fährt."""
+        if not self.aktiv or self._modus not in _FAHRMODI or self._pausiert:
+            return False
+        self._pausiert = True
+        self._watchdog.stop()
+        self._letzter_befehl = None
+        self._text = "pausiert -- Ziel bleibt gemerkt"
+        log.info("Interaktion: pausiert (%s)", self._modus)
+        return True
+
+    def fortsetzen(self) -> bool:
+        """Nach einer Pause weiterfahren. False, wenn nicht pausiert."""
+        if not self.aktiv or not self._pausiert:
+            return False
+        jetzt = time.monotonic()
+        self._pausiert = False
+        # Die Pause zählt nicht als Verlust- oder Suchzeit, sonst gäbe er
+        # gleich nach dem Weiter auf.
+        self._gesehen = self._modus_seit = jetzt
+        log.info("Interaktion: weiter (%s)", self._modus)
+        return True
+
+    @property
+    def pausiert(self) -> bool:
+        return self.aktiv and self._pausiert
+
+    def personen_mit_id(self, personen: list[dict]) -> list[dict]:
+        """Personen für die App: ohne Merkmal, mit Track-``id`` und ``ziel``.
+
+        Die Pose liefert dieselben Dicts, die auch der Tracker bekommen hat;
+        daran erkennt man die Zuordnung. Ist das Bild neuer als der letzte
+        Tracker-Takt, ist ``id`` kurz ``None``.
+        """
+        ids = {id(t.person): t.id for t in self._tracker.tracks if t.gemessen}
+        gesperrt = self._sperre.id if self._sperre.zustand not in (IDLE, SICHER_HALT) else None
+        aus = []
+        for p in personen:
+            tid = ids.get(id(p))
+            eintrag = {k: v for k, v in p.items() if k != "merkmal"}
+            eintrag["id"] = tid
+            eintrag["ziel"] = tid is not None and tid == gesperrt
+            aus.append(eintrag)
+        return aus
 
     def antrieb_verloren(self) -> None:
         """Board weg: anhalten, aber weiter zuschauen (siehe Modulkopf).
@@ -246,6 +312,10 @@ class Interaktion:
         """Verhalten beenden, Interaktionsmodus bleibt an."""
         if self.aktiv and self._modus != BEREIT:
             self._wechseln(BEREIT, "angehalten (per App)", time.monotonic(), sagen="Okay, ich bleibe stehen.")
+        if self.aktiv and self._sperre.zustand == SICHER_HALT:
+            # „Loslassen“ quittiert auch ein sicheres Anhalten -- danach
+            # zeigt die App wieder „kein Ziel“ statt „bitte neu wählen“.
+            self._sperre.freigeben()
 
     def meldungen_abholen(self) -> list[str]:
         """Ereignisse seit dem letzten Aufruf -- für Hinweise in der App."""
@@ -288,6 +358,7 @@ class Interaktion:
             "geste": geste if aktiv else None,
             "grund": self._grund,
             "ziel": self._sperre.als_dict(),
+            "pausiert": self.pausiert,
         }
 
     # --- Schleife ----------------------------------------------------------------
@@ -357,6 +428,14 @@ class Interaktion:
         if self._modus == BEREIT:
             self._abstand = self._abstand_zu(ziel)
             return None
+
+        if self._pausiert:
+            # Tracker und Sperre laufen oben weiter, damit das Ziel nach dem
+            # Weiter noch dasselbe ist. Gefahren wird nicht.
+            self._abstand = self._abstand_zu(ziel)
+            self._text = "pausiert -- Ziel bleibt gemerkt"
+            self._letzter_befehl = None
+            return halt
 
         if self._modus in (HERKOMMEN, WEGGEHEN) and jetzt - self._modus_seit > config.INTERAKTION_VERHALTEN_MAX_S:
             return self._wechseln(BEREIT, f"{self._modus}: Zeit abgelaufen", jetzt, melden=True,
@@ -755,6 +834,8 @@ class Interaktion:
             modus, text, melden = BEREIT, "wartet auf den Antrieb", True
             self._meldungen.append("Keine Verbindung zum Antrieb -- fahre nicht los")
             sagen = "Ich habe keine Verbindung zu meinen Rädern."
+        # Jeder Moduswechsel (Geste, Stopp, Verlust) beendet eine Pause.
+        self._pausiert = False
         if modus == BEREIT and self._modus != BEREIT:
             # Beim Wechsel nach BEREIT einmal ausdrücklich anhalten -- danach
             # schickt die Schleife nichts mehr.

@@ -156,8 +156,10 @@ Reihenfolge:
 | `home_cancel` | – | Heimfahrt abbrechen und anhalten. | `alert` an alle |
 | `interaction_start` | – | Interaktionsmodus an: Der Roboter wartet auf Handzeichen (siehe „Interaktion im Detail“). Braucht Lidar und Posenerkennung; bricht Heimfahrt und autonomes Fahren ab. | `alert` an alle; sonst `alert` (warning) |
 | `interaction_stop` | – | Interaktionsmodus aus und anhalten. | `alert` an alle |
-| `follow` | – | „Folge mir“ ohne Geste. Schaltet den Interaktionsmodus bei Bedarf mit ein. | `alert` an alle |
-| `follow_stop` | – | Folgen beenden, anhalten; der Interaktionsmodus bleibt an. | `alert` an alle |
+| `follow` | `ziel_id` (optional, Zahl) | „Folge mir“ ohne Geste. Schaltet den Interaktionsmodus bei Bedarf mit ein. Mit `ziel_id` (die `id` einer Person aus `/interaktion/pose`) folgt er genau dieser Person, auch als Wechsel während des Folgens. Ist sie nicht mehr im Bild, lehnt er ab. | `alert` an alle |
+| `follow_pause` | – | Anhalten, das Ziel bleibt gemerkt (neu 03.11.). Nur in `folgen`, `herkommen`, `weggehen`, `sucht`. | – |
+| `follow_resume` | – | Nach `follow_pause` weiterfahren, zum selben Ziel. | – |
+| `follow_stop` | – | Folgen beenden, anhalten, Ziel freigeben; der Interaktionsmodus bleibt an. Quittiert auch ein `safe_stop`. | `alert` an alle |
 | `say` | `text` (string, höchstens 300 Zeichen), `vorrang` (bool, optional) | Über den Lautsprecher sprechen (siehe „Stimme im Detail“). `vorrang: true` bricht den laufenden Satz ab und leert die Warteschlange. | keine; ohne `text` `error`, ohne Lautsprecher/Synthese `alert` (warning) |
 | `say_stop` | – | Sofort verstummen, Warteschlange leeren. | keine |
 | `speech` | `text` (string) | Text so behandeln, als wäre er ins Mikrofon gesprochen worden (siehe „Sprachbefehle im Detail“). Zum Ausprobieren ohne Mikrofon und in `--mock`. | `alert` „Sprachbefehl: …“ an alle, wenn ein Befehl erkannt wurde; sonst `alert` (info) „Kein Befehl erkannt …“; ohne `text` `error` |
@@ -352,6 +354,7 @@ der Modus an ist. **Nur am Boden benutzen.**
   "personen": 1,
   "geste": "folgen",
   "grund": null,
+  "pausiert": false,
   "ziel": {"zustand": "following", "id": 3, "sicherheit": 0.82, "grund": null}
 }
 ```
@@ -365,6 +368,7 @@ der Modus an ist. **Nur am Boden benutzen.**
 | `personen` | wie viele Menschen die Kamera gerade sieht |
 | `geste` | zuletzt erkannte Geste (`folgen`, `stopp`, `herkommen`, `weggehen`), wenige Sekunden lang, sonst `null` |
 | `grund` | warum der Modus zuletzt endete |
+| `pausiert` | `true` nach `follow_pause`: steht, Modus und Ziel bleiben. Jeder Moduswechsel (auch die Stopp-Geste) beendet die Pause. Fehlt bei älteren Servern. |
 | `ziel` | Ziel-Lock (neu 03.11.): `zustand` ist `idle`, `acquiring_target`, `following`, `target_temporarily_lost`, `searching_for_target` oder `safe_stop`. `id` ist die Track-ID des Ziels (nur für diese Sitzung), `sicherheit` liegt bei 0..1, `grund` sagt, warum er angehalten oder abgelehnt hat (z. B. „mehrere Personen – bitte im Bild antippen“). Details in `docs/interaktion.md`. Fehlt bei älteren Servern. |
 
 ### Stimme im Detail
@@ -577,7 +581,7 @@ erlaubt fremden Seiten nur `GET`.
 | Endpunkt | Liefert |
 |---|---|
 | `GET /interaktion/status` | dasselbe wie `state.interaktion`, dazu `pose`: `verfuegbar`, `simuliert`, `aktiv`, `fehler`, `fps`, `bilder`, `letzte_erkennung_vor_s`, `kamera` (auf welchem Kamerabild die Punkte liegen, Name wie in `/cameras`) |
-| `GET /interaktion/pose` | `personen`: erkannte Menschen, größter zuerst, je `box` [x1, y1, x2, y2] und `kp` (17 × [x, y, Sicherheit], COCO-Reihenfolge), relativ zur Bildgröße (0..1), dazu `score`, `winkel`; `skelett`: Punktpaare zum Verbinden. Leer, solange der Modus aus ist. |
+| `GET /interaktion/pose` | `personen`: erkannte Menschen, größter zuerst, je `box` [x1, y1, x2, y2] und `kp` (17 × [x, y, Sicherheit], COCO-Reihenfolge), relativ zur Bildgröße (0..1), dazu `score`, `winkel`, `id` (Track-ID für `follow {ziel_id}`, `null` solange der Tracker die Person noch nicht kennt) und `ziel` (`true` beim gesperrten Ziel); `skelett`: Punktpaare zum Verbinden. Leer, solange der Modus aus ist. |
 
 ### Diagnose
 

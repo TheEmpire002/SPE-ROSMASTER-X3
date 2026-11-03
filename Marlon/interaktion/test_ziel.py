@@ -367,6 +367,97 @@ z = ia.zustand()
 pruefe("Zustand: Feld ziel mit zustand/id/sicherheit/grund",
        set(z["ziel"]) == {"zustand", "id", "sicherheit", "grund"}, z["ziel"])
 
+
+# --- Bedienung aus der App (Schritt C) -----------------------------------------
+
+
+class LaeuftNoch:
+    """Steht für die laufende Interaktions-Schleife (aktiv == True)."""
+
+    def done(self):
+        return False
+
+
+def track_id(ia, farbe):
+    return next(t.id for t in ia._tracker.tracks if t.person["merkmal"] is farbe)
+
+
+zwei = lambda t: [person(10, ROT), person(-15, BLAU)]
+
+# Antippen: follow mit ziel_id wählt genau diese Person
+ia, wd, po = interaktion()
+ia._task = LaeuftNoch()
+spielen(ia, po, zwei, 0.0, 0.3)
+blau_id = track_id(ia, BLAU)
+pruefe("Antippen: angenommen", ia.folgen(blau_id) is True)
+pruefe("Antippen: Text nennt die Person", f"Person {blau_id}" in ia.zustand()["text"], ia.zustand()["text"])
+v = spielen(ia, po, zwei, 0.3, 1.8)
+pruefe("Antippen: folgt Blau", ia._modus == vh.FOLGEN and ia._sperre.id == blau_id, ia.zustand()["ziel"])
+pruefe("Antippen: dreht zu Blau (rechts)", v[-1][2].omega < 0, v[-1][2])
+
+# Umwählen während des Folgens: Rot antippen ersetzt Blau
+rot_id = track_id(ia, ROT)
+pruefe("Umwählen: angenommen", ia.folgen(rot_id) is True)
+v = spielen(ia, po, zwei, 1.8, 3.3)
+pruefe("Umwählen: folgt jetzt Rot", ia._modus == vh.FOLGEN and ia._sperre.id == rot_id, ia.zustand()["ziel"])
+pruefe("Umwählen: dreht zu Rot (links)", v[-1][2].omega > 0, v[-1][2])
+
+# Unbekannte ID: abgelehnt, Ziel bleibt
+ia.meldungen_abholen()
+pruefe("Unbekannte ID: abgelehnt", ia.folgen(999) is False)
+pruefe("Unbekannte ID: Ziel bleibt Rot", ia._sperre.id == rot_id, ia.zustand()["ziel"])
+pruefe("Unbekannte ID: Meldung", any("nicht mehr im Bild" in m for m in ia.meldungen_abholen()))
+
+# Pause: steht, Ziel bleibt gesperrt und verfolgt
+pruefe("Pause: angenommen", ia.pausieren() is True)
+pruefe("Pause: Zustand meldet pausiert", ia.zustand()["pausiert"] is True)
+# Länger als Verloren + Suchen: Ohne Pause wäre er längst in der Suche.
+t0 = 3.3 + config.FOLGEN_VERLOREN_S + config.FOLGEN_SUCHEN_S + 1.0
+v = spielen(ia, po, zwei, 3.3, t0)
+pruefe("Pause: fährt nicht", all(b is None or (b.vx == 0 and b.vy == 0 and b.omega == 0) for _, _, b in v),
+       [b for _, _, b in v if b is not None][:2])
+pruefe("Pause: Modus und Ziel bleiben", ia._modus == vh.FOLGEN and ia._sperre.id == rot_id,
+       (ia._modus, ia.zustand()["ziel"]))
+pruefe("Pause: doppelt pausieren geht nicht", ia.pausieren() is False)
+
+# Weiter: fährt wieder zum selben Ziel
+pruefe("Weiter: angenommen", ia.fortsetzen() is True)
+v = spielen(ia, po, zwei, t0, t0 + 1.0)
+pruefe("Weiter: folgt wieder Rot", ia._modus == vh.FOLGEN and ia._sperre.id == rot_id
+       and not ia.zustand()["pausiert"], ia.zustand()["ziel"])
+pruefe("Weiter: dreht wieder zu Rot", v[-1][2].omega > 0, v[-1][2])
+pruefe("Weiter: ohne Pause abgelehnt", ia.fortsetzen() is False)
+
+# Pause, dann Stopp-Geste: Pause endet mit dem Modus
+ia.pausieren()
+spielen(ia, po, lambda t: [person(10, ROT, arm="stopp"), person(-15, BLAU)], t0 + 1.0, t0 + 2.5)
+pruefe("Pause + Stopp: bereit, nicht mehr pausiert",
+       ia._modus == vh.BEREIT and not ia.zustand()["pausiert"], (ia._modus, ia.zustand()["pausiert"]))
+pruefe("Pause im Stand: abgelehnt", ia.pausieren() is False)
+
+# Pose für die App: id und ziel je Person, kein Merkmal
+ia, wd, po = interaktion()
+ia._task = LaeuftNoch()
+spielen(ia, po, zwei, 0.0, 0.3)
+blau_id = track_id(ia, BLAU)
+ia.folgen(blau_id)
+spielen(ia, po, zwei, 0.3, 1.0)
+liste = ia.personen_mit_id(po.personen())
+pruefe("Pose-IDs: kein Merkmal", all("merkmal" not in p for p in liste))
+pruefe("Pose-IDs: jede Person hat eine ID", all(isinstance(p["id"], int) for p in liste), liste)
+pruefe("Pose-IDs: genau Blau ist Ziel",
+       [p["id"] for p in liste if p["ziel"]] == [blau_id], [(p["id"], p["ziel"]) for p in liste])
+pruefe("Pose-IDs: Reihenfolge unverändert", [p["winkel"] for p in liste] == [10, -15],
+       [p["winkel"] for p in liste])
+fremd = ia.personen_mit_id([person(0, ROT)])
+pruefe("Pose-IDs: neues Bild vor dem Tracker -> id None", fremd[0]["id"] is None and not fremd[0]["ziel"])
+
+# Loslassen quittiert ein sicheres Anhalten
+ia._sperre.sicher_anhalten("Test", 1.0)
+ia._modus = vh.BEREIT
+ia.folgen_stop()
+pruefe("Loslassen: aus safe_stop wird idle", ia._sperre.zustand == zl.IDLE, ia.zustand()["ziel"])
+
 print()
 print("alles bestanden" if not fehler else f"{fehler} Fehler")
 sys.exit(1 if fehler else 0)

@@ -233,6 +233,32 @@ Eigendrehung, kurze und lange Verdeckung, zweite Person während der Suche,
 gleiche Kleidung, App-Start bei zwei Personen, Geste wählt Gestikulierenden
 und Stopp von Passanten.
 
+### Bedienung in der Web-App (03.11.)
+
+Gesteuert wird über die Web-App; Gesten und Sprache bleiben Nebenwege.
+
+- **Person antippen:** Solange die Interaktion läuft, sind die Personen im
+  Bild der Personenkamera antippbar. Ein Tipp schickt `follow {ziel_id}` mit
+  der Track-ID aus `/interaktion/pose`. Das geht auch während des Folgens:
+  Dann wechselt das Ziel. Ein eigener Knopf „Neu wählen“ wäre damit doppelt
+  und entfällt. Liegen Boxen übereinander, gilt die kleinere, meist die
+  weiter hinten stehende, die man gezielt gemeint hat.
+- **Anzeige:** Das Ziel ist grün, alle anderen grau, über jedem Kopf steht
+  „Person N“. Die Zeile „Ziel“ zeigt den Zustand (z. B. „folgt Person 3 ·
+  82 %“, „sucht Person 3 …“, „sicher angehalten – bitte neu wählen“).
+- **Pause / Weiter:** `follow_pause` hält an, Tracker und Sperre laufen
+  weiter, damit nach `follow_resume` noch dieselbe Person das Ziel ist.
+  Während der Pause greifen keine Zeitgrenzen (Verloren, Suchen); die
+  Stopp-Geste beendet die Pause wie jeden Modus.
+- **Loslassen:** `follow_stop` gibt das Ziel frei und quittiert auch ein
+  `safe_stop`.
+- Tippt man eine Person an, die der Tracker gerade verloren hat, lehnt er
+  ab („bitte neu antippen“), statt jemand anderen zu nehmen.
+
+Test: ebenfalls `test_ziel.py` (Antippen, Umwählen, unbekannte ID, Pause
+über die Suchzeit hinaus, Weiter, Stopp in der Pause, IDs in der Pose,
+Loslassen aus `safe_stop`).
+
 ## Sprache
 
 - **Eingang:** das USB-Mikrofon (C-Media, `SPRACHE_MIKROFON_NAMEN`; Ersatz: Mikrofon der C270), erkannt mit **Vosk** und dem kleinen deutschen Modell (`SPRACHE_MODELL`) auf der CPU. Fehlen Vosk, Modell oder Mikrofon, ist die Erkennung aus (`/sprache/status` sagt warum), der Server läuft weiter.
@@ -312,8 +338,8 @@ Der API-Schlüssel kommt aus der Umgebungsvariable `ANTHROPIC_API_KEY` und
 
 Umgesetzt und in [`api.md`](api.md) beschrieben („Interaktion im Detail“):
 
-- Befehle `interaction_start` / `interaction_stop`, `follow` / `follow_stop`.
-- `state.interaktion` mit `aktiv`, `verfuegbar`, `modus`, `text`, `person{winkel, abstand}`, `personen`, `geste`, `grund`.
+- Befehle `interaction_start` / `interaction_stop`, `follow {ziel_id?}` / `follow_pause` / `follow_resume` / `follow_stop`.
+- `state.interaktion` mit `aktiv`, `verfuegbar`, `modus`, `text`, `person{winkel, abstand}`, `personen`, `geste`, `grund`, `pausiert`, `ziel{zustand, id, sicherheit, grund}`.
 - `GET /interaktion/status` und `GET /interaktion/pose` (Skelett zum Einblenden; die Web-App zeichnet es über das Kamerabild).
 - Stimme: Befehle `say {text, vorrang}` und `say_stop`, `state.stimme` mit `verfuegbar`, `spricht`, `text`, Diagnose unter `GET /stimme/status`.
 - Sprache: Befehl `speech {text}`, `state.sprache` mit `verfuegbar`, `geweckt`, `gehoert`, `befehl`, Diagnose unter `GET /sprache/status`.

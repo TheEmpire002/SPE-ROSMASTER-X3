@@ -607,8 +607,9 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         Leer, solange die Interaktion aus ist -- dann rechnet der Hailo nicht.
         """
         # Das Aussehensmerkmal (Farbhistogramm) bleibt im Roboter -- die App
-        # braucht es nicht, und es bläht jede Antwort auf.
-        personen = [{k: v for k, v in p.items() if k != "merkmal"} for p in pose.personen()]
+        # braucht es nicht, und es bläht jede Antwort auf. Dazu kommen die
+        # Track-ID (zum Antippen) und ob die Person das gesperrte Ziel ist.
+        personen = interaktion.personen_mit_id(pose.personen())
         return {"personen": personen, "skelett": SKELETT}
 
     # --- Diagnose ---
@@ -935,7 +936,10 @@ async def _handle(
                 erkunder.abbrechen("Interaktion gestartet")
         if kind == "follow":
             war_aktiv = interaktion.aktiv
-            if interaktion.folgen() and not war_aktiv:
+            ziel_id = msg.get("ziel_id")
+            if isinstance(ziel_id, bool) or not isinstance(ziel_id, (int, type(None))):
+                return alert_message("warning", "ziel_id muss eine Zahl sein")
+            if interaktion.folgen(ziel_id) and not war_aktiv:
                 await hub.broadcast(alert_message("info", "Interaktion an -- folge dir"))
         elif interaktion.start():
             await hub.broadcast(
@@ -946,6 +950,15 @@ async def _handle(
     if kind == "follow_stop":
         if interaktion is not None:
             interaktion.folgen_stop()
+        return None
+
+    if kind in ("follow_pause", "follow_resume"):
+        # Pause hält an, das Ziel bleibt gesperrt -- anders als follow_stop.
+        if interaktion is not None:
+            if kind == "follow_pause":
+                interaktion.pausieren()
+            else:
+                interaktion.fortsetzen()
         return None
 
     if kind == "interaction_stop":

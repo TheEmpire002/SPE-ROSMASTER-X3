@@ -267,6 +267,8 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
   height: 100%;
   pointer-events: none;
 }
+/* Personen im Bild sind antippbar (Ziel wählen). */
+.cam-wrap.waehlbar { cursor: pointer; }
 
 .hindernisse {
   list-style: none;

@@ -370,7 +370,19 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Ergebnis:** Neuer Test `Marlon/interaktion/test_ziel.py` besteht, ebenso alle bisherigen Tests (`test_gesten`, `test_sprache`, `test_stimme`, `test_hindernisse`, `test_odometrie`, `test_diagnose`, `test_explorer_sim`). Smoke-Test 18/19, unverändert.
 - **Probleme:** Zwei Testannahmen waren falsch, nicht der Code. Ohne Eigendrehung reißt die Zuordnung nicht ab, weil das Gate mitwächst; der Test prüft jetzt die geschätzte Geschwindigkeit. Nach 1 s Verdeckung lebt der Track noch, das Ziel ist also sofort wieder da; geprüft wird jetzt kurz (sofort) und lang (2 s, neue Bestätigung).
 - **Bewusst anders als geplant:** Die Zeiten heißen weiter `FOLGEN_VERLOREN_S`/`FOLGEN_SUCHEN_S`. Er fährt schon während der Erfassung los, sobald das Ziel eindeutig ist.
-- **Offen:** Antippen in der Web-App (Schritt C), Bodentest mit zwei Personen (kreuzen, verdecken, gleiche Kleidung).
+- **Offen:** ~~Antippen in der Web-App (Schritt C)~~ (erledigt, siehe unten), Bodentest mit zwei Personen (kreuzen, verdecken, gleiche Kleidung).
+
+### 03.11.2026 – Autonomie Schritt C: Ziel wählen, Pause und Loslassen in der Web-App (Marlon, mit Claude)
+- **Was:** Die Web-App kann das Ziel beim Folgen bestimmen: Person im Kamerabild antippen, Pause/Weiter, Loslassen, Anzeige des Ziel-Zustands.
+- **Warum:** Gesteuert wird der Roboter über die Weboberfläche. Bei mehreren Personen lehnt der Ziel-Lock aus Schritt B einen Start ohne Auswahl ab; dafür braucht es eine eindeutige Auswahl in der App.
+- **Änderungen:**
+  - `protocol.py` nur ergänzt: `follow` mit optionalem `ziel_id`, neu `follow_pause` und `follow_resume`. Neues Feld `state.interaktion.pausiert`.
+  - `/interaktion/pose` liefert je Person `id` (Track-ID) und `ziel`; das Merkmal bleibt weiter im Roboter.
+  - `verhalten.py`: `folgen(ziel_id)` wechselt auch während des Folgens das Ziel, eine verlorene ID wird abgelehnt. Pause hält an, Tracker und Sperre laufen weiter. Jeder Moduswechsel beendet die Pause. `follow_stop` quittiert ein `safe_stop`.
+  - Web-App: Personen antippbar (Trefferprüfung auf die Box, kleinste gewinnt), Ziel grün, andere grau, „Person N“ über dem Kopf, Zeile „Ziel“, Knöpfe „Pause/Weiter“ und „Loslassen“. Ein eigener Knopf „Neu wählen“ entfällt, weil Antippen genau das tut.
+- **Ergebnis:** `test_ziel.py` um 27 Prüfungen erweitert, alles besteht; alle anderen Tests ebenso. Smoke-Test 19/19. Im Mock geprüft: falsche `ziel_id` wird abgewiesen, Pause/Weiter, unbekannte ID, `id`/`ziel` in `/interaktion/pose`.
+- **Probleme:** Zwei Testfehler lagen am Test: Der Text „folgt Person N“ wird im nächsten Takt vom Fahrtext ersetzt, und eine Testphase lief zeitlich rückwärts (die Pause dauerte länger als angenommen). Die Stopp-Geste in der Pause funktioniert.
+- **Offen:** Antippen am Handy/Tablet ausprobieren (Trefferfläche), Bodentest mit zwei Personen.
 
 ---
 
@@ -439,7 +451,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - Später: lokales LLM auf dem Hailo, Gesichter wiedererkennen, Orbbec-Tiefe für niedrige Hindernisse.
 - Diagnoseseite am Pi prüfen (Kernel-Log-Berechtigung, echte Akku- und Überlastwerte).
 - Sanftes Fahren am Boden prüfen: Folgen ohne USB-Resets, Rampe nicht zu träge.
-- Smoke-Test „Heimfahrt startet“ schlägt im Mock fehl (auch ohne die Änderungen vom 03.11.): Die Fahrt zuvor legt nur ~0,02 m zurück, die Heimfahrt endet sofort. Ursache prüfen.
+- Smoke-Test „Heimfahrt startet“ schlägt im Mock zeitweise fehl (auch ohne die Änderungen vom 03.11.; am 03.11. nachmittags einmal 19/19): Die Fahrt zuvor legt nur ~0,02 m zurück, die Heimfahrt endet sofort. Ursache prüfen.
 - Drehtest 90° am Boden: Blickrichtung aus der Board-Drehrate gegen den Lidar prüfen.
 - Folgen mit zwei Personen am Boden: kreuzen, kurz verdecken, gleiche Kleidung. Merkmal-Schwellen ggf. nachstellen (`ZIEL_MERKMAL_*`).
 
