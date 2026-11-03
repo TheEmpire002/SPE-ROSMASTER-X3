@@ -44,14 +44,17 @@ den Server und öffnet die Web-App im Browser.
   komplette App entwickeln, ohne den Roboter zu belegen.
 - **Auf dem Raspberry Pi** erkennt es Treiber und serielle Schnittstelle und
   fährt mit echter Hardware hoch. Die App ist dann im WLAN erreichbar unter
-  `http://<IP-des-Pi>:8000` (IP: `hostname -I`).
+  `http://<IP-des-Pi>:8000` (IP: `hostname -I`). Ist das Board beim Start
+  gerade nicht erreichbar (z.B. kurzer USB-Aussetzer), startet es trotzdem
+  echt, warnt nur und verbindet sich, sobald das Board wieder da ist. In die
+  Simulation geht es nur ohne `Rosmaster_Lib` oder mit `--mock`.
 
 Optionen:
 
 | Option          | Wirkung                                        |
 |-----------------|------------------------------------------------|
 | `--mock`        | Simulation erzwingen, auch auf dem Roboter     |
-| `--real`        | Hardware erzwingen, Abbruch wenn sie fehlt     |
+| `--real`        | Hardware erzwingen, Abbruch ohne Rosmaster_Lib |
 | `--port 8001`   | anderer Port                                   |
 | `--no-browser`  | Browser nicht öffnen (z.B. über SSH)           |
 | `--setup-only`  | nur einrichten, nicht starten                  |

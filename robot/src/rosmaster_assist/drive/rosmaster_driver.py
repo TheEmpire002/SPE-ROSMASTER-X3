@@ -131,21 +131,33 @@ class RosmasterDriver(DriveBase):
         # Rosmaster() ohne Argument sucht die Schnittstelle selbst.
         bot = Rosmaster(com=self._port) if self._port else Rosmaster()
 
-        # Als Erstes anhalten. Nach einem Aussetzer war nur der USB-Wandler
-        # weg, der Prozessor auf dem Board lief am Akku weiter -- und führt
-        # womöglich noch den letzten Fahrbefehl aus.
-        bot.set_car_motion(0.0, 0.0, 0.0)
+        try:
+            # Als Erstes anhalten. Nach einem Aussetzer war nur der USB-Wandler
+            # weg, der Prozessor auf dem Board lief am Akku weiter -- und führt
+            # womöglich noch den letzten Fahrbefehl aus.
+            bot.set_car_motion(0.0, 0.0, 0.0)
 
-        # Startet den Hintergrund-Thread, der Rückmeldungen (IMU, Akku,
-        # Encoder) vom Board einliest. Ohne diesen Aufruf bleiben alle
-        # Lesefunktionen der Bibliothek leer -- Fahren geht trotzdem.
-        # Welcher Thread das ist, verrät die Bibliothek nicht; also
-        # nachsehen, welcher neu dazukam.
-        empfaenger: list[threading.Thread] = []
-        if config.TELEMETRY_ENABLED:
-            vorher = set(threading.enumerate())
-            bot.create_receive_threading()
-            empfaenger = [t for t in threading.enumerate() if t not in vorher]
+            # Startet den Hintergrund-Thread, der Rückmeldungen (IMU, Akku,
+            # Encoder) vom Board einliest. Ohne diesen Aufruf bleiben alle
+            # Lesefunktionen der Bibliothek leer -- Fahren geht trotzdem.
+            # Welcher Thread das ist, verrät die Bibliothek nicht; also
+            # nachsehen, welcher neu dazukam.
+            empfaenger: list[threading.Thread] = []
+            if config.TELEMETRY_ENABLED:
+                vorher = set(threading.enumerate())
+                bot.create_receive_threading()
+                empfaenger = [t for t in threading.enumerate() if t not in vorher]
+        except Exception:
+            # Port wieder schließen: Sonst bleibt bei jedem gescheiterten
+            # Neuverbinden (USB-Sturm, 29.10.) ein offener Port zurück, bis
+            # dem Server die Dateien ausgehen bzw. der Port belegt bleibt.
+            ser = getattr(bot, "ser", None)
+            if ser is not None:
+                try:
+                    ser.close()
+                except Exception:
+                    pass
+            raise
 
         with self._lock:
             self._bot = bot

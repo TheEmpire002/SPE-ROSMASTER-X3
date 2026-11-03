@@ -25,18 +25,23 @@ wenn sonst etwas kaputt ist.
 
 from __future__ import annotations
 
+import faulthandler
 import glob
 import logging
 import os
 import shutil
+import signal
 import subprocess
+import sys
 import threading
 import time
+import traceback
 from collections import deque
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
-from . import config
+from . import absturz, config
 
 log = logging.getLogger(__name__)
 
@@ -58,7 +63,8 @@ _DROSSEL_BITS = {
 }
 
 _USB_TEXTE = [
-    "Akku laden -- unter etwa 11,5 V passiert das deutlich häufiger.",
+    "Stromversorgung prüfen: Akku laden (unter etwa 11,5 V passiert das deutlich "
+    "häufiger) bzw. Netzteil und Kabel kontrollieren.",
     "Orbbec-Kamera abziehen, wenn sie nicht gebraucht wird; sie zieht am meisten Strom.",
     "Dauerhafte Lösung: USB-Hub mit eigener Stromversorgung bzw. eigener 5-V-Wandler "
     "für den Pi (siehe docs/hardware.md).",
@@ -192,6 +198,20 @@ def usb_ueberlast_zaehler() -> int | None:
     return summe
 
 
+def usb_ueberlast_ports() -> dict[str, int]:
+    """Überlast-Zähler je Pi-Buchse, z. B. {"usb1-port1": 187}.
+
+    Steigen *alle* Buchsen gleichzeitig, liegt es nicht an einem Gerät,
+    sondern am gemeinsamen Stromschalter (Befund vom 29.10.).
+    """
+    werte = {}
+    for pfad in glob.glob("/sys/bus/usb/devices/*-0:1.0/usb*-port*/over_current_count"):
+        wert = _lies(pfad)
+        if wert and wert.isdigit():
+            werte[os.path.basename(os.path.dirname(pfad))] = int(wert)
+    return werte
+
+
 def cpu_temperatur() -> float | None:
     wert = _lies("/sys/class/thermal/thermal_zone0/temp")
     try:
@@ -319,6 +339,34 @@ class Diagnose:
         self._langsam_zuletzt = 0.0
         self._start_mono = time.monotonic()
 
+        # USB-Sturm: (Zeit, neue Überlasten) der letzten Minute und die
+        # Zähler je Buchse, um "alle gleichzeitig" zu erkennen.
+        self._oc_verlauf: deque[tuple[float, int]] = deque(maxlen=120)
+        self._oc_ports_vorher: dict[str, int] = {}
+        self._oc_ports_neu: dict[str, int] = {}
+        self._anmeldung_zuletzt: dict[str, float] = {}
+
+        # Absturzerfassung (siehe absturz.py). Dateien entstehen erst mit
+        # absturz_einrichten() -- Tests, die nur Diagnose() bauen, schreiben nichts.
+        self._ordner: Path | None = None
+        self._laeufe: absturz.Laufprotokoll | None = None
+        self._boot = absturz.boot_id()
+        self._journal_dauerhaft = absturz.journal_dauerhaft()
+        self._vorher_info: dict | None = None
+        self._log_vorher: list[str] = []
+        self._dump_datei = None
+        self._beendet = False
+        self._speicher: dict[str, Any] = {}
+        self._speicher_verlauf: deque[tuple[float, int]] = deque(maxlen=360)
+        self._speicher_basis: int | None = None
+        # Puls der Ereignisschleife (puls() aus dem Server).
+        self._puls_mono: float | None = None
+        self._puls_thread: int | None = None
+        self._puls_max = 0.0
+        self._haenger = 0
+        self._blockiert_gemeldet = False
+        self._blockiert: dict | None = None
+
     # --- Lebenszyklus -------------------------------------------------------------
 
     def start(self) -> None:
@@ -348,6 +396,266 @@ class Diagnose:
                 # eigenen Absturz als "Fehler im Log" -- bei jedem Durchlauf.
                 log.warning("Diagnose-Durchlauf fehlgeschlagen", exc_info=True)
             self._stop.wait(config.DIAGNOSE_INTERVAL_S)
+
+    # --- Absturzerfassung ------------------------------------------------------------
+
+    def absturz_einrichten(self) -> None:
+        """Legt fest, was einen Absturz überlebt, und ordnet den vorigen Lauf ein.
+
+        Einmal beim Serverstart aus dem Haupt-Thread aufrufen (Signale).
+        """
+        ordner = config.DIAGNOSE_ORDNER
+        if self._mock:
+            # Eigener Ordner: Ein Simulationslauf am Pi soll das Protokoll der
+            # echten Läufe nicht durcheinanderbringen.
+            ordner = ordner.with_name(ordner.name + "_mock")
+        try:
+            ordner.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            log.warning("Diagnose-Ordner %s nicht anlegbar -- keine Absturzerfassung", ordner)
+            return
+        self._ordner = ordner
+
+        # Ende des alten Logs merken, bevor die neue Logdatei anhängt.
+        self._log_vorher = absturz.letzte_zeilen(ordner / "server.log", 40)
+        try:
+            absturz.logdatei_einrichten(ordner / "server.log")
+        except OSError:
+            log.warning("Server-Log nicht als Datei schreibbar", exc_info=True)
+
+        # Ein nicht leerer Dump stammt von einem Segfault im letzten Lauf.
+        dump = ordner / "absturz.txt"
+        segfault = False
+        try:
+            if dump.exists() and dump.stat().st_size > 0:
+                segfault = True
+                os.replace(dump, ordner / "absturz_vorher.txt")
+        except OSError:
+            pass
+        try:
+            if self._dump_datei is None:
+                self._dump_datei = open(dump, "w", encoding="utf-8")
+            faulthandler.enable(self._dump_datei, all_threads=True)
+        except (OSError, ValueError, RuntimeError):
+            log.debug("faulthandler nicht aktivierbar", exc_info=True)
+
+        self._laeufe = absturz.Laufprotokoll(ordner / "laeufe.json")
+        vorher = self._laeufe.beginnen()
+        if vorher is not None and not vorher.get("ende"):
+            self._vorher_einordnen(vorher, segfault)
+        self._sighup_einrichten()
+        threading.excepthook = self._thread_fehler
+
+    def _vorher_einordnen(self, vorher: dict, segfault: bool) -> None:
+        bis = float(vorher.get("zuletzt") or 0)
+        kernel: list[str] = []
+        if vorher.get("boot") and vorher.get("boot") != self._boot:
+            # Anderer Boot: Kernel-Log von damals gibt es nur dauerhaft.
+            if self._journal_dauerhaft:
+                kernel = absturz.journal("-b", "-1")
+        else:
+            kernel = absturz.journal(f"--since=@{bis - 120:.0f}", f"--until=@{bis + 120:.0f}")
+        info = absturz.einordnen(vorher, self._boot, kernel, segfault)
+        info["zeit"] = bis
+        info["kernel"] = kernel[-40:]
+        info["log"] = self._log_vorher
+        info["dump"] = (absturz.letzte_zeilen(self._ordner / "absturz_vorher.txt", 60)
+                        if segfault and self._ordner else [])
+        self._vorher_info = info
+
+        tun = list(info["tun"])
+        if not self._journal_dauerhaft:
+            tun.append("Journal dauerhaft machen, damit das Kernel-Log einen Neustart überlebt: "
+                       "`sudo mkdir -p /var/log/journal/$(cat /etc/machine-id) && "
+                       "sudo systemd-tmpfiles --create --prefix /var/log/journal && "
+                       "sudo systemctl restart systemd-journald`")
+        schwere = "warnung" if info["art"] == "prozess_weg" else "kritisch"
+        self._ereignis("absturz", schwere, f"Voriger Lauf: {info['titel']}", bis or None)
+        self._vorfall("absturz_vorher", schwere, info["titel"], info["was"], tun)
+
+    def _sighup_einrichten(self) -> None:
+        """Geschlossenes SSH-Fenster: sauber herunterfahren statt sofort sterben.
+
+        Ohne Handler beendet SIGHUP den Prozess hart -- ohne Motoren-Stopp
+        und ohne Spur. So wird daraus ein normales Herunterfahren (SIGTERM,
+        das uvicorn sauber abwickelt), und das Laufprotokoll nennt den Grund.
+        """
+        if not hasattr(signal, "SIGHUP") or threading.current_thread() is not threading.main_thread():
+            return
+        try:
+            if signal.getsignal(signal.SIGHUP) == signal.SIG_IGN:
+                return  # nohup/tmux: SIGHUP soll ignoriert bleiben
+            signal.signal(signal.SIGHUP, self._bei_sighup)
+        except (ValueError, OSError):
+            pass
+
+    def _bei_sighup(self, signum, frame) -> None:
+        log.warning("SIGHUP: Terminal/SSH-Fenster geschlossen -- Server fährt herunter. "
+                    "Tipp: in tmux starten.")
+        if self._laeufe is not None:
+            self._laeufe.beenden("SIGHUP (Terminal/SSH geschlossen)")
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    def _thread_fehler(self, args) -> None:
+        if args.exc_type is SystemExit:
+            return
+        name = args.thread.name if args.thread else "?"
+        log.error("Unbehandelter Fehler im Thread %s", name,
+                  exc_info=(args.exc_type, args.exc_value, args.exc_traceback))
+        self._ereignis("absturz", "kritisch", f"Thread „{name}“ abgestürzt: {args.exc_value!r}"[:200])
+
+    def task_ueberwachen(self, task, name: str, endlos: bool = True) -> None:
+        """Meldet, wenn eine Hintergrundaufgabe des Servers unerwartet endet.
+
+        Bisher starb z. B. die Statusschleife still -- die App zeigte dann
+        eingefrorene Werte, und es sah aus wie ein Absturz.
+        """
+        def fertig(t) -> None:
+            if t.cancelled() or self._beendet:
+                return
+            exc = t.exception()
+            if exc is None and not endlos:
+                return  # darf fertig werden (z. B. Einmessen beim Start)
+            if exc is not None:
+                log.error("Hintergrundaufgabe %s abgestürzt", name,
+                          exc_info=(type(exc), exc, exc.__traceback__))
+                text = f"{type(exc).__name__}: {exc}"[:200]
+            else:
+                log.error("Hintergrundaufgabe %s hat sich unerwartet beendet", name)
+                text = "ohne Fehler beendet"
+            self._ereignis("absturz", "kritisch", f"Aufgabe „{name}“ beendet ({text})")
+            self._vorfall(
+                f"task_{name}", "kritisch", f"Server-Teil „{name}“ läuft nicht mehr",
+                f"Die Hintergrundaufgabe „{name}“ ist beendet ({text}). Das ist ein "
+                "Fehler im Code; der Rest des Servers läuft weiter.",
+                ["Server neu starten.", "Fehlertext aus dem Log ans Team geben."],
+            )
+        task.add_done_callback(fertig)
+
+    def loop_fehler(self, loop, kontext: dict) -> None:
+        """Ausnahme-Handler der Ereignisschleife: ins Log und in die Zeitleiste."""
+        loop.default_exception_handler(kontext)
+        exc = kontext.get("exception")
+        text = kontext.get("message", "")
+        if exc is not None:
+            text += f": {type(exc).__name__}: {exc}"
+        self._ereignis("absturz", "warnung", f"Fehler in der Ereignisschleife: {text}"[:200])
+
+    def puls(self, verspaetung: float) -> None:
+        """Lebenszeichen der Ereignisschleife, alle DIAGNOSE_PULS_S aufgerufen."""
+        self._puls_mono = time.monotonic()
+        self._puls_thread = threading.get_ident()
+        self._puls_max = max(self._puls_max, verspaetung)
+        if self._blockiert_gemeldet:
+            self._blockiert_gemeldet = False
+            self._ereignis("haenger", "warnung", "Ereignisschleife läuft wieder")
+        if verspaetung > config.DIAGNOSE_HAENGER_S:
+            self._haenger += 1
+            self._ereignis("haenger", "warnung",
+                           f"Server hing {verspaetung:.1f} s (reagierte in der Zeit nicht)")
+            self._vorfall(
+                "haenger", "warnung", "Server reagierte zeitweise nicht",
+                f"Die Ereignisschleife kam {verspaetung:.1f} s zu spät. Solange reagiert "
+                "der Server auf nichts -- auch nicht auf den Not-Stopp (der Watchdog "
+                "hält die Motoren trotzdem an).",
+                ["Auf hohe CPU-Last oder Installation achten (Messwerte).",
+                 "Häufen sich die Hänger, Log ans Team geben."],
+            )
+
+    def puls_aus(self) -> None:
+        self._puls_mono = None
+
+    def sauber_beendet(self, grund: str = "beendet") -> None:
+        self._beendet = True
+        self.puls_aus()
+        if self._laeufe is not None:
+            self._laeufe.beenden(grund)
+
+    def _blockade_pruefen(self, mono: float) -> None:
+        """Steht die Ereignisschleife, aufschreiben, wo sie hängt."""
+        if self._puls_mono is None or self._blockiert_gemeldet:
+            return
+        dauer = mono - self._puls_mono
+        if dauer < config.DIAGNOSE_BLOCKIERT_S:
+            return
+        self._blockiert_gemeldet = True
+        rahmen = sys._current_frames().get(self._puls_thread or -1)
+        stapel = traceback.format_stack(rahmen) if rahmen is not None else ["(nicht lesbar)"]
+        self._blockiert = {"zeit": time.time(), "dauer_s": round(dauer, 1),
+                           "stapel": "".join(stapel[-12:])}
+        log.error("Ereignisschleife steht seit %.1f s, sie hängt hier:\n%s",
+                  dauer, self._blockiert["stapel"])
+        if self._ordner is not None:
+            try:
+                (self._ordner / "blockiert.txt").write_text(
+                    time.strftime("%Y-%m-%d %H:%M:%S") + f"  steht seit {dauer:.1f} s\n"
+                    + "".join(stapel), encoding="utf-8")
+            except OSError:
+                pass
+        self._ereignis("haenger", "kritisch", f"Server steht seit {dauer:.0f} s")
+        self._vorfall(
+            "blockiert", "kritisch", "Server steht (Ereignisschleife blockiert)",
+            f"Seit {dauer:.0f} s kommt die Ereignisschleife nicht mehr dran. Von außen "
+            "sieht das aus wie ein Absturz: Die App bekommt keine Werte mehr. Wo sie "
+            "hängt, steht unter „Abstürze & Hänger“ (Stapel) und in blockiert.txt.",
+            ["Stapel ansehen: Welche Datei steht ganz unten?",
+             "Bericht kopieren und ans Team geben."],
+        )
+
+    def _speicher_pruefen(self) -> None:
+        werte = absturz.speicher()
+        self._speicher = werte
+        mb = werte.get("server_mb")
+        if mb is None:
+            return
+        self._speicher_verlauf.append((round(time.time(), 1), mb))
+        if self._im_anlauf():
+            return
+        if self._speicher_basis is None:
+            self._speicher_basis = mb
+        zuwachs = mb - self._speicher_basis
+        self._zustand(
+            "speicher_wachstum", zuwachs > config.DIAGNOSE_SPEICHER_WARN_MB, "warnung",
+            f"Server-Speicher wächst (+{zuwachs} MB)",
+            "Der Server belegt deutlich mehr Arbeitsspeicher als nach dem Start. "
+            "Wächst er weiter, beendet ihn irgendwann der Kernel.",
+            ["Verlauf unter „Abstürze & Hänger“ beobachten.", "Log und Werte ans Team geben."],
+        )
+        frei = werte.get("frei_mb")
+        self._zustand(
+            "speicher_knapp", frei is not None and frei < config.DIAGNOSE_SPEICHER_WARN_MB,
+            "kritisch", f"Arbeitsspeicher fast voll ({frei} MB frei)",
+            "Ist der Speicher voll, beendet der Kernel den größten Prozess -- meist den Server.",
+            ["Andere große Programme auf dem Pi beenden (`top`)."],
+        )
+        dateien = werte.get("dateien") or 0
+        self._zustand(
+            "dateien", dateien > config.DIAGNOSE_DATEIEN_WARN, "warnung",
+            f"Sehr viele offene Dateien ({dateien})",
+            "Der Server hält ungewöhnlich viele Dateien/Geräte offen -- vermutlich ein "
+            "Leck beim Neuverbinden. Irgendwann scheitert dann jedes Öffnen.",
+            ["`ls -l /proc/$(pgrep -f rosmaster_assist)/fd` ansehen.", "Server neu starten."],
+        )
+
+    def _absturz_status(self) -> dict:
+        jetzt = time.monotonic()
+        return {
+            "aktiv": self._ordner is not None,
+            "ordner": str(self._ordner) if self._ordner else None,
+            "boot": self._boot,
+            "journal_dauerhaft": self._journal_dauerhaft,
+            "vorher": self._vorher_info,
+            "laeufe": self._laeufe.liste() if self._laeufe else [],
+            "haenger": self._haenger,
+            "puls_max_s": round(self._puls_max, 2),
+            "puls_alter_s": round(jetzt - self._puls_mono, 1) if self._puls_mono else None,
+            "blockiert": self._blockiert,
+            "speicher": self._speicher,
+            "speicher_verlauf": [list(p) for p in list(self._speicher_verlauf)[::6]],
+            "usb_ports": dict(self._oc_ports_vorher),
+            "usb_ports_neu": dict(self._oc_ports_neu),
+            "usb_pro_min": self._mess.get("usb_ueberlast_pro_min"),
+        }
 
     # --- Probleme pflegen ---------------------------------------------------------
 
@@ -434,6 +742,7 @@ class Diagnose:
         if abs(cmd.omega) > 0.05:
             self._zuletzt_gedreht = mono
 
+        self._blockade_pruefen(mono)
         self._akku_pruefen(jetzt)
         self._usb_pruefen(mono)
         self._antrieb_pruefen()
@@ -508,6 +817,17 @@ class Diagnose:
         self._mess["usb_ueberlast_seit_serverstart"] = oc - self._oc_start
         neu = oc - (self._oc_vorher or 0)
         self._oc_vorher = oc
+
+        ports = usb_ueberlast_ports()
+        if self._oc_ports_vorher:
+            for port, wert in ports.items():
+                plus = wert - self._oc_ports_vorher.get(port, wert)
+                if plus > 0:
+                    self._oc_ports_neu[port] = self._oc_ports_neu.get(port, 0) + plus
+        self._oc_ports_vorher = ports
+        self._oc_verlauf.append((mono, max(neu, 0)))
+        pro_min = sum(n for t, n in self._oc_verlauf if mono - t <= 60.0)
+        self._mess["usb_ueberlast_pro_min"] = pro_min
         if neu <= 0:
             return
 
@@ -540,6 +860,32 @@ class Diagnose:
         self._vorfall("usb_ueberlast", "warnung", "USB-Überlast: Buchsen kurz abgeschaltet",
                       was, tun, anzahl=neu)
 
+        if pro_min >= config.USB_STURM_PRO_MIN and not (gedreht or gefahren):
+            betroffen = sorted(self._oc_ports_neu)
+            alle = len(betroffen) >= 3
+            self._vorfall(
+                "usb_sturm", "kritisch",
+                f"USB-Sturm: {pro_min} Überlasten pro Minute im Stand",
+                f"Die USB-Buchsen des Pi schalten im Sekundentakt ab, obwohl der Roboter "
+                f"steht. Betroffen: {', '.join(betroffen) or '?'}"
+                + (" -- also alle Buchsen gleichzeitig, auch Geräte direkt am Pi. "
+                   if alle else ". ")
+                + "Das ist kein Fehler im Code und kein Anlaufstrom: Der gemeinsame "
+                "Stromschalter der Pi-Buchsen löst dauernd aus. Typische Ursachen: "
+                "Rückspeisung (Backfeed) vom selbstversorgten USB-Hub des Expansion "
+                "Boards in die 5 V des Pi, oder ein Kurzschluss bzw. defektes Gerät/"
+                "Kabel (am 29.10. meldete sich zugleich der Lidar nicht an). Board, "
+                "Lidar, Kamera, Mikrofon fallen dabei immer wieder aus -- das wirkt "
+                "wie „random Abstürze“.",
+                ["USB-Kabel vom Board zum Pi abziehen: Hört der Sturm auf (Zähler unter "
+                 "„Abstürze & Hänger“)? Dann liegt es am Board/Hub.",
+                 "Geräte einzeln wieder anstecken, den Lidar zuletzt -- wann kommt der Sturm zurück?",
+                 "Lidar-Kabel und -Adapter tauschen.",
+                 "Hub ohne Rückspeisung verwenden bzw. die 5-V-Ader im Kabel Board→Pi trennen.",
+                 "Pi und Board an gemeinsame Masse und saubere Versorgung."],
+                anzahl=neu,
+            )
+
     def _im_anlauf(self) -> bool:
         """Kurz nach dem Start liefern Sensoren noch nichts -- kein Fehlalarm."""
         return time.monotonic() - self._start_mono < config.DIAGNOSE_ANLAUF_S
@@ -558,7 +904,9 @@ class Diagnose:
             "Der Server versucht laufend, sich neu zu verbinden; solange fährt "
             "der Roboter nicht.",
             ["Ist der Roboter eingeschaltet (Schalter am Akku)?",
-             "Akku prüfen -- häufigste Ursache.",
+             "Stromversorgung prüfen (Akku geladen bzw. Netzteil an) -- häufigste Ursache.",
+             "Viele USB-Überlasten in der Zeitleiste? Dann fällt das Board mit "
+             "aus -- siehe „USB-Sturm“.",
              "USB-Kabel zwischen Pi und Board kontrollieren.",
              "Läuft noch ein anderes Programm am Board (ROS2-Knoten)? "
              "Siehe AGENTS.md „Am Roboter“."],
@@ -718,6 +1066,9 @@ class Diagnose:
         )
         self._drossel_pruefen(roh)
         self._kernel_log_lesen()
+        self._speicher_pruefen()
+        if self._laeufe is not None:
+            self._laeufe.lebenszeichen()
 
     def _drossel_pruefen(self, roh: int | None) -> None:
         if roh is None:
@@ -826,6 +1177,48 @@ class Diagnose:
             # Der Zähler erfasst die Überlast schon -- hier nur fürs Protokoll
             # der Zeitleiste, damit man die Portnummer sieht.
             self._ereignis("usb", "info", f"Kernel: {text[:120]}", zeit)
+        else:
+            self._kernel_absturz(zeit, text)
+
+    def _kernel_absturz(self, zeit: float, text: str) -> None:
+        """Kernel-Meldungen, die einen Absturz oder Hänger erklären."""
+        t = text.lower()
+        if "out of memory" in t or "oom-kill" in t or "killed process" in t:
+            self._ereignis("absturz", "kritisch", f"Kernel: Speicher voll ({text[:100]})", zeit)
+            self._vorfall("kernel_oom", "kritisch", "Kernel hat wegen Speichermangel Prozesse beendet",
+                          "Der Arbeitsspeicher war voll; der Kernel beendet dann den größten Prozess.",
+                          ["Speicherwerte unter „Abstürze & Hänger“ ansehen."], zeit=zeit)
+        elif "segfault" in t and ("python" in t or "uvicorn" in t):
+            self._ereignis("absturz", "kritisch", f"Kernel: Segfault ({text[:100]})", zeit)
+        elif "soft lockup" in t or "hard lockup" in t or "blocked for more than" in t \
+                or ("rcu" in t and "stall" in t):
+            self._ereignis("absturz", "kritisch", f"Kernel hängt: {text[:100]}", zeit)
+            self._vorfall("kernel_haenger", "kritisch", "Der Kernel des Pi hing",
+                          "Der Kernel meldet, dass ein Teil des Systems länger blockiert war. "
+                          "Das kommt von Treibern bzw. Hardware, nicht vom Python-Code.",
+                          ["Kernel-Log unten ansehen.", "Ans Team geben."], zeit=zeit)
+        elif "hc died" in t or ("xhci" in t and "not responding" in t):
+            self._ereignis("usb", "kritisch", f"USB-Controller ausgefallen: {text[:100]}", zeit)
+            self._vorfall("usb_controller", "kritisch", "USB-Controller des Pi ausgefallen",
+                          "Der Kernel hat einen USB-Controller aufgegeben. Bis zum Neustart "
+                          "bleiben alle Geräte daran weg.",
+                          ["Pi neu starten.", "Siehe „USB-Sturm“: Stromversorgung der Buchsen prüfen."],
+                          zeit=zeit)
+        elif "cannot reset" in t or "device descriptor read" in t or "unable to enumerate" in t:
+            port = text.split(":", 1)[0]
+            # Kommt oft dutzendfach -- in der Zeitleiste je Port nur alle 30 s.
+            if zeit - self._anmeldung_zuletzt.get(port, 0.0) > 30.0:
+                self._anmeldung_zuletzt[port] = zeit
+                self._ereignis("usb", "warnung", f"USB-Gerät lässt sich nicht anmelden ({port})", zeit)
+            self._vorfall("usb_anmeldung", "warnung", "Ein USB-Gerät lässt sich nicht anmelden",
+                          f"Der Kernel bekommt von {port} keine gültige Antwort. Am 29.10. war "
+                          "das der Lidar-Anschluss am Board-Hub (/dev/rplidar fehlte).",
+                          ["Gerät und Kabel an diesem Port tauschen.",
+                           "Tritt es mit vielen Überlasten auf, siehe „USB-Sturm“."], zeit=zeit)
+        elif "hailo" in t and ("error" in t or "fail" in t or "timeout" in t):
+            self._ereignis("pi", "warnung", f"Hailo: {text[:110]}", zeit)
+        elif "pcie" in t and ("error" in t or "link down" in t):
+            self._ereignis("pi", "warnung", f"PCIe: {text[:110]}", zeit)
 
     # --- Abfragen -------------------------------------------------------------------
 
@@ -869,6 +1262,7 @@ class Diagnose:
                 "server_laufzeit_s": round(jetzt - self._gestartet),
             },
             "geraete": self._geraete(mess),
+            "absturz": self._absturz_status(),
             "ereignisse": ereignisse,
             "akku_verlauf": verlauf,
             "schwellen": {

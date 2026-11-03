@@ -4,6 +4,8 @@ Alle Werte, die man beim Ausprobieren verstellen will, stehen hier -- nicht
 verstreut im Code. Wer am Fahrverhalten schraubt, muss nur diese Datei öffnen.
 """
 
+from pathlib import Path
+
 # --- Serielle Verbindung zum Expansion Board ---------------------------------
 
 # Je nach Image heißt die Schnittstelle anders. Welche bei euch stimmt, zeigt
@@ -559,6 +561,47 @@ DIAGNOSE_AKKU_PUNKTE = 1800
 # Beim Start so weit im Kernel-Log zurückschauen (USB-Abmeldungen, die vor
 # dem Serverstart passiert sind, z. B. beim Booten).
 DIAGNOSE_KERNEL_RUECKBLICK_S = 3600.0
+
+# --- Absturzerfassung (seit 29.10.) ---
+# "Random Abstürze" ließen sich bisher nicht zuordnen: War es der Server
+# (Fehler, Speicher, SSH zu), der ganze Pi (Reset, Strom) oder nur ein
+# Hänger? Dafür schreibt die Diagnose in diesen Ordner mit, was ein
+# Absturz überlebt: Laufprotokoll, Server-Log, Stack-Dumps.
+DIAGNOSE_ORDNER = Path.home() / ".rosmaster" / "diagnose"
+
+# So viele Serverläufe behält das Laufprotokoll (laeufe.json).
+DIAGNOSE_LAEUFE = 20
+
+# Größe einer Server-Logdatei; zwei alte Dateien bleiben zusätzlich liegen.
+DIAGNOSE_LOGDATEI_BYTES = 2_000_000
+
+# Puls der Ereignisschleife: Alle DIAGNOSE_PULS_S schaut der Server nach, wie
+# pünktlich er geweckt wurde. Kommt er mehr als DIAGNOSE_HAENGER_S zu spät,
+# hat etwas die Schleife blockiert (dann reagiert auch der Not-Stopp
+# nicht). Bleibt der Puls DIAGNOSE_BLOCKIERT_S ganz aus, schreibt die
+# Diagnose auf, woran die Schleife gerade hängt.
+DIAGNOSE_PULS_S = 0.5
+DIAGNOSE_HAENGER_S = 1.0
+DIAGNOSE_BLOCKIERT_S = 3.0
+
+# Ab hier warnt die Diagnose: wenig freier Arbeitsspeicher (der Kernel
+# beendet sonst den größten Prozess -- meist den Server) und zu viele offene
+# Dateien (ein Leck, das irgendwann jedes Öffnen scheitern lässt).
+DIAGNOSE_SPEICHER_WARN_MB = 200
+DIAGNOSE_DATEIEN_WARN = 800
+
+# Ein hängender Browser darf die Statusmeldungen an alle anderen nicht
+# aufhalten: Wer nach so vielen Sekunden nichts angenommen hat, fliegt raus.
+WS_SENDE_TIMEOUT_S = 2.0
+
+# Hintergrundschleifen fangen Fehler ab und laufen weiter. Damit ein Fehler,
+# der jeden Takt kommt, nicht das Log flutet, steht er höchstens so oft drin.
+SCHLEIFENFEHLER_LOG_S = 10.0
+
+# USB-Sturm: So viele Überlast-Meldungen pro Minute *im Stand* sind kein
+# Anlaufstrom mehr, sondern ein Dauerfehler an der Stromversorgung der
+# USB-Buchsen. Am 29.10. waren es im Leerlauf 300-400 pro Minute.
+USB_STURM_PRO_MIN = 20
 
 # --- Musik ("MUKKE") ----------------------------------------------------------------
 
