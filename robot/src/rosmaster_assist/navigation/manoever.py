@@ -109,6 +109,8 @@ class Manoever:
         self._wert = 0.0
         self._text = ""
         self.erfolgreich = False
+        self.ansage: str | None = None  # was er sagt, wenn es nicht geklappt hat
+        self._dreh_seit: float | None = None  # seit wann (aus dem Stand) gedreht wird
         self.beendet = 0  # zählt jedes Ende von selbst (für die Meldung im Server)
 
         # Lidar-Ortung während des Befehls, Bezug ist die Lage beim Start.
@@ -158,6 +160,7 @@ class Manoever:
         self._art, self._wert = art, wert
         self._grund = None
         self.erfolgreich = False
+        self.ansage = None
         self._text = f"{beschreiben(art, wert)}: startet"
         self._task = asyncio.create_task(self._fahren(art, wert))
         return None
@@ -205,9 +208,10 @@ class Manoever:
             self._watchdog.stop()
             scan = await self._aufnahme_nach(time.monotonic() + config.MANOEVER_RUHE_S)
             if scan is None:
-                return self._ende("keine frische Lidar-Aufnahme")
+                return self._ende("keine frische Lidar-Aufnahme",
+                                  "Mein Lidar sieht gerade nichts, ich fahre lieber nicht.")
             if art == DREHEN and scan.min_abstand(0.0, 180.0) < config.MANOEVER_DREH_FREI_M:
-                return self._ende("zum Drehen zu wenig Platz")
+                return self._ende("zum Drehen zu wenig Platz", "Zum Drehen ist es mir hier zu eng.")
             self._pose = (0.0, 0.0, 0.0)
             self._bezug = _ausduennen(scan.punkte(), config.MANOEVER_MAX_PUNKTE)
             self._bezug_pose = self._pose
@@ -227,7 +231,8 @@ class Manoever:
                     if await asyncio.to_thread(self._abgleichen, scan):
                         erkannt = time.monotonic()
                 if time.monotonic() - erkannt > config.MANOEVER_BLIND_S:
-                    return self._ende("Lidar erkennt die Umgebung nicht wieder -- angehalten")
+                    return self._ende("Lidar erkennt die Umgebung nicht wieder -- angehalten",
+                                      "Ich habe die Orientierung verloren und angehalten.")
 
                 ex, ey, eth = self._fehler(ziel)
                 if self._erreicht(art, ex, ey, eth, config.MANOEVER_ZIEL_ANTEIL):
@@ -245,19 +250,22 @@ class Manoever:
                         return self._ende(f"{beschreibung} erledigt ({self._rest(art, ex, ey, eth)})")
                     nachgebessert += 1
                     if nachgebessert > config.MANOEVER_NACHBESSERN:
-                        return self._ende(f"{beschreibung} fast erledigt ({self._rest(art, ex, ey, eth)})")
+                        return self._ende(f"{beschreibung} fast erledigt ({self._rest(art, ex, ey, eth)})",
+                                          self._daneben(art, ex, ey, eth))
                     log.info("Fahrbefehl: im Stand gemessen noch %s -- bessere nach",
                              self._rest(art, ex, ey, eth))
                     erkannt = time.monotonic()
                     continue
 
                 if time.monotonic() > frist:
-                    return self._ende(f"Zeit abgelaufen, noch {self._rest(art, ex, ey, eth)}")
+                    return self._ende(f"Zeit abgelaufen, noch {self._rest(art, ex, ey, eth)}",
+                                      "Das hat zu lange gedauert, ich habe aufgehört.")
 
                 befehl = self._befehl(art, ex, ey, eth)
                 hindernis = self._hindernis(art, befehl)
                 if hindernis is not None:
-                    return self._ende(hindernis)
+                    return self._ende(hindernis, "Mir ist beim Drehen etwas zu nah, ich habe angehalten."
+                                      if art == DREHEN else "Da ist etwas im Weg, ich habe angehalten.")
                 self._text = f"{beschreibung}: noch {self._rest(art, ex, ey, eth)}"
                 self._watchdog.submit(befehl)
                 await asyncio.sleep(takt)
@@ -271,12 +279,22 @@ class Manoever:
             self.beendet += 1
             log.exception("Fahrbefehl abgebrochen")
 
-    def _ende(self, grund: str) -> None:
+    def _ende(self, grund: str, ansage: str | None = None) -> None:
+        """Befehl beenden. ``ansage``: was er laut sagt, wenn es nicht geklappt
+        hat -- per Sprache gestartet schaut keiner auf die App, und ein
+        bloßes "hat nicht geklappt" lässt raten, ob man etwas wegräumen muss."""
         self._watchdog.stop()
         self._grund = grund
         self._text = grund
+        self.ansage = ansage
         self.beendet += 1
         (log.info if self.erfolgreich else log.warning)("Fahrbefehl: %s", grund)
+
+    @staticmethod
+    def _daneben(art: str, ex: float, ey: float, eth: float) -> str:
+        if art == DREHEN:
+            return f"Fast geschafft, ich liege {abs(math.degrees(eth)):.0f} Grad daneben."
+        return f"Fast geschafft, ich liege {math.hypot(ex, ey) * 100:.0f} Zentimeter daneben."
 
     async def _aufnahme_nach(self, zeitpunkt: float, frist_s: float = 2.0):
         """Erste Lidar-Aufnahme, die ganz nach ``zeitpunkt`` entstand."""
@@ -317,6 +335,17 @@ class Manoever:
         if dt <= 0:
             return
         vx, vy, w = self._geschwindigkeit()
+        # Aus dem Stand drehen die Motoren erst nach einer Weile wirklich
+        # (siehe MANOEVER_ANLAUF_S); bis dahin nicht mitzählen. Unterschätzen
+        # ist harmlos -- die nächste Lidar-Aufnahme korrigiert --, Überschätzen
+        # ließ Nachbesserungen ins Leere laufen.
+        if abs(w) < 1e-3:
+            self._dreh_seit = None
+        else:
+            if self._dreh_seit is None:
+                self._dreh_seit = jetzt
+            if jetzt - self._dreh_seit < config.MANOEVER_ANLAUF_S:
+                w = 0.0
         # In der Mitte des Schritts drehen: genauer bei Fahrt mit Drehung.
         halb = (0.0, 0.0, w * dt / 2.0)
         self._pose = _verknuepfen(_verknuepfen(_verknuepfen(self._pose, halb),

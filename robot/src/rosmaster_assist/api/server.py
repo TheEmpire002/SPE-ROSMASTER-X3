@@ -1422,7 +1422,7 @@ async def _status_loop(
                         f"Fahrbefehl: {manoever.letzter_grund}",
                     ))
                     if not manoever.erfolgreich and stimme is not None:
-                        stimme.sagen("Das hat nicht ganz geklappt.")
+                        stimme.sagen(manoever.ansage or "Das hat nicht ganz geklappt.")
 
             if hub.count:
                 autonomie = (

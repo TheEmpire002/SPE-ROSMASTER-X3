@@ -227,6 +227,12 @@ MANOEVER_DREH = 0.6           # rad/s höchstens, beim Drehen
 # Unter 0,4 rad/s laufen die Motoren am Boden nicht zuverlässig an (Erkunder).
 MANOEVER_MIN_DREH = 0.4
 MANOEVER_KP_W = 1.5           # (rad/s)/rad
+# So lange (s) nach dem Losdrehen aus dem Stand zählt die befohlene Drehung
+# noch nicht. Sonst hielt die Schätzung kleine Nachbesserungen (1-2°) schon
+# nach einem Takt für erledigt -- die Rampe gab da erst 0,3 rad/s aus, die
+# Motoren liefen nicht an, und das Lidar maß im Stand denselben Rest wieder
+# (Bodentest 03.11.: dreimal vergeblich, dann "fast erledigt").
+MANOEVER_ANLAUF_S = 0.25
 # Fertig, wenn Restweg und Restwinkel darunter liegen ...
 MANOEVER_TOLERANZ_M = 0.03
 MANOEVER_TOLERANZ_GRAD = 2.0
