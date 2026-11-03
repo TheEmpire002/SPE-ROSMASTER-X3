@@ -108,6 +108,49 @@ st = s.status()
 pruefe("Status vollständig", st["erkannt"] == 11 and st["weckwort"] == config.SPRACHE_WECKWORT, st)
 s.stop()
 
+# --- Genaue Fahrbefehle mit Zahl -----------------------------------------------------
+for text, erwartet in [
+    ("fahr zwei meter vor", ("vor", 2.0)),
+    ("fahre einen meter zurück", ("zurueck", 1.0)),
+    ("einen halben meter nach links", ("links", 0.5)),
+    ("fahr anderthalb meter nach rechts", ("rechts", 1.5)),
+    ("fahr zwanzig zentimeter vorwärts", ("vor", 0.2)),
+    ("fahr 1,5 m vor", ("vor", 1.5)),
+    ("dreh dich um neunzig grad", ("drehen", 90.0)),
+    ("dreh dich um neunzig grad nach rechts", ("drehen", -90.0)),
+    ("drehe dich um hundert achtzig grad", ("drehen", 180.0)),
+    ("dreh dich um dreihundertsechzig grad nach links", ("drehen", 360.0)),
+    ("dreh dich um", ("drehen", 180.0)),
+    ("dreh dich nach rechts", ("drehen", -90.0)),
+    ("fahr zwei meter vor bitte", None),       # ein Wort zu viel
+    ("zwei meter", None),                      # keine Richtung
+    ("dreh dich um neunzig", None),            # kein "Grad"
+]:
+    ergebnis = sp.manoever_erkennen(sp.normalisieren(text))
+    pruefe(f"Fahrbefehl {text!r} -> {erwartet}", ergebnis == erwartet, ergebnis)
+
+pruefe("mit Robi: Fahrbefehl", sp.erkennen("robi fahr zwei meter zurück") == (sp.MANOEVER, True))
+pruefe("'zwei meter zurück' ist kein Weggehen",
+       sp.erkennen("robbie zwei meter zurück")[0] == sp.MANOEVER)
+pruefe("ohne Robi: nichts", sp.erkennen("fahr zwei meter vor") == (None, False))
+pruefe("'fahr zurück' bleibt Weggehen", sp.erkennen("robi fahr zurück")[0] == sp.WEGGEHEN)
+pruefe("Fahrbefehl ist kein Wortsalat", sp.wortsalat("robi fahr zwei meter vor", sp.MANOEVER) is None)
+pruefe("Fahrbefehl mit doppeltem Robi ist Salat",
+       sp.wortsalat("robi fahr zwei meter vor robi", sp.MANOEVER) is not None)
+s = sp.Spracherkennung(mock=True)
+s.start()
+pruefe("Fahrbefehl gehört", s.hoeren("Robi, fahr zwei Meter vor") == sp.MANOEVER)
+abgeholt = s.befehle_abholen()
+pruefe("Fahrbefehl mit Richtung und Wert in der Schlange",
+       abgeholt and abgeholt[0].get("wie") == {"art": "vor", "wert": 2.0}, abgeholt)
+s.stop()
+saetze = sp._manoever_saetze()
+pruefe("Grammatik enthält Fahrbefehle", "fahr zwei meter vor" in saetze
+       and "dreh dich um neunzig grad nach rechts" in saetze, len(saetze))
+pruefe("jeder Grammatik-Satz wird verstanden",
+       all(sp.manoever_erkennen(sp.normalisieren(x)) is not None for x in saetze),
+       [x for x in saetze if sp.manoever_erkennen(sp.normalisieren(x)) is None][:3])
+
 # --- Grammatik gegen den Wortschatz des Modells ---------------------------------------
 with tempfile.TemporaryDirectory() as ordner:
     os.makedirs(os.path.join(ordner, "graph"))

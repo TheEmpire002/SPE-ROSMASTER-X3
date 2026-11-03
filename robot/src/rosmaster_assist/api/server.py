@@ -47,7 +47,8 @@ from ..protocol import (
     state_message,
     vitals_message,
 )
-from ..navigation import Erkunder, Hinderniserkennung, Homing, Localizer, Odometry
+from ..navigation import Erkunder, Hinderniserkennung, Homing, Localizer, Manoever, Odometry
+from ..navigation import manoever as mv
 from ..safety import CollisionGuard, SafetyWatchdog
 from ..sensors.camera import CameraService, create_cameras
 from ..sensors.lidar import LidarService, create_lidar
@@ -205,6 +206,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     personen_kamera = kameras.get(config.PERSON_CAMERA, camera)
     personen = Personenerkennung(personen_kamera)
     erkunder = Erkunder(watchdog, lidar, erkennung, personen)
+    manoever = Manoever(watchdog, driver, lidar)
     pose = Posenerkennung(personen_kamera, mock=use_mock_camera)
     mukke = Mukke()
     # Stimme und Musik teilen sich den Lautsprecher: Solange der Roboter
@@ -271,14 +273,14 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         status_task = asyncio.create_task(
             _status_loop(
                 hub, watchdog, driver, odometry, homing, localizer, guard,
-                erkunder, erkennung, lidar, personen, interaktion, stimme, sprache,
+                erkunder, erkennung, lidar, personen, interaktion, stimme, sprache, manoever,
             )
         )
         sprach_task = asyncio.create_task(_sprach_loop())
         odo_task = asyncio.create_task(_odometry_loop(watchdog, odometry))
         match_task = asyncio.create_task(_match_loop(localizer))
         hw_task = asyncio.create_task(
-            _hardware_loop(hub, watchdog, driver, homing, erkunder, interaktion)
+            _hardware_loop(hub, watchdog, driver, homing, erkunder, interaktion, manoever)
         )
         puls_task = asyncio.create_task(_puls_loop(diagnose))
         for task, name in [
@@ -306,6 +308,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             sprach_task.cancel()
             homing.abbrechen("Server wird beendet")
             erkunder.abbrechen("Server wird beendet")
+            manoever.abbrechen("Server wird beendet")
             interaktion.abbrechen("Server wird beendet")
             await watchdog.shutdown()
             personen.stop()
@@ -347,7 +350,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                 try:
                     reply = await _handle(
                         msg, watchdog, driver, hub, odometry, homing, localizer, guard,
-                        erkunder, interaktion, stimme, sprache, absender=ws,
+                        erkunder, interaktion, stimme, sprache, manoever=manoever, absender=ws,
                     )
                 except Exception:
                     # Früher trennte ein fehlerhafter Befehl die Verbindung --
@@ -368,6 +371,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                 log.warning("Kein Client mehr verbunden -- halte an")
                 homing.abbrechen("Verbindung verloren")
                 erkunder.abbrechen("Verbindung verloren")
+                manoever.abbrechen("Verbindung verloren")
                 interaktion.abbrechen("Verbindung verloren")
                 watchdog.stop()
 
@@ -604,6 +608,11 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         """Modus, verfolgte Person, letzte Geste und ob die Posenerkennung läuft."""
         return {**interaktion.zustand(), "pose": pose.status()}
 
+    @app.get("/manoever/status")
+    async def manoever_status():
+        """Genauer Fahrbefehl: was läuft, wie weit er laut Lidar ist, wie es endete."""
+        return {"verfuegbar": manoever.verfuegbar, **manoever.zustand()}
+
     @app.get("/interaktion/pose")
     async def interaktion_pose():
         """Erkannte Körperpunkte zum Einblenden über dem Kamerabild.
@@ -807,15 +816,15 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                     antwort_um = time.monotonic() + config.SPRACHE_WECK_ANTWORT_NACH_S
                     continue
                 try:
-                    await _sprachbefehl(eintrag["befehl"], eintrag["text"])
+                    await _sprachbefehl(eintrag["befehl"], eintrag["text"], eintrag.get("wie"))
                 except Exception:  # ein kaputter Befehl darf das Ohr nicht abschalten
                     log.exception("Sprachbefehl %s fehlgeschlagen", eintrag["befehl"])
 
-    async def _befehlen(typ: str) -> bool:
+    async def _befehlen(typ: str, **felder: Any) -> bool:
         """App-Befehl ausführen. False, wenn er mit einer Warnung abgelehnt wurde."""
         antwort = await _handle(
-            {"type": typ}, watchdog, driver, hub, odometry, homing, localizer, guard,
-            erkunder, interaktion, stimme, sprache,
+            {"type": typ, **felder}, watchdog, driver, hub, odometry, homing, localizer, guard,
+            erkunder, interaktion, stimme, sprache, manoever=manoever,
         )
         if antwort is None:
             return True
@@ -836,10 +845,11 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             return
         homing.abbrechen("Interaktion gestartet")
         erkunder.abbrechen("Interaktion gestartet")
+        manoever.abbrechen("Interaktion gestartet")
         if interaktion.start(modus):
             await hub.broadcast(alert_message("info", f"Interaktion an -- {text}"))
 
-    async def _sprachbefehl(befehl: str, text: str) -> None:
+    async def _sprachbefehl(befehl: str, text: str, wie: dict | None = None) -> None:
         await hub.broadcast(alert_message("info", f"Sprachbefehl: {text}"))
         if befehl == sp.STOPP:
             if interaktion.aktiv:
@@ -847,6 +857,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                 # soll danach gleich wieder gehen.
                 homing.abbrechen("Not-Stopp")
                 erkunder.abbrechen("Not-Stopp")
+                manoever.abbrechen("Not-Stopp")
                 interaktion.wechseln_zu(vh.BEREIT, "angehalten (per Sprache)")
                 watchdog.stop()
                 stimme.sagen("Okay, ich halte an.", vorrang=True)
@@ -863,9 +874,21 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                 stimme.sagen("Ja? Ich bin da.")
             else:
                 await _befehlen("interaction_start")
+        elif befehl == sp.MANOEVER and wie:
+            # "Robi, fahr zwei Meter vor" / "Robi, dreh dich um neunzig Grad"
+            typ = "turn" if wie["art"] == mv.DREHEN else "move"
+            felder = {"grad": wie["wert"]} if typ == "turn" else {"richtung": wie["art"], "meter": wie["wert"]}
+            if await _befehlen(typ, **felder) and manoever.aktiv:
+                if typ == "turn":
+                    stimme.sagen(f"Ich drehe mich um {abs(wie['wert']):g} Grad "
+                                 f"{'nach links' if wie['wert'] > 0 else 'nach rechts'}.")
+                else:
+                    stimme.sagen(f"Ich fahre {_meter_sagen(wie['wert'])} "
+                                 f"{mv._RICHTUNG_TEXT[wie['art']]}.")
         elif befehl == sp.AUS:
             homing.abbrechen("vom Nutzer beendet")
             erkunder.abbrechen("vom Nutzer beendet")
+            manoever.abbrechen("vom Nutzer beendet")
             await _befehlen("interaction_stop")
             stimme.sagen("Gute Nacht.")
         elif befehl == sp.NACH_HAUSE:
@@ -926,6 +949,17 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
 _lenker: dict[str, Any] = {"wer": None, "zeit": 0.0}
 
 
+def _meter_sagen(meter: float) -> str:
+    """Strecke so, wie man sie sagt ("einen halben Meter", "30 Zentimeter")."""
+    if abs(meter - 1.0) < 1e-6:
+        return "einen Meter"
+    if abs(meter - 0.5) < 1e-6:
+        return "einen halben Meter"
+    if meter < 1.0:
+        return f"{round(meter * 100)} Zentimeter"
+    return f"{meter:g} Meter".replace(".", ",")
+
+
 async def _handle(
     msg: dict[str, Any],
     watchdog: SafetyWatchdog,
@@ -939,6 +973,7 @@ async def _handle(
     interaktion: Interaktion | None = None,
     stimme: Stimme | None = None,
     sprache: Spracherkennung | None = None,
+    manoever: Manoever | None = None,
     absender: object | None = None,
 ) -> dict[str, Any] | None:
     """Eine eingehende Nachricht verarbeiten.
@@ -990,6 +1025,12 @@ async def _handle(
                 return None
             interaktion.abbrechen("von Hand übersteuert")
 
+        # Genauer Fahrbefehl ("2 Meter vor") ebenso.
+        if manoever is not None and manoever.aktiv:
+            if cmd.is_stop():
+                return None
+            manoever.abbrechen("von Hand übersteuert")
+
         erlaubt, hindernis = guard.pruefen(cmd)
         if hindernis is not None and guard.melden():
             await hub.broadcast(
@@ -1011,10 +1052,31 @@ async def _handle(
             erkunder.abbrechen("Not-Stopp")
         if interaktion is not None:
             interaktion.abbrechen("Not-Stopp")
+        if manoever is not None:
+            manoever.abbrechen("Not-Stopp")
         watchdog.stop()
         if stimme is not None:
             # Vorrang: alles, was noch in der Schlange stand, ist überholt.
             stimme.sagen("Halt.", vorrang=True)
+        return None
+
+    if kind in ("move", "turn"):
+        if manoever is None:
+            return alert_message("warning", "Genaue Fahrbefehle gehen hier nicht")
+        if kind == "turn":
+            art, wert = mv.DREHEN, msg.get("grad")
+        else:
+            art, wert = str(msg.get("richtung", mv.VOR)), msg.get("meter")
+        # Nur ein Programm lenkt: Heimfahrt, Erkunder und Interaktion weichen.
+        homing.abbrechen("Fahrbefehl gestartet")
+        if erkunder is not None:
+            erkunder.abbrechen("Fahrbefehl gestartet")
+        if interaktion is not None:
+            interaktion.abbrechen("Fahrbefehl gestartet")
+        fehler = manoever.start(art, wert)
+        if fehler is not None:
+            return alert_message("warning", fehler)
+        await hub.broadcast(alert_message("info", f"Fahrbefehl: {mv.beschreiben(art, float(wert))}"))
         return None
 
     if kind == "explore":
@@ -1025,6 +1087,8 @@ async def _handle(
         homing.abbrechen("autonomes Fahren gestartet")
         if interaktion is not None:
             interaktion.abbrechen("autonomes Fahren gestartet")
+        if manoever is not None:
+            manoever.abbrechen("autonomes Fahren gestartet")
         if erkunder.start():
             await hub.broadcast(alert_message("info", "Autonomes Fahren gestartet"))
         return None
@@ -1046,6 +1110,8 @@ async def _handle(
             homing.abbrechen("Interaktion gestartet")
             if erkunder is not None:
                 erkunder.abbrechen("Interaktion gestartet")
+            if manoever is not None:
+                manoever.abbrechen("Interaktion gestartet")
         if kind == "follow":
             war_aktiv = interaktion.aktiv
             if interaktion.folgen() and not war_aktiv:
@@ -1075,6 +1141,8 @@ async def _handle(
             erkunder.abbrechen("Heimfahrt gestartet")
         if interaktion is not None:
             interaktion.abbrechen("Heimfahrt gestartet")
+        if manoever is not None:
+            manoever.abbrechen("Heimfahrt gestartet")
         if homing.start():
             await hub.broadcast(
                 alert_message("info", f"Heimfahrt gestartet ({abstand:.2f} m)")
@@ -1093,6 +1161,8 @@ async def _handle(
             erkunder.abbrechen("Startpunkt wurde verschoben")
         if interaktion is not None:
             interaktion.abbrechen("Startpunkt wurde verschoben")
+        if manoever is not None:
+            manoever.abbrechen("Startpunkt wurde verschoben")
         # Nur in der Simulation vorhanden: dort muss auch die gedachte
         # Wirklichkeit auf den Startpunkt zurück, sonst stünde der Roboter
         # außerhalb des simulierten Raums.
@@ -1211,6 +1281,7 @@ async def _hardware_loop(
     homing: Homing,
     erkunder: Erkunder | None = None,
     interaktion: Interaktion | None = None,
+    manoever: Manoever | None = None,
 ) -> None:
     """Hält die Verbindung zum Antrieb am Leben.
 
@@ -1233,6 +1304,8 @@ async def _hardware_loop(
                 homing.abbrechen("Verbindung zum Antrieb verloren")
                 if erkunder is not None:
                     erkunder.abbrechen("Verbindung zum Antrieb verloren")
+                if manoever is not None:
+                    manoever.abbrechen("Verbindung zum Antrieb verloren")
                 if interaktion is not None:
                     # Nicht beenden, nur anhalten: Die Gestensteuerung bleibt
                     # an und ist nach dem Neuverbinden sofort wieder bereit.
@@ -1298,11 +1371,13 @@ async def _status_loop(
     interaktion: Interaktion | None = None,
     stimme: Stimme | None = None,
     sprache: Spracherkennung | None = None,
+    manoever: Manoever | None = None,
 ) -> None:
     """Schickt regelmäßig den Zustand an alle Clients."""
     zuletzt_aktiv = False
     zuletzt_erkundet = False
     zuletzt_interagiert = False
+    zuletzt_manoever = 0
     while True:
         await asyncio.sleep(config.STATUS_INTERVAL_S)
         try:
@@ -1334,6 +1409,20 @@ async def _status_loop(
                         alert_message("info", f"Interaktion beendet: {interaktion.letzter_grund}")
                     )
                 zuletzt_interagiert = interaktion.aktiv
+
+            # Genaue Fahrbefehle: Ende melden, und wenn es nicht geklappt
+            # hat, auch sagen (per Sprache gestartet, schaut keiner auf die App).
+            # Über den Zähler, nicht über "aktiv": "zu wenig Platz" ist
+            # schneller vorbei als ein Takt dieser Schleife.
+            if manoever is not None and manoever.beendet != zuletzt_manoever:
+                zuletzt_manoever = manoever.beendet
+                if manoever.letzter_grund:
+                    await hub.broadcast(alert_message(
+                        "info" if manoever.erfolgreich else "warning",
+                        f"Fahrbefehl: {manoever.letzter_grund}",
+                    ))
+                    if not manoever.erfolgreich and stimme is not None:
+                        stimme.sagen("Das hat nicht ganz geklappt.")
 
             if hub.count:
                 autonomie = (

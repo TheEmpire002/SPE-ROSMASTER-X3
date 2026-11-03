@@ -157,6 +157,8 @@ Reihenfolge:
 | `stop` | – | Sofort anhalten, Heimfahrt, autonomes Fahren und Interaktion abbrechen. | keine |
 | `explore` | – | Autonomes Fahren starten (siehe unten). Braucht den Lidar; bricht eine Heimfahrt ab. | `alert` an alle; ohne Lidar `alert` (warning) |
 | `explore_stop` | – | Autonomes Fahren beenden und anhalten. | `alert` an alle |
+| `move` | `richtung`: `"vor"` / `"zurueck"` / `"links"` / `"rechts"`, `meter` (0 < m ≤ 5) | Genau so weit fahren, links/rechts seitwärts (siehe „Genaue Fahrbefehle im Detail“). Braucht den Lidar; bricht Heimfahrt, autonomes Fahren und Interaktion ab. Abbrechen mit `stop` oder einer Fahreingabe ≠ 0. | `alert` an alle, am Ende `alert` mit Ergebnis (warning, wenn nicht geschafft); sonst `alert` (warning) |
+| `turn` | `grad` (+ = links, − = rechts, Betrag 1–720) | Auf der Stelle um genau diesen Winkel drehen. Sonst wie `move`. | wie `move` |
 | `home` | – | Selbstständig zum Startpunkt zurückfahren (siehe unten). | `alert` an alle |
 | `home_cancel` | – | Heimfahrt abbrechen und anhalten. | `alert` an alle |
 | `interaction_start` | – | Interaktionsmodus an: Der Roboter wartet auf Handzeichen (siehe „Interaktion im Detail“). Braucht Lidar und Posenerkennung; bricht Heimfahrt und autonomes Fahren ab. | `alert` an alle; sonst `alert` (warning) |
@@ -398,6 +400,35 @@ Musik-Lautstärke (`/mukke/volume`) ist ein Anteil davon.
 - `spricht` bleibt nach jedem Satz noch `STIMME_NACHLAUF_S` (0,4 s) wahr.
   Die Spracherkennung hört in dieser Zeit nicht zu.
 
+### Genaue Fahrbefehle im Detail
+
+`move` und `turn` fahren eine bestimmte Strecke oder drehen um einen
+bestimmten Winkel, und zwar wirklich: Gemessen wird mit dem Lidar, nicht
+nach Zeit oder Radumdrehungen (`navigation/manoever.py`).
+
+- Beim Start nimmt er im Stand eine Lidar-Aufnahme auf. Jede weitere wird
+  darauf gelegt (ICP); daraus folgt, wie weit er sich wirklich bewegt und
+  gedreht hat. Rutschende Mecanum-Räder und der unbrauchbare Gyro spielen
+  so keine Rolle. Räder und Fahrbefehl schätzen nur die Zeit zwischen zwei
+  Aufnahmen.
+- **Gerade fahren:** Der Regler hält neben dem Restweg auch die seitliche
+  Abweichung und die Blickrichtung bei null. Abweichungen gleicht er
+  seitwärts aus (Mecanum), statt zu lenken.
+- **Am Ende misst er im Stand nach** (im Fahren ist eine Lidar-Umdrehung
+  verzerrt) und bessert bis zu `MANOEVER_NACHBESSERN` Mal nach. Ziel:
+  `MANOEVER_TOLERANZ_M` (3 cm) und `MANOEVER_TOLERANZ_GRAD` (2°). In der
+  Simulation mit absichtlich rutschendem Antrieb lag er 1–2 cm und 1–2°
+  daneben.
+- Tempo `MANOEVER_SPEED` (0,2 m/s), drehen `MANOEVER_DREH` (0,6 rad/s).
+- **Sicherheit:** Er hält an, wenn in Fahrtrichtung etwas näher als
+  `EXPLORE_STOP_M` (0,4 m) kommt, beim Drehen, wenn ringsum etwas näher als
+  `MANOEVER_DREH_FREI_M` (0,3 m) ist, und wenn das Lidar die Umgebung
+  `MANOEVER_BLIND_S` (2 s) lang nicht wiedererkennt.
+- `GET /manoever/status`: `aktiv`, `art`, `wert`, `text` (Fortschritt),
+  `grund` (wie der letzte endete), `erfolgreich`, `gefahren_m`,
+  `gedreht_grad` (laut Lidar, gegenüber dem Start), `abgleiche`,
+  `fehlschlaege`.
+
 ### Sprachbefehle im Detail
 
 Der Roboter hört über das USB-Mikrofon zu (Vosk, offline). Befehle gelten
@@ -426,6 +457,7 @@ Befehl laufen erst ab, wenn er ausgeredet hat.
 | `beatbox` | „Robi, Beatbox“ | `POST /mukke/play` mit `SPRACHE_BEATBOX_URL` |
 | `start` | „Hallo Robi“ | `interaction_start` |
 | `aus` | „Robi, gute Nacht“ | `interaction_stop`, Heimfahrt/Erkunder abbrechen |
+| `manoever` | „Robi, fahr zwei Meter vor“, „Robi, einen halben Meter nach links“, „Robi, dreh dich um neunzig Grad nach rechts“, „Robi, dreh dich um“ (180°) | `move` bzw. `turn`; er sagt an, was er tut |
 
 - Ausgeführt wird über dieselben Wege wie die Befehle der App, mit
   denselben Prüfungen und Meldungen. Wird ein Befehl abgelehnt, geht die
@@ -767,6 +799,7 @@ Vorbild ist `navigation/homing.py`.
 | `navigation/odometry.py` | Positionsschätzung |
 | `navigation/localizer.py` | Lidar-Abgleich gegen die Startpunkt-Aufnahme |
 | `navigation/homing.py` | Heimfahrt |
+| `navigation/manoever.py` | genaue Fahrbefehle (`move`, `turn`), Lidar misst Strecke und Winkel |
 | `sensors/lidar.py` | Lidar auslesen (echt und simuliert) |
 | `sensors/camera.py` | Kamera (CSI, USB, Testbild) |
 | `drive/` | Motortreiber (echt und simuliert) |

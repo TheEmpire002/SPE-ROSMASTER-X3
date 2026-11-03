@@ -214,6 +214,53 @@ HOME_STOP_DISTANCE_M = 0.45
 # Wänden an, an denen man problemlos vorbeifährt.
 HOME_CONE_DEG = 35.0
 
+# --- Genaue Fahrbefehle ("2 Meter vor", "90 Grad drehen") -------------------------
+# Siehe navigation/manoever.py. Gemessen wird mit dem Lidar: Jede Aufnahme
+# wird auf eine vom Anfang gelegt, daraus folgt, wie weit er wirklich
+# gefahren bzw. gedreht ist. Räder und IMU liefern nur die Schätzung
+# zwischen zwei Aufnahmen (die IMU-Drehung ist am X3 unzuverlässig).
+
+MANOEVER_SPEED = 0.20         # m/s  höchstens, beim Fahren
+MANOEVER_MIN_SPEED = 0.05     # m/s  darunter laufen die Motoren nicht sicher an
+MANOEVER_KP_V = 1.2           # (m/s)/m  Tempo je Meter Restweg
+MANOEVER_DREH = 0.6           # rad/s höchstens, beim Drehen
+# Unter 0,4 rad/s laufen die Motoren am Boden nicht zuverlässig an (Erkunder).
+MANOEVER_MIN_DREH = 0.4
+MANOEVER_KP_W = 1.5           # (rad/s)/rad
+# Fertig, wenn Restweg und Restwinkel darunter liegen ...
+MANOEVER_TOLERANZ_M = 0.03
+MANOEVER_TOLERANZ_GRAD = 2.0
+# ... und das auch eine Lidar-Aufnahme bestätigt, die im Stand entstand:
+# Im Fahren ist eine Umdrehung des A1 (0,18 s) verzerrt. So oft wird
+# höchstens nachgebessert.
+MANOEVER_NACHBESSERN = 3
+MANOEVER_RUHE_S = 0.3         # nach dem Anhalten so lange warten, dann messen
+# Möglichst alles gegen die Aufnahme vom Start abgleichen: Das Lidar sieht
+# rundum, nach einer Drehung also dieselben Wände. Jeder Wechsel der
+# Bezugsaufnahme bringt etwas Fehler mit (in der Simulation ~0,2° je
+# Wechsel, mit Wechsel alle 25° lag er nach 360° um 3,4° daneben).
+# Gewechselt wird nur, wenn der Abgleich schlechter wird -- er fährt aus dem
+# Raum, die alten Wände verschwinden: mittlerer Restabstand größer als ...
+MANOEVER_NEUER_BEZUG_RESIDUUM_M = 0.06
+# ... oder weniger als dieser Anteil der Punkte findet einen Partner.
+MANOEVER_NEUER_BEZUG_PAARE = 0.6
+# Im Fahren bis auf diesen Teil der Toleranz heran -- sonst hielt er knapp
+# innerhalb an (2,9 von 3 cm), und jede Ungenauigkeit kippte es nach außen.
+# Nicht viel kleiner: Mit einem Drittel (1 cm) lag das Ziel in der
+# Messgenauigkeit, und er besserte dreimal vergeblich nach.
+MANOEVER_ZIEL_ANTEIL = 0.5
+# So lange (s) darf der Abgleich am Stück scheitern, dann hält er an
+# (fremde Umgebung, Lidar weg) -- blind fahren wäre ungenau und unsicher.
+MANOEVER_BLIND_S = 2.0
+# Grenzen für einen Befehl.
+MANOEVER_MAX_M = 5.0
+MANOEVER_MAX_GRAD = 720.0
+# Drehen nur, wenn ringsum so viel Platz ist (Ecken schwenken aus), m ab
+# Lidar-Mitte.
+MANOEVER_DREH_FREI_M = 0.30
+# Für den Abgleich höchstens so viele Lidar-Punkte (Rechenzeit am Pi).
+MANOEVER_MAX_PUNKTE = 300
+
 # --- Kamera ---------------------------------------------------------------------
 
 CAMERA_ENABLED = True

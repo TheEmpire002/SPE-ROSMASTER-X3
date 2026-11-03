@@ -875,3 +875,18 @@ a.einst-knopf { text-decoration: none; }
   color: var(--warn);
 }
 .mikro-hinweis a { color: inherit; }
+
+/* --- Genau fahren (genau.js) --- */
+.genau-zeile { margin-bottom: 0.8rem; }
+.genau-zeile label { display: block; font-size: 0.85rem; margin-bottom: 0.4rem; }
+.genau-zeile input {
+  width: 5.5rem;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.3rem 0.5rem;
+  margin: 0 0.3rem;
+}
+.genau-knoepfe { display: grid; grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr)); gap: 0.4rem; }

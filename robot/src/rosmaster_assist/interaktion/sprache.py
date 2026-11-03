@@ -67,6 +67,10 @@ ERKUNDEN = "erkunden"
 MUSIK_AUS = "musik_aus"
 LADADA = "ladada"
 BEATBOX = "beatbox"
+#: Genauer Fahrbefehl mit Zahl: "fahr zwei Meter vor", "dreh dich um neunzig
+#: Grad nach rechts". Steht nicht in BEFEHLE, weil er eine Zahl trägt; siehe
+#: manoever_erkennen(). Ausgeführt von navigation/manoever.py.
+MANOEVER = "manoever"
 #: Kein Befehl, nur "Robi" allein: Der Server antwortet ("Ja?"), damit man
 #: hört, dass er zuhört. Steht nur in der Schlange, nie in state.sprache.
 WECKEN = "wecken"
@@ -101,9 +105,144 @@ SIMULIERT = "simuliert"
 
 
 def normalisieren(text: str) -> list[str]:
-    """Kleinbuchstaben, ohne Satzzeichen, in Wörter zerlegt."""
+    """Kleinbuchstaben, ohne Satzzeichen, in Wörter zerlegt.
+
+    Ziffern bleiben (getippt: "fahr 1,5 m vor"); Vosk liefert Zahlwörter.
+    """
     text = str(text).lower().replace("ß", "ss").replace("zurueck", "zurück")
-    return re.findall(r"[a-zäöü]+", text)
+    return re.findall(r"\d+(?:[.,]\d+)?|[a-zäöü]+", text)
+
+
+# --- Genaue Fahrbefehle mit Zahl ----------------------------------------------------
+# Werte wie in navigation/manoever.py (VOR, ZURUECK, ... DREHEN).
+
+_ZAHLWOERTER = {
+    "ein": 1, "eins": 1, "einen": 1, "einem": 1, "zwei": 2, "drei": 3, "vier": 4,
+    "fünf": 5, "sechs": 6, "sieben": 7, "acht": 8, "neun": 9, "zehn": 10, "elf": 11,
+    "zwölf": 12, "fünfzehn": 15, "zwanzig": 20, "dreissig": 30, "vierzig": 40,
+    "fünfundvierzig": 45, "fünfzig": 50, "sechzig": 60, "siebzig": 70, "achtzig": 80,
+    "neunzig": 90, "hundert": 100, "einhundert": 100, "hundertzwanzig": 120,
+    "hundertfünfunddreissig": 135, "hundertachtzig": 180, "zweihundert": 200,
+    "zweihundertsiebzig": 270, "dreihundert": 300, "dreihundertsechzig": 360,
+}
+_BRUECHE = {"halben": 0.5, "halbe": 0.5, "anderthalb": 1.5, "eineinhalb": 1.5}
+
+#: Gesagte Fahrtrichtung -> Richtung in navigation/manoever.py.
+_FAHRTRICHTUNGEN = {
+    ("vor",): "vor", ("vorwärts",): "vor", ("nach", "vorne"): "vor", ("nach", "vorn"): "vor",
+    ("geradeaus",): "vor",
+    ("zurück",): "zurueck", ("rückwärts",): "zurueck", ("nach", "hinten"): "zurueck",
+    ("nach", "links"): "links", ("links",): "links",
+    ("nach", "rechts"): "rechts", ("rechts",): "rechts",
+}
+
+
+def _zahl(wort: str) -> float | None:
+    if wort[0].isdigit():
+        return float(wort.replace(",", "."))
+    wert = _ZAHLWOERTER.get(wort)
+    return None if wert is None else float(wert)
+
+
+def _zahlen_zusammenfassen(woerter: list[str]) -> list:
+    """Zahlwörter zu Zahlen: "hundert achtzig" -> 180.0, "einen halben" -> 0.5.
+
+    Vosk schreibt zusammengesetzte Zahlen mal zusammen, mal getrennt.
+    """
+    aus: list = []
+    i = 0
+    while i < len(woerter):
+        w = woerter[i]
+        if w in _BRUECHE:
+            if _BRUECHE[w] == 0.5 and aus and aus[-1] == 1.0:
+                aus[-1] = 0.5  # "einen halben"
+            else:
+                aus.append(_BRUECHE[w])
+            i += 1
+            continue
+        wert = _zahl(w)
+        if wert is None:
+            aus.append(w)
+            i += 1
+            continue
+        i += 1
+        while i < len(woerter):
+            weiter = _zahl(woerter[i])
+            if weiter is None:
+                break
+            if weiter == 100 and wert < 10:
+                wert *= 100  # "drei hundert"
+            elif weiter < wert:
+                wert += weiter  # "hundert achtzig"
+            else:
+                break
+            i += 1
+        aus.append(wert)
+    return aus
+
+
+def manoever_erkennen(woerter: list[str]) -> tuple[str, float] | None:
+    """(Richtung, Wert) für einen genauen Fahrbefehl, sonst None.
+
+    ``woerter`` ohne Weckwort. Der Satz muss ganz passen -- ein Wort zu viel,
+    und es ist keiner (so prüft das gleich mit, ob es Wortsalat ist):
+
+    * "[fahr|fahre] <Zahl> [meter|zentimeter] <vor|zurück|nach links|...>"
+    * "dreh dich um <Zahl> grad [nach links|nach rechts]" (ohne Seite: links)
+    * "dreh dich um" (180°), "dreh dich nach links|rechts" (90°)
+    """
+    t = _zahlen_zusammenfassen(woerter)
+    if t[:1] in (["fahr"], ["fahre"]):
+        t = t[1:]
+    if len(t) >= 2 and isinstance(t[0], float):
+        zahl, rest, einheit = t[0], t[1:], 1.0
+        if rest[:1] in (["meter"], ["metern"], ["m"]):
+            rest = rest[1:]
+        elif rest[:1] in (["zentimeter"], ["cm"]):
+            rest, einheit = rest[1:], 0.01
+        richtung = _FAHRTRICHTUNGEN.get(tuple(rest)) if all(isinstance(w, str) for w in rest) else None
+        if richtung is not None and zahl > 0:
+            return richtung, round(zahl * einheit, 3)
+    if t[:1] in (["dreh"], ["drehe"]):
+        rest = t[1:]
+        if rest[:1] == ["dich"]:
+            rest = rest[1:]
+        if rest == ["um"]:
+            return "drehen", 180.0
+        if rest in (["nach", "links"], ["links"]):
+            return "drehen", 90.0
+        if rest in (["nach", "rechts"], ["rechts"]):
+            return "drehen", -90.0
+        if rest[:1] == ["um"]:
+            rest = rest[1:]
+        if len(rest) >= 2 and isinstance(rest[0], float) and rest[1] == "grad" and rest[0] > 0:
+            seite = tuple(rest[2:])
+            if seite in ((), ("nach", "links"), ("links",)):
+                return "drehen", rest[0]
+            if seite in (("nach", "rechts"), ("rechts",)):
+                return "drehen", -rest[0]
+    return None
+
+
+def _manoever_saetze() -> list[str]:
+    """Die genauen Fahrbefehle für die Vosk-Grammatik.
+
+    Vosk erkennt nur Sätze, die es kennt -- also die gängigen Zahlen
+    ausschreiben. Getippt (App, --mock) geht jede Zahl.
+    """
+    strecken = ["einen meter", "zwei meter", "drei meter", "vier meter", "fünf meter",
+                "einen halben meter", "anderthalb meter", "zwanzig zentimeter",
+                "fünfzig zentimeter"]
+    richtungen = ["vor", "vorwärts", "nach vorne", "zurück", "rückwärts", "nach hinten",
+                  "nach links", "nach rechts"]
+    saetze = [f"{verb}{s} {r}" for verb in ("fahr ", "fahre ", "") for s in strecken for r in richtungen]
+    # Wie im Modell geschrieben (ß); erkannt wird über normalisieren() mit ss.
+    winkel = ["dreißig", "fünfundvierzig", "sechzig", "neunzig", "hundertachtzig",
+              "hundert achtzig", "dreihundertsechzig", "dreihundert sechzig"]
+    for dreh in ("dreh dich", "drehe dich"):
+        saetze += [f"{dreh} um", f"{dreh} nach links", f"{dreh} nach rechts"]
+        saetze += [f"{dreh} um {w} grad{s}" for w in winkel for s in ("", " nach links", " nach rechts")]
+    return saetze
 
 
 def _weckwoerter() -> set[str]:
@@ -125,6 +264,10 @@ def erkennen(text: str, geweckt: bool = False) -> tuple[str | None, bool]:
     weck = _weckwoerter()
     weckwort = any(w in weck for w in woerter)
     rest = [w for w in woerter if w not in weck]
+    # Vor den festen Befehlen: "fahr zwei meter zurück" ist kein Weggehen.
+    # Ein genauer Fahrbefehl passt nur als ganzer Satz, Stopp steckt nie darin.
+    if rest and manoever_erkennen(rest) is not None:
+        return (MANOEVER if weckwort or geweckt else None), weckwort
     for befehl, wendungen in BEFEHLE.items():
         if not any(_enthaelt(rest, w.replace("ß", "ss").split()) for w in wendungen):
             continue
@@ -147,6 +290,9 @@ def wortsalat(text: str, befehl: str) -> str | None:
     rest = [w for w in woerter if w not in weck]
     if len(woerter) - len(rest) > 1:
         return "Weckwort mehrfach"
+    if befehl == MANOEVER:
+        # Passt nur als ganzer Satz, also schon geprüft.
+        return None if manoever_erkennen(rest) is not None else "kein ganzer Fahrbefehl"
     wendungen = [w.replace("ß", "ss").split() for w in BEFEHLE.get(befehl, ())]
     laengste = max((len(w) for w in wendungen if _enthaelt(rest, w)), default=0)
     zusatz = len(rest) - laengste
@@ -372,7 +518,13 @@ class Spracherkennung:
                 self._weck_bis = 0.0  # verbraucht; der nächste Befehl braucht wieder "Robi"
                 self._befehl, self._befehl_zeit = befehl, jetzt
                 self._erkannt += 1
-                self._befehle.append({"befehl": befehl, "text": text})
+                eintrag = {"befehl": befehl, "text": text}
+                if befehl == MANOEVER:
+                    art, wert = manoever_erkennen(
+                        [w for w in normalisieren(text) if w not in _weckwoerter()]
+                    )
+                    eintrag["wie"] = {"art": art, "wert": wert}
+                self._befehle.append(eintrag)
             elif weckwort:
                 self._weck_bis = jetzt + config.SPRACHE_WECK_FENSTER_S
                 if not war_geweckt:
@@ -778,6 +930,9 @@ class Spracherkennung:
         else:
             log.info("Spracherkennung: Weckwort als %s", ", ".join(weck))
         wendungen = [w for ws in BEFEHLE.values() for w in ws if geht(w)]
+        fahrbefehle = [s for s in _manoever_saetze() if geht(s)]
+        log.info("Spracherkennung: %d genaue Fahrbefehle in der Grammatik", len(fahrbefehle))
+        wendungen += fahrbefehle
         saetze = weck + wendungen
         # Name vor und nach dem Befehl als ganze Sätze: so passt Vosk das
         # Gesprochene an einen der erlaubten Sätze an, statt Wortsalat zu bauen.

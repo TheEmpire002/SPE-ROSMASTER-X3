@@ -436,6 +436,28 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Ergebnis:** Am echten Lautsprecher: Testton über die Durchsage abgespielt, Spracherkennung hört so lange weg, keine neue Over-Current-Meldung. Mit einem zweiten Server (Simulation): HTTP auf 8100 und HTTPS auf 8443 laufen gleichzeitig, das Zertifikat wurde erzeugt, die Durchsage kommt über `wss://` an, Strg+C beendet sauber. `test_stimme.py` mit neuen Prüfungen: Die Durchsage hält „spricht“, endet mit dem Ende, nach einer Pause und durch einen Stopp. Gefunden und behoben: War der Lautsprecher belegt, hätte jedes Tonpaket ein neues aplay gestartet. Jetzt wartet der Server 2 s und meldet es der App.
 - **Offen:** Im Browser auf Laptop und Handy ausprobieren (Zertifikatswarnung, Verzögerung, Lautstärke).
 
+### 03.11.2026 – Genaue Fahrbefehle: „2 Meter vor“, „90 Grad drehen“
+- **Was:** Neue Befehle, die eine Strecke oder einen Winkel genau fahren:
+  - App: Panel „Genau fahren“ (Strecke bzw. Winkel eingeben, Richtung wählen), Nachrichten `move` und `turn`.
+  - Sprache: „Robi, fahr zwei Meter vor“, „Robi, einen halben Meter nach links“, „Robi, dreh dich um neunzig Grad nach rechts“, „Robi, dreh dich um“. Er sagt an, was er tut, und meldet sich, wenn es nicht geklappt hat.
+  - Neues Modul `navigation/manoever.py`.
+- **Wie:**
+  - Das Lidar misst: Jede Aufnahme wird auf die vom Start gelegt (ICP), daraus folgt, wie weit er wirklich gefahren bzw. gedreht ist. Räder und Fahrbefehl schätzen nur die Zeit zwischen zwei Aufnahmen.
+  - Geradeaus hält der Regler auch die seitliche Abweichung und die Richtung bei null. Mecanum gleicht seitwärts aus.
+  - Am Ende misst er im Stand nach und bessert nach. Im Fahren ist eine Lidar-Umdrehung verzerrt.
+  - Die Kamera wird nicht gebraucht: Sie sieht nur nach vorn und misst keine Entfernungen.
+- **Warum Lidar:** Nach Zeit zu fahren taugt nicht. Der Fahrbefehl überschätzt die Bewegung um 10–30 %, Mecanum rutscht beim Drehen, und der Gyro hat Bias und falsches Vorzeichen (Sensor-Check 28.10.).
+- **Ergebnis:** Simulation mit absichtlich rutschendem Antrieb (dreht 20 % weniger als befohlen, die Räder melden noch weniger), `Marlon/autonomes_fahren/test_manoever.py`:
+  - 1 m vor, 0,5 m seitwärts, 0,3 m zurück: 1–2 cm daneben, geradeaus.
+  - 90°, 180°, 360° drehen: 1–2° daneben. Ohne Lidar wären es bei 90° etwa 18° gewesen.
+  - Vor der Wand hält er an und meldet es. Abbrechen hält sofort.
+  - Mit einem Simulations-Server am Pi: Befehl aus der App und Sprachbefehl laufen durch, die Ansage kommt. Die größere Vosk-Grammatik (2209 Sätze) baut in 0,01 s.
+- **Probleme unterwegs:**
+  - Zuerst wechselte die Bezugsaufnahme alle 25°. Jeder Wechsel brachte etwa 0,2° Fehler, nach 360° lag er um 3,4° daneben. Jetzt wird gegen die Startaufnahme abgeglichen, gewechselt nur bei schlechtem Abgleich.
+  - Er hielt knapp innerhalb der Toleranz an (2,9 von 3 cm). Jetzt fährt er bis zur halben Toleranz heran.
+  - Gefunden: War Port 8443 belegt, riss der HTTPS-Teil den ganzen Server mit. Jetzt läuft HTTP trotzdem weiter.
+- **Offen:** Am Boden testen (echter Lidar, Teppich/glatter Boden). Tempo und Toleranzen ggf. anpassen. In großen, leeren Räumen oder langen Fluren findet das Lidar weniger Halt.
+
 ---
 
 ## 3. Ergebnisse und Messwerte
@@ -487,6 +509,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 | Push aus dem Laptop hängt | Git Credential Manager wartet auf Login-Fenster | Nutzer pusht selbst, der Pi zieht nur (`git pull`) |
 | MUKKE: mpv meldet „Failed to recognize file format“ | mpvs ytdl-Skript findet yt-dlp in der venv nicht und gibt den YouTube-Link roh weiter | Server löst den Link selbst mit der yt-dlp-Bibliothek auf, mpv bekommt nur noch die direkte Tonspur; YouTube-Fehler erscheinen im Fenster |
 | Roboter startet die Interaktion von selbst | Vosk mit Grammatik macht aus Musik und Gesprächen erlaubte Sätze („robbie hallo“) | Konfidenz- und `[unk]`-Prüfung; bei Musik nur Stopp und „Musik aus“ (03.11.) |
+| Drehen/Strecke nach Zeit ungenau | Fahrbefehl überschätzt 10–30 %, Mecanum rutscht, Gyro unbrauchbar | Genaue Fahrbefehle messen mit dem Lidar (`navigation/manoever.py`, 03.11.) |
 | Fährt nach dem Folgen nur langsam und stotternd | Zweite offene App schickt im Leerlauf laufend „vx=0“ zwischen die Befehle des Lenkenden | Fahrvorrang für das lenkende Gerät, `DRIVE_VORRANG_S` (03.11.) |
 | Nach einem Absturz keine Sprachbefehle mehr | Mikrofon fiel kurz vom USB ab, `strom.read()` blieb ohne Fehler für immer hängen | Lesen per Callback mit Frist, Neuöffnen nach 3 s ohne Ton; Rückwechsel von der C270 zum USB-Mikrofon (03.11.) |
 

@@ -81,8 +81,22 @@ class _NebenServer(uvicorn.Server):
         yield
 
 
+async def _neben_sicher(neben: uvicorn.Server) -> None:
+    """HTTPS darf ausfallen, ohne den Server mitzureißen.
+
+    Ist der Port belegt, beendet uvicorn mit sys.exit(1) -- in einer Aufgabe
+    risse das den ganzen Prozess mit, samt Fahren und Lidar (am 03.11.
+    passiert, als ein zweiter Server lief). Dann eben nur HTTP.
+    """
+    try:
+        await neben.serve()
+    except (SystemExit, OSError) as exc:
+        log.warning("HTTPS aus: Port %d geht nicht (%s) -- Durchsage vom Handy fehlt, "
+                    "sonst läuft alles", config.HTTPS_PORT, exc)
+
+
 async def _mit_https(haupt: uvicorn.Server, neben: uvicorn.Server) -> None:
-    aufgabe = asyncio.create_task(neben.serve())
+    aufgabe = asyncio.create_task(_neben_sicher(neben))
     try:
         await haupt.serve()
     finally:

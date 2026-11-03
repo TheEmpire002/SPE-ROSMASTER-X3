@@ -165,6 +165,35 @@
     </p>
   </section>
 
+  <!-- Genaue Fahrbefehle (genau.js): {"type": "move"} / {"type": "turn"}, das Lidar misst. -->
+  <section class="panel">
+    <h2>Genau fahren</h2>
+
+    <div class="genau-zeile">
+      <label>Strecke
+        <input type="number" id="genau-meter" min="0.05" max="5" step="0.05" value="1"> m
+      </label>
+      <div class="genau-knoepfe">
+        <button type="button" class="btn" data-richtung="vor" title="vorwärts">↑ vor</button>
+        <button type="button" class="btn" data-richtung="zurueck" title="rückwärts">↓ zurück</button>
+        <button type="button" class="btn" data-richtung="links" title="seitwärts links">← links</button>
+        <button type="button" class="btn" data-richtung="rechts" title="seitwärts rechts">→ rechts</button>
+      </div>
+    </div>
+
+    <div class="genau-zeile">
+      <label>Winkel
+        <input type="number" id="genau-grad" min="1" max="720" step="5" value="90"> °
+      </label>
+      <div class="genau-knoepfe">
+        <button type="button" class="btn" data-drehen="1" title="gegen den Uhrzeigersinn">⟲ links</button>
+        <button type="button" class="btn" data-drehen="-1" title="im Uhrzeigersinn">⟳ rechts</button>
+      </div>
+    </div>
+
+    <p class="hint" id="genau-text">Das Lidar misst, wie weit er wirklich gefahren ist und hält ihn gerade. Abbrechen: Stopp.</p>
+  </section>
+
   <section class="panel">
     <h2>Autonomes Fahren</h2>
 
@@ -329,5 +358,6 @@
 <script src="/static/app.js"></script>
 <script src="/static/mukke.js"></script>
 <script src="/static/mikro.js"></script>
+<script src="/static/genau.js"></script>
 </body>
 </html>

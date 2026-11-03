@@ -202,6 +202,16 @@ Antrieb“, und die Interaktion war sofort wieder aus. Zwei Ursachen:
 | „Robi, Beatbox“ | `beatbox` | spielt das Lied aus `SPRACHE_BEATBOX_URL` über MUKKE; läuft es schon, passiert nichts |
 | „Hallo Robi“, „Robi, wach auf“ | `start` | Interaktion an (ohne Fahren); ist sie schon an: „Ja? Ich bin da.“ |
 | „Robi, gute Nacht“, „Robi, Feierabend“ | `aus` | Heimfahrt/Erkunder abbrechen, Interaktion aus, „Gute Nacht.“ |
+| „Robi, fahr zwei Meter vor“, „Robi, einen halben Meter nach links“, „Robi, fahr fünfzig Zentimeter zurück“ | `manoever` | genau so weit fahren, das Lidar misst (wie `move`, siehe [`api.md`](api.md)) |
+| „Robi, dreh dich um neunzig Grad nach rechts“, „Robi, dreh dich um“ (180°), „Robi, dreh dich nach links“ (90°) | `manoever` | genau um den Winkel drehen (wie `turn`); ohne Seite links herum |
+
+Genaue Fahrbefehle tragen eine Zahl und stehen deshalb nicht in `BEFEHLE`,
+sondern werden von `manoever_erkennen()` gelesen. Der Satz muss ganz passen
+(„fahr zwei Meter vor bitte“ gilt nicht), damit Wortsalat nicht fährt. Vosk
+erkennt nur die ausgeschriebenen Zahlen aus `_manoever_saetze()` (1–5 Meter,
+halber und anderthalb Meter, 20/50 Zentimeter; 30–360 Grad). Getippt
+(Feld „Hören“, `speech`) geht jede Zahl, auch „fahr 1,5 m vor“. „Robi, fahr
+zwei Meter zurück“ ist ein Fahrbefehl, „Robi, fahr zurück“ bleibt Weggehen.
 
 Die Wendungen stehen in `sprache.py` (`BEFEHLE`); die Reihenfolge dort ist
 die Rangfolge. „Musik stopp“ steht deshalb vor „Stopp“.

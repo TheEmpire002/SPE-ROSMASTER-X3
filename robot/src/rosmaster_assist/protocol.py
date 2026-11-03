@@ -28,6 +28,10 @@ Von der App / vom ESP an den Roboter
 {"type": "say", "text": "Hallo", "vorrang": false}       über den Lautsprecher sprechen
                                                           (vorrang: Laufendes abbrechen)
 {"type": "say_stop"}                                      sofort verstummen, Schlange leeren
+{"type": "move", "richtung": "vor", "meter": 1.5}          genau so weit fahren, "vor" | "zurueck" |
+                                                          "links" | "rechts" (Lidar misst, bis 5 m)
+{"type": "turn", "grad": 90}                              auf der Stelle drehen, + = links (gegen
+                                                          den Uhrzeigersinn), - = rechts
 {"type": "speech", "text": "robi folgen"}                 Text behandeln, als wäre er ins
                                                           Mikrofon gesprochen (Test, --mock)
 {"type": "ping"}                                          Verbindung am Leben halten
