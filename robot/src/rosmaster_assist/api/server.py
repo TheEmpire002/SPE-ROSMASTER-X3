@@ -37,6 +37,8 @@ from ..interaktion import sprache as sp
 from ..interaktion import verhalten as vh
 from ..interaktion.sprache import Spracherkennung
 from ..interaktion.stimme import Stimme
+from ..mapping.manager import MappingManager
+from ..mapping.web import create_mapping_router
 from ..interaktion.verhalten import Interaktion
 from ..protocol import (
     DriveCommand,
@@ -356,6 +358,21 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     # (siehe docs/api.md). Eine Anmeldung gibt es ohnehin nicht -- wer im
     # WLAN ist, kann den Roboter steuern.
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"])
+
+    mapping_manager = MappingManager()
+    app.state.mapping_manager = mapping_manager
+    app.include_router(create_mapping_router(mapping_manager))
+
+    def _stop_mapping_on_shutdown() -> None:
+        try:
+            mapping_manager.stop()
+        except Exception:
+            # Beispielsweise, wenn Docker beim Herunterfahren bereits beendet ist.
+            logging.getLogger(__name__).exception(
+                "Mapping konnte beim Herunterfahren nicht sauber gestoppt werden"
+            )
+
+    app.add_event_handler("shutdown", _stop_mapping_on_shutdown)
 
     @app.websocket("/ws")
     async def websocket_endpoint(ws: WebSocket) -> None:
