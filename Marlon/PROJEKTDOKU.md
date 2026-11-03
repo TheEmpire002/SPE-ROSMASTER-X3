@@ -636,6 +636,20 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Ergebnis:** Am Laptop mit Attrappen statt Docker und ROS getestet: Raster, Sprungausgleich, Weitergabe an das echte Knoten-Skript (gegen nachgebaute ROS-Klassen), Neustart nach abgestürztem Knoten, alle Hinweistexte. Am Roboter noch nicht.
 - **Offen:** Am Pi prüfen: `docker exec x3 bash -lc "source /opt/ros/foxy/setup.bash; ros2 pkg prefix slam_toolbox"`, dann Mapping starten, durch den Raum fahren, Karte speichern.
 
+### 03.11.2026 – Kartierfahrt wie ein Saugroboter, Drehung aus dem Lidar
+- **Problem 1:** Beim Mapping fuhr der Roboter nicht. SLAM baut die Karte nur aus dem, was der Lidar sieht; im Stand ist das ein einziger Blickwinkel mit Schatten hinter jedem Möbel.
+- **Problem 2:** Die Odometrie kennt keine Drehung. Die IMU meldet als Kurswinkel immer 0, also dreht sich die Position nicht mit, wenn der Roboter sich dreht. SLAM hätte die Karte beim ersten Abbiegen verdreht.
+- **Was:**
+  - `navigation/scan_odometrie.py`: Jede Lidar-Aufnahme wird per ICP auf eine kurz zuvor gemachte gelegt. Daraus kommen Strecke und vor allem Drehung. Die Räder liefern nur den Startwert. Die Einspeisung in ROS nutzt jetzt diese Position.
+  - `navigation/kartierfahrt.py` als zweiter Modus des Erkunders: zur nächsten Wand, mit der Wand rechts einmal rundherum, dann Bahnen im Abstand von 0,8 m bis zur gegenüberliegenden Wand. Auf den Bahnen dreht er nicht, sondern fährt vor, rutscht seitlich, fährt rückwärts (Mecanum). Die Bahnrichtung hält er an der Richtung der Wände fest, die er in jeder Aufnahme neu misst.
+  - Seite `/map`: Haken „nach dem Start automatisch abfahren“, Knopf „Kartierfahrt starten/anhalten“, Anzeige des aktuellen Schritts. Schließt die letzte `/map`-Seite, hält er an.
+  - Weil die Fahrt ein Modus des Erkunders ist, beenden sie Not-Stopp, Eingreifen von Hand, Heimfahrt, Interaktion und Antriebsverlust wie bisher.
+- **Ergebnis (Simulation, Raum 8 × 6 m mit Säule, 12 % Radschlupf):** Komplette Fahrt in 4 min: rundherum 27 m, dann 6 Bahnen, Ende an der gegenüberliegenden Wand. Abweichung am Ende: Lidar-Odometrie 0,3 m und 4,5°, Räder allein 4,1 m und 49°. Unterwegs gefunden und behoben:
+  - Die Säule war das Nächste, er fuhr um sie herum und hielt das für den Raum → Inselerkennung (Runde unter 5 m).
+  - Bahnen lagen schräg, weil sie der Drift folgten → Ausrichtung an den Wänden.
+  - Wandrichtung versagte bei 3 cm Messrauschen → längere Wandstücke, seitdem höchstens 1° Fehler.
+- **Offen:** Am Boden prüfen. Erst mit niedrigem Tempo zusehen: Randfahrt, Ecken, Versatz, Rückwärtsbahnen. Dann prüfen, ob „einmal rundherum“ erkannt wird, und wie die Karte aussieht.
+
 ---
 
 ## 3. Ergebnisse und Messwerte
@@ -698,7 +712,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 
 - **USB-Überlast im Leerlauf eingrenzen** (29.10.): alle Geräte ab, einzeln wieder an (Lidar zuletzt), Lidar-Kabel tauschen, Board-USB abziehen; Wert „USB-Überlast pro Minute“ auf `/diagnose`. Journal am Pi dauerhaft machen.
 - Bodentest des Erkunders mit Hindernissen.
-- Mapping am Pi: slam_toolbox im Container `x3` vorhanden? Dann auf `/map` starten, Raum abfahren, Karte speichern (E8).
+- Mapping am Pi: slam_toolbox im Container `x3` vorhanden? Dann auf `/map` starten, Kartierfahrt am Boden beobachten, Karte speichern (E8, E9).
 - **Stresstest am Boden** (Räder mit Last): erst am Netzteil, dann am Akku. Auf dem Podest gibt es mit beiden 0 Resets (29.10.), deshalb ist offen, ob das Netzteil unter Last hilft. Bleiben am Boden Resets, braucht es die getrennte 5-V-Versorgung für Pi bzw. Hub (siehe `docs/hardware.md`, „Was am Roboter tun“).
 - Stresstest mit eingeschalteter Interaktion (Hailo-Pose und Gesten unter Fahrlast) wiederholen.
 - Interaktion: Hailo-Pose am Pi prüfen, Fahrtest Folgen/Herkommen am Boden; danach Stufen 4–5 (Sprache, Geist).

@@ -63,6 +63,10 @@
     .hinweis { padding: 10px; border-radius: 8px; border: 1px solid #23845c; background: #11291f; color: #c9f2dd; font-size: 13px; overflow-wrap: anywhere; }
     .hinweis.error { border-color: #8b424c; background: #2b171c; color: #ffb4ba; }
     .hinweis.idle { border-color: var(--border); background: #111923; color: var(--muted); }
+    .check { display: flex; align-items: center; gap: 7px; margin: 10px 0 0; color: var(--muted); font-size: 12px; }
+    .check input { width: auto; margin: 0; }
+    .fahrt { margin-top: 8px; padding: 9px 10px; border-radius: 8px; border: 1px solid #2f5f9e; background: #13233a; color: #cfe0fb; font-size: 12px; overflow-wrap: anywhere; }
+    .fahrt.idle { border-color: var(--border); background: #111923; color: var(--muted); }
     details.log summary { cursor: pointer; color: var(--muted); font-size: 12px; }
     details.log pre { margin: 8px 0 0; padding: 9px; max-height: 220px; overflow: auto; border-radius: 8px; background: #0b1016; color: #c3ccd6; font-size: 11px; line-height: 1.35; white-space: pre-wrap; overflow-wrap: anywhere; }
     .help { color: var(--muted); font-size: 12px; }
@@ -116,6 +120,12 @@
               <button id="startButton" class="primary" type="button">▶ Starten</button>
               <button id="stopButton" class="stop" type="button" disabled>■ Stoppen</button>
             </div>
+            <label class="check"><input type="checkbox" id="autoFahrt" checked> nach dem Start den Raum automatisch abfahren</label>
+          </div>
+
+          <div class="full">
+            <button id="fahrtButton" class="secondary" type="button" disabled>Kartierfahrt starten</button>
+            <div class="fahrt idle" id="fahrtText">Kartierfahrt aus. Der Roboter fährt erst, wenn sie gestartet wird.</div>
           </div>
 
           <div class="hinweis idle full" id="hinweis">Mapping ist gestoppt.</div>
@@ -166,6 +176,34 @@
       let reconnectTimer = null;
       let pointer = null;
       let problemGezeigt = false;
+      let mappingAktiv = false;
+      let fahrtAktiv = false;
+
+      function setFahrt(f) {
+        fahrtAktiv = !!f.aktiv;
+        const knopf = $('fahrtButton');
+        knopf.textContent = fahrtAktiv ? '■ Kartierfahrt anhalten' : 'Kartierfahrt starten';
+        knopf.classList.toggle('stop', fahrtAktiv);
+        knopf.disabled = !fahrtAktiv && !mappingAktiv;
+        let text;
+        if (fahrtAktiv) {
+          text = (f.text || 'fährt') + (f.dauer_s != null ? ` · ${f.dauer_s} s` : '');
+        } else if (f.grund) {
+          text = `Letzte Kartierfahrt: ${f.grund}`;
+        } else {
+          text = 'Kartierfahrt aus. Der Roboter fährt erst, wenn sie gestartet wird.';
+        }
+        $('fahrtText').textContent = text;
+        $('fahrtText').classList.toggle('idle', !fahrtAktiv);
+      }
+
+      async function fahrtStarten() {
+        try {
+          setFahrt(await api('/api/mapping/fahrt/start', { method: 'POST' }));
+          // Die Seite ist die Totmannschaltung: schließt sie, hält er an.
+          message('Kartierfahrt läuft. Diese Seite offen lassen, sonst hält er an. Stopp in der App hält ihn sofort an.');
+        } catch (error) { message(error.message, true); }
+      }
 
       function message(text, error = false) {
         $('message').textContent = text;
@@ -203,6 +241,9 @@
           ? `vor ${Math.max(0, Math.round(Date.now() / 1000 - s.last_map_at))} s` : '–';
         $('startButton').disabled = running || aktiv;
         $('stopButton').disabled = !running && !aktiv && !s.bridge_running;
+        mappingAktiv = aktiv;
+        if (s.fahrt) setFahrt(s.fahrt);
+        $('fahrtButton').disabled = !fahrtAktiv && !mappingAktiv;
         $('saveButton').disabled = !s.map_available;
 
         if (s.hinweis) {
@@ -363,6 +404,7 @@
           try { packet = JSON.parse(event.data); } catch { return; }
           if (packet.type === 'status') setStatus(packet.data);
           else if (packet.type === 'map') updateMap(packet.data);
+          else if (packet.type === 'fahrt') setFahrt(packet.data);
           else if (packet.type === 'error') message(packet.message, true);
         };
         ws.onclose = () => {
@@ -381,7 +423,20 @@
         } catch (error) {
           message(error.message, true);
           $('startButton').disabled = false;
+          return;
         }
+        if ($('autoFahrt').checked) await fahrtStarten();
+      });
+
+      $('fahrtButton').addEventListener('click', async () => {
+        $('fahrtButton').disabled = true;
+        if (fahrtAktiv) {
+          try { setFahrt(await api('/api/mapping/fahrt/stop', { method: 'POST' })); }
+          catch (error) { message(error.message, true); }
+        } else {
+          await fahrtStarten();
+        }
+        $('fahrtButton').disabled = !fahrtAktiv && !mappingAktiv;
       });
 
       $('stopButton').addEventListener('click', async () => {

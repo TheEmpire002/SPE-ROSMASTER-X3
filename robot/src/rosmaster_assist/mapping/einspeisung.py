@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 import shlex
 import subprocess
 import threading
@@ -155,9 +154,14 @@ finally:
 class Einspeisung:
     """Reicht Lidar-Scans und Position laufend an ROS im Container weiter."""
 
-    def __init__(self, lidar, odometry, container: str, setup_file: str, docker_bin: str) -> None:
+    def __init__(
+        self, lidar, scan_odometrie, container: str, setup_file: str, docker_bin: str
+    ) -> None:
         self._lidar = lidar
-        self._odometry = odometry
+        # Liefert zu jeder Aufnahme die Position samt Blickrichtung aus dem
+        # Lidar-Abgleich (navigation/scan_odometrie.py). Die Räder allein
+        # taugten nicht: Am X3 kommt von ihnen keine brauchbare Drehung.
+        self._scan_odo = scan_odometrie
         self._container = container
         self._setup_file = setup_file
         self._docker_bin = docker_bin
@@ -173,11 +177,6 @@ class Einspeisung:
         self._letzter_scan: float | None = None  # monotonic
         self._fehler: str | None = None
         self._neustarts = 0
-
-        # Ausgleich für Positionssprünge (siehe _position)
-        self._versatz = (0.0, 0.0, 0.0)
-        self._letzte_roh: tuple[float, float, float] | None = None
-        self._letzte_gesendet: tuple[float, float, float] | None = None
 
     # --- Steuerung -----------------------------------------------------------
 
@@ -195,9 +194,6 @@ class Einspeisung:
         self._letzter_scan = None
         self._fehler = None
         self._neustarts = 0
-        self._versatz = (0.0, 0.0, 0.0)
-        self._letzte_roh = None
-        self._letzte_gesendet = None
 
         # Ein Knoten aus einem abgestürzten früheren Lauf veröffentlichte
         # sonst weiter seine eigene, eingefrorene Position auf /tf -- zwei
@@ -359,7 +355,7 @@ class Einspeisung:
     def _schleife(self) -> None:
         takt = 1.0 / config.MAP_FEED_HZ
         wartezeit = config.RECONNECT_MIN_S
-        letzter_scan = None
+        letzte_nr: int | None = None
         letzte_scan_wand: float | None = None
 
         while not self._stop.is_set():
@@ -386,19 +382,21 @@ class Einspeisung:
                 continue
 
             try:
-                self._senden({"typ": "odom", "t": time.time(), **self._position()})
+                # Laufend die aktuelle Position, damit TF zwischen den
+                # Aufnahmen nicht veraltet (RViz, Wartezeiten in SLAM).
+                pose = self._scan_odo.pose()
+                if pose is not None:
+                    self._senden_pose(time.time(), pose)
 
-                scan = self._lidar.latest()
-                if scan is not None and scan is not letzter_scan:
-                    letzter_scan = scan
+                messung = self._scan_odo.messung()
+                if messung is not None and messung.nr != letzte_nr:
+                    letzte_nr = messung.nr
+                    scan = messung.scan
                     # Scan.zeit ist monotone Zeit; ROS braucht Uhrzeit.
-                    wand = time.time() - (time.monotonic() - scan.zeit)
+                    wand = time.time() - (time.monotonic() - messung.zeit)
                     # Die Position genau zum Messzeitpunkt mitschicken:
                     # slam_toolbox fragt sie für den Zeitstempel des Scans ab.
-                    damals = self._odometry.pose_bei(scan.zeit)
-                    if damals is not None:
-                        x, y, theta = _anwenden(self._versatz, damals)
-                        self._senden({"typ": "odom", "t": wand, "x": x, "y": y, "theta": theta})
+                    self._senden_pose(wand, messung.pose)
                     dauer = 1.0 / 5.5
                     if letzte_scan_wand is not None and 0 < wand - letzte_scan_wand < 0.5:
                         dauer = wand - letzte_scan_wand
@@ -421,37 +419,15 @@ class Einspeisung:
 
             self._stop.wait(takt)
 
+    def _senden_pose(self, t: float, pose) -> None:
+        self._senden({"typ": "odom", "t": t, "x": pose[0], "y": pose[1], "theta": pose[2]})
+
     def _senden(self, nachricht: dict) -> None:
         prozess = self._prozess
         if prozess is None or prozess.stdin is None:
             raise ValueError("Knoten nicht verbunden")
         prozess.stdin.write(json.dumps(nachricht, separators=(",", ":")) + "\n")
         prozess.stdin.flush()
-
-    def _position(self) -> dict[str, float]:
-        """Aktuelle Position, um Sprünge bereinigt.
-
-        Wird der Startpunkt neu gesetzt, springt die Odometrie auf (0, 0).
-        SLAM hielte das für eine echte Fahrt quer durch den Raum und trüge
-        die Wände an falscher Stelle ein. Deshalb wird der Sprung in einen
-        Versatz gesteckt: Für ROS bleibt die Position, wo sie war, und
-        läuft von dort aus glatt weiter.
-        """
-        x, y, grad = self._odometry.pose()
-        roh = (x, y, math.radians(grad))
-        if self._letzte_roh is not None and self._letzte_gesendet is not None:
-            weg = math.hypot(roh[0] - self._letzte_roh[0], roh[1] - self._letzte_roh[1])
-            drehung = abs(math.degrees(_normalisieren(roh[2] - self._letzte_roh[2])))
-            if weg > config.MAP_SPRUNG_M or drehung > config.MAP_SPRUNG_GRAD:
-                self._versatz = _versatz_fuer(self._letzte_gesendet, roh)
-                log.info(
-                    "Kartierung: Positionssprung (%.2f m, %.0f°) ausgeblendet -- "
-                    "Startpunkt neu gesetzt?", weg, drehung,
-                )
-        self._letzte_roh = roh
-        gesendet = _anwenden(self._versatz, roh)
-        self._letzte_gesendet = gesendet
-        return {"x": gesendet[0], "y": gesendet[1], "theta": gesendet[2]}
 
 
 def raster(winkel: list[float], entfernungen: list[float], strahlen: int) -> list[float]:
@@ -469,22 +445,3 @@ def raster(winkel: list[float], entfernungen: list[float], strahlen: int) -> lis
         if werte[i] == 0.0 or r < werte[i]:
             werte[i] = r
     return [round(r, 3) for r in werte]
-
-
-def _anwenden(versatz, pose) -> tuple[float, float, float]:
-    """Pose mit dem Versatz (Verschiebung plus Drehung) verrechnen."""
-    vx, vy, vt = versatz
-    x, y, t = pose
-    c, s = math.cos(vt), math.sin(vt)
-    return vx + c * x - s * y, vy + s * x + c * y, _normalisieren(vt + t)
-
-
-def _versatz_fuer(ziel, roh) -> tuple[float, float, float]:
-    """Den Versatz, der ``roh`` genau auf ``ziel`` abbildet."""
-    vt = _normalisieren(ziel[2] - roh[2])
-    c, s = math.cos(vt), math.sin(vt)
-    return ziel[0] - (c * roh[0] - s * roh[1]), ziel[1] - (s * roh[0] + c * roh[1]), vt
-
-
-def _normalisieren(winkel: float) -> float:
-    return math.atan2(math.sin(winkel), math.cos(winkel))

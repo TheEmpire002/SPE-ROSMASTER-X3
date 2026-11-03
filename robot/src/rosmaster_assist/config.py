@@ -222,11 +222,61 @@ MAP_FEED_HZ = 20.0
 # viele Punkte -- deshalb wird auf ein festes Raster gelegt.
 MAP_SCAN_STRAHLEN = 360
 
-# Springt die Position zwischen zwei Takten weiter als das, war es kein
-# Fahren, sondern ein Neusetzen des Startpunkts. SLAM bekommt den Sprung
-# nicht zu sehen -- es hielte ihn für echte Bewegung und zerrisse die Karte.
+# Springt die Radposition zwischen zwei Lidar-Umdrehungen weiter als das,
+# war es kein Fahren, sondern ein Neusetzen des Startpunkts. SLAM bekommt
+# den Sprung nicht zu sehen -- es hielte ihn für echte Bewegung und zerrisse
+# die Karte.
 MAP_SPRUNG_M = 0.3
-MAP_SPRUNG_GRAD = 30.0
+
+# Lidar-Odometrie (navigation/scan_odometrie.py): Die Blickrichtung kommt
+# aus dem Abgleich aufeinanderfolgender Aufnahmen, weil die IMU am X3
+# keinen Kurswinkel liefert. Bis zu diesem mittleren Restabstand gilt ein
+# Abgleich als gelungen; zwei Aufnahmen kurz nacheinander passen meist auf
+# 2-4 cm.
+MAP_ICP_MAX_RESIDUUM_M = 0.08
+# Nach so viel Bewegung wird die Bezugsaufnahme erneuert. Größer: weniger
+# Drift, aber die Aufnahmen überlappen schlechter.
+MAP_BEZUG_M = 0.25
+MAP_BEZUG_GRAD = 10.0
+
+# --- Kartierfahrt (navigation/kartierfahrt.py) ---
+#
+# Beim Kartieren fährt er wie ein Saugroboter: einmal mit der Wand rechts
+# rundherum, dann Bahnen parallel zur Wand. Gemächlich, damit SLAM jede
+# Stelle aus mehreren Aufnahmen kennt.
+
+# Tempo auf Bahnen und an der Wand (m/s), seitwärts beim Versatz, Drehen.
+MAP_FAHRT_TEMPO = 0.15
+MAP_FAHRT_SEITE_TEMPO = 0.12
+MAP_FAHRT_DREH_TEMPO = 0.5  # rad/s; darunter laufen die Motoren nicht sicher an
+
+# Abstand von der Lidar-Mitte zur Wand bei der Randfahrt. Halbe
+# Roboterbreite (0,12 m) plus Luft für Lenkfehler.
+MAP_FAHRT_WANDABSTAND_M = 0.40
+
+# Abstand der Bahnen. Der Lidar sieht viele Meter weit, für die Karte
+# müssen die Bahnen also nicht dicht liegen wie beim Saugen -- nur so dicht,
+# dass er hinter Möbel schaut.
+MAP_FAHRT_BAHNABSTAND_M = 0.8
+
+# Halbe Roboterlänge plus Rand: so breit muss es seitlich frei sein, wenn er
+# zur nächsten Bahn rutscht.
+MAP_FAHRT_HALBE_LAENGE_M = 0.22
+
+# Randfahrt fertig, wenn er wieder so nah am Anfang ist, nachdem er
+# mindestens MAP_FAHRT_RUNDE_MIN_M gefahren ist ...
+MAP_FAHRT_RUNDE_M = 0.6
+MAP_FAHRT_RUNDE_MIN_M = 3.0
+# Ist die Runde kürzer, war es keine Wand, sondern ein Hindernis mitten im
+# Raum (Säule, Sofa, Tisch): Er verlässt es und sucht die Wand. Ein Zimmer
+# von 2 x 2 m hat schon 8 m Umfang, an der Wand entlang gefahren gut 5.
+MAP_FAHRT_INSEL_M = 5.0
+# ... spätestens aber nach so vielen Sekunden (offene Türen, verwinkelte
+# Räume: dann kommt er vielleicht nie zurück).
+MAP_FAHRT_RAND_MAX_S = 300.0
+
+# Höchstdauer der ganzen Kartierfahrt (s), danach hält er an.
+MAP_FAHRT_MAX_S = 1200.0
 
 # Kommt so lange (s) nach dem Start keine Karte, meldet die Seite das
 # zusammen mit dem SLAM-Protokoll. slam_toolbox veröffentlicht die Karte

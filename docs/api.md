@@ -355,7 +355,9 @@ Ist OpenCV installiert, sucht die Personenkamera (Logitech C270, siehe
 | Feld | Bedeutung |
 |---|---|
 | `verfuegbar` | Lidar vorhanden, `explore` möglich |
-| `zustand` | `faehrt`, `dreht`, `wartet`, `wartet auf Mensch`, `wartet auf Lidar`, `befreit sich` (neu 03.11.), `hochgehoben` (neu 03.11., F2); `null` wenn aus |
+| `modus` | `zufall` (`explore`) oder `karte` (Kartierfahrt, siehe [Kartierung](#kartierung-slam)); `null` wenn aus |
+| `kartierfahrt` | nur im Modus `karte`: `{"schritt", "text", "randweg_m", "bahnen"}` |
+| `zustand` | `faehrt`, `dreht`, `wartet`, `wartet auf Mensch`, `wartet auf Lidar`, `befreit sich` (neu 03.11.), `hochgehoben` (neu 03.11., F2), `kartiert`; `null` wenn aus |
 | `text` | Erklärung für die Anzeige |
 | `frei_vorn` | freie Strecke im Korridor vor dem Roboter (m) |
 | `ausweichen`, `menschen`, `befreien` | Zähler dieser Fahrt (`befreien` neu 03.11., fehlt bei älteren Servern) |
@@ -832,11 +834,13 @@ Bedienoberfläche: `GET /map`.
 |---|---|
 | `GET /api/mapping/status` | Zustand (siehe unten) |
 | `POST /api/mapping/start` | startet Einspeisung, Kartenempfang und SLAM; Fehler kommen als 503 mit Text |
-| `POST /api/mapping/stop` | beendet alles wieder, die letzte Karte bleibt abrufbar |
+| `POST /api/mapping/stop` | beendet alles wieder (auch die Kartierfahrt), die letzte Karte bleibt abrufbar |
+| `POST /api/mapping/fahrt/start` | Kartierfahrt starten (nur bei laufendem Mapping, sonst 409 mit Grund) |
+| `POST /api/mapping/fahrt/stop` | Kartierfahrt anhalten |
 | `GET /api/mapping/map` | letzte Karte (`nav_msgs/OccupancyGrid`, Zellen als Base64), 404 vor der ersten |
 | `POST /api/mapping/save` | speichert die letzte Karte als PGM + YAML, Body `{"name": "wohnzimmer"}` |
 | `GET /api/mapping/maps` | gespeicherte Karten |
-| `WS /api/mapping/ws` | alle 3 s `{"type": "status"}`, bei jeder neuen Karte `{"type": "map"}` |
+| `WS /api/mapping/ws` | alle 3 s `{"type": "status"}`, bei jeder neuen Karte `{"type": "map"}`, bei Änderungen der Kartierfahrt `{"type": "fahrt"}` |
 
 Für die Rückmeldung im Status:
 
@@ -854,7 +858,26 @@ Für die Rückmeldung im Status:
 
 `hinweis` nennt den ersten Schritt, der hakt: Lidar, Weitergabe an ROS,
 SLAM-Prozess, Kartenempfang. Bei `hinweis_fehler` steht die Ursache meist
-in `slam_log`.
+in `slam_log`. Dazu kommen `lidar_odometrie` (Position aus dem
+Lidar-Abgleich, Zahl gelungener und verworfener Abgleiche) und `fahrt`
+(`aktiv`, `text`, `schritt`, `bahnen`, `dauer_s`, `grund` der letzten
+Kartierfahrt).
+
+**Kartierfahrt.** Der Roboter fährt den Raum ab wie ein Saugroboter:
+zur nächsten Wand, mit der Wand rechts einmal rundherum, dann Bahnen
+parallel zu dieser Wand, jede `MAP_FAHRT_BAHNABSTAND_M` (0,8 m) weiter im
+Raum, bis zur gegenüberliegenden Wand. Auf den Bahnen dreht er nicht um,
+sondern fährt vor, rutscht seitlich weiter und fährt rückwärts zurück
+(Mecanum). Eine Runde unter `MAP_FAHRT_INSEL_M` (5 m) gilt als Hindernis
+mitten im Raum: Er verlässt es und sucht die Wand. Werte: `MAP_FAHRT_*` in
+`config.py`.
+
+Technisch ist sie ein Modus des Erkunders (`state.autonomie.modus =
+"karte"`). Deshalb beenden sie dieselben Dinge wie `explore`: `stop`,
+`explore_stop`, jede Fahreingabe ≠ 0, `home`, `set_home`, Interaktion,
+Antriebsverlust. Zusätzlich hält sie an, wenn die letzte Seite `/map`
+geschlossen wird (Totmannschaltung), und mit `POST /api/mapping/stop`. Das
+Ende meldet `alert` „Autonomes Fahren beendet: Kartierfahrt fertig -- …“.
 
 ### Sonstiges
 

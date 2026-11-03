@@ -52,6 +52,9 @@ from ..protocol import (
 )
 from ..navigation import Erkunder, Hinderniserkennung, Homing, Localizer, Manoever, Odometry
 from ..navigation import manoever as mv
+from ..navigation.explorer import KARTE
+from ..navigation.kartierfahrt import Kartierfahrt
+from ..navigation.scan_odometrie import ScanOdometrie
 from ..safety import AutonomSchutz, CollisionGuard, SafetyWatchdog
 from ..sensors.camera import CameraService, create_cameras
 from ..sensors.lidar import LidarService, create_lidar
@@ -211,7 +214,14 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     # durch die Personenkamera (C270), siehe docs/interaktion.md.
     personen_kamera = kameras.get(config.PERSON_CAMERA, camera)
     personen = Personenerkennung(personen_kamera)
-    erkunder = Erkunder(watchdog, lidar, erkennung, personen, odometry=odometry)
+    # Lidar-Odometrie für Kartierung und Kartierfahrt: Die Blickrichtung
+    # kommt aus dem Lidar, weil die IMU am X3 keine liefert. Gestartet wird
+    # sie vom MappingManager, nur solange kartiert wird.
+    scan_odometrie = ScanOdometrie(lidar, odometry)
+    erkunder = Erkunder(
+        watchdog, lidar, erkennung, personen, odometry=odometry,
+        kartierfahrt=Kartierfahrt(scan_odometrie),
+    )
     manoever = Manoever(watchdog, driver, lidar)
     pose = Posenerkennung(personen_kamera, mock=use_mock_camera)
     mukke = Mukke()
@@ -366,11 +376,68 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     # WLAN ist, kann den Roboter steuern.
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"])
 
-    # Bekommt Lidar und Odometrie, um sie in ROS einzuspeisen: slam_toolbox
-    # im Container braucht /scan und TF, und beides hält dieser Server.
-    mapping_manager = MappingManager(lidar=lidar, odometry=odometry)
+    # Bekommt Lidar und Lidar-Odometrie, um sie in ROS einzuspeisen:
+    # slam_toolbox im Container braucht /scan und TF, und beides hält
+    # dieser Server.
+    mapping_manager = MappingManager(lidar=lidar, scan_odometrie=scan_odometrie)
     app.state.mapping_manager = mapping_manager
-    app.include_router(create_mapping_router(mapping_manager))
+
+    class _KartierfahrtSteuerung:
+        """Start und Stopp der Kartierfahrt für die Seite /map.
+
+        Die Fahrt ist ein Modus des Erkunders. So gelten Not-Stopp, Eingreifen
+        von Hand, Verbindungsverlust und Antriebsausfall ohne Extrawege.
+        """
+
+        @property
+        def aktiv(self) -> bool:
+            return erkunder.modus == KARTE
+
+        def zustand(self) -> dict[str, Any]:
+            z = erkunder.zustand()
+            aktiv = self.aktiv
+            return {
+                "aktiv": aktiv,
+                "text": z["text"] if aktiv else None,
+                "dauer_s": z["dauer_s"] if aktiv else None,
+                "schritt": (z["kartierfahrt"] or {}).get("schritt") if aktiv else None,
+                "bahnen": (z["kartierfahrt"] or {}).get("bahnen") if aktiv else None,
+                # Warum die letzte Kartierfahrt endete (nicht die letzte
+                # Zufallsfahrt).
+                "grund": (
+                    erkunder.letzter_grund
+                    if not aktiv and erkunder.letzter_modus == KARTE
+                    else None
+                ),
+            }
+
+        def starten(self) -> str | None:
+            if self.aktiv:
+                return None
+            if not mapping_manager.aktiv:
+                return ("Erst das Mapping starten: Die Kartierfahrt lenkt mit der "
+                        "Lidar-Odometrie, und die läuft nur beim Kartieren.")
+            if not erkunder.verfuegbar:
+                return "Die Kartierfahrt geht nur mit Lidar."
+            if not driver.connected:
+                return "Keine Verbindung zum Antrieb."
+            # Nur ein Programm lenkt.
+            homing.abbrechen("Kartierfahrt gestartet")
+            erkunder.abbrechen("Kartierfahrt gestartet")
+            interaktion.abbrechen("Kartierfahrt gestartet")
+            if not erkunder.start(KARTE):
+                return "Die Kartierfahrt ließ sich nicht starten."
+            asyncio.get_running_loop().create_task(
+                hub.broadcast(alert_message("info", "Kartierfahrt gestartet"))
+            )
+            return None
+
+        def stoppen(self, grund: str) -> None:
+            if self.aktiv:
+                erkunder.abbrechen(grund)
+                watchdog.stop()
+
+    app.include_router(create_mapping_router(mapping_manager, _KartierfahrtSteuerung()))
 
     @app.websocket("/ws")
     async def websocket_endpoint(ws: WebSocket) -> None:

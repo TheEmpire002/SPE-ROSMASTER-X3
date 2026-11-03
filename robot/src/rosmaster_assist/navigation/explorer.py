@@ -58,6 +58,7 @@ from . import hindernisse as hd
 if TYPE_CHECKING:  # nur für die Typangaben -- vermeidet Ringimporte
     from ..sensors.lidar import LidarService
     from ..sensors.personen import Personenerkennung
+    from .kartierfahrt import Kartierfahrt
     from .odometry import Odometry
 
 log = logging.getLogger(__name__)
@@ -70,6 +71,12 @@ MENSCH_WARTEN = "wartet auf Mensch"
 KEIN_LIDAR = "wartet auf Lidar"
 BEFREIT = "befreit sich"
 HOCHGEHOBEN = "hochgehoben"
+KARTIERT = "kartiert"
+
+#: Modi (state.autonomie.modus): zufällig umherfahren oder den Raum für die
+#: Karte systematisch abfahren (kartierfahrt.py).
+ZUFALL = "zufall"
+KARTE = "karte"
 
 #: Kandidaten für die neue Fahrtrichtung, in Grad (0 = geradeaus).
 _RICHTUNGEN = list(range(-180, 181, 10))
@@ -107,7 +114,13 @@ def frei_in_richtung(punkte, richtung_grad: float, halbe_breite: float) -> float
 
 
 class Erkunder:
-    """Fährt autonom umher. Gleiche Bedienung wie ``Homing``."""
+    """Fährt autonom umher. Gleiche Bedienung wie ``Homing``.
+
+    Zweiter Modus ``KARTE``: Der Raum wird für die Karte systematisch
+    abgefahren. Die Entscheidungen trifft dann ``Kartierfahrt``, alles
+    andere -- Lidar-Prüfung, Nahbereich, Abbruch durch den Menschen -- bleibt
+    hier, damit es für beide Modi garantiert gleich gilt.
+    """
 
     def __init__(
         self,
@@ -116,12 +129,15 @@ class Erkunder:
         hinderniserkennung: hd.Hinderniserkennung,
         personen: "Personenerkennung | None" = None,
         odometry: "Odometry | None" = None,
+        kartierfahrt: "Kartierfahrt | None" = None,
     ) -> None:
         self._watchdog = watchdog
         self._lidar = lidar
         self._erkennung = hinderniserkennung
         self._personen = personen
         self._odometry = odometry
+        self._kartierfahrt = kartierfahrt
+        self._modus = ZUFALL
         self._task: asyncio.Task[None] | None = None
         self._grund: str | None = None
 
@@ -187,10 +203,23 @@ class Erkunder:
         """Ohne Lidar fährt er nicht -- blind umherfahren wäre gefährlich."""
         return self._lidar is not None
 
-    def start(self) -> bool:
+    @property
+    def modus(self) -> str | None:
+        """ZUFALL oder KARTE, solange eine Fahrt läuft, sonst None."""
+        return self._modus if self.aktiv else None
+
+    @property
+    def letzter_modus(self) -> str:
+        """Modus der laufenden oder zuletzt gelaufenen Fahrt."""
+        return self._modus
+
+    def start(self, modus: str = ZUFALL) -> bool:
         """Erkundung beginnen. False, wenn schon eine läuft oder kein Lidar da ist."""
         if self.aktiv or not self.verfuegbar:
             return False
+        if modus == KARTE and self._kartierfahrt is None:
+            return False
+        self._modus = modus
         self._grund = None
         self._task = asyncio.create_task(self._fahren())
         return True
@@ -208,6 +237,12 @@ class Erkunder:
         aktiv = self.aktiv
         return {
             "aktiv": aktiv,
+            "modus": self.modus,
+            "kartierfahrt": (
+                self._kartierfahrt.zustand()
+                if aktiv and self._modus == KARTE and self._kartierfahrt is not None
+                else None
+            ),
             "verfuegbar": self.verfuegbar,
             "zustand": self._zustand if aktiv else None,
             "text": self._text if aktiv else None,
@@ -235,13 +270,18 @@ class Erkunder:
         self._zuruecksetzen(jetzt)
         self._naechster_wechsel = jetzt + self._wanderzeit()
         self._setzen(FAEHRT, "fährt los")
+        if self._modus == KARTE:
+            self._kartierfahrt.beginnen(jetzt)
 
     async def _fahren(self) -> None:
         takt = 1.0 / max(1, config.ODOMETRY_HZ)
         self._beginnen(time.monotonic())
-        if self._personen is not None:
+        karte = self._modus == KARTE
+        # Die Personenkamera braucht nur das Zufallsfahren (warten vor
+        # Menschen); die Kartierfahrt hält sich an den Nahbereich.
+        if self._personen is not None and not karte:
             self._personen.aktivieren(True)
-        log.info("Erkundung gestartet")
+        log.info("Erkundung gestartet (%s)", self._modus)
 
         try:
             while True:
@@ -262,7 +302,7 @@ class Erkunder:
             self._grund = "Fehler während der Fahrt"
             log.exception("Erkundung abgebrochen")
         finally:
-            if self._personen is not None:
+            if self._personen is not None and self._modus != KARTE:
                 self._personen.aktivieren(False)
 
     def _schritt(self, jetzt: float) -> DriveCommand | None:
@@ -279,8 +319,10 @@ class Erkunder:
 
         if self._grund is not None:  # im letzten Takt aufgegeben
             return None
-        if config.EXPLORE_TIMEOUT_S > 0 and jetzt - self._gestartet > config.EXPLORE_TIMEOUT_S:
-            self._grund = f"Zeit abgelaufen ({config.EXPLORE_TIMEOUT_S:.0f} s)"
+        karte = self._modus == KARTE
+        hoechstens = config.MAP_FAHRT_MAX_S if karte else config.EXPLORE_TIMEOUT_S
+        if hoechstens > 0 and jetzt - self._gestartet > hoechstens:
+            self._grund = f"Zeit abgelaufen ({hoechstens:.0f} s)"
             return None
 
         # Drehung mitzählen, bevor irgendetwas anderes entscheidet: auch ein
@@ -350,6 +392,13 @@ class Erkunder:
 
         if self._zustand == WARTET:
             self._setzen(FAEHRT, "Weg wieder frei")
+
+        if karte:
+            befehl = self._kartierfahrt.schritt(jetzt, scan, punkte)
+            self._setzen(KARTIERT, self._kartierfahrt.anzeige())
+            if befehl is None:
+                self._grund = f"Kartierfahrt fertig -- {self._kartierfahrt.grund}"
+            return befehl
 
         if self._zustand == DREHT:
             return self._drehen(jetzt, scan, punkte, vorn)

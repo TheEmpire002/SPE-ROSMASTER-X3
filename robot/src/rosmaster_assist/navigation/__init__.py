@@ -8,6 +8,8 @@ Die Bausteine:
 ``Hinderniserkennung``  benennt, was der Lidar sieht (Wand, Stuhl, Tisch, Mensch)
 ``Erkunder``            fährt autonom umher und weicht allem aus
 ``Manoever``            fährt genau "2 Meter vor" oder dreht "90 Grad" (Lidar misst)
+``Kartierfahrt``        zweiter Modus des Erkunders: Raum abfahren wie ein Saugroboter
+``ScanOdometrie``       Position samt Blickrichtung aus dem Lidar (beim Kartieren)
 
 Warum beide Ortungsverfahren: Die Koppelnavigation ist immer verfügbar,
 aber ungenau. Der Lidar ist genau, braucht aber Wiedererkennung. Zusammen

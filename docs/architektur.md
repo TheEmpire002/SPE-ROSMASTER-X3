@@ -158,7 +158,10 @@ Hochheben).
 Kartenbauer. slam_toolbox läuft im Container `x3`. Unser Server bleibt der
 einzige Leser von Lidar und Board und speist Scans und Odometrie über
 `docker exec -i` ein (`mapping/einspeisung.py`, Begründung: E8). Bedienung
-und Rückmeldung über die Seite `/map`.
+und Rückmeldung über die Seite `/map`. Die Blickrichtung kommt dabei aus
+dem Lidar (`navigation/scan_odometrie.py`), und die Kartierfahrt
+(`navigation/kartierfahrt.py`) fährt den Raum als Modus des Erkunders ab:
+erst an der Wand rundherum, dann in Bahnen (E9).
 
 ## Interaktion
 

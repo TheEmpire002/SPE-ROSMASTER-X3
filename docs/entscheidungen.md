@@ -300,9 +300,77 @@ Andere Wege wurden nicht genommen:
   Weitergabe, SLAM, Karte), und zeigt das SLAM-Protokoll.
 - *Schlecht:* Wir hängen doch an ROS2 Foxy (EOL) und am Container `x3`.
   slam_toolbox muss dort installiert sein.
-- *Schlecht:* Die Odometrie bekommt weiterhin Korrekturen vom Lidar-Abgleich
-  (E4). Für SLAM sind das kleine Sprünge. Sie sind klein genug, dass
-  slam_toolbox sie abfängt, sauberer wäre aber reine Koppelnavigation.
+- *Überholt durch E9:* Die Position für SLAM kommt nicht mehr aus der
+  Koppelnavigation, sondern aus der Lidar-Odometrie.
 
 **Neu bewerten, wenn:** die Karte zur Navigation genutzt werden soll. Dann
 gehört auch die Position aus SLAM (`map → odom`) zurück in unseren Server.
+
+---
+
+## E9 — Blickrichtung aus dem Lidar, Kartierfahrt wie ein Saugroboter
+
+**Datum:** 2026-11-03
+**Status:** umgesetzt (`navigation/scan_odometrie.py`, `navigation/kartierfahrt.py`), in der Simulation geprüft, am Roboter noch nicht
+
+**Kontext.** Für E8 brauchte SLAM die Position samt Blickrichtung. Die
+Koppelnavigation liefert am X3 aber keine brauchbare Drehung: Die IMU der
+Bibliothek meldet als Kurswinkel immer 0 (Sensor-Check 28.10.), und am
+Boden dreht er nur rund drei Viertel des Befohlenen. Für SLAM hieße das:
+Dreht er sich, glaubt die Karte, er stehe still. Außerdem fuhr niemand den
+Roboter beim Kartieren, und eine Karte aus einem Blickwinkel hat überall
+Schatten.
+
+**Entscheidung.**
+- **Lidar-Odometrie:** Jede Aufnahme wird per ICP auf eine kurz zuvor
+  gemachte gelegt (vorhandenes `scan_matching.py`). Die Räder liefern nur den
+  Startwert. Verglichen wird mit einer Bezugsaufnahme, die erst nach 0,25 m
+  oder 10° erneuert wird; so summiert sich im Stand kein Rauschen auf. Sie
+  läuft nur beim Kartieren, weil der Abgleich CPU kostet.
+- **Kartierfahrt** als zweiter Modus des Erkunders:
+  1. zur nächsten Wand,
+  2. mit der Wand rechts einmal rundherum,
+  3. Bahnen parallel zu dieser Wand bis zur gegenüberliegenden.
+  Auf den Bahnen dreht er nicht, sondern fährt vor, rutscht seitlich und
+  fährt rückwärts (Mecanum). Die Richtung der Bahnen hält er an den Wänden
+  fest: Zimmerwände stehen fast immer rechtwinklig, ihre Richtung lässt sich
+  aus jeder einzelnen Aufnahme ablesen und driftet daher nicht.
+
+Andere Wege wurden nicht genommen:
+- *IMU reparieren:* Die Bibliothek liefert den Wert nicht, das ist
+  außerhalb unserer Hand.
+- *Drehrate der Räder aufsummieren:* rutscht bei jeder Drehung um ein Viertel.
+- *Position von slam_toolbox zurückholen:* Dafür müssten wir TF aus dem
+  Container lesen. Das ist eine zweite Brücke in die andere Richtung, und
+  ohne Karte (am Anfang) gibt es auch dort nichts.
+- *Wenden wie ein Saugroboter:* Jede Drehung ist am X3 der ungenaueste Teil
+  der Bewegung und für SLAM der heikelste.
+
+**Messung (Simulation, Raum 8 × 6 m mit Säule, 12 % Radschlupf, 4 min Fahrt):**
+
+| | Abweichung am Ende |
+|---|---|
+| nur Räder | 4,1 m, 49° |
+| Lidar-Odometrie | 0,3 m, 4,5° |
+
+Die Säule hielt er zuerst für die nächste Wand und fuhr einmal um sie
+herum. Daraus entstand die Inselerkennung: Eine Runde unter
+`MAP_FAHRT_INSEL_M` war keine Wand. Die Bahnen lagen anfangs schräg, weil
+sie der langsamen Drift der Odometrie folgten. Seit sie an der
+Wandrichtung ausgerichtet sind, laufen sie parallel.
+
+**Konsequenzen.**
+- *Gut:* SLAM bekommt brauchbare Drehungen. Die Bahnen bleiben parallel,
+  ohne dass etwas aufsummiert wird. Alle Sicherheitswege des Erkunders
+  gelten unverändert.
+- *Schlecht:* In Räumen ohne klare rechte Winkel (Dachschrägen, runde
+  Wände) fällt die Bahnführung auf die Odometrie zurück und driftet langsam.
+- *Schlecht:* Ob die Randfahrt „einmal rundherum“ erkennt, hängt an der
+  Odometrie. Kommt er nicht nah genug an den Anfang zurück, endet sie erst
+  nach `MAP_FAHRT_RAND_MAX_S`.
+- *Offen:* Die A1-Aufnahmen sind beim Drehen leicht verzerrt (eine Umdrehung
+  dauert 0,18 s). Das gibt es in der Simulation nicht.
+
+**Neu bewerten, wenn:** die Heimfahrt dieselbe Drehung braucht. Die
+Lidar-Odometrie könnte dann dauerhaft laufen und die Koppelnavigation
+ersetzen, wenn die CPU es hergibt.

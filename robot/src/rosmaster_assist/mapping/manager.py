@@ -56,7 +56,7 @@ class MappingManager:
         storage_dir: str | Path | None = None,
         docker_bin: str | None = None,
         lidar=None,
-        odometry=None,
+        scan_odometrie=None,
     ) -> None:
         self.container = container or os.getenv("ROSMAP_CONTAINER", config.MAP_CONTAINER)
         self.setup_file = setup_file or os.getenv("ROSMAP_ROS_SETUP", config.MAP_ROS_SETUP)
@@ -76,11 +76,14 @@ class MappingManager:
             docker_bin=self.docker_bin,
         )
         self.map_service = MapService(storage_dir=storage_dir)
-        # Ohne Odometrie (etwa in Tests) gibt es nichts einzuspeisen; dann
-        # muss ROS /scan und TF selbst liefern.
+        # Lidar-Odometrie: liefert Position und Blickrichtung für SLAM und
+        # die Kartierfahrt. Läuft nur, solange kartiert wird (kostet CPU).
+        self.scan_odometrie = scan_odometrie
+        # Ohne sie (etwa in Tests) gibt es nichts einzuspeisen; dann muss
+        # ROS /scan und TF selbst liefern.
         self.einspeisung = (
-            Einspeisung(lidar, odometry, self.container, self.setup_file, self.docker_bin)
-            if odometry is not None
+            Einspeisung(lidar, scan_odometrie, self.container, self.setup_file, self.docker_bin)
+            if scan_odometrie is not None
             else None
         )
         self._lock = threading.RLock()
@@ -117,14 +120,29 @@ class MappingManager:
                     f"Docker-Container '{self.container}' konnte nicht gestartet werden: "
                     f"{(result.stderr or result.stdout).strip()}"
                 )
+            # Manche Container beenden sich sofort wieder, etwa wenn sie mit
+            # einer Shell ohne "-it" angelegt wurden. Ohne diese Prüfung
+            # scheiterte erst das nächste exec, und die Meldung sagte
+            # irreführend "ROS-2-Setup fehlt".
+            time.sleep(1.0)
+            if not self._container_running():
+                logs = self._docker("logs", "--tail", "10", self.container, timeout=5.0)
+                ausgabe = (logs.stdout + logs.stderr).strip()[-800:]
+                raise RuntimeError(
+                    f"Docker-Container '{self.container}' beendet sich direkt nach dem "
+                    "Start wieder. Mit 'docker inspect' Befehl (Cmd) und Tty prüfen. "
+                    f"Letzte Ausgabe: {ausgabe or '(keine)'}"
+                )
         check = self._docker(
             "exec", self.container, "bash", "-lc",
             f"test -f {shlex.quote(self.setup_file)}",
             timeout=8.0,
         )
         if check.returncode != 0:
+            detail = (check.stderr or check.stdout).strip()
             raise RuntimeError(
                 f"ROS-2-Setup fehlt im Container: {self.setup_file}"
+                + (f" ({detail[-300:]})" if detail else "")
             )
 
     def _slam_paket_pruefen(self) -> None:
@@ -227,6 +245,8 @@ class MappingManager:
                 self._slam_paket_pruefen()
                 # Zuerst die Einspeisung: slam_toolbox soll beim Anlaufen
                 # schon Scans und TF vorfinden.
+                if self.scan_odometrie is not None:
+                    self.scan_odometrie.start()
                 if self.einspeisung is not None:
                     self.einspeisung.start()
                 self.bridge.start()
@@ -240,6 +260,8 @@ class MappingManager:
                 self.bridge.stop()
                 if self.einspeisung is not None:
                     self.einspeisung.stop()
+                if self.scan_odometrie is not None:
+                    self.scan_odometrie.stop()
                 raise
 
     def stop(self) -> dict[str, Any]:
@@ -251,8 +273,15 @@ class MappingManager:
                 self.bridge.stop()
                 if self.einspeisung is not None:
                     self.einspeisung.stop()
+                if self.scan_odometrie is not None:
+                    self.scan_odometrie.stop()
             self._started_at = None
             return self.status()
+
+    @property
+    def aktiv(self) -> bool:
+        """Gestartet und nicht gestoppt (SLAM kann trotzdem abgestürzt sein)."""
+        return self._started_at is not None
 
     def get_map(self) -> dict[str, Any] | None:
         return self.bridge.get_latest_map()
@@ -308,6 +337,9 @@ class MappingManager:
             # Ab hier: Rückmeldung, woran es gerade hängt (für die Seite /map)
             "aktiv": aktiv,
             "einspeisung": einspeisung,
+            "lidar_odometrie": (
+                self.scan_odometrie.status() if self.scan_odometrie is not None else None
+            ),
             "slam_log": slam_log,
             "hinweis": hinweis,
             "hinweis_fehler": hinweis_fehler,
