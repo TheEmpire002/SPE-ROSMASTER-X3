@@ -262,7 +262,11 @@ class Lidar:
                 diff = (w - von) % 360
                 if diff <= (bis - von) % 360:
                     r[w] = min(r[w], d)
-        return Scan(winkel, r)
+        scan = Scan(winkel, r)
+        # Immer frisch, egal welche Zeit der Test spielt (sonst hinge das
+        # Ergebnis an der Laufzeit des Rechners seit dem Booten).
+        scan.zeit = float("inf")
+        return scan
 
 
 class Pose:
@@ -334,8 +338,28 @@ pruefe("Folgen: Person kurz weg -> hält", b and b.vx == 0 and b.omega == 0 and 
 ia._schritt(1.0 + config.FOLGEN_VERLOREN_S + 0.1)
 b = ia._schritt(1.2 + config.FOLGEN_VERLOREN_S)
 pruefe("Folgen: Person länger weg -> sucht", ia._modus == vh.SUCHEN and b and b.omega > 0, (ia._modus, b))
+start = 1.0 + config.FOLGEN_VERLOREN_S + 0.1  # da begann das Suchen
+b = ia._schritt(start + config.FOLGEN_SUCHEN_DREH_S + 0.1)
+pruefe("Suchen: nach dem Drehen kurz stillhalten", ia._modus == vh.SUCHEN and b and b.omega == 0, b)
+b = ia._schritt(start + config.FOLGEN_SUCHEN_DREH_S + config.FOLGEN_SUCHEN_PAUSE_S + 0.1)
+pruefe("Suchen: danach weiterdrehen", b and b.omega > 0, b)
+# Ohne Zeitgrenze (Standard): auch nach Minuten noch auf der Suche
+ia._schritt(start + 300.0)
+pruefe("Suchen ohne Zeitgrenze -> sucht weiter", config.FOLGEN_SUCHEN_S == 0 and ia._modus == vh.SUCHEN, ia._modus)
+po.liste = [mit_zeit(person(), start + 300.1)]
+ia._schritt(start + 300.1)
+pruefe("Person wieder da -> folgt wieder", ia._modus == vh.FOLGEN, ia._modus)
+
+# Mit Zeitgrenze: danach bereit und angehalten
+alt_suchen = config.FOLGEN_SUCHEN_S
+config.FOLGEN_SUCHEN_S = 6.0
+ia, wd, li, po = interaktion([], vh.FOLGEN)
+ia._winkel = 10.0
+ia._schritt(1.0)
+ia._schritt(1.0 + config.FOLGEN_VERLOREN_S + 0.1)
 ia._schritt(1.3 + config.FOLGEN_VERLOREN_S + config.FOLGEN_SUCHEN_S)
 pruefe("Suchen erfolglos -> bereit und angehalten", ia._modus == vh.BEREIT and wd.stopps >= 1, ia._modus)
+config.FOLGEN_SUCHEN_S = alt_suchen
 
 # Stopp-Geste beim Folgen -> sofort bereit, Watchdog angehalten, keine Befehle mehr
 ia, wd, li, po = interaktion([(-5, 5, 2.0)], vh.FOLGEN)

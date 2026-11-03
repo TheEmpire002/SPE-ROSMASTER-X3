@@ -29,6 +29,11 @@ warum der Roboter stehen bleibt.
    Totmannschaltung für WLAN-Abriss und abgestürzte Apps. Die Web-App
    sendet mit **10 Hz**, und das ist auch die Empfehlung. Ein einzelnes
    `drive` bewegt den Roboter also nur für einen Moment.
+   Mehrere Clients: Wer gerade lenkt (ein `drive` ungleich 0), hat
+   Vorrang. Nullen von anderen Verbindungen zählen erst
+   `DRIVE_VORRANG_S` (0,5 s) nach seinem letzten echten Befehl wieder,
+   sonst bremsen die Leerlauf-Nullen einer zweiten offenen App ihn aus.
+   `stop` wirkt immer, von jeder Verbindung.
 2. **Letzter Client weg heißt Stopp.** Trennt sich die letzte
    WebSocket-Verbindung, hält der Roboter an und bricht eine laufende
    Heimfahrt ab.
@@ -332,7 +337,10 @@ Sprechen und Motoren gleichzeitig ließen die USB-Versorgung zusammenbrechen.
 - Die Richtung zur Person kommt aus der Kamera, der Abstand aus dem Lidar
   in genau dieser Richtung.
 - Verliert er die Person beim Folgen länger als `FOLGEN_VERLOREN_S` (2 s),
-  sucht er durch Drehen (Modus `sucht`, höchstens `FOLGEN_SUCHEN_S`).
+  sucht er durch Drehen (Modus `sucht`): je `FOLGEN_SUCHEN_DREH_S` drehen,
+  `FOLGEN_SUCHEN_PAUSE_S` stillhalten (im Drehen verwischt das Bild). Er
+  sucht, bis er wieder jemanden sieht; mit `FOLGEN_SUCHEN_S` > 0 gibt er
+  nach so vielen Sekunden auf.
 - Sicherheit wie beim autonomen Fahren: vorwärts nur bei freiem
   Fahrschlauch, rückwärts nur bei freiem Raum hinten, ohne frische
   Lidar-Daten steht er. `herkommen` und `weggehen` enden spätestens nach

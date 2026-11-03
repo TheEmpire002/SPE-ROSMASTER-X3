@@ -116,7 +116,7 @@ mindestens Schultern und Handgelenke im Bild.
 - **Folgen:**
   - Ziel ist die Person, die die Geste gemacht hat. Die Richtung kommt aus der Kamera, der Abstand aus dem Lidar in genau dieser Richtung.
   - Sollabstand `FOLGEN_ABSTAND_M` (1,0 m), P-Regler auf `vx` und `omega`, begrenzt durch `FOLGEN_MAX_SPEED`.
-  - Ist die Person länger als 2 s weg, hält er an und dreht sich kurz suchend.
+  - Ist die Person länger als 2 s weg, sagt er „Wo bist du?“ und sucht: Er dreht sich zu der Seite, auf der sie verschwand, je 1,2 s drehen und 0,8 s stillhalten (`FOLGEN_SUCHEN_DREH_S`, `FOLGEN_SUCHEN_PAUSE_S`). Im Drehen verwischt das Kamerabild, im Stand erkennt die Pose scharf. Seit dem 03.11. sucht er so lange im Kreis, bis er wieder jemanden sieht (`FOLGEN_SUCHEN_S` = 0), dann folgt er dieser Person. Vorher gab er nach 6 s auf. Beenden mit Stopp, Stopp-Geste oder „Robi, gute Nacht“.
 - **Herkommen:** fährt auf die Person zu bis 0,7 m und bleibt stehen.
 - **Weggehen:** weicht ~1 m zurück und bleibt stehen.
 - Es ist immer nur **ein** Verhalten aktiv. Erkunder, Heimfahrt und Interaktion brechen sich gegenseitig ab.

@@ -537,12 +537,19 @@ class Interaktion:
             self._wechseln(self._suchen_fuer, "Person wiedergefunden", jetzt, melden=True,
                           sagen="Da bist du ja.")
             return DriveCommand(0.0, 0.0, 0.0)
-        if jetzt - self._modus_seit > config.FOLGEN_SUCHEN_S:
+        sucht_seit = jetzt - self._modus_seit
+        if config.FOLGEN_SUCHEN_S > 0 and sucht_seit > config.FOLGEN_SUCHEN_S:
             self._wechseln(BEREIT, "Person nicht wiedergefunden", jetzt, melden=True,
                           sagen="Ich habe dich verloren.")
             return DriveCommand(0.0, 0.0, 0.0)
+        # Drehen und kurz stillhalten im Wechsel: Im Drehen verwischt das
+        # Bild, im Stand sieht die Posenerkennung scharf.
+        takt = config.FOLGEN_SUCHEN_DREH_S + config.FOLGEN_SUCHEN_PAUSE_S
+        if takt > 0 and sucht_seit % takt >= config.FOLGEN_SUCHEN_DREH_S:
+            self._text = "sucht die Person -- schaut"
+            return DriveCommand(0.0, 0.0, 0.0)
         # Zur Seite drehen, auf der die Person zuletzt war -- dort ist sie
-        # meist aus dem Bild gelaufen.
+        # meist aus dem Bild gelaufen. Ohne Zeitgrenze immer weiter im Kreis.
         self._text = "sucht die Person"
         return DriveCommand(0.0, 0.0, self._letzte_seite * config.EXPLORE_TURN_SPEED)
 

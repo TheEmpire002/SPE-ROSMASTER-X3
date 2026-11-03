@@ -418,6 +418,15 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Ergebnis:** Am laufenden Server nach dem Neustart: „Robi, folge mir“ → Mikrofon fällt beim Sprechen ab → nach 3 s „Mikrofon wieder da“, die Erkennung hört weiter. Neuer Test: Ein Hör-Thread, der beim Öffnen für immer hängt, wird dreimal ersetzt, danach meldet `/sprache/status` „Server neu starten“. Alle Testskripte bestanden.
 - **Offen:** Die eigentliche Ursache bleibt die Versorgung (Board V3.0 oder eigener 5-V/5-A-Wandler). Bis dahin gibt es nach jedem Satz des Roboters eine Lücke von etwa 3 s im Mithören.
 
+### 03.11.2026 – Langsam nach dem Folgen: Fahrvorrang; Suchen bis gefunden
+- **Was:**
+  - **Fahrvorrang:** Lenkt ein Gerät, ignoriert der Server für 0,5 s (`DRIVE_VORRANG_S`) die Nullen aller anderen Verbindungen. „stop“ wirkt weiter von jedem Gerät.
+  - **Suchen:** Verliert er die Person beim Folgen, dreht er sich so lange im Kreis, bis er wieder jemanden sieht (`FOLGEN_SUCHEN_S` = 0, vorher Abbruch nach 6 s). Er dreht dabei in Schritten von etwa 40° mit kurzem Stillhalten dazwischen, weil das Kamerabild im Drehen verwischt.
+- **Warum langsam:** Im Log wechselten sich die Fahrbefehle mehrmals pro Sekunde ab: Vollgas, 0, Vollgas, 0. Zur selben Zeit waren zwei Geräte verbunden (10.42.0.60 und 10.42.0.206). Die Web-App schickt auch im Stillstand zehnmal pro Sekunde „vx=0“ (Totmannschaltung). Ein Gerät lenkte, das andere bremste dazwischen, und er fuhr stotternd mit etwa halbem Tempo. Erst nach dem Folgen fiel es auf, weil der Server während der Interaktion die Nullen ohnehin verwirft. Die Anfahrrampe war auf der Einstellungsseite ausgeschaltet, deshalb schlug jede Null voll durch.
+- **Ergebnis:** Am Pi: Test für den Fahrvorrang (Gerät A fährt, Gerät B schickt Nullen → nur A zählt, A lässt los → Stopp). `test_gesten.py` mit neuen Prüfungen: Suchen hält nach dem Drehen kurz still, dreht weiter, sucht nach 5 min noch, folgt, sobald jemand da ist. Mit Zeitgrenze gibt er weiter auf. Alle Testskripte bestanden.
+- **Nebenbefund:** Der Pi ist um etwa 09:41 wieder neu gestartet (Uptime danach 4 min), im Log davor viele Not-Stopps.
+- **Offen:** Am Boden testen: Person verlieren, er sucht im Kreis, findet sie wieder. Fahren mit zwei offenen Apps.
+
 ---
 
 ## 3. Ergebnisse und Messwerte
@@ -469,6 +478,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 | Push aus dem Laptop hängt | Git Credential Manager wartet auf Login-Fenster | Nutzer pusht selbst, der Pi zieht nur (`git pull`) |
 | MUKKE: mpv meldet „Failed to recognize file format“ | mpvs ytdl-Skript findet yt-dlp in der venv nicht und gibt den YouTube-Link roh weiter | Server löst den Link selbst mit der yt-dlp-Bibliothek auf, mpv bekommt nur noch die direkte Tonspur; YouTube-Fehler erscheinen im Fenster |
 | Roboter startet die Interaktion von selbst | Vosk mit Grammatik macht aus Musik und Gesprächen erlaubte Sätze („robbie hallo“) | Konfidenz- und `[unk]`-Prüfung; bei Musik nur Stopp und „Musik aus“ (03.11.) |
+| Fährt nach dem Folgen nur langsam und stotternd | Zweite offene App schickt im Leerlauf laufend „vx=0“ zwischen die Befehle des Lenkenden | Fahrvorrang für das lenkende Gerät, `DRIVE_VORRANG_S` (03.11.) |
 | Nach einem Absturz keine Sprachbefehle mehr | Mikrofon fiel kurz vom USB ab, `strom.read()` blieb ohne Fehler für immer hängen | Lesen per Callback mit Frist, Neuöffnen nach 3 s ohne Ton; Rückwechsel von der C270 zum USB-Mikrofon (03.11.) |
 
 ---

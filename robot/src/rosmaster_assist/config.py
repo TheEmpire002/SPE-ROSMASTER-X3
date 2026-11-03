@@ -71,6 +71,14 @@ MAX_SPEED_OMEGA = 5.0  # rad/s  drehen
 # Zu kurz = ruckeliges Fahren, zu lang = Roboter fährt unkontrolliert weiter.
 COMMAND_TIMEOUT_S = 0.5
 
+# Fahrvorrang bei mehreren offenen Apps: Jede App schickt auch im Stillstand
+# zehnmal pro Sekunde "vx=0". Lenkt eine, kamen die Nullen der anderen
+# dazwischen, und er fuhr stotternd mit halbem Tempo (03.11., zwei Geräte,
+# fiel erst nach dem Folgen auf, weil die Interaktion Nullen ohnehin
+# verwirft). So lange (s) nach dem letzten echten Fahrbefehl zählen Nullen
+# nur von dem Gerät, das gerade lenkt. "stop" wirkt immer, von jedem Gerät.
+DRIVE_VORRANG_S = 0.5
+
 # Takt, in dem der Watchdog prüft. Muss deutlich kleiner als das Timeout sein.
 WATCHDOG_INTERVAL_S = 0.1
 
@@ -500,9 +508,16 @@ FOLGEN_HALTEN_S = 0.5
 FOLGEN_NAH_HALTEN_S = 0.5
 
 # So lange darf die Person aus dem Bild sein, bevor er sucht, und so lange
-# sucht er (langsam drehen in die Richtung, in der sie verschwand).
+# sucht er (drehen in die Richtung, in der sie verschwand). 0 = so lange,
+# bis er wieder jemanden sieht; abbrechen mit Stopp oder "Robi, gute Nacht".
 FOLGEN_VERLOREN_S = 2.0
-FOLGEN_SUCHEN_S = 6.0
+FOLGEN_SUCHEN_S = 0.0
+# Beim Suchen abwechselnd drehen und stillhalten (s): Während der Drehung
+# verwischt das Kamerabild, und die Posenerkennung übersieht die Person.
+# 1,2 s bei EXPLORE_TURN_SPEED (0,6 rad/s) sind rund 40°, weniger als das
+# Bildfeld der C270 -- so bleibt keine Lücke im Rundblick.
+FOLGEN_SUCHEN_DREH_S = 1.2
+FOLGEN_SUCHEN_PAUSE_S = 0.8
 
 # Herkommen: bis zu diesem Abstand heranfahren, dann stehen bleiben.
 HERKOMMEN_ABSTAND_M = 0.70

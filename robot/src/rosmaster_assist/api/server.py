@@ -346,7 +346,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                 try:
                     reply = await _handle(
                         msg, watchdog, driver, hub, odometry, homing, localizer, guard,
-                        erkunder, interaktion, stimme, sprache,
+                        erkunder, interaktion, stimme, sprache, absender=ws,
                     )
                 except Exception:
                     # Früher trennte ein fehlerhafter Befehl die Verbindung --
@@ -873,6 +873,10 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     return app
 
 
+# Welche Verbindung zuletzt wirklich gelenkt hat und wann (monotonic).
+_lenker: dict[str, Any] = {"wer": None, "zeit": 0.0}
+
+
 async def _handle(
     msg: dict[str, Any],
     watchdog: SafetyWatchdog,
@@ -886,10 +890,12 @@ async def _handle(
     interaktion: Interaktion | None = None,
     stimme: Stimme | None = None,
     sprache: Spracherkennung | None = None,
+    absender: object | None = None,
 ) -> dict[str, Any] | None:
     """Eine eingehende Nachricht verarbeiten.
 
     Gibt die Antwort an den Absender zurück, oder None wenn keine nötig ist.
+    ``absender`` ist die Verbindung, von der sie kam (für den Fahrvorrang).
     """
     kind = msg.get("type")
 
@@ -898,6 +904,18 @@ async def _handle(
             cmd = DriveCommand.from_message(msg)
         except ProtocolError as exc:
             return error_message(str(exc))
+
+        # Fahrvorrang: Wer gerade lenkt, wird nicht von den Leerlauf-Nullen
+        # einer zweiten offenen App ausgebremst (siehe DRIVE_VORRANG_S).
+        if absender is not None:
+            jetzt = time.monotonic()
+            if not cmd.is_stop():
+                _lenker["wer"], _lenker["zeit"] = absender, jetzt
+            elif (
+                _lenker["wer"] not in (None, absender)
+                and jetzt - _lenker["zeit"] < config.DRIVE_VORRANG_S
+            ):
+                return None
 
         # Der Mensch hat Vorrang. Die App sendet auch im Stillstand weiter,
         # deshalb bricht nur eine tatsächliche Eingabe ab -- sonst wäre die
