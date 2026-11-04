@@ -98,7 +98,13 @@ class _OpenNI:
 
     def oeffnen(self, breite: int, hoehe: int) -> None:
         l = self._l
-        self._pruefen(l, l.oniDeviceOpen(None, C.byref(self._geraet)), "Gerät öffnen")
+        status = l.oniDeviceOpen(None, C.byref(self._geraet))
+        if status != 0:
+            # Auch ein misslungenes Öffnen schreibt einen Zeiger hinein. Ihn
+            # später mit oniDeviceClose zu schließen, ließ OpenNI2 abstürzen
+            # (Segfault, Server weg, 04.11.2026) -- also vergessen.
+            self._geraet = C.c_void_p()
+        self._pruefen(l, status, "Gerät öffnen")
         self._pruefen(l, l.oniDeviceCreateStream(self._geraet, _SENSOR_TIEFE, C.byref(self._strom)),
                       "Tiefenstrom anlegen")
         info = l.oniStreamGetSensorInfo(self._strom).contents

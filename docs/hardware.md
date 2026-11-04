@@ -296,6 +296,13 @@ der Server ohne Tiefe weiter und meldet das im Log und unter `/tiefe/status`.
   und `kamera_hoehe_m` ungefähr die echte Höhe zeigen. Zur Kontrolle von
   links/rechts eine Hand links vor die Kamera halten (mehr als 60 cm weg):
   `naechstes` muss dann ein positives y zeigen (Konvention: y links).
+- **Kamera hängt** (04.11.): `/tiefe/status` meldet „Gerät öffnen: … Failed
+  to open the file!“, danach „Resource busy!“. Die Firmware meldet sich am
+  USB an, beantwortet aber keine Befehle mehr. Ein USB-Reset per Software
+  hilft nicht, nur **Orbbec ab- und wieder anstecken** (stromlos machen).
+  Früher stürzte dabei der ganze Server ab (Segfault in OpenNI2, weil der
+  Zeiger eines misslungenen Öffnens geschlossen wurde). Inzwischen bleibt
+  er stehen, und die Fahrt läuft mit dem Lidar allein.
 
 ## Lautsprecher und Musik („MUKKE“)
 
