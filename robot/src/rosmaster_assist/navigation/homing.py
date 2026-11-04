@@ -13,6 +13,11 @@ herum, nicht durch Labyrinthe. Ist ``HOME_AUSWEICH_WARTEN_S`` lang nirgends
 Platz, hält er an und meldet es. Wird er hochgehoben, bricht er ab: Die
 Koppelnavigation weiß vom Tragen nichts, die Richtung nach Hause stimmt dann
 nicht mehr. Deshalb weiter das gemächliche Tempo und die Zeitbegrenzung.
+
+**Beliebiges Ziel (04.11.2026, Zustandserkennung):** ``start_zu`` fährt
+dieselbe Strecke zu einem anderen Punkt im Odometrie-Rahmen, etwa zu einer
+gemeldeten Person. Weil dort die Person selbst das Hindernis ist, kann
+"blockiert, aber schon nah genug" als angekommen gelten.
 """
 
 from __future__ import annotations
@@ -56,6 +61,12 @@ class Homing:
         self._hoch = ausweichen.HochhebeErkennung()
         self._seite = 0.0
         self._blockiert_seit: float | None = None
+        # Ziel im Odometrie-Rahmen; ohne start_zu der Startpunkt (0, 0).
+        self._ziel = (0.0, 0.0)
+        self._zielname = "Startpunkt"
+        self._toleranz: float | None = None
+        self._blockiert_reicht_m = 0.0
+        self._angekommen = False
 
     @property
     def aktiv(self) -> bool:
@@ -66,10 +77,41 @@ class Homing:
         """Warum die letzte Heimfahrt endete -- für die Anzeige in der App."""
         return self._grund
 
+    @property
+    def angekommen(self) -> bool:
+        """Ob die letzte Fahrt das Ziel erreicht hat (nicht abgebrochen)."""
+        return self._angekommen
+
+    @property
+    def ziel(self) -> tuple[float, float]:
+        return self._ziel
+
     def start(self) -> bool:
         """Heimfahrt beginnen. False, wenn schon eine läuft."""
+        return self.start_zu(0.0, 0.0)
+
+    def start_zu(
+        self,
+        x: float,
+        y: float,
+        toleranz: float | None = None,
+        name: str = "Startpunkt",
+        blockiert_reicht_m: float = 0.0,
+    ) -> bool:
+        """Zu einem Punkt im Odometrie-Rahmen fahren. False, wenn schon eine Fahrt läuft.
+
+        ``toleranz`` ersetzt ``HOME_TOLERANCE_M``. Ist ``blockiert_reicht_m``
+        größer null, gilt die Fahrt als angekommen, wenn ihr in dieser
+        Entfernung zum Ziel etwas im Weg steht -- gedacht für Ziele, die
+        selbst ein Hindernis sind (eine Person am Boden).
+        """
         if self.aktiv:
             return False
+        self._ziel = (float(x), float(y))
+        self._zielname = name
+        self._toleranz = toleranz
+        self._blockiert_reicht_m = max(0.0, float(blockiert_reicht_m))
+        self._angekommen = False
         self._grund = None
         self._task = asyncio.create_task(self._fahren())
         return True
@@ -89,10 +131,13 @@ class Homing:
         self._hoch.zuruecksetzen()
         self._seite = 0.0
         self._blockiert_seit = None
+        ziel_x, ziel_y = self._ziel
+        toleranz = config.HOME_TOLERANCE_M if self._toleranz is None else self._toleranz
+        name = self._zielname
 
         start_x, start_y, _ = self._odometry.pose()
-        entfernung = math.hypot(start_x, start_y)
-        log.info("Heimfahrt gestartet -- %.2f m zu fahren", entfernung)
+        entfernung = math.hypot(start_x - ziel_x, start_y - ziel_y)
+        log.info("Fahrt zum %s gestartet -- %.2f m zu fahren", name, entfernung)
 
         if not self._odometry.misst_tatsaechlich:
             log.warning(
@@ -103,10 +148,13 @@ class Homing:
         try:
             while True:
                 x, y, winkel_grad = self._odometry.pose()
+                # Ab hier relativ zum Ziel: _schritt fährt immer nach (0, 0).
+                x, y = x - ziel_x, y - ziel_y
                 abstand = math.hypot(x, y)
 
-                if abstand <= config.HOME_TOLERANCE_M:
+                if abstand <= toleranz:
                     self._watchdog.stop()
+                    self._angekommen = True
                     self._grund = f"angekommen ({abstand:.2f} m Restabweichung)"
                     log.info("Heimfahrt beendet -- %s", self._grund)
                     return
@@ -129,6 +177,14 @@ class Homing:
                         log.warning("Heimfahrt abgebrochen -- %s", self._grund)
                         return
                     frei = self._umfahren(befehl, abstand, scan)
+                    if frei is None and abstand <= self._blockiert_reicht_m:
+                        # Das Ziel selbst steht im Weg (Person am Boden):
+                        # näher geht es nicht, also ist er da.
+                        self._watchdog.stop()
+                        self._angekommen = True
+                        self._grund = f"angekommen, Weg versperrt ({abstand:.2f} m vor dem Ziel)"
+                        log.info("Fahrt beendet -- %s", self._grund)
+                        return
                     if frei is None:
                         # Kurz warten: Ein vorbeigehender Mensch soll die
                         # Heimfahrt nicht beenden.
@@ -139,7 +195,7 @@ class Homing:
                             self._watchdog.stop()
                             blockiert = self._hindernis(befehl)
                             ort = f"Hindernis in {blockiert:.2f} m" if blockiert is not None else "kein Weg frei"
-                            self._grund = f"{ort}, noch {abstand:.2f} m bis zum Startpunkt"
+                            self._grund = f"{ort}, noch {abstand:.2f} m bis zum {name}"
                             log.warning("Heimfahrt angehalten -- %s", self._grund)
                             return
                         self._watchdog.submit(DriveCommand(0.0, 0.0, 0.0), quelle="autonom")
@@ -156,9 +212,13 @@ class Homing:
                 blockiert = self._hindernis(befehl)
                 if blockiert is not None:
                     self._watchdog.stop()
+                    if abstand <= self._blockiert_reicht_m:
+                        self._angekommen = True
+                        self._grund = f"angekommen, Weg versperrt ({abstand:.2f} m vor dem Ziel)"
+                        return
                     self._grund = (
                         f"Hindernis in {blockiert:.2f} m, noch {abstand:.2f} m "
-                        "bis zum Startpunkt"
+                        f"bis zum {name}"
                     )
                     log.warning("Heimfahrt angehalten -- %s", self._grund)
                     return
@@ -226,8 +286,8 @@ class Homing:
         return DriveCommand(vx=tempo * math.cos(a), vy=tempo * math.sin(a), omega=0.0)
 
     def _schritt(self, x: float, y: float, winkel_grad: float, abstand: float) -> DriveCommand:
-        """Fahrbefehl für diesen Moment."""
-        # Richtung zum Startpunkt, in Weltkoordinaten.
+        """Fahrbefehl für diesen Moment (x, y relativ zum Ziel)."""
+        # Richtung zum Ziel, in Weltkoordinaten.
         dx, dy = -x, -y
 
         # In Roboterkoordinaten drehen: der Antrieb kennt nur "vorwärts"
