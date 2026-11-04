@@ -895,6 +895,7 @@ function skeletteZeichnen(ctx, ox, oy, bw, bh) {
 
 let faehrtHeim = false;
 
+function zeigePose(pose) {
   if (!pose) {
     ui.dist.textContent = ui.pos.textContent = ui.winkel.textContent = "—";
     return;
