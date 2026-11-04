@@ -618,6 +618,14 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Ergebnis:** Am Pi mit den echten Gerätenamen nachgeprüft: C270 und Orbbec fallen heraus, übrig bleiben nur „pulse“ und „default“, die zu keinem Namen passen. Das USB-Mikrofon hält der laufende Server belegt (`/sprache/status`: „USB Microphone (hw:5,0)“).
 - **Offen:** Nach dem nächsten Server-Neustart in `/sprache/status` prüfen, dass `mikrofon` das USB-Mikrofon ist. Mikrofon kurz abziehen: Die Erkennung muss „kein Mikrofon“ melden statt auf die C270 zu wechseln.
 
+### 04.11.2026 – Schnellere Tests und Helfer für die KI-Arbeit (Marlon, mit Claude)
+- **Was:**
+  - Neues Skript `scripts/alle_tests.py`: Es startet alle Testskripte gleichzeitig, schreibt je Skript eine Zeile und zeigt die volle Ausgabe nur bei Fehlschlägen. Mit Namensfilter laufen nur einzelne Tests (`python scripts/alle_tests.py ziel gesten`).
+  - Vier Subagents für Claude Code in `.claude/agents/`: `test-laeufer` (Tests ausführen), `smoke-tester` (Server im Mock auf Port 8037 prüfen), `regel-pruefer` (Diff gegen die AGENTS.md-Regeln) und `doku-schreiber` (Projekttagebuch und `docs/`).
+- **Warum:** Nacheinander dauerten die 14 Tests über zehn Minuten, und die seitenlange Ausgabe der bestandenen Prüfungen kostete beim Arbeiten mit der KI viel Kontext. Die Subagents erledigen Routinearbeit mit kleineren Modellen, ohne den Hauptverlauf zu füllen.
+- **Ergebnis:** Alle 14 Tests in rund 6,5 Minuten. Das langsamste Skript (`test_ausweichen.py`) bestimmt die Dauer.
+- **Probleme:** Beim ersten Lauf nach dem Merge von `main` schlugen zwei Tests fehl. Auf `main` sucht der Roboter jetzt ohne Zeitgrenze, und ein Wiedergefunden zählt erst nach mehreren bestätigten Bildern. Die Tests wurden daran angepasst.
+
 ---
 
 ## 3. Ergebnisse und Messwerte
