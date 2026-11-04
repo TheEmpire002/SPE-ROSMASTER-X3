@@ -196,6 +196,35 @@ class Mukke:
             self._starten(quelle, titel, kopfzeilen)
         log.info("MUKKE: spiele %s", url)
 
+    def datei_fehlt(self) -> str | None:
+        """Was zum Abspielen einer Datei fehlt, oder None.
+
+        Wie ``fehlt()``, aber ohne yt-dlp: Eine Datei im Paket braucht
+        kein YouTube. Sonst bliebe der Healthbot stumm, nur weil yt-dlp
+        veraltet oder nicht installiert ist.
+        """
+        if not config.MUKKE_ENABLED:
+            return "abgeschaltet (config.MUKKE_ENABLED)"
+        if shutil.which("mpv") is None:
+            return "mpv fehlt -- sudo apt install mpv"
+        if not hasattr(socket, "AF_UNIX"):
+            return "nur auf Linux"
+        return None
+
+    def datei_abspielen(self, pfad: str, titel: str | None = None) -> None:
+        """Eine Audiodatei vom Pi abspielen (z. B. die Musik des Healthbots)."""
+        if not os.path.isfile(pfad):
+            raise MukkeFehler(f"Datei fehlt: {pfad}")
+        fehlt = self.datei_fehlt()
+        if fehlt:
+            raise MukkeFehler(f"Abspielen geht nicht: {fehlt}")
+        with self._lock:
+            self._beenden()
+            self._unterbrochen = None
+            self._url, self._titel, self._fehler = None, titel, None
+            self._starten(pfad, titel, {})
+        log.info("MUKKE: spiele Datei %s", pfad)
+
     def unterbrechen(self) -> None:
         """Lautsprecher freigeben, solange die Stimme spricht.
 
