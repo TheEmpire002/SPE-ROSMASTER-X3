@@ -427,6 +427,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         simulation=lidar is not None and lidar.ist_simulation,
     )
     app.state.mapping_manager = mapping_manager
+    if config.SPRACHE_AUS_BEIM_MAPPEN:
+        sprache.pause_setzen(lambda: "Mapping läuft" if mapping_manager.aktiv else None)
 
     # Kartierfahrt, Karte laden, Lage zeigen, Fahrt zum Ziel -- für /map und
     # die App. Die Kartierfahrt ist ein Modus des Erkunders; so gelten

@@ -753,6 +753,13 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
   - Der Planer endete in der Mitte einer 10-cm-Zelle statt genau am Ziel (19 cm daneben); jetzt endet er genau am verlangten Punkt.
 - **Offen:** Am Roboter prüfen (siehe Offene Punkte). Der vorhandene Fehler „`dauer_s` direkt nach dem Start = Zeit seit Serverstart“ ist nebenbei behoben.
 
+### 04.11.2026 – Mikrofon beim Mapping aus (Marlon, mit Claude)
+- **Was:** Solange das Mapping läuft, schließt die Spracherkennung das Mikrofon und nimmt keine Sprachbefehle an. Danach öffnet sie es von selbst wieder (`Spracherkennung.pause_setzen()`, Einstellung `SPRACHE_AUS_BEIM_MAPPEN`). `/sprache/status` und `state.sprache` haben dafür das neue Feld `pause`, die App zeigt „Mikrofon aus: Mapping läuft“.
+- **Warum:** Der Mikrofon-Stream belastet den USB-Bus, an dem auch der Lidar hängt, und Vosk braucht CPU, die SLAM fehlt. Ein falsch gehörter Befehl („folgen“) bräche außerdem die Kartierfahrt ab.
+- **Wie:** Der Hör-Thread fragt laufend, ob das Mapping aktiv ist, statt an jedem Start und Stopp benachrichtigt zu werden. So endet die Pause auf jedem Weg (Seite, App, Absturz, Beenden).
+- **Kehrseite:** Auch „Stopp“ per Sprache geht beim Mapping nicht. Anhalten über App, `/map` oder von Hand.
+- **Offen:** Am Pi prüfen: Mapping starten, im Log „Spracherkennung pausiert“, nach dem Stopp „hört auf …“.
+
 ---
 
 ## 3. Ergebnisse und Messwerte

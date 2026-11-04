@@ -851,7 +851,9 @@ ui.speechForm.addEventListener("submit", (ev) => {
 
 function zeigeSprache(sp) {
   if (!sp) return;
-  if (!sp.verfuegbar) {
+  if (sp.pause) {
+    ui.sprache.textContent = `Mikrofon aus: ${sp.pause}`;
+  } else if (!sp.verfuegbar) {
     ui.sprache.textContent = "kein Mikrofon (/sprache/status)";
   } else if (sp.befehl) {
     ui.sprache.textContent = `Befehl: ${sp.befehl}`;

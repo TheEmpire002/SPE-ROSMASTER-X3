@@ -1514,3 +1514,9 @@ SPRACHE_THREAD_HAENGT_S = 15.0
 # Höchstens so oft hintereinander; danach Zustand "fehler" mit dem Hinweis,
 # den Server neu zu starten (jeder hängende Thread bleibt liegen).
 SPRACHE_THREAD_MAX_NEU = 3
+# Beim Mapping ist das Mikrofon zu (keine Sprachbefehle): Der Stream belastet
+# den USB-Bus, an dem auch der Lidar hängt, und Vosk die CPU, die SLAM
+# braucht; ein falsch gehörtes "folgen" bräche zudem die Kartierfahrt ab.
+SPRACHE_AUS_BEIM_MAPPEN = True
+# So oft (s) schaut der Hör-Thread in der Pause, ob sie vorbei ist.
+SPRACHE_PAUSE_PRUEFEN_S = 0.5
