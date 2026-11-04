@@ -39,6 +39,13 @@ Von der App / vom ESP an den Roboter
                                                           den Uhrzeigersinn), - = rechts
 {"type": "speech", "text": "robi folgen"}                 Text behandeln, als wäre er ins
                                                           Mikrofon gesprochen (Test, --mock)
+{"type": "health_check", "x": 2.5, "y": -1.0}            Healthbot: zur Stelle fahren und den
+                                                          Zustand der Person prüfen (x, y in m,
+                                                          Kartenrahmen; ohne x/y: hier prüfen).
+                                                          Fährt und stupst an! Nur am Boden.
+{"type": "health_stop"}                                   Healthbot-Prüfung abbrechen, anhalten
+{"type": "health_wache", "an": true}                      Healthbot-Wache: liegende Person selbst
+                                                          erkennen und dann prüfen
 {"type": "ping"}                                          Verbindung am Leben halten
 
 Vom Roboter an die App
@@ -52,7 +59,10 @@ Vom Roboter an die App
                     mit Stimme zusätzlich "stimme": {"verfuegbar":…,
                     "spricht":…, "text":…};
                     mit Mikrofon zusätzlich "sprache": {"verfuegbar":…,
-                    "geweckt":…, "gehoert":…, "befehl":…})
+                    "geweckt":…, "gehoert":…, "befehl":…};
+                    mit Healthbot zusätzlich "healthbot": {"aktiv":…,
+                    "zustand":…, "schritt":…, "alarm":…, "wache":…},
+                    alles Weitere unter GET /healthbot/status)
 {"type": "vitals", "bpm":…, "motion":…}                   weitergereichte ESP-Daten
 {"type": "alert",  "level": "info"|"warning"|"emergency", "text": "…"}
 {"type": "error",  "text": "…"}                           ungültige Nachricht o.Ä.
@@ -131,6 +141,7 @@ def state_message(
     interaktion: dict[str, Any] | None = None,
     stimme: dict[str, Any] | None = None,
     sprache: dict[str, Any] | None = None,
+    healthbot: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     msg: dict[str, Any] = {
         "type": "state",
@@ -149,6 +160,8 @@ def state_message(
         msg["stimme"] = stimme
     if sprache is not None:
         msg["sprache"] = sprache
+    if healthbot is not None:
+        msg["healthbot"] = healthbot
     if pose is not None:
         x, y, winkel = pose
         msg["pose"] = {

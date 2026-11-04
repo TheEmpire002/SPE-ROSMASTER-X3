@@ -61,6 +61,8 @@ from ..sensors.camera import CameraService, create_cameras
 from ..sensors.lidar import LidarService, create_lidar
 from ..sensors.personen import Personenerkennung
 from ..sensors.pose import SKELETT, Posenerkennung
+from ..zustandserkennung import Healthbot
+from ..zustandserkennung.simulation import SZENEN, Simulation
 from ..sensors.tiefe import create_tiefe
 from ..sensors import tiefe_anzeige
 
@@ -268,6 +270,19 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     # (sonst versteht er sich selbst), und MUKKE: Bei laufender Musik gilt
     # nur Stopp und "Musik aus", sonst wird der Gesang zu Befehlen.
     sprache = Spracherkennung(mock=use_mock_camera, stimme=stimme, mukke=mukke)
+    # Healthbot: eigene Heimfahrt, damit "home_cancel" und die App-Anzeige
+    # der normalen Heimfahrt ihn nicht mitten im Hilfeholen stören. Gelenkt
+    # wird trotzdem nur über den Watchdog.
+    healthbot = Healthbot(
+        watchdog, odometry, Homing(watchdog, odometry, localizer), lidar, pose,
+        stimme, sprache, mukke, melden=hub.broadcast,
+    )
+    # Nur in der Simulation: eine liegende Person, die Kamera und Lidar
+    # gleichermaßen sehen. Am Roboter gibt es dafür echte Menschen.
+    health_sim = None
+    if use_mock_camera and pose_quelle is not None:
+        roh_lidar = getattr(lidar, "_lidar", None) if lidar is not None else None
+        health_sim = Simulation(pose, pose_quelle, getattr(roh_lidar, "hindernisse_setzen", None))
 
     # Die Diagnoseseite zeigt auch die Server-Meldungen. Ein alter Puffer
     # (create_app ein zweites Mal, etwa in Tests) wird ersetzt, sonst
@@ -332,13 +347,16 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             _status_loop(
                 hub, watchdog, driver, odometry, homing, localizer, guard,
                 erkunder, erkennung, lidar, personen, interaktion, stimme, sprache, manoever,
+                healthbot,
             )
         )
         sprach_task = asyncio.create_task(_sprach_loop())
         odo_task = asyncio.create_task(_odometry_loop(watchdog, odometry))
         match_task = asyncio.create_task(_match_loop(localizer))
         hw_task = asyncio.create_task(
-            _hardware_loop(hub, watchdog, driver, homing, erkunder, interaktion, manoever)
+            _hardware_loop(
+                hub, watchdog, driver, homing, erkunder, interaktion, manoever, healthbot
+            )
         )
         puls_task = asyncio.create_task(_puls_loop(diagnose))
         for task, name in [
@@ -378,6 +396,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             erkunder.abbrechen("Server wird beendet")
             manoever.abbrechen("Server wird beendet")
             interaktion.abbrechen("Server wird beendet")
+            healthbot.beenden()
             await watchdog.shutdown()
             # Erst nach dem Anhalten: Das Beenden im Container kann dauern,
             # und ein Fehler darin (Docker schon weg, auf dem Laptop gar
@@ -459,6 +478,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             erkunder.abbrechen("Kartierfahrt gestartet")
             interaktion.abbrechen("Kartierfahrt gestartet")
             manoever.abbrechen("Kartierfahrt gestartet")
+            healthbot.abbrechen("Kartierfahrt gestartet")
             if not erkunder.start(KARTE):
                 return "Die Kartierfahrt ließ sich nicht starten."
             asyncio.get_running_loop().create_task(
@@ -492,7 +512,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                     reply = await _handle(
                         msg, watchdog, driver, hub, odometry, homing, localizer, guard,
                         erkunder, interaktion, stimme, sprache, aufzeichnung,
-                        manoever=manoever, absender=ws,
+                        manoever=manoever, absender=ws, healthbot=healthbot,
                     )
                 except Exception:
                     # Früher trennte ein fehlerhafter Befehl die Verbindung --
@@ -514,6 +534,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                 homing.abbrechen("Verbindung verloren")
                 erkunder.abbrechen("Verbindung verloren")
                 manoever.abbrechen("Verbindung verloren")
+                healthbot.abbrechen("Verbindung verloren")
                 interaktion.abbrechen("Verbindung verloren")
                 watchdog.stop()
 
@@ -870,6 +891,38 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             return JSONResponse({"fehler": str(exc)}, status_code=400)
         return await _einstellungen_antwort(geaendert)
 
+    # --- Healthbot ---
+
+    @app.get("/healthbot/status")
+    async def healthbot_status():
+        """Ablauf, Zeitleiste, die vier Zeichen, Urteil: alles für die Seite /healthbot."""
+        return {
+            **healthbot.status(),
+            "simulation": health_sim.status() if health_sim is not None else None,
+            "szenen": list(SZENEN) if health_sim is not None else [],
+        }
+
+    @app.post("/healthbot/simulation")
+    async def healthbot_simulation(request: Request):
+        """Nur im Mock: Body {"szene": "liegend_regungslos" | "liegend_bewegt" | null,
+        "x": .., "y": ..} legt eine Person in den gedachten Raum."""
+        if health_sim is None:
+            return JSONResponse({"fehler": "Simulation gibt es nur mit --mock"}, status_code=404)
+        try:
+            body = await request.json()
+        except ValueError:
+            return JSONResponse({"fehler": "kein gültiges JSON"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse({"fehler": "JSON-Objekt erwartet"}, status_code=400)
+        x, y = body.get("x"), body.get("y")
+        if not all(v is None or _ist_zahl(v) for v in (x, y)):
+            return JSONResponse({"fehler": "x und y müssen Zahlen sein"}, status_code=400)
+        try:
+            health_sim.setzen(body.get("szene"), x, y)
+        except ValueError as exc:
+            return JSONResponse({"fehler": str(exc)}, status_code=400)
+        return health_sim.status()
+
     # --- Interaktion ---
 
     @app.get("/interaktion/status")
@@ -1126,7 +1179,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         """App-Befehl ausführen. False, wenn er mit einer Warnung abgelehnt wurde."""
         antwort = await _handle(
             {"type": typ, **felder}, watchdog, driver, hub, odometry, homing, localizer, guard,
-            erkunder, interaktion, stimme, sprache, manoever=manoever,
+            erkunder, interaktion, stimme, sprache, manoever=manoever, healthbot=healthbot,
         )
         if antwort is None:
             return True
@@ -1148,6 +1201,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         homing.abbrechen("Interaktion gestartet")
         erkunder.abbrechen("Interaktion gestartet")
         manoever.abbrechen("Interaktion gestartet")
+        healthbot.abbrechen("Interaktion gestartet")
         if interaktion.start(modus):
             await hub.broadcast(alert_message("info", f"Interaktion an -- {text}"))
 
@@ -1160,6 +1214,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                 homing.abbrechen("Not-Stopp")
                 erkunder.abbrechen("Not-Stopp")
                 manoever.abbrechen("Not-Stopp")
+                healthbot.abbrechen("Not-Stopp")
                 interaktion.wechseln_zu(vh.BEREIT, "angehalten (per Sprache)")
                 watchdog.stop()
                 stimme.sagen("Okay, ich halte an.", vorrang=True)
@@ -1191,6 +1246,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             homing.abbrechen("vom Nutzer beendet")
             erkunder.abbrechen("vom Nutzer beendet")
             manoever.abbrechen("vom Nutzer beendet")
+            healthbot.abbrechen("vom Nutzer beendet")
             await _befehlen("interaction_stop")
             stimme.sagen("Gute Nacht.")
         elif befehl == sp.NACH_HAUSE:
@@ -1241,6 +1297,10 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         @app.get("/logs")
         async def diagnose_seite() -> HTMLResponse:
             return _seite("diagnose.html")
+
+        @app.get("/healthbot")
+        async def healthbot_seite() -> HTMLResponse:
+            return _seite("healthbot.html")
     else:
         log.warning("webapp/ nicht gefunden unter %s -- nur /ws verfügbar", WEBAPP_DIR)
 
@@ -1278,6 +1338,7 @@ async def _handle(
     aufzeichnung: Fahrtenschreiber | None = None,
     manoever: Manoever | None = None,
     absender: object | None = None,
+    healthbot: Healthbot | None = None,
 ) -> dict[str, Any] | None:
     """Eine eingehende Nachricht verarbeiten.
 
@@ -1333,6 +1394,11 @@ async def _handle(
             if cmd.is_stop():
                 return None
             manoever.abbrechen("von Hand übersteuert")
+        # Healthbot ebenso: Wer von Hand eingreift, hat die Lage selbst im Blick.
+        if healthbot is not None and healthbot.aktiv:
+            if cmd.is_stop():
+                return None
+            healthbot.abbrechen("von Hand übersteuert")
 
         erlaubt, hindernis = guard.pruefen(cmd)
         if hindernis is not None and guard.melden():
@@ -1357,6 +1423,8 @@ async def _handle(
             interaktion.abbrechen("Not-Stopp")
         if manoever is not None:
             manoever.abbrechen("Not-Stopp")
+        if healthbot is not None:
+            healthbot.abbrechen("Not-Stopp")
         watchdog.stop()
         if stimme is not None:
             # Vorrang: alles, was noch in der Schlange stand, ist überholt.
@@ -1376,6 +1444,8 @@ async def _handle(
             erkunder.abbrechen("Fahrbefehl gestartet")
         if interaktion is not None:
             interaktion.abbrechen("Fahrbefehl gestartet")
+        if healthbot is not None:
+            healthbot.abbrechen("Fahrbefehl gestartet")
         fehler = manoever.start(art, wert)
         if fehler is not None:
             return alert_message("warning", fehler)
@@ -1392,6 +1462,8 @@ async def _handle(
             interaktion.abbrechen("autonomes Fahren gestartet")
         if manoever is not None:
             manoever.abbrechen("autonomes Fahren gestartet")
+        if healthbot is not None:
+            healthbot.abbrechen("autonomes Fahren gestartet")
         if erkunder.start():
             await hub.broadcast(alert_message("info", "Autonomes Fahren gestartet"))
         return None
@@ -1415,6 +1487,8 @@ async def _handle(
                 erkunder.abbrechen("Interaktion gestartet")
             if manoever is not None:
                 manoever.abbrechen("Interaktion gestartet")
+            if healthbot is not None:
+                healthbot.abbrechen("Interaktion gestartet")
         if kind == "follow":
             war_aktiv = interaktion.aktiv
             ziel_id = msg.get("ziel_id")
@@ -1469,6 +1543,8 @@ async def _handle(
             interaktion.abbrechen("Heimfahrt gestartet")
         if manoever is not None:
             manoever.abbrechen("Heimfahrt gestartet")
+        if healthbot is not None:
+            healthbot.abbrechen("Heimfahrt gestartet")
         if homing.start():
             await hub.broadcast(
                 alert_message("info", f"Heimfahrt gestartet ({abstand:.2f} m)")
@@ -1489,6 +1565,8 @@ async def _handle(
             interaktion.abbrechen("Startpunkt wurde verschoben")
         if manoever is not None:
             manoever.abbrechen("Startpunkt wurde verschoben")
+        if healthbot is not None:
+            healthbot.abbrechen("Startpunkt wurde verschoben")
         # Nur in der Simulation vorhanden: dort muss auch die gedachte
         # Wirklichkeit auf den Startpunkt zurück, sonst stünde der Roboter
         # außerhalb des simulierten Raums.
@@ -1534,6 +1612,10 @@ async def _handle(
         if not isinstance(text, str) or not text.strip():
             return error_message("speech braucht ein Feld text")
         if sprache.hoeren(text) is None:
+            if healthbot is not None and healthbot.aktiv:
+                # Kein Befehl, aber vielleicht die Antwort auf die Frage des
+                # Healthbots ("ja", "nein"); die holt er sich selbst ab.
+                return None
             return alert_message(
                 "info", f"Kein Befehl erkannt in {text!r} (Weckwort: {config.SPRACHE_WECKWORT})"
             )
@@ -1556,7 +1638,47 @@ async def _handle(
         # TODO: box/ implementieren, sobald die Mechanik steht.
         return alert_message("info", "Box ist noch nicht angebaut")
 
+    if kind == "health_check":
+        if healthbot is None:
+            return alert_message("warning", "Healthbot gibt es hier nicht")
+        x, y = msg.get("x"), msg.get("y")
+        if not all(v is None or _ist_zahl(v) for v in (x, y)) or (x is None) != (y is None):
+            return error_message("health_check: x und y zusammen als Zahlen angeben oder beide weglassen")
+        # Nur ein Programm lenkt.
+        homing.abbrechen("Healthbot gestartet")
+        if erkunder is not None:
+            erkunder.abbrechen("Healthbot gestartet")
+        if interaktion is not None:
+            interaktion.abbrechen("Healthbot gestartet")
+        if manoever is not None:
+            manoever.abbrechen("Healthbot gestartet")
+        grund = healthbot.starten(x, y, "eingabe")
+        if grund is not None:
+            return alert_message("warning", f"Healthbot: {grund}")
+        ort = "hier" if x is None else f"bei ({x:.2f}, {y:.2f})"
+        await hub.broadcast(alert_message("info", f"Healthbot: prüft {ort}"))
+        return None
+
+    if kind == "health_stop":
+        if healthbot is not None:
+            healthbot.abbrechen("vom Nutzer beendet")
+        watchdog.stop()
+        return None
+
+    if kind == "health_wache":
+        if healthbot is None:
+            return alert_message("warning", "Healthbot gibt es hier nicht")
+        grund = healthbot.wache_setzen(bool(msg.get("an")))
+        if grund is not None:
+            return alert_message("warning", f"Healthbot-Wache: {grund}")
+        return None
+
     return error_message(f"Unbekannter Nachrichtentyp: {kind!r}")
+
+
+def _ist_zahl(wert: object) -> bool:
+    """Zahl, aber kein bool (True wäre sonst die Koordinate 1)."""
+    return isinstance(wert, (int, float)) and not isinstance(wert, bool) and math.isfinite(wert)
 
 
 async def _referenz_nachholen(
@@ -1608,6 +1730,7 @@ async def _hardware_loop(
     erkunder: Erkunder | None = None,
     interaktion: Interaktion | None = None,
     manoever: Manoever | None = None,
+    healthbot: Healthbot | None = None,
 ) -> None:
     """Hält die Verbindung zum Antrieb am Leben.
 
@@ -1632,6 +1755,8 @@ async def _hardware_loop(
                     erkunder.abbrechen("Verbindung zum Antrieb verloren")
                 if manoever is not None:
                     manoever.abbrechen("Verbindung zum Antrieb verloren")
+                if healthbot is not None:
+                    healthbot.abbrechen("Verbindung zum Antrieb verloren")
                 if interaktion is not None:
                     # Nicht beenden, nur anhalten: Die Gestensteuerung bleibt
                     # an und ist nach dem Neuverbinden sofort wieder bereit.
@@ -1719,6 +1844,14 @@ async def _puls_loop(diagnose: Diagnose) -> None:
         diagnose.puls(max(0.0, time.monotonic() - vorher - takt))
 
 
+def _healthbot_kurz(healthbot: Healthbot | None) -> dict | None:
+    """Das Wichtigste für jede Statusmeldung; alles Weitere unter /healthbot/status."""
+    if healthbot is None:
+        return None
+    s = healthbot.status()
+    return {k: s[k] for k in ("aktiv", "zustand", "schritt", "alarm", "wache")}
+
+
 async def _status_loop(
     hub: ConnectionHub,
     watchdog: SafetyWatchdog,
@@ -1735,6 +1868,7 @@ async def _status_loop(
     stimme: Stimme | None = None,
     sprache: Spracherkennung | None = None,
     manoever: Manoever | None = None,
+    healthbot: Healthbot | None = None,
 ) -> None:
     """Schickt regelmäßig den Zustand an alle Clients."""
     zuletzt_aktiv = False
@@ -1806,6 +1940,7 @@ async def _status_loop(
                         interaktion=interaktion.zustand() if interaktion is not None else None,
                         stimme=stimme.zustand() if stimme is not None else None,
                         sprache=sprache.zustand() if sprache is not None else None,
+                        healthbot=_healthbot_kurz(healthbot),
                     )
                 )
         except Exception:
