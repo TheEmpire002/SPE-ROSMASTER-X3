@@ -487,13 +487,16 @@ class Spracherkennung:
             self._zustand = AUS_GESCHALTET
 
     def hoeren(
-        self, text: str, erlaubt: tuple[str, ...] | None = None, grund: str | None = None
+        self, text: str, erlaubt: tuple[str, ...] | None = None, grund: str | None = None,
+        details: dict | None = None,
     ) -> str | None:
         """Einen gehörten (oder getippten) Satz auswerten. Gibt den Befehl zurück.
 
         ``erlaubt``: Nur diese Befehle gelten (unsicher Gehörtes, Musik);
         ``grund`` steht dann im Log. Ein so gehörtes Weckwort weckt nicht,
         sonst reichte danach ein einzelnes "komm" aus dem Lied.
+        ``details`` (Konfidenz, Wörter von Vosk) kommen mit in die
+        Live-Ereignisse, damit Testläufe zeigen, warum etwas verworfen wurde.
         """
         text = " ".join(str(text).split())
         if not text:
@@ -537,7 +540,7 @@ class Spracherkennung:
                 ereignis = {"ergebnis": "weckwort"}
             else:
                 ereignis = {"ergebnis": "ohne"}
-            self._ereignisse.append({"zeit": time.time(), "text": text, **ereignis})
+            self._ereignisse.append({"zeit": time.time(), "text": text, **ereignis, **(details or {})})
             self._teil = ""
         if befehl is not None:
             log.info("Sprachbefehl %s (gehört: %r)", befehl, text)
@@ -854,12 +857,17 @@ class Spracherkennung:
             # "La da da" gilt sonst ohne Namen -- das Lied selbst darf
             # kein anderes starten.
             grund = "ohne Weckwort"
+        details = {
+            "konfidenz": self._konfidenz,
+            "woerter": [{"wort": w.get("word"), "konfidenz": round(float(w.get("conf", 1.0)), 2)}
+                        for w in woerter],
+        }
         if grund is None:
-            self.hoeren(text)
+            self.hoeren(text, details=details)
         elif musik:
-            self.hoeren(text, erlaubt=(STOPP, MUSIK_AUS), grund=f"{grund}, Musik läuft")
+            self.hoeren(text, erlaubt=(STOPP, MUSIK_AUS), grund=f"{grund}, Musik läuft", details=details)
         else:
-            self.hoeren(text, erlaubt=(STOPP,), grund=grund)
+            self.hoeren(text, erlaubt=(STOPP,), grund=grund, details=details)
 
     def _aus(self, grund: str) -> None:
         self._fehler = grund
