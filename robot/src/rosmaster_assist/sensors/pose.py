@@ -63,6 +63,14 @@ class Posenerkennung:
         self._mock = mock
         self._lock = threading.Lock()
         self._aktiv = threading.Event()
+        # Wer die Erkennung gerade braucht. Interaktion und Healthbot können
+        # gleichzeitig zuschauen; schaltet einer ab, darf das den anderen
+        # nicht blind machen.
+        self._nutzer: set[str] = set()
+        # Simulierte Szene (nur Mock), z. B. eine liegende Person für den
+        # Healthbot -- siehe simulation_setzen().
+        self._szene: str | None = None
+        self._szene_quelle = None
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._personen: list[dict] = []
@@ -130,14 +138,36 @@ class Posenerkennung:
             self._thread.join(timeout=3.0)
             self._thread = None
 
-    def aktivieren(self, an: bool) -> None:
-        """Nur rechnen, solange die Interaktion läuft."""
-        if an:
-            self._aktiv.set()
-        else:
-            self._aktiv.clear()
-            with self._lock:
+    def aktivieren(self, an: bool, wer: str = "standard") -> None:
+        """Nur rechnen, solange jemand zuschaut (Interaktion, Healthbot ...).
+
+        ``wer`` unterscheidet die Nutzer: Gerechnet wird, solange mindestens
+        einer eingeschaltet hat.
+        """
+        with self._lock:
+            if an:
+                self._nutzer.add(wer)
+            else:
+                self._nutzer.discard(wer)
+            if self._nutzer:
+                self._aktiv.set()
+            else:
+                self._aktiv.clear()
                 self._personen = []
+
+    def simulation_setzen(self, szene: str | None, quelle=None) -> None:
+        """Nur im Mock: statt der Gesten-Person eine andere Szene zeigen.
+
+        ``szene`` ist ``None`` (Gesten wie bisher), ``"liegend_regungslos"``
+        oder ``"liegend_bewegt"``. ``quelle()`` liefert, wo die Person vom
+        Roboter aus liegt: ``(winkel_grad, abstand_m)`` oder ``None``. So
+        wandert sie im Bild mit, wenn sich der Roboter dreht oder hinfährt.
+        """
+        if not self._mock:
+            return
+        with self._lock:
+            self._szene = szene
+            self._szene_quelle = quelle
 
     @property
     def aktiv(self) -> bool:
@@ -211,7 +241,7 @@ class Posenerkennung:
                 beginn = time.monotonic()
                 try:
                     if self._mock:
-                        personen = _simulierte_personen(beginn)
+                        personen = self._simulieren(beginn)
                     else:
                         if hailo is None:
                             hailo = _Hailo(self._np)
@@ -242,6 +272,21 @@ class Posenerkennung:
         finally:
             if hailo is not None:
                 hailo.schliessen()
+
+    def _simulieren(self, t: float) -> list[dict]:
+        with self._lock:
+            szene, quelle = self._szene, self._szene_quelle
+        if szene is None:
+            return _simulierte_personen(t)
+        lage = quelle() if quelle is not None else (0.0, 1.0)
+        if lage is None:
+            return []
+        winkel, abstand = lage
+        fov = self.fov_deg
+        mx = 0.5 - winkel / fov
+        if not 0.0 <= mx <= 1.0:
+            return []  # außerhalb des Bildes
+        return [_sim_liegend(mx, abstand, szene == "liegend_bewegt", t, fov)]
 
     def _oeffnen(self) -> "_Hailo | None":
         """Hailo vorab öffnen. Misslingt es, versucht es die Schleife später."""
@@ -602,4 +647,44 @@ def _sim_hauptperson(t: float) -> dict:
 
     person = _person(box, [[x, yy, 0.9] for x, yy in kp], 0.9, seitenverhaeltnis)
     person["merkmal"] = _sim_merkmal(1, 6)  # rotes Oberteil
+    return person
+
+
+def _sim_liegend(mx: float, abstand: float, bewegt: bool, t: float, fov: float) -> dict:
+    """Eine am Boden liegende Person, waagerecht im Bild (Kopf links).
+
+    Je näher, desto größer und tiefer im Bild -- wie bei einer echten Kamera,
+    die schräg nach vorn auf den Boden schaut.
+    """
+    nah = max(0.25, min(1.6, 1.2 / max(0.3, abstand)))
+    laenge = min(0.9, 0.4 * nah)
+    mitte_y = min(0.9, 0.55 + 0.2 * min(1.0, nah))
+    dicke = 0.05 * nah
+    links = mx - laenge / 2
+
+    def x(anteil: float) -> float:
+        return links + anteil * laenge
+
+    # Kaum Rauschen, wenn regungslos -- ein echtes Modell zittert auch etwas.
+    zittern = 0.001 * math.sin(t * 7.0)
+    kp = [[x(0.04), mitte_y], [x(0.03), mitte_y - dicke * 0.2], [x(0.03), mitte_y + dicke * 0.2],
+          [x(0.06), mitte_y - dicke * 0.3], [x(0.06), mitte_y + dicke * 0.3],
+          [x(0.18), mitte_y - dicke * 0.6], [x(0.18), mitte_y + dicke * 0.6],   # Schultern
+          [x(0.32), mitte_y - dicke * 0.9], [x(0.32), mitte_y + dicke * 0.9],   # Ellbogen
+          [x(0.45), mitte_y - dicke * 0.8], [x(0.45), mitte_y + dicke * 0.8],   # Handgelenke
+          [x(0.50), mitte_y - dicke * 0.4], [x(0.50), mitte_y + dicke * 0.4],   # Hüften
+          [x(0.74), mitte_y - dicke * 0.4], [x(0.74), mitte_y + dicke * 0.4],
+          [x(0.97), mitte_y - dicke * 0.4], [x(0.97), mitte_y + dicke * 0.4]]
+    for punkt in kp:
+        punkt[1] += zittern
+    if bewegt:
+        # Arm und Kopf bewegen sich deutlich -- die Person ist bei sich.
+        hub = math.sin(t * 2 * math.pi * 0.8) * dicke * 2.5
+        kp[KP_HAND_R][1] += hub
+        kp[KP_ELLBOGEN_R][1] += hub * 0.5
+        kp[KP_NASE][0] += hub * 0.3
+    box = [links, mitte_y - dicke * 1.5, links + laenge, mitte_y + dicke * 1.5]
+    person = _person(box, [[px, py, 0.8] for px, py in kp], 0.8,
+                     config.CAMERA_WIDTH / config.CAMERA_HEIGHT, fov)
+    person["merkmal"] = _sim_merkmal(4, 5)  # gelbes Oberteil
     return person

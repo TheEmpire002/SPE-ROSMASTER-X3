@@ -255,6 +255,14 @@ class MockLidar(LidarBase):
     def __init__(self, pose_quelle=None) -> None:
         super().__init__()
         self._pose_quelle = pose_quelle
+        # Zusätzliche runde Hindernisse (x, y, Radius), z. B. eine liegende
+        # Person für den Healthbot. Wird als Ganzes ersetzt, nie verändert --
+        # so braucht der Lese-Thread keine Sperre.
+        self._zusatz: tuple[tuple[float, float, float], ...] = ()
+
+    def hindernisse_setzen(self, kreise) -> None:
+        """Zusätzliche Hindernisse als Kreise (x, y, Radius) in Weltkoordinaten."""
+        self._zusatz = tuple((float(x), float(y), float(r)) for x, y, r in kreise)
 
     def _open(self) -> None:
         log.info("Lidar: Simulation (keine echte Hardware)")
@@ -300,13 +308,14 @@ class MockLidar(LidarBase):
             if x_min - 1e-6 <= px <= x_max + 1e-6 and y_min - 1e-6 <= py <= y_max + 1e-6:
                 treffer = min(treffer, t)
 
-        t_saeule = self._saeule_treffen(x, y, dx, dy)
-        if t_saeule is not None:
-            treffer = min(treffer, t_saeule)
+        for kreis in (self.SAEULE, *self._zusatz):
+            t_kreis = self._saeule_treffen(x, y, dx, dy, kreis)
+            if t_kreis is not None:
+                treffer = min(treffer, t_kreis)
         return treffer
 
-    def _saeule_treffen(self, x, y, dx, dy) -> float | None:
-        cx, cy, radius = self.SAEULE
+    def _saeule_treffen(self, x, y, dx, dy, kreis=None) -> float | None:
+        cx, cy, radius = kreis if kreis is not None else self.SAEULE
         mx, my = x - cx, y - cy
         b = 2 * (mx * dx + my * dy)
         c = mx * mx + my * my - radius * radius
