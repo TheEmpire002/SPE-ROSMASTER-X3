@@ -892,3 +892,183 @@ a.einst-knopf { text-decoration: none; }
   margin: 0 0.3rem;
 }
 .genau-knoepfe { display: grid; grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr)); gap: 0.4rem; }
+
+/* --- Healthbot (/healthbot) --- */
+
+/* Herz-Knopf auf der Startseite: rot, damit man ihn im Ernstfall sofort findet. */
+.hb-knopf {
+  color: #ffd9d9;
+  background: linear-gradient(180deg, #6a2330, #521b26);
+  border-color: #8f2d3d;
+}
+.hb-knopf:hover {
+  background: linear-gradient(180deg, #7d2a39, #63202d);
+  border-color: var(--danger);
+}
+.hb-knopf:hover svg { transform: scale(1.15); }
+
+.hb-alarm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.8rem;
+  font-size: 1.15rem;
+  color: #fff;
+  background: #7a1f2b;
+  border-color: var(--danger);
+  animation: hb-pulsieren 1.2s ease-in-out infinite;
+}
+.hb-alarm[hidden] { display: none; }
+@keyframes hb-pulsieren {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(240, 93, 93, 0.6); }
+  50% { box-shadow: 0 0 0 10px rgba(240, 93, 93, 0); }
+}
+
+/* Schrittkette: erledigte Schritte grün, der laufende blau hervorgehoben. */
+.hb-schritte {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.8rem;
+  counter-reset: hb-schritt;
+}
+.hb-schritte li {
+  counter-increment: hb-schritt;
+  flex: 1 1 7rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.hb-schritte li::before { content: counter(hb-schritt) ". "; }
+.hb-schritte li.erledigt { color: var(--ok); border-color: #2a6b51; }
+.hb-schritte li.aktiv { color: #fff; background: #1d3a5c; border-color: var(--accent); }
+
+.hb-jetzt { margin: 0 0 0.8rem; }
+.hb-marke {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  background: #272b34;
+  border: 1px solid var(--line);
+  white-space: nowrap;
+}
+.hb-marke.z-hilfe { background: #7a1f2b; border-color: var(--danger); color: #fff; }
+.hb-marke.z-ansprechbar, .hb-marke.z-unauffaellig { color: var(--ok); border-color: #2a6b51; }
+.hb-marke.z-abgebrochen, .hb-marke.z-keine_person { color: var(--warn); border-color: #7a5a1a; }
+
+.hb-zeile { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.hb-zeile input[type="text"] {
+  flex: 1;
+  min-width: 8rem;
+  font: inherit;
+  color: var(--text);
+  background: #1b1e25;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+}
+.hb-zeile .btn:disabled { opacity: 0.45; cursor: default; }
+.hb-stop-knopf { background: #3a2126; color: var(--danger); border-color: #6b2b35; }
+.hb-stop-knopf:hover { background: var(--danger); color: #fff; }
+.hb-schalter { display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer; }
+.hb-schalter input { accent-color: var(--accent); }
+.hb-hinweis { color: var(--muted); font-size: 0.85rem; margin: 0.5rem 0 0; }
+.hb-hinweis[hidden] { display: none; }
+
+.hb-karte {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  background: #14161b;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: crosshair;
+}
+.hb-legende i {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  margin: 0 0.25rem 0 0.6rem;
+  border-radius: 50%;
+  vertical-align: -1px;
+}
+.hb-legende i:first-child { margin-left: 0; }
+.hb-legende .lg-robo { background: #e6e8ec; }
+.hb-legende .lg-home { background: var(--ok); }
+.hb-legende .lg-ziel { background: var(--warn); }
+.hb-legende .lg-lidar { background: #4da3ff; }
+.hb-legende .lg-karte { background: #787878; }
+
+/* Das Skelett liegt genau über dem Kamerabild. */
+.hb-kamera { position: relative; line-height: 0; }
+.hb-kamera img { width: 100%; height: auto; border-radius: 8px; background: #000; }
+.hb-kamera canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+
+/* Die vier Zeichen als Ampel: rot = auffällig, grün = unauffällig, grau = offen. */
+.hb-checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
+}
+.hb-check {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.5rem;
+  align-items: center;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--line);
+  border-left-width: 4px;
+  border-radius: 8px;
+}
+.hb-check p { grid-column: 1 / -1; margin: 0.35rem 0 0; color: var(--muted); font-size: 0.85rem; }
+.hb-check-urteil { grid-column: 2; font-size: 0.8rem; color: var(--muted); }
+.hb-check-ampel { grid-row: span 2; width: 0.9rem; height: 0.9rem; border-radius: 50%; background: #555; }
+.hb-check.auffaellig { border-left-color: var(--danger); }
+.hb-check.auffaellig .hb-check-ampel { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+.hb-check.ok { border-left-color: var(--ok); }
+.hb-check.ok .hb-check-ampel { background: var(--ok); }
+.hb-check.unbekannt { border-left-color: #555; }
+
+.hb-urteil {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+.hb-urteil-stufe { font-weight: 700; font-size: 1.1rem; }
+.hb-punkte { margin-left: auto; color: var(--muted); font-size: 0.85rem; }
+.hb-urteil.notfall { background: #7a1f2b; border-color: var(--danger); color: #fff; }
+.hb-urteil.notfall .hb-punkte { color: #ffd9d9; }
+.hb-urteil.auffaellig { border-color: var(--warn); }
+.hb-urteil.auffaellig .hb-urteil-stufe { color: var(--warn); }
+.hb-urteil.ansprechbar .hb-urteil-stufe, .hb-urteil.unauffaellig .hb-urteil-stufe { color: var(--ok); }
+.hb-urteil.unbekannt .hb-urteil-stufe { color: var(--muted); }
+
+.hb-stupser { margin: 0; padding-left: 1.1rem; font-size: 0.9rem; }
+
+.hb-timeline { list-style: none; margin: 0; padding: 0; max-height: 22rem; overflow-y: auto; }
+.hb-timeline li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.9rem;
+}
+.hb-timeline time { color: var(--muted); font-variant-numeric: tabular-nums; }
+.hb-timeline li.z-hilfe { color: #ffb3b3; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hb-alarm { animation: none; }
+}

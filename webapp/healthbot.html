@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ROSMASTER X3 — Healthbot</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-start">
+    <a href="/" class="einst-knopf diag-zurueck" title="Zurück zur Steuerung">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="15 18 9 12 15 6"/>
+      </svg>
+      <span>Steuerung</span>
+    </a>
+    <h1>ROSMASTER X3 · Healthbot</h1>
+  </div>
+  <div id="status" class="status offline">
+    <span class="dot"></span><span id="status-text">getrennt</span>
+  </div>
+</header>
+
+<main id="healthbot">
+
+  <!-- Alarm: groß und rot, solange Hilfe gerufen ist. -->
+  <section id="hb-alarm" class="panel wide-panel hb-alarm" hidden>
+    <strong>⚠ NOTFALL</strong>
+    <span id="hb-alarm-text">Eine Person reagiert nicht.</span>
+  </section>
+
+  <!-- Ablauf: wo steht der Healthbot gerade? -->
+  <section class="panel wide-panel">
+    <h2>Ablauf</h2>
+    <ol id="hb-schritte" class="hb-schritte">
+      <li data-z="anfahrt">Anfahrt</li>
+      <li data-z="gesamtbild">Gesamtbild</li>
+      <li data-z="ansprechen">Ansprechen</li>
+      <li data-z="anstupsen">Anstupsen</li>
+      <li data-z="ende">Ergebnis</li>
+    </ol>
+    <p class="hb-jetzt"><span id="hb-zustand" class="hb-marke">–</span> <span id="hb-schritt">lade …</span></p>
+    <div class="hb-zeile">
+      <button type="button" id="hb-start-hier" class="btn btn-primary"
+              title="Person in der Nähe des Roboters prüfen">Hier prüfen</button>
+      <button type="button" id="hb-start-ziel" class="btn" disabled
+              title="Erst in der Karte einen Ort antippen">Zum Ziel fahren &amp; prüfen</button>
+      <button type="button" id="hb-stop" class="btn hb-stop-knopf">Stopp</button>
+      <label class="hb-schalter" title="Roboter achtet von selbst auf liegende Personen">
+        <input type="checkbox" id="hb-wache"> Wache
+      </label>
+    </div>
+    <p id="hb-stupsen-aus" class="hb-hinweis" hidden>
+      Anstupsen ist in der Konfiguration ausgeschaltet (HEALTH_STUPSEN_AKTIV).
+    </p>
+  </section>
+
+  <!-- Karte: Roboter, Startpunkt, Ziel, Lidar. Antippen setzt das Ziel. -->
+  <section class="panel">
+    <h2>Karte</h2>
+    <canvas id="hb-karte" class="hb-karte" width="480" height="480"
+            aria-label="Karte, antippen setzt den Ort der Meldung"></canvas>
+    <p class="hb-hinweis">
+      Antippen setzt den gemeldeten Ort. <span id="hb-ziel-text">Kein Ziel gesetzt.</span><br>
+      <span class="hb-legende"><i class="lg-robo"></i>Roboter <i class="lg-home"></i>Startpunkt
+      <i class="lg-ziel"></i>Ziel <i class="lg-lidar"></i>Lidar <i class="lg-karte"></i>Karte</span>
+    </p>
+  </section>
+
+  <!-- Kamera mit dem Skelett der beobachteten Person. -->
+  <section class="panel">
+    <h2>Blick des Roboters</h2>
+    <div class="hb-kamera">
+      <img id="hb-bild" src="/camera/stream" alt="Kamerabild">
+      <canvas id="hb-skelett"></canvas>
+    </div>
+    <p class="hb-hinweis">Grün: Skelett der Person, die der Healthbot gerade beurteilt.</p>
+  </section>
+
+  <!-- Die vier Zeichen als Ampel mit Begründung. -->
+  <section class="panel wide-panel">
+    <h2>Zeichen</h2>
+    <div id="hb-checks" class="hb-checks"></div>
+    <div id="hb-urteil" class="hb-urteil unbekannt">
+      <span class="hb-urteil-stufe">–</span>
+      <span class="hb-urteil-text">noch keine Bewertung</span>
+      <span class="hb-punkte"></span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Anstupsen</h2>
+    <p id="hb-keine-stupser" class="diag-leer">Noch nicht angestupst.</p>
+    <ul id="hb-stupser" class="hb-stupser"></ul>
+  </section>
+
+  <section class="panel">
+    <h2>Antwort testen</h2>
+    <p class="hb-hinweis">
+      Schickt einen Satz so, als hätte das Mikrofon ihn gehört (z. B. „ja“, „Hilfe“, „nein“).
+    </p>
+    <form id="hb-antwort-form" class="hb-zeile">
+      <input type="text" id="hb-antwort" placeholder="Antwort" autocomplete="off">
+      <button type="submit" class="btn">Senden</button>
+    </form>
+  </section>
+
+  <!-- Nur im Mock: eine gedachte Person in den simulierten Raum legen. -->
+  <section id="hb-sim" class="panel wide-panel" hidden>
+    <h2>Simulation</h2>
+    <p class="hb-hinweis">Legt eine Person an die Stelle des Ziels (sonst 1,5 m vor den Startpunkt).
+      <span id="hb-sim-text"></span></p>
+    <div id="hb-sim-knoepfe" class="hb-zeile"></div>
+  </section>
+
+  <section class="panel wide-panel">
+    <h2>Zeitleiste</h2>
+    <ol id="hb-timeline" class="hb-timeline" reversed></ol>
+  </section>
+
+</main>
+
+<script src="/static/healthbot.js"></script>
+</body>
+</html>
