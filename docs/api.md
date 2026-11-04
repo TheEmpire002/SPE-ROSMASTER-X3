@@ -170,10 +170,10 @@ Reihenfolge:
 | `home_cancel` | – | Heimfahrt abbrechen und anhalten. | `alert` an alle |
 | `interaction_start` | – | Interaktionsmodus an: Der Roboter wartet auf Handzeichen (siehe „Interaktion im Detail“). Braucht Lidar und Posenerkennung; bricht Heimfahrt und autonomes Fahren ab. | `alert` an alle; sonst `alert` (warning) |
 | `interaction_stop` | – | Interaktionsmodus aus und anhalten. | `alert` an alle |
-| `follow` | `ziel_id` (optional, Zahl) | „Folge mir“ ohne Geste. Schaltet den Interaktionsmodus bei Bedarf mit ein. Mit `ziel_id` (die `id` einer Person aus `/interaktion/pose`) folgt er genau dieser Person, auch als Wechsel während des Folgens. Ist sie nicht mehr im Bild, lehnt er ab. | `alert` an alle |
+| `follow` | `ziel_id` (optional, Zahl) | „Folge mir“ ohne Geste. Schaltet den Interaktionsmodus bei Bedarf mit ein. Er folgt der Person im Bild, bei mehreren der größten. `ziel_id` (die `id` aus `/interaktion/pose`) macht diese Person zum Start-Ziel; die App schickt es seit 04.11. nicht mehr, eine unbekannte ID wird ignoriert. | `alert` an alle |
 | `follow_pause` | – | Anhalten, das Ziel bleibt gemerkt (neu 03.11.). Nur in `folgen`, `herkommen`, `weggehen`, `sucht`. | – |
 | `follow_resume` | – | Nach `follow_pause` weiterfahren, zum selben Ziel. | – |
-| `follow_stop` | – | Folgen beenden, anhalten, Ziel freigeben; der Interaktionsmodus bleibt an. Quittiert auch ein `safe_stop`. | `alert` an alle |
+| `follow_stop` | – | Folgen beenden, anhalten, Ziel freigeben; der Interaktionsmodus bleibt an. | `alert` an alle |
 | `record_save` | `notiz` (string, optional, höchstens 200 Zeichen) | Die letzte Minute des Fahrtenschreibers als Datei speichern (neu 03.11., siehe „Fahrtenschreiber“ unter HTTP). Fährt nicht. | `alert` (info) „Fahrt gespeichert: <name>“; ausgeschaltet `alert` (warning) |
 | `say` | `text` (string, höchstens 300 Zeichen), `vorrang` (bool, optional) | Über den Lautsprecher sprechen (siehe „Stimme im Detail“). `vorrang: true` bricht den laufenden Satz ab und leert die Warteschlange. | keine; ohne `text` `error`, ohne Lautsprecher/Synthese `alert` (warning) |
 | `say_stop` | – | Sofort verstummen, Warteschlange leeren. | keine |
@@ -444,7 +444,7 @@ Sprechen und Motoren gleichzeitig ließen die USB-Versorgung zusammenbrechen.
   "geste": "folgen",
   "grund": null,
   "pausiert": false,
-  "ziel": {"zustand": "following", "id": 3, "sicherheit": 0.82, "grund": null}
+  "ziel": {"zustand": "following", "id": 3, "sicherheit": 1.0, "grund": null}
 }
 ```
 
@@ -458,7 +458,7 @@ Sprechen und Motoren gleichzeitig ließen die USB-Versorgung zusammenbrechen.
 | `geste` | zuletzt erkannte Geste (`folgen`, `stopp`, `herkommen`, `weggehen`), wenige Sekunden lang, sonst `null` |
 | `grund` | warum der Modus zuletzt endete; „hochgehoben -- angehalten“ (neu 03.11., F3), wenn er beim Fahren hochgehoben wurde -- danach `bereit` und die Ansage „Ich wurde hochgehoben. Ich bleibe stehen.“ |
 | `pausiert` | `true` nach `follow_pause`: steht, Modus und Ziel bleiben. Jeder Moduswechsel (auch die Stopp-Geste) beendet die Pause. Fehlt bei älteren Servern. |
-| `ziel` | Ziel-Lock (neu 03.11.): `zustand` ist `idle`, `acquiring_target`, `following`, `target_temporarily_lost`, `searching_for_target` oder `safe_stop`. `id` ist die Track-ID des Ziels (nur für diese Sitzung), `sicherheit` liegt bei 0..1, `grund` sagt, warum er angehalten oder abgelehnt hat (z. B. „mehrere Personen – bitte im Bild antippen“). Details in `docs/interaktion.md`. Fehlt bei älteren Servern. |
+| `ziel` | Wem er folgt (Ziel-Lock 03.11., vereinfacht 04.11.): `zustand` ist `idle`, `acquiring_target`, `following`, `target_temporarily_lost` oder `searching_for_target` (`safe_stop` nur bei Servern vor dem 04.11.). `id` ist die interne Track-ID (wechselt, wenn die Person kurz aus dem Bild war; nicht anzeigen), `sicherheit` ist beim Folgen 1, `grund` sagt, warum er aufgehört hat (z. B. „Person nicht wiedergefunden“). Details in `docs/interaktion.md`. Fehlt bei älteren Servern. |
 
 ### Stimme im Detail
 
@@ -774,7 +774,7 @@ erlaubt fremden Seiten nur `GET`.
 | Endpunkt | Liefert |
 |---|---|
 | `GET /interaktion/status` | dasselbe wie `state.interaktion`, dazu `pose`: `verfuegbar`, `simuliert`, `aktiv`, `fehler`, `fps`, `bilder`, `letzte_erkennung_vor_s`, `kamera` (auf welchem Kamerabild die Punkte liegen, Name wie in `/cameras`) |
-| `GET /interaktion/pose` | `personen`: erkannte Menschen, größter zuerst, je `box` [x1, y1, x2, y2] und `kp` (17 × [x, y, Sicherheit], COCO-Reihenfolge), relativ zur Bildgröße (0..1), dazu `score`, `winkel`, `id` (Track-ID für `follow {ziel_id}`, `null` solange der Tracker die Person noch nicht kennt) und `ziel` (`true` beim gesperrten Ziel); `skelett`: Punktpaare zum Verbinden. Leer, solange der Modus aus ist. |
+| `GET /interaktion/pose` | `personen`: erkannte Menschen, größter zuerst, je `box` [x1, y1, x2, y2] und `kp` (17 × [x, y, Sicherheit], COCO-Reihenfolge), relativ zur Bildgröße (0..1), dazu `score`, `winkel`, `id` (interne Track-ID, `null` solange der Tracker die Person noch nicht kennt; nicht als Personennummer anzeigen, sie wechselt nach jeder Lücke) und `ziel` (`true` bei der Person, der er folgt); `skelett`: Punktpaare zum Verbinden. Leer, solange der Modus aus ist. |
 
 ### Fahrtenschreiber
 

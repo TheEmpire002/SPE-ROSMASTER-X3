@@ -611,8 +611,6 @@ function personenZeichnen() {
   kacheln.forEach((k, i) => {
     const passt = zeigtPersonenKamera(k, i);
     rahmenZeichnen(k, passt ? personenBoxen : [], passt);
-    // Antippen nur dort, wo die Skelette auch liegen.
-    k.el.classList.toggle("waehlbar", passt && interaktionAktiv && skelette.length > 0);
   });
 }
 
@@ -698,11 +696,12 @@ const MODUS_TEXT = {
 /** Zustände des Ziel-Locks (state.interaktion.ziel.zustand). */
 const ZIEL_TEXT = {
   idle: () => "kein Ziel",
-  acquiring_target: (id) => `erfasst Person ${id} …`,
-  following: (id) => `folgt Person ${id}`,
+  acquiring_target: () => "sucht sich die Person …",
+  following: () => "folgt",
   target_temporarily_lost: () => "Ziel kurz verloren",
-  searching_for_target: (id) => `sucht Person ${id} …`,
-  safe_stop: () => "sicher angehalten – bitte neu wählen",
+  searching_for_target: () => "sucht die Person …",
+  // Nur noch von Servern vor dem 04.11. gemeldet.
+  safe_stop: () => "sicher angehalten",
 };
 
 let interaktionAktiv = false;
@@ -739,38 +738,6 @@ ui.btnIaPause.addEventListener("click", () => {
 
 ui.btnIaLoslassen.addEventListener("click", () => send({ type: "follow_stop" }));
 
-/** Tippen ins Kamerabild: die getroffene Person wird zum Ziel. */
-function personAntippen(kachel, ev) {
-  if (!interaktionAktiv || !skelette.length) return;
-  if (!zeigtPersonenKamera(kachel, kacheln.indexOf(kachel))) return;
-  if (!kachel.img.naturalWidth) return;
-  const r = kachel.overlay.getBoundingClientRect();
-  const { ox, oy, bw, bh } = bildFlaeche(kachel, r.width, r.height);
-  const x = (ev.clientX - r.left - ox) / bw;
-  const y = (ev.clientY - r.top - oy) / bh;
-  // Etwas Rand zugeben (Finger sind breit). Bei Überlappung die kleinere
-  // Box nehmen -- das ist meist die weiter hinten stehende, gezielt gemeinte.
-  const RAND = 0.03;
-  let treffer = null;
-  let flaeche = Infinity;
-  for (const s of skelette) {
-    const b = s.box;
-    if (!b || x < b[0] - RAND || x > b[2] + RAND || y < b[1] - RAND || y > b[3] + RAND) continue;
-    const f = (b[2] - b[0]) * (b[3] - b[1]);
-    if (f < flaeche) {
-      flaeche = f;
-      treffer = s;
-    }
-  }
-  if (!treffer) return;
-  if (treffer.id == null) {
-    logLine("Person noch nicht erfasst – gleich noch einmal antippen", "warning");
-    return;
-  }
-  send({ type: "follow", ziel_id: treffer.id });
-  logLine(`Folge Person ${treffer.id}`);
-}
-
 function zeigeZiel(ia) {
   const z = ia.ziel;
   const fahrend = ia.aktiv === true && !!ia.modus && ia.modus !== "bereit";
@@ -784,10 +751,7 @@ function zeigeZiel(ia) {
     ui.btnIaLoslassen.disabled = !fahrend;
     return;
   }
-  let text = (ZIEL_TEXT[z.zustand] || (() => z.zustand))(z.id);
-  if (z.id != null && z.zustand !== "idle" && z.zustand !== "safe_stop") {
-    text += ` · ${Math.round((z.sicherheit || 0) * 100)} %`;
-  }
+  let text = (ZIEL_TEXT[z.zustand] || (() => z.zustand))();
   if (interaktionPausiert) text += " · pausiert";
   if (z.grund && (z.zustand === "idle" || z.zustand === "safe_stop")) text += ` (${z.grund})`;
   ui.iaZiel.textContent = text;
@@ -898,18 +862,14 @@ function skeletteZeichnen(ctx, ox, oy, bw, bh) {
   if (!skelette.length) return;
   ctx.lineWidth = 3;
   ctx.font = "13px system-ui, sans-serif";
-  // Das gesperrte Ziel grün, alle anderen grau. Ältere Server ohne Ziel-Lock
-  // liefern kein "ziel" -- dann wie früher die größte Person (vorn).
+  // Die Person, der er folgt, grün, alle anderen grau. Ältere Server ohne
+  // "ziel" -- dann wie früher die größte Person (vorn).
   const mitZiel = skelette.some((s) => "ziel" in s);
   skelette.forEach((s, i) => {
     const istZiel = mitZiel ? s.ziel === true : i === 0;
     const col = istZiel ? "#3ddc97" : "#9aa1ad";
     ctx.strokeStyle = col;
     ctx.fillStyle = col;
-    // Nummer über dem Kopf, damit „folgt Person 3“ zuzuordnen ist.
-    if (s.id != null && s.box) {
-      ctx.fillText(`Person ${s.id}`, ox + s.box[0] * bw + 3, Math.max(oy + 14, oy + s.box[1] * bh - 4));
-    }
     const kp = s.kp || [];
     for (const [a, b] of skelettLinien) {
       const pa = kp[a];
@@ -933,7 +893,6 @@ function skeletteZeichnen(ctx, ox, oy, bw, bh) {
 
 let faehrtHeim = false;
 
-function zeigePose(pose) {
   if (!pose) {
     ui.dist.textContent = ui.pos.textContent = ui.winkel.textContent = "—";
     return;
@@ -1024,7 +983,6 @@ class CamKachel {
     this.fehler.append("Kein Bild. ", nochmal);
 
     this.el.append(this.img, this.overlay, this.titel, this.fehler);
-    this.el.addEventListener("click", (ev) => personAntippen(this, ev));
 
     this.name = null; // null = Standardkamera über /camera/...
     this.modus = "aus";

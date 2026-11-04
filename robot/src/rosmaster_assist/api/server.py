@@ -890,7 +890,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         """
         # Das Aussehensmerkmal (Farbhistogramm) bleibt im Roboter -- die App
         # braucht es nicht, und es bläht jede Antwort auf. Dazu kommen die
-        # Track-ID (zum Antippen) und ob die Person das gesperrte Ziel ist.
+        # Track-ID (nur intern) und ob er dieser Person gerade folgt.
         personen = interaktion.personen_mit_id(pose.personen())
         return {"personen": personen, "skelett": SKELETT}
 
@@ -1434,7 +1434,7 @@ async def _handle(
         return None
 
     if kind in ("follow_pause", "follow_resume"):
-        # Pause hält an, das Ziel bleibt gesperrt -- anders als follow_stop.
+        # Pause hält an, das Ziel bleibt gemerkt -- anders als follow_stop.
         if interaktion is not None:
             if kind == "follow_pause":
                 interaktion.pausieren()

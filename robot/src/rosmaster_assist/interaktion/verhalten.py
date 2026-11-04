@@ -46,11 +46,12 @@ und schaut weiter zu. Fahrende Modi werden erst wieder angenommen, wenn
 das Board zurück ist -- und auch dann nur auf eine *neue* Geste oder einen
 neuen Befehl hin. Von selbst losfahren nach dem Neuverbinden tut er nie.
 
-Ziel-Lock (03.11.2026): Welche Person das Ziel ist, entscheidet nicht mehr
-der Winkel allein, sondern ``ziel.py`` (Track-IDs, Aussehen, Eigendrehung).
-In fahrenden Modi gibt es nur noch den gesperrten Track -- nie einfach die
-größte Person. Gesten werden je Track erkannt; die Folgen-Geste sperrt die
-Person, die sie macht. Ist das Ziel nicht eindeutig, bleibt er stehen.
+Wem er folgt (04.11.2026): ``ziel.py`` verfolgt die Personen über Bilder
+(Track-IDs, Eigendrehung herausgerechnet) und hält Gesten zweier Personen
+auseinander. Unterschieden werden sie nicht mehr: Er folgt der Person im
+Bild, und wer kurz weg war und zurückkommt, ist wieder das Ziel. Die
+Ziel-Sperre mit Wiedererkennung am Aussehen (03.11.) ist dafür raus -- sie
+hielt zurückkehrende Personen oft für fremd und blieb stehen.
 """
 
 from __future__ import annotations
@@ -69,7 +70,7 @@ from ..navigation.explorer import frei_in_richtung
 from ..protocol import DriveCommand
 from ..safety import SafetyWatchdog
 from . import gesten as gs
-from .ziel import ERFASSEN, IDLE, SICHER_HALT, PersonenTracker, ZielSperre
+from .ziel import IDLE, PersonenTracker, ZielWahl
 
 if TYPE_CHECKING:  # nur für die Typangaben -- vermeidet Ringimporte
     from ..navigation.odometry import Odometry
@@ -195,14 +196,14 @@ class Interaktion:
         self._umfahr_seite = 0.0  # +1 links, -1 rechts, 0: fährt direkt
         self._letzter_takt: float | None = None
 
-        # Ziel-Lock (nur im RAM, wird beim Ausschalten gelöscht)
+        # Wem er folgt (nur im RAM, wird beim Ausschalten gelöscht)
         self._tracker = PersonenTracker()
-        self._sperre = ZielSperre()
+        self._zielwahl = ZielWahl()
         self._tracker_bild = None  # Bildzeit, mit der der Tracker zuletzt lief
-        self._auswahl_id: int | None = None  # beim nächsten Start zu sperrender Track
+        self._auswahl_id: int | None = None  # wem er beim nächsten Start folgt (Geste)
         self._gesten_je_track: dict[int, gs.Gestenerkennung] = {}
         self._geste_anzeige: tuple[str | None, float | None] = (None, None)
-        # Pause aus der App: Ziel bleibt gesperrt und wird weiter verfolgt,
+        # Pause aus der App: Ziel bleibt gemerkt und wird weiter verfolgt,
         # aber er fährt nicht.
         self._pausiert = False
 
@@ -245,33 +246,26 @@ class Interaktion:
     def folgen(self, ziel_id: int | None = None) -> bool:
         """Folgen per App-Knopf statt per Geste. Schaltet den Modus nötigenfalls ein.
 
-        ``ziel_id``: die in der App angetippte Person (Track-ID aus
-        ``/interaktion/pose``). Ohne ID nur, wenn genau eine Person im Bild
-        ist -- sonst lehnt die ZielSperre ab. False, wenn die angetippte
-        Person nicht mehr im Bild ist.
+        Er folgt der Person im Bild, bei mehreren der größten. ``ziel_id``
+        (Track-ID aus ``/interaktion/pose``) nennt eine bestimmte; die App
+        schickt sie seit 04.11. nicht mehr, ältere Clients dürfen weiter.
+        Ist die Person nicht mehr im Bild, folgt er einfach der, die da ist.
         """
         if not self.aktiv:
             # Den Modus gleich mitgeben -- die Schleife startet erst im
             # nächsten Durchlauf des Event-Loops und würde ihn sonst auf
-            # BEREIT zurücksetzen. Eine ID gibt es hier noch nicht: Tracks
-            # entstehen erst, wenn der Modus läuft.
+            # BEREIT zurücksetzen.
             return self.start(FOLGEN)
         if self._anlauf:
             # Sanfter Start läuft noch: Folgen beginnt nach der Ansage.
             self._start_modus = FOLGEN
             return True
         jetzt = time.monotonic()
-        if ziel_id is not None:
-            if self._tracker.track(ziel_id) is None:
-                self._meldungen.append("Diese Person ist nicht mehr im Bild -- bitte neu antippen")
-                return False
-            # Ausdrückliche Wahl: ein gesperrtes Ziel wird ersetzt. Das ist
-            # der einzige Weg, auf dem eine andere Person zum Ziel wird.
-            if self._sperre.id != ziel_id:
-                self._sperre.freigeben()
+        if ziel_id is not None and self._tracker.track(ziel_id) is not None:
+            if self._zielwahl.id != ziel_id:
+                self._zielwahl.freigeben()
             self._auswahl_id = ziel_id
-        text = f"folgt Person {ziel_id} (per App)" if ziel_id is not None else "folgt (per App)"
-        self._wechseln(FOLGEN, text, jetzt, sagen="Ich folge dir.")
+        self._wechseln(FOLGEN, "folgt (per App)", jetzt, sagen="Ich folge dir.")
         return True
 
     def pausieren(self) -> bool:
@@ -309,13 +303,13 @@ class Interaktion:
         Tracker-Takt, ist ``id`` kurz ``None``.
         """
         ids = {id(t.person): t.id for t in self._tracker.tracks if t.gemessen}
-        gesperrt = self._sperre.id if self._sperre.zustand not in (IDLE, SICHER_HALT) else None
+        folgt = self._zielwahl.id if self._zielwahl.zustand != IDLE else None
         aus = []
         for p in personen:
             tid = ids.get(id(p))
             eintrag = {k: v for k, v in p.items() if k != "merkmal"}
             eintrag["id"] = tid
-            eintrag["ziel"] = tid is not None and tid == gesperrt
+            eintrag["ziel"] = tid is not None and tid == folgt
             aus.append(eintrag)
         return aus
 
@@ -347,10 +341,10 @@ class Interaktion:
             self._start_modus = BEREIT
         elif self.aktiv and self._modus != BEREIT:
             self._wechseln(BEREIT, "angehalten (per App)", time.monotonic(), sagen="Okay, ich bleibe stehen.")
-        if self.aktiv and self._sperre.zustand == SICHER_HALT:
-            # „Loslassen“ quittiert auch ein sicheres Anhalten -- danach
-            # zeigt die App wieder „kein Ziel“ statt „bitte neu wählen“.
-            self._sperre.freigeben()
+        if self.aktiv and self._modus == BEREIT:
+            # „Loslassen“ löscht auch den Grund der letzten Suche -- danach
+            # zeigt die App wieder „kein Ziel“.
+            self._zielwahl.freigeben()
 
     def meldungen_abholen(self) -> list[str]:
         """Ereignisse seit dem letzten Aufruf -- für Hinweise in der App."""
@@ -392,7 +386,7 @@ class Interaktion:
             "personen": self._anzahl if aktiv else 0,
             "geste": geste if aktiv else None,
             "grund": self._grund,
-            "ziel": self._sperre.als_dict(),
+            "ziel": self._zielwahl.als_dict(),
             "pausiert": self.pausiert,
         }
 
@@ -483,9 +477,6 @@ class Interaktion:
         ziel = self._ziel_waehlen(jetzt)
         self._geste_pruefen(ziel, jetzt)
 
-        if self._sperre.mehrdeutig and self._modus in (FOLGEN, HERKOMMEN, SUCHEN):
-            return self._mehrdeutig(jetzt)
-
         if ziel is not None:
             self._glaetten(ziel, jetzt)
             self._gesehen = jetzt
@@ -504,7 +495,7 @@ class Interaktion:
             return None
 
         if self._pausiert:
-            # Tracker und Sperre laufen oben weiter, damit das Ziel nach dem
+            # Tracker und Zielwahl laufen oben weiter, damit das Ziel nach dem
             # Weiter noch dasselbe ist. Gefahren wird nicht.
             self._abstand = self._abstand_zu(ziel, jetzt=jetzt)
             self._text = "pausiert -- Ziel bleibt gemerkt"
@@ -731,16 +722,15 @@ class Interaktion:
         return DriveCommand(-config.WEGGEHEN_SPEED, 0.0, omega)
 
     def _suchen(self, jetzt: float, ziel: dict | None) -> DriveCommand:
-        # ziel kommt nur noch aus der ZielSperre: Sie liefert erst etwas, wenn
-        # die Person über mehrere Bilder als das Ziel wiedererkannt ist --
-        # früher galt hier jede beliebige Person als "wiedergefunden".
+        # Wer jetzt auftaucht, ist es (ZielWahl in ziel.py) -- auch mit neuer
+        # Track-Nummer, weil sie kurz aus dem Bild war.
         if ziel is not None:
             self._wechseln(self._suchen_fuer, "Person wiedergefunden", jetzt, melden=True,
                           sagen="Da bist du ja.")
             return DriveCommand(0.0, 0.0, 0.0)
         sucht_seit = jetzt - self._modus_seit
         if config.FOLGEN_SUCHEN_S > 0 and sucht_seit > config.FOLGEN_SUCHEN_S:
-            self._sperre.sicher_anhalten("Person nicht wiedergefunden", jetzt)
+            self._zielwahl.freigeben("Person nicht wiedergefunden")
             self._wechseln(BEREIT, "Person nicht wiedergefunden", jetzt, melden=True,
                           sagen="Ich habe dich verloren.")
             return DriveCommand(0.0, 0.0, 0.0)
@@ -758,12 +748,11 @@ class Interaktion:
     # --- Hilfen ------------------------------------------------------------------
 
     def _ziel_waehlen(self, jetzt: float) -> dict | None:
-        """Die Person, um die es geht -- mit ihrer Track-ID (``"id"``).
+        """Die Person, um die es geht -- mit ihrer Track-ID (``"id"``, nur intern).
 
-        In fahrenden Modi ausschließlich der gesperrte Track, und nur, wenn
-        er im letzten Bild gemessen wurde. Früher nahm die Wahl nach einer
-        Suche die größte Person, und ein Passant näher an der Kamera wurde
-        so zum Ziel. In BEREIT ist es nur die Anzeige: die größte Person.
+        In fahrenden Modi die von der ZielWahl: dieselbe wie zuletzt, und
+        wenn die weg ist, die nächste, die dort auftaucht. In BEREIT ist es
+        nur die Anzeige: die größte Person.
         """
         personen = self._pose.personen() if self._pose is not None else []
         self._anzahl = len(personen)
@@ -775,11 +764,11 @@ class Interaktion:
             self._tracker.aktualisieren(personen, bild, self._eigendrehung())
 
         if self._modus in _FAHRMODI:
-            if self._sperre.zustand == IDLE:
+            if self._zielwahl.zustand == IDLE:
                 # Modus wurde gesetzt, ohne dass _wechseln lief (Tests).
-                self._sperre.erfassen(self._auswahl_id, jetzt)
+                self._zielwahl.erfassen(self._auswahl_id, jetzt)
                 self._auswahl_id = None
-            track = self._sperre.zuordnen(self._tracker.tracks, self._tracker_bild, jetzt)
+            track = self._zielwahl.zuordnen(self._tracker.tracks, self._tracker_bild, jetzt)
         else:
             gemessen = [t for t in self._tracker.tracks if t.gemessen]
             track = max(gemessen, key=lambda t: t.hoehe) if gemessen else None
@@ -792,21 +781,10 @@ class Interaktion:
         befehl = getattr(self._watchdog, "current_command", None)
         return float(befehl.omega) if befehl is not None else 0.0
 
-    def _mehrdeutig(self, jetzt: float) -> None:
-        """Die ZielSperre kann das Ziel nicht sicher bestimmen: stehen bleiben."""
-        if self._sperre.zustand == ERFASSEN:
-            # Folgen-Knopf, aber mehrere im Bild -- in der App antippen lassen.
-            self._sperre.freigeben("mehrere Personen – bitte im Bild antippen")
-            return self._wechseln(BEREIT, "mehrere Personen -- bitte im Bild antippen", jetzt,
-                                  melden=True, sagen="Ich sehe mehrere Personen.")
-        self._sperre.sicher_anhalten("Ziel nicht eindeutig", jetzt)
-        return self._wechseln(BEREIT, "Ziel nicht eindeutig -- angehalten", jetzt, melden=True,
-                              sagen="Ich bin unsicher, wem ich folge, und bleibe stehen.")
-
     def _ziel_vergessen(self) -> None:
-        """Tracks, gesperrtes Ziel und gelerntes Aussehen löschen."""
+        """Tracks und Ziel löschen."""
         self._tracker.leeren()
-        self._sperre.freigeben()
+        self._zielwahl.freigeben()
         self._tracker_bild = None
         self._auswahl_id = None
         self._gesten_je_track.clear()
@@ -848,7 +826,7 @@ class Interaktion:
         if self._modus in _FAHRMODI:
             # Beim Fahren zählt nur das Ziel -- ein Passant darf ihn nicht
             # wegschicken. Stopp gilt von jedem: anhalten ist immer sicher.
-            ziel_id = self._sperre.id
+            ziel_id = self._zielwahl.id
             treffer = [(tid, g) for tid, g in treffer if g == gs.STOPP or tid == ziel_id]
             if not treffer:
                 return
@@ -1020,15 +998,15 @@ class Interaktion:
             # Frist fürs Verlorengehen ab jetzt -- sonst sucht er nach einem
             # Knopfdruck sofort, wenn die Person gerade nicht im Bild ist.
             self._gesehen = jetzt
-        # Ziel-Lock mitführen. Ein neues Ziel wird nur bei einem Start aus
-        # dem Stand gesperrt, nie beim Wechsel zwischen fahrenden Modi.
+        # Zielwahl mitführen. Ein neues Ziel gibt es nur bei einem Start aus
+        # dem Stand, nie beim Wechsel zwischen fahrenden Modi.
         if modus == SUCHEN:
-            self._sperre.suchen(jetzt)
+            self._zielwahl.suchen(jetzt)
         elif modus == BEREIT:
-            if self._sperre.zustand not in (IDLE, SICHER_HALT):
-                self._sperre.freigeben()
-        elif modus in _FAHRMODI and self._sperre.zustand in (IDLE, SICHER_HALT):
-            self._sperre.erfassen(self._auswahl_id, jetzt)
+            if self._zielwahl.zustand != IDLE:
+                self._zielwahl.freigeben()
+        elif modus in _FAHRMODI and self._zielwahl.zustand == IDLE:
+            self._zielwahl.erfassen(self._auswahl_id, jetzt)
             self._auswahl_id = None
         self._modus = modus
         self._modus_seit = jetzt

@@ -1,22 +1,21 @@
-"""Ziel-Lock beim Folgen: Personen über Bilder verfolgen, Ziel wiedererkennen.
+"""Wem folgt er? Personen über Bilder verfolgen, ohne sie zu unterscheiden.
 
-Früher wählte das Folgen in jedem Bild die Person, deren Winkel dem letzten
-am nächsten lag -- und nach einer Suche einfach die größte. Kreuzte jemand
-oder kam das Ziel nach einer Verdeckung nicht als erstes zurück, folgte der
-Roboter der falschen Person. Hier stecken zwei Bausteine, beide ohne
-Hardware testbar:
+Zwei Bausteine, beide ohne Hardware testbar:
 
-- ``PersonenTracker`` gibt jeder Person eine ID, die über Bilder hinweg
-  bleibt. Je Track sagt ein kleiner Kalman-Filter den Kamerawinkel voraus
-  und rechnet dabei die Eigendrehung des Roboters heraus (Board-Drehrate,
-  nicht ``theta``: der Winkel kam lange von der starren IMU).
-- ``ZielSperre`` merkt sich, welcher Track das Ziel ist, und das Aussehen
-  des Oberkörpers (HSV-Histogramm aus ``sensors/pose.py``). Nach einer
-  Verdeckung gilt nur wieder als Ziel, wer über mehrere Bilder deutlich
-  besser passt als alle anderen. Im Zweifel hält er an, statt zu raten.
+- ``PersonenTracker`` ordnet die Personen jedes Bildes einander zu. Je
+  Person sagt ein kleiner Kalman-Filter den Kamerawinkel voraus und rechnet
+  dabei die Eigendrehung des Roboters heraus (Board-Drehrate, nicht
+  ``theta``: der Winkel kam lange von der starren IMU). Die Track-Nummern
+  sind nur intern: Sie halten Gesten zweier Personen auseinander und das
+  Folgen ruhig, wenn jemand vorbeiläuft.
+- ``ZielWahl`` sagt, welchem Track er folgt. Ist die Person weg und kommt
+  wieder, folgt er ihr weiter, egal welche Nummer sie jetzt hat.
 
-Alles bleibt im RAM und wird beim Loslassen gelöscht: keine Bilder, nur ein
-Histogramm mit 128 Zahlen je Person.
+Bis 04.11. wurde das Ziel zusätzlich am Aussehen wiedererkannt (Ziel-Sperre)
+und Personen hießen in der App "Person 1, 2, ...". Wer aus dem Bild ging
+und zurückkam, galt oft als fremd, und er blieb stehen. Deshalb raus.
+
+Alles bleibt im RAM und wird beim Ausschalten gelöscht.
 """
 
 from __future__ import annotations
@@ -25,13 +24,12 @@ import math
 
 from .. import config
 
-# Zustände des Ziel-Locks (Werte gehen so an die App, siehe docs/api.md).
+# Zustände der Zielwahl (Werte gehen so an die App, siehe docs/api.md).
 IDLE = "idle"
 ERFASSEN = "acquiring_target"
 FOLGT = "following"
 KURZ_WEG = "target_temporarily_lost"
 SUCHT = "searching_for_target"
-SICHER_HALT = "safe_stop"
 
 # Kalman-Modell des Kamerawinkels (Grad). Keine Einstellungen, sondern
 # Eigenschaften der Messung: Die Pose-Erkennung trifft die Boxmitte auf etwa
@@ -183,49 +181,43 @@ class PersonenTracker:
         return self.tracks
 
 
-class ZielSperre:
-    """Welcher Track ist das Ziel? Zustandsautomat, siehe docs/interaktion.md."""
+class ZielWahl:
+    """Wem er folgt: der Person im Bild -- ohne Personen auseinanderzuhalten.
+
+    Er bleibt beim selben Track, solange der gemessen wird; sonst spränge er
+    zwischen zwei Personen im selben Bild hin und her. Ist der Track weg,
+    nimmt er nach ``ZIEL_WECHSEL_S`` die Person, die dem letzten Winkel am
+    nächsten steht -- auch wenn der Tracker ihr eine neue Nummer gegeben
+    hat. Genau das ist gewollt: Wer kurz aus dem Bild geht und zurückkommt,
+    ist für den Tracker ein neuer Track, aber dieselbe Person.
+
+    Bis 04.11. stand hier eine Ziel-Sperre, die das Ziel am Aussehen
+    wiedererkennen musste. Klappte das nicht (Licht, Drehung), galt die
+    zurückkehrende Person als fremd und er blieb stehen.
+    """
 
     def __init__(self) -> None:
         self.freigeben()
 
-    # --- Übergänge von außen --------------------------------------------------
-
     def freigeben(self, grund: str = "") -> None:
-        """Ziel loslassen und alles Gelernte vergessen."""
+        """Nicht mehr folgen."""
         self.zustand = IDLE
         self.id = None
-        self.referenz: list | None = None
         self.grund = grund
         self.sicherheit = 0.0
-        self.mehrdeutig = False
-        self._nie_gesperrt = True
-        self._proben = 0
-        self._seit = 0.0
-        self._fehl = 0
-        self._letztes_bild = None
-        self._kandidat_neu()
+        self._winkel: float | None = None
+        self._weg_seit: float | None = None
 
     def erfassen(self, track_id, jetzt: float) -> None:
-        """Neues Ziel aufnehmen: eine bestimmte ID oder (None) die einzige Person."""
+        """Folgen beginnen: dem Track, der die Geste machte, oder (None) der größten Person."""
         self.freigeben()
         self.zustand = ERFASSEN
         self.id = track_id
-        self._nie_gesperrt = track_id is None
-        self._seit = jetzt
 
     def suchen(self, jetzt: float) -> None:
-        if self.zustand in (IDLE, SICHER_HALT):
-            return
-        self.zustand = SUCHT
-        self._seit = jetzt
-        self._kandidat_neu()
-
-    def sicher_anhalten(self, grund: str, jetzt: float) -> None:
-        """Stehen bleiben, bis jemand neu wählt. Das Gelernte wird gelöscht."""
-        self.freigeben(grund)
-        self.zustand = SICHER_HALT
-        self._seit = jetzt
+        """Person verloren: die nächste, die auftaucht, ist es."""
+        if self.zustand != IDLE:
+            self.zustand = SUCHT
 
     def als_dict(self) -> dict:
         return {
@@ -235,146 +227,33 @@ class ZielSperre:
             "grund": self.grund,
         }
 
-    # --- je Takt ----------------------------------------------------------------
-
     def zuordnen(self, tracks: list[Track], bild_zeit, jetzt: float) -> Track | None:
-        """Den Ziel-Track liefern -- nur, wenn er in diesem Bild gemessen wurde.
-
-        Wird im Regeltakt aufgerufen; gezählt (Bestätigungen, Fehlbilder) wird
-        nur bei einem neuen Bild (``bild_zeit`` anders als zuletzt).
-        """
-        self.mehrdeutig = False
-        if self.zustand in (IDLE, SICHER_HALT):
+        """Den Track, dem er folgt -- nur, wenn er im letzten Bild gemessen wurde."""
+        if self.zustand == IDLE:
             return None
-        neu = bild_zeit is not None and bild_zeit != self._letztes_bild
-        self._letztes_bild = bild_zeit
         gemessen = [t for t in tracks if t.gemessen]
-
-        if self.zustand == ERFASSEN and self.id is None:
-            # Ohne Antippen nur, wenn die Wahl eindeutig ist.
-            if len(gemessen) > 1:
-                self.mehrdeutig = True
-                return None
-            if not gemessen:
-                return None
-            self.id = gemessen[0].id
-            self._nie_gesperrt = False
-
-        ziel = next((t for t in tracks if t.id == self.id), None) if self.id is not None else None
-        if ziel is not None and ziel.gemessen:
-            return self._ziel_gemessen(ziel, gemessen, neu, jetzt)
-
-        # Ziel ohne Messung (verdeckt, aus dem Bild, Track verworfen)
-        if self.zustand == ERFASSEN:
-            if ziel is not None:
-                return None
-            if self.referenz is None:
-                # Noch nichts gelernt: wie ein frischer Start.
-                self.id = None
-                self._nie_gesperrt = True
-                return None
-        if self.zustand in (ERFASSEN, FOLGT):
-            self.zustand = KURZ_WEG
-            self._seit = jetzt
-        return self._wiederfinden(gemessen, neu, jetzt)
-
-    # --- intern -----------------------------------------------------------------
-
-    def _kandidat_neu(self) -> None:
-        self._kandidat = None
-        self._kandidat_bilder = 0
-        self._knapp_bilder = 0
-
-    def _ziel_gemessen(self, ziel: Track, gemessen: list[Track], neu: bool, jetzt: float) -> Track | None:
-        merkmal = ziel.person.get("merkmal")
-        d = bhattacharyya(self.referenz, merkmal)
-        if d is not None and d > config.ZIEL_MERKMAL_SCHWELLE and self.zustand != ERFASSEN:
-            # Der Tracker hat vermutlich eine andere Person auf die ID
-            # gelegt (z. B. beim Kreuzen). Nicht folgen; hält es an, wird die
-            # ID aufgegeben und neu gesucht.
-            if neu:
-                self._fehl += 1
-            if self._fehl >= config.ZIEL_BESTAETIGEN_BILDER:
-                self.id = None
-                self._fehl = 0
-                if self.zustand == FOLGT:
-                    self.zustand = KURZ_WEG
-                    self._seit = jetzt
+        ziel = next((t for t in gemessen if t.id == self.id), None)
+        if ziel is None and gemessen:
+            # Kurz verdeckt (jemand läuft vorbei)? Erst nach ZIEL_WECHSEL_S
+            # eine andere Person nehmen. Beim Start und in der Suche sofort.
+            weg_lange = self._weg_seit is not None and jetzt - self._weg_seit >= config.ZIEL_WECHSEL_S
+            if self.id is None or self.zustand in (ERFASSEN, SUCHT) or weg_lange:
+                ziel = self._naechste(gemessen)
+        if ziel is None:
+            if self._weg_seit is None:
+                self._weg_seit = jetzt
+            if self.zustand == FOLGT:
+                self.zustand = KURZ_WEG
             return None
-        self._fehl = 0
-        self._kandidat_neu()
-        # Steht jemand dicht daneben, könnte das Histogramm Teile der anderen
-        # Person enthalten -- dann nichts lernen.
-        eindeutig = not any(
-            abs(t.w - ziel.w) < 2 * config.ZIEL_GATE_GRAD for t in gemessen if t is not ziel
-        )
-        if self.zustand == ERFASSEN:
-            if neu and eindeutig and merkmal is not None:
-                self._proben += 1
-                self.referenz = _mischen(self.referenz, merkmal, 1.0 / self._proben)
-            if jetzt - self._seit >= config.ZIEL_ERFASSEN_S and (
-                self._proben >= config.ZIEL_BESTAETIGEN_BILDER or merkmal is None
-            ):
-                self.zustand = FOLGT
-        elif self.zustand in (KURZ_WEG, SUCHT):
-            self.zustand = FOLGT
-        elif neu and eindeutig and d is not None and d < config.ZIEL_MERKMAL_SCHWELLE / 2:
-            self.referenz = _mischen(self.referenz, merkmal, config.ZIEL_MERKMAL_NACHFUEHREN)
-        self.sicherheit = 1.0 - d if d is not None else 0.5
+        self._weg_seit = None
+        self.id = ziel.id
+        self._winkel = ziel.w
+        self.zustand = FOLGT
+        self.sicherheit = 1.0
         return ziel
 
-    def _wiederfinden(self, gemessen: list[Track], neu: bool, jetzt: float) -> Track | None:
-        """Unter den sichtbaren Personen das Ziel wiedererkennen -- nur sicher."""
-        if not gemessen:
-            self._kandidat_neu()
-            return None
-
-        if self.referenz is None:
-            # Ohne gelerntes Aussehen nie jemand anderen übernehmen. Einzige
-            # Ausnahme: Es war noch nie jemand gesperrt (Start ohne Person im
-            # Bild) und genau eine Person taucht stabil auf.
-            if not (self.zustand == SUCHT and self._nie_gesperrt):
-                return None
-            if len(gemessen) > 1:
-                self.mehrdeutig = True
-                return None
-            bester = gemessen[0]
-        else:
-            bewertet = sorted(
-                (d, t.id, t)
-                for t in gemessen
-                if (d := bhattacharyya(self.referenz, t.person.get("merkmal"))) is not None
-            )
-            if not bewertet or bewertet[0][0] > config.ZIEL_MERKMAL_SCHWELLE:
-                self._kandidat_neu()
-                return None
-            if len(bewertet) > 1 and bewertet[1][0] - bewertet[0][0] < config.ZIEL_MERKMAL_MARGE:
-                # Zwei passen fast gleich gut (gleiche Kleidung?): nicht raten.
-                if neu:
-                    self._knapp_bilder += 1
-                if self._knapp_bilder >= config.ZIEL_BESTAETIGEN_BILDER:
-                    self.mehrdeutig = True
-                return None
-            self._knapp_bilder = 0
-            bester = bewertet[0][2]
-            self.sicherheit = 1.0 - bewertet[0][0]
-
-        if self._kandidat != bester.id:
-            self._kandidat = bester.id
-            self._kandidat_bilder = 1 if neu else 0
-        elif neu:
-            self._kandidat_bilder += 1
-        if self._kandidat_bilder < config.ZIEL_BESTAETIGEN_BILDER:
-            return None
-
-        self.id = bester.id
-        self._fehl = 0
-        self._kandidat_neu()
-        if self.referenz is None:
-            # Erste Sperre überhaupt: jetzt das Aussehen lernen.
-            self._nie_gesperrt = False
-            self.zustand = ERFASSEN
-            self._seit = jetzt
-        else:
-            self.zustand = FOLGT
-        return bester
+    def _naechste(self, gemessen: list[Track]) -> Track:
+        """Dort, wo er zuletzt jemanden sah; ohne Anhaltspunkt die größte Person."""
+        if self._winkel is None:
+            return max(gemessen, key=lambda t: t.hoehe)
+        return min(gemessen, key=lambda t: (abs(t.w - self._winkel), -t.hoehe))

@@ -699,6 +699,15 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
   - Im Log auf „Fortschrittswache“ achten, ob sie sich im freien Raum irrt.
   - Auf USB-Resets achten, solange die Kamera läuft.
 
+### 04.11.2026 – Personen beim Folgen nicht mehr unterscheiden
+- **Problem:** Beim Folgen bekam jede Person eine Nummer („Person 1, 2 …“ in der App). Ging die verfolgte Person aus dem Bild und kam zurück, musste sie am Aussehen (Farbe des Oberkörpers) wiedererkannt werden. Das klappte oft nicht: Sie galt als neue Person, und der Roboter blieb mit „bitte neu wählen“ stehen.
+- **Was:** Die Ziel-Sperre (03.11.) ist durch eine einfache `ZielWahl` ersetzt (`interaktion/ziel.py`). Er folgt der Person im Bild. Ist sie weg, wartet er `ZIEL_WECHSEL_S` (1 s), dann folgt er der Person, die dort steht, wo die letzte war. In der Suche folgt er dem Nächsten, der auftaucht. Der Tracker bleibt intern, damit die Gesten zweier Personen getrennt bleiben und er bei Vorbeilaufenden nicht springt.
+  - App: keine Nummern über den Köpfen, kein Antippen, Zieltext ohne Nummer und Prozent.
+  - Einstellung „Aussehen-Schwelle“ ersetzt durch „Wechsel nach“ (`ZIEL_WECHSEL_S`).
+  - Schnittstelle unverändert: `follow` nimmt `ziel_id` weiter an (ältere Clients), `state.interaktion.ziel` und `/interaktion/pose` behalten ihre Felder. `safe_stop` kommt nicht mehr vor.
+- **Ergebnis:** `test_ziel.py` neu gefasst (57 Prüfungen, darunter Weggehen und Wiederkommen), am Pi bestanden; `test_gesten.py`, `test_sprache.py`, `test_stimme.py` ebenso.
+- **Kehrseite:** Sind mehrere Personen da und die verfolgte geht weg, folgt er nach einer Sekunde der anderen.
+
 ---
 
 ## 3. Ergebnisse und Messwerte
@@ -775,7 +784,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - Smoke-Test „Heimfahrt startet“ schlägt im Mock zeitweise fehl (auch ohne die Änderungen vom 03.11.; am 03.11. nachmittags einmal 19/19): Die Fahrt zuvor legt nur ~0,02 m zurück, die Heimfahrt endet sofort. Ursache prüfen.
 - Drehtest 90° am Boden: Blickrichtung aus der Board-Drehrate gegen den Lidar prüfen.
 - Tiefenkamera am Boden einmessen (`/tiefe/test`, Boden erkannt? links/rechts?) und Kartierfahrt mit Stühlen testen (E11).
-- Folgen mit zwei Personen am Boden: kreuzen, kurz verdecken, gleiche Kleidung. Merkmal-Schwellen ggf. nachstellen (`ZIEL_MERKMAL_*`).
+- Folgen am Boden: weggehen und wiederkommen (muss weiterfolgen), mit zwei Personen kreuzen und kurz verdecken. Wechselt er zu schnell auf andere, `ZIEL_WECHSEL_S` erhöhen.
 
 ---
 

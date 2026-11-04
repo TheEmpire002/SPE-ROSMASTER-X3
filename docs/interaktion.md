@@ -121,7 +121,7 @@ mindestens Schultern und Handgelenke im Bild.
 - **Weggehen:** weicht ~1 m zurück und bleibt stehen.
 - Es ist immer nur **ein** Verhalten aktiv. Erkunder, Heimfahrt und Interaktion brechen sich gegenseitig ab.
 - Sicherheit wie beim Erkunder: vorwärts nur bei freiem Fahrschlauch (`frei_in_richtung`), rückwärts nur bei freiem Raum hinten, ohne frische Lidar-Daten oder bei etwas sehr Nahem steht er. Im Modus `bereit` schickt er keine Befehle.
-- Welcher Person er folgt, entscheidet der **Ziel-Lock** (siehe unten). Eine andere Person wird nie von selbst übernommen.
+- Welcher Person er folgt, entscheidet die **Zielwahl** (siehe unten): der Person im Bild; wer kurz weg war und zurückkommt, ist wieder das Ziel.
 - `herkommen` und `weggehen` enden spätestens nach `INTERAKTION_VERHALTEN_MAX_S`.
 - **Ohne Antrieb** (Board weg, USB-Reset) hält er an und geht nach `bereit`, der Interaktionsmodus bleibt aber an. Fahrende Modi werden abgelehnt, solange `driver.connected` falsch ist; ist das Board wieder da, geht es mit der nächsten Geste oder dem nächsten Sprachbefehl weiter.
 - Alle Werte: `FOLGEN_*`, `HERKOMMEN_*`, `WEGGEHEN_*` in `config.py`.
@@ -188,97 +188,85 @@ Antrieb“, und die Interaktion war sofort wieder aus. Zwei Ursachen:
    als Rückfrage und lehnt Fahrmodi ab, solange das Board fehlt. Der Treiber
    verbindet sich selbst neu, danach geht es ohne Neustart weiter.
 
-### Ziel-Lock (03.11.)
-
-Früher sprang der Roboter beim Folgen auf eine zweite Person über. Die
-Zuordnung lief nur über den Kamerawinkel, nach jeder Suche nahm er die
-größte Person im Bild. Jetzt gilt: **Im Zweifel stehen bleiben.**
+### Wem er folgt (04.11., vorher Ziel-Lock vom 03.11.)
 
 Code: `interaktion/ziel.py` (reine Logik, ohne Hardware testbar), eingebunden
 in `interaktion/verhalten.py`.
 
-- **`PersonenTracker`** vergibt Track-IDs über die Bilder hinweg. Je Track
-  ein Kalman-Filter auf Winkel und Winkelgeschwindigkeit. Die Vorhersage
-  zieht die **Eigendrehung** des Roboters ab (gemessene Drehrate aus der
-  Odometrie, sonst der Fahrbefehl), sonst sähe jede Drehung wie eine
-  laufende Person aus. Zuordnung gierig nach Kosten aus Winkelabstand
-  (Gate `ZIEL_GATE_GRAD`, wächst mit der Zeit ohne Messung), Boxhöhe und
-  Aussehen. Ein Track ohne Messung lebt `ZIEL_TRACK_HALTEN_S` weiter.
-- **Aussehen:** `sensors/pose.py` berechnet je Person ein HSV-Histogramm
-  (16 × 8) des Rumpfs zwischen Schultern und Hüften (`merkmal`). Verglichen
-  wird per Bhattacharyya-Abstand.
-- **`ZielSperre`** hält das Ziel: Track-ID, Referenz-Merkmal (Mittel aus der
-  Erfassung, danach nur bei eindeutiger Szene langsam nachgeführt,
-  `ZIEL_MERKMAL_NACHFUEHREN`) und den Zustand:
+**Personen werden nicht unterschieden.** Er folgt der Person im Bild. Geht
+sie kurz hinaus und kommt zurück, folgt er ihr weiter.
+
+Bis zum 04.11. gab es eine Ziel-Sperre (03.11.): Jede Person bekam eine
+Nummer („Person 1, 2 …“ in der App), und das Ziel musste nach einer
+Verdeckung am Aussehen (Farbe des Oberkörpers) wiedererkannt werden. Im
+Betrieb klappte das oft nicht (Licht, Drehung, Rücken statt Bauch). Wer aus
+dem Bild ging und zurückkam, galt als neue Person, und der Roboter blieb mit
+„bitte neu wählen“ stehen. Deshalb ist die Sperre raus.
+
+- **`PersonenTracker`** ordnet die Personen von Bild zu Bild einander zu.
+  Je Person gibt es ein Kalman-Filter auf Winkel und Winkelgeschwindigkeit.
+  Die Vorhersage zieht die **Eigendrehung** des Roboters ab (gemessene
+  Drehrate aus der Odometrie, sonst der Fahrbefehl), sonst sähe jede
+  Drehung wie eine laufende Person aus. Zugeordnet wird gierig nach Kosten
+  aus Winkelabstand (Gate `ZIEL_GATE_GRAD`), Boxhöhe und Aussehen. Ein Track
+  ohne Messung lebt `ZIEL_TRACK_HALTEN_S` weiter. Die Track-Nummern sind
+  nur intern. Sie halten die Gesten zweier Personen auseinander, und beim
+  Folgen springt er nicht auf jemanden, der vorbeiläuft.
+- **`ZielWahl`** sagt, welchem Track er folgt:
+  - beim Start dem, der die Folgen-Geste macht, per App-Knopf der größten
+    Person;
+  - solange dieser Track gemessen wird, bleibt er dabei;
+  - ist er weg, wartet er `ZIEL_WECHSEL_S` (1 s), etwa weil jemand
+    vorbeiläuft. Danach nimmt er die Person, die dem letzten Winkel am
+    nächsten steht, auch mit neuer Track-Nummer;
+  - in der Suche folgt er sofort dem Nächsten, der auftaucht.
 
 | Zustand (`ziel.zustand`) | Bedeutung | Roboter |
 |---|---|---|
-| `idle` | kein Ziel | keine Befehle |
-| `acquiring_target` | Ziel wird erfasst, Merkmal wird gelernt | fährt schon, sobald das Ziel eindeutig ist |
-| `following` | Ziel bestätigt | folgt nur dem Ziel-Track |
-| `target_temporarily_lost` | Ziel-Track ohne Messung | rollt aus, steht |
-| `searching_for_target` | länger verloren (`FOLGEN_VERLOREN_S`) | dreht langsam zur letzten Seite |
-| `safe_stop` | nicht wiedergefunden oder nicht eindeutig | steht, `grund` sagt warum |
+| `idle` | folgt niemandem | keine Befehle |
+| `acquiring_target` | Folgen begonnen, noch niemand zugeordnet | wartet auf die Person |
+| `following` | folgt | fährt der Person nach |
+| `target_temporarily_lost` | Person gerade nicht im Bild | rollt aus, steht |
+| `searching_for_target` | länger weg (`FOLGEN_VERLOREN_S`) | dreht langsam zur letzten Seite |
 
-- **Erste Auswahl:** die Person, die die Folgen-Geste macht (Gesten werden
-  je Track erkannt), oder die in der App gewählte. Startet man ohne Auswahl
-  bei mehreren Personen, lehnt er ab: „mehrere Personen – bitte im Bild
-  antippen“.
-- **Wiederfinden:** Während einer kurzen Verdeckung gehört derselbe Track
-  sofort wieder dem Ziel. Ein neuer Track muss zum Merkmal passen
-  (`ZIEL_MERKMAL_SCHWELLE`), deutlich besser als jeder andere Kandidat
-  (`ZIEL_MERKMAL_MARGE`), und das in `ZIEL_BESTAETIGEN_BILDER` Bildern
-  hintereinander.
-- **Sicher anhalten:** Nach `FOLGEN_SUCHEN_S` ohne bestätigten Kandidaten
-  oder wenn zwei Personen gleich gut passen, geht er nach `safe_stop`.
-  Daraus kommt er nur durch eine neue Auswahl. Gleich gekleidete Personen
-  kann das Farbmerkmal nicht trennen; dann hält er bewusst an, statt zu
-  raten.
-- **Gesten anderer Personen:** Beim Folgen zählen nur die Gesten des Ziels.
-  Ausnahme ist **Stopp**: Das darf jeder.
-- **Datenschutz:** Merkmal und Track-IDs liegen nur im RAM. Sie werden bei
-  Freigabe, Ende der Interaktion und Serverende gelöscht. Es werden keine
-  Bilder gespeichert und keine dauerhafte Personen-ID vergeben.
-  `/interaktion/pose` gibt das Merkmal nicht heraus.
+`safe_stop` kommt nicht mehr vor (nur noch von Servern vor dem 04.11.).
 
-Abweichungen vom Plan:
-
-- Die Zeiten heißen weiter `FOLGEN_VERLOREN_S` und `FOLGEN_SUCHEN_S`.
-  Eigene `ZIEL_*`-Namen hätten nur doppelte Einstellungen gebracht.
-- In `acquiring_target` fährt er schon los, sobald das Ziel eindeutig ist.
-  Die Sicherheit kommt von der Eindeutigkeit, nicht von einer Wartezeit im
-  Stand; das Merkmal wird währenddessen weiter gelernt.
+- **Suche:** Standardmäßig endlos (`FOLGEN_SUCHEN_S = 0`), bis jemand
+  auftaucht oder Stopp kommt. Mit Zeitgrenze geht er danach nach `idle`,
+  `grund` sagt „Person nicht wiedergefunden“.
+- **Gesten anderer Personen:** Beim Folgen zählen nur die Gesten der
+  verfolgten Person. Ausnahme ist **Stopp**: Das darf jeder.
+- **Kehrseite:** Sind mehrere Personen da und die verfolgte geht weg, kann
+  er nach einer Sekunde einer anderen folgen. Das ist der Preis dafür, dass
+  er nicht mehr stehen bleibt.
+- **Datenschutz:** Tracks liegen nur im RAM und werden mit dem Ende der
+  Interaktion gelöscht. Es werden keine Bilder gespeichert.
+  `/interaktion/pose` gibt das Aussehens-Merkmal nicht heraus.
 
 Test: `Marlon/interaktion/test_ziel.py`. Er prüft Kreuzen mit Verdeckung,
-Eigendrehung, kurze und lange Verdeckung, zweite Person während der Suche,
-gleiche Kleidung, App-Start bei zwei Personen, Geste wählt Gestikulierenden
-und Stopp von Passanten.
+Eigendrehung, kurze Verdeckung, Weggehen und Wiederkommen, Wechsel nach
+`ZIEL_WECHSEL_S`, App-Start bei zwei Personen, dass die Geste den
+Gestikulierenden wählt und dass Passanten per Stopp anhalten können.
 
-### Bedienung in der Web-App (03.11.)
+### Bedienung in der Web-App (03.11., geändert 04.11.)
 
 Gesteuert wird über die Web-App; Gesten und Sprache bleiben Nebenwege.
 
-- **Person antippen:** Solange die Interaktion läuft, sind die Personen im
-  Bild der Personenkamera antippbar. Ein Tipp schickt `follow {ziel_id}` mit
-  der Track-ID aus `/interaktion/pose`. Das geht auch während des Folgens:
-  Dann wechselt das Ziel. Ein eigener Knopf „Neu wählen“ wäre damit doppelt
-  und entfällt. Liegen Boxen übereinander, gilt die kleinere, meist die
-  weiter hinten stehende, die man gezielt gemeint hat.
-- **Anzeige:** Das Ziel ist grün, alle anderen grau, über jedem Kopf steht
-  „Person N“. Die Zeile „Ziel“ zeigt den Zustand (z. B. „folgt Person 3 ·
-  82 %“, „sucht Person 3 …“, „sicher angehalten – bitte neu wählen“).
-- **Pause / Weiter:** `follow_pause` hält an, Tracker und Sperre laufen
-  weiter, damit nach `follow_resume` noch dieselbe Person das Ziel ist.
-  Während der Pause greifen keine Zeitgrenzen (Verloren, Suchen); die
-  Stopp-Geste beendet die Pause wie jeden Modus.
-- **Loslassen:** `follow_stop` gibt das Ziel frei und quittiert auch ein
-  `safe_stop`.
-- Tippt man eine Person an, die der Tracker gerade verloren hat, lehnt er
-  ab („bitte neu antippen“), statt jemand anderen zu nehmen.
+- **Anzeige:** Die Person, der er folgt, ist grün, alle anderen grau. Es
+  gibt keine Nummern mehr. Die Zeile „Ziel“ zeigt den Zustand („folgt“,
+  „sucht die Person …“).
+- **Antippen entfällt (04.11.).** Vorher wählte ein Tipp ins Bild eine
+  Person per `follow {ziel_id}`. Ältere Clients dürfen `ziel_id` weiter
+  schicken: Die Person gilt dann als Start-Ziel, eine unbekannte ID wird
+  ignoriert.
+- **Pause / Weiter:** `follow_pause` hält an. Tracker und Zielwahl laufen
+  weiter, damit er nach `follow_resume` derselben Person folgt. Während der
+  Pause greifen keine Zeitgrenzen (Verloren, Suchen). Die Stopp-Geste
+  beendet die Pause wie jeden Modus.
+- **Loslassen:** `follow_stop` beendet das Folgen.
 
-Test: ebenfalls `test_ziel.py` (Antippen, Umwählen, unbekannte ID, Pause
-über die Suchzeit hinaus, Weiter, Stopp in der Pause, IDs in der Pose,
-Loslassen aus `safe_stop`).
+Test: ebenfalls `test_ziel.py` (Knopf, alte `ziel_id`, Pause über die
+Suchzeit hinaus, Weiter, Stopp in der Pause, Pose-Felder, Loslassen).
 
 ## Sprache
 
@@ -387,7 +375,7 @@ Der API-Schlüssel kommt aus der Umgebungsvariable `ANTHROPIC_API_KEY` und
 
 Umgesetzt und in [`api.md`](api.md) beschrieben („Interaktion im Detail“):
 
-- Befehle `interaction_start` / `interaction_stop`, `follow {ziel_id?}` / `follow_pause` / `follow_resume` / `follow_stop`.
+- Befehle `interaction_start` / `interaction_stop`, `follow` (`ziel_id` nur noch für ältere Clients) / `follow_pause` / `follow_resume` / `follow_stop`.
 - `state.interaktion` mit `aktiv`, `verfuegbar`, `modus`, `text`, `person{winkel, abstand}`, `personen`, `geste`, `grund`, `pausiert`, `ziel{zustand, id, sicherheit, grund}`.
 - `GET /interaktion/status` und `GET /interaktion/pose` (Skelett zum Einblenden; die Web-App zeichnet es über das Kamerabild).
 - Stimme: Befehle `say {text, vorrang}` und `say_stop`, `state.stimme` mit `verfuegbar`, `spricht`, `text`, Diagnose unter `GET /stimme/status`.

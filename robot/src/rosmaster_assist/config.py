@@ -1006,41 +1006,20 @@ INTERAKTION_SPRUNG_GRAD = 15.0
 # derselben Sekunde, und die USB-Versorgung brach zusammen. 0 = sofort.
 INTERAKTION_ANLAUF_S = 5.0
 
-# --- Ziel-Lock beim Folgen (interaktion/ziel.py) -----------------------------
-# Früher folgte er immer der nächstgelegenen bzw. größten Person -- nach
-# einer Suche oder beim Kreuzen sprang er so auf Fremde über. Jetzt hält
-# ein Tracker IDs über Bilder hinweg, und das Ziel wird zusätzlich an der
-# Farbe des Oberkörpers (HSV-Histogramm) wiedererkannt. Im Zweifel bleibt
-# er stehen, statt zu raten.
+# --- Wem er folgt (interaktion/ziel.py) ---------------------------------------
+# Ein Tracker ordnet die Personen von Bild zu Bild zu. Unterschieden werden
+# sie nicht -- wer kurz aus dem Bild war, ist beim Zurückkommen wieder das
+# Ziel.
 
-# So lange wird das Aussehen des Ziels nach dem Start gelernt, bevor es als
-# bestätigt gilt (er fährt währenddessen schon).
-ZIEL_ERFASSEN_S = 1.0
-
-# So viele Bilder in Folge muss ein Kandidat passen, bevor er nach einer
-# Verdeckung wieder als Ziel gilt -- und so viele Fehlbilder in Folge
-# lösen das Ziel von seinem Track.
-ZIEL_BESTAETIGEN_BILDER = 5
-
-# Größter Bhattacharyya-Abstand (0 = gleich, 1 = völlig verschieden), bei
-# dem ein Merkmal noch als „dieselbe Person“ gilt. Am Roboter prüfen: hängt
-# stark von Licht und Kleidung ab.
-ZIEL_MERKMAL_SCHWELLE = 0.5
-
-# Beim Wiederfinden muss der beste Kandidat um mindestens so viel besser
-# passen als der zweitbeste. Sonst sind zwei Personen zu ähnlich (z. B.
-# gleich gekleidet) -- dann hält er sicher an.
-ZIEL_MERKMAL_MARGE = 0.15
+# Ist die verfolgte Person so lange (s) nicht zu sehen, folgt er einer
+# anderen im Bild (der, die dem letzten Winkel am nächsten steht). Kürzer
+# verdeckt, etwa von jemandem, der vorbeiläuft: wartet er auf sie.
+ZIEL_WECHSEL_S = 1.0
 
 # Winkelfenster um die vorhergesagte Position, in dem eine Erkennung dem
 # Track zugeordnet werden darf (wächst mit der Unsicherheit bis zum
 # Dreifachen).
 ZIEL_GATE_GRAD = 15.0
-
-# Wie stark das gelernte Merkmal je Bild nachgeführt wird (Licht ändert
-# sich beim Gehen durch den Raum). Nur bei eindeutiger Szene und gutem
-# Treffer -- sonst lernt er schleichend eine fremde Person.
-ZIEL_MERKMAL_NACHFUEHREN = 0.05
 
 # So lange bleibt ein Track ohne Messung erhalten (vorhergesagt), bevor er
 # verworfen wird.

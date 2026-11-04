@@ -24,8 +24,8 @@ Von der App / vom ESP an den Roboter
 {"type": "interaction_stop"}                              Interaktion aus, anhalten
 {"type": "follow"}                                        der Person vor der Kamera folgen
                                                           (schaltet Interaktion mit ein)
-{"type": "follow", "ziel_id": 3}                          der in der App angetippten Person
-                                                          folgen (id aus /interaktion/pose)
+{"type": "follow", "ziel_id": 3}                          mit dieser Person anfangen (nur
+                                                          noch ältere Clients, id aus /interaktion/pose)
 {"type": "follow_stop"}                                   nicht mehr folgen, Interaktion bleibt an
 {"type": "follow_pause"}                                  anhalten, Ziel bleibt gemerkt
 {"type": "follow_resume"}                                 nach der Pause weiterfahren
