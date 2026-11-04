@@ -1382,3 +1382,86 @@ SPRACHE_THREAD_HAENGT_S = 15.0
 # Höchstens so oft hintereinander; danach Zustand "fehler" mit dem Hinweis,
 # den Server neu zu starten (jeder hängende Thread bleibt liegen).
 SPRACHE_THREAD_MAX_NEU = 3
+
+# --- Zustandserkennung / Healthbot (zustandserkennung/) -----------------------
+#
+# Der Roboter fährt zu einer Person, der es vermutlich nicht gut geht, macht
+# sich ein Bild (Haltung, Bewegung, Antwort, Lage am Boden), stupst sie an
+# und holt Hilfe, wenn keine Reaktion kommt. Seite: /healthbot.
+
+# Hauptschalter. Aus: health_check wird abgelehnt.
+HEALTH_AKTIV = True
+
+# Anstupsen mit echter Berührung. Aus: Der Schritt wird übersprungen und die
+# Bewertung kommt allein aus Beobachten und Ansprechen.
+HEALTH_STUPSEN_AKTIV = True
+# Tempo beim Anstupsen (m/s). Sehr langsam, damit die Berührung nur ein
+# Antippen ist und der Roboter sofort steht.
+HEALTH_STUPSEN_SPEED = 0.05
+# Höchstens so weit (m) über den gemessenen Lidar-Abstand hinaus. Weiter
+# fährt er nie, auch wenn er keinen Widerstand spürt.
+HEALTH_STUPSEN_TIEFE_M = 0.10
+# So oft wird angestupst, nach jedem Mal sofort zurück.
+HEALTH_STUPSEN_ANZAHL = 2
+# Strecke (m) zurück nach jedem Stupser.
+HEALTH_STUPSEN_ZURUECK_M = 0.08
+# Rand für den Fahrschutz beim Anstupsen. 0 heißt: Berührung erlaubt -- sonst
+# bliebe er wie gewollt 4 cm vor der Person stehen. Tempo, Weg und
+# Totmannschaltung begrenzen ihn trotzdem (docs/entscheidungen.md).
+HEALTH_STUPSEN_RAND_M = 0.0
+# Fährt er so lange (s) mit Befehl, ohne dass die Odometrie Bewegung misst,
+# gilt das als Berührung (die Person hält dagegen).
+HEALTH_STUPSEN_KONTAKT_S = 0.4
+# Unter diesem gemessenen Tempo (m/s) steht er (für die Kontakterkennung).
+HEALTH_STUPSEN_STEHT_MS = 0.01
+# Längstens so lange (s) dauert ein Stupser, dann zurück.
+HEALTH_STUPSEN_MAX_S = 6.0
+# Abstand (m), aus dem angestupst wird: Näher fährt die Anfahrt vorher heran.
+HEALTH_STUPSEN_START_M = 0.30
+
+# Anfahrt: Ab diesem Abstand (m) zum Ziel gilt er als angekommen. Großzügig,
+# denn der gemeldete Ort ist nur ungefähr und dort liegt ja die Person.
+HEALTH_ZIEL_TOLERANZ_M = 0.6
+# Steht etwas im Weg und ist das Ziel näher als das (m), reicht es: Das
+# Hindernis ist dann meist die Person selbst.
+HEALTH_BLOCKIERT_REICHT_M = 1.2
+
+# Gesamtbild: so lange (s) beobachten, wie sich die Person bewegt.
+HEALTH_BEOBACHTEN_S = 5.0
+# Bewegen sich die Keypoints im Mittel weniger als das (Pixel, 640er Bild),
+# gilt die Person als regungslos.
+HEALTH_REGUNGSLOS_PX = 6.0
+# Liegend: Schulter-Hüft-Achse flacher als so viel Grad gegen die Waagerechte.
+HEALTH_LIEGEND_GRAD = 35.0
+# ... oder die Box ist so viel breiter als hoch (Rückfall ohne Keypoints).
+HEALTH_LIEGEND_SEITENVERHAELTNIS = 1.3
+# Lage am Boden: Lidar-Echo am Personenwinkel, aber niedrig -- der Lidar
+# misst in ~17 cm Höhe. Ein liegender Körper gibt dort ein breites Stück
+# von mindestens so viel Länge (m).
+HEALTH_BODEN_MIN_BREITE_M = 0.35
+# Suchen: so schnell (rad/s) dreht er sich, bis er eine Person sieht ...
+HEALTH_SUCHEN_OMEGA = 0.4
+# ... höchstens so lange (s), etwa eine Umdrehung.
+HEALTH_SUCHEN_S = 18.0
+# Person gilt als mittig, wenn sie weniger als so viel Grad daneben liegt.
+HEALTH_MITTIG_GRAD = 8.0
+
+# So lange (s) auf eine Antwort warten, nachdem er gefragt hat.
+HEALTH_ANTWORT_S = 6.0
+# Fragen und Ansagen (Stimme).
+HEALTH_FRAGE = "Hallo, hören Sie mich? Geht es Ihnen gut?"
+HEALTH_FRAGE_HILFE = "Brauchst du Hilfe?"
+HEALTH_ANSAGE_HILFE = "Achtung! Hier liegt eine Person und reagiert nicht. Ich hole Hilfe."
+HEALTH_ANSAGE_OK = "Gut, dass es dir gut geht. Ich fahre zurück."
+# Wörter, die als Antwort zählen. "ja"/"hilfe" heißt: Hilfe holen.
+HEALTH_WOERTER_HILFE = ("ja", "hilfe", "hilf mir")
+HEALTH_WOERTER_NEIN = ("nein", "alles gut", "geht schon")
+
+# Der Roboter erkennt selbst: Sieht die Posenerkennung so lange (s)
+# durchgehend eine liegende Person, startet er die Prüfung von sich aus.
+HEALTH_AUTO_ERKENNEN = True
+HEALTH_AUTO_S = 3.0
+
+# Musik, wenn Hilfe geholt wird (liegt im Paket unter data/).
+HEALTH_MUSIK_DATEI = "BeatboxJungs.m4a"
+HEALTH_MUSIK_TITEL = "Beatbox Jungs"

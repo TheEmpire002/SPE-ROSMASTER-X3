@@ -99,7 +99,9 @@ class SafetyWatchdog:
 
     # --- Steuerung ------------------------------------------------------------
 
-    def submit(self, cmd: DriveCommand, quelle: str = "hand") -> DriveCommand:
+    def submit(
+        self, cmd: DriveCommand, quelle: str = "hand", rand_m: float | None = None
+    ) -> DriveCommand:
         """Fahrbefehl ausführen. Gibt den tatsächlich gefahrenen Befehl zurück.
 
         `quelle` ist "hand" (App, ESP32) oder "autonom" (Folgen, Erkunden,
@@ -107,6 +109,11 @@ class SafetyWatchdog:
         gilt die engere Grenze, und der Fahrschutz prüft sie. Die
         Handsteuerung prüft vorher über den ``CollisionGuard`` (abschaltbar
         in der App).
+
+        ``rand_m`` ändert für autonome Befehle den Abstand, den der
+        Fahrschutz halten lässt (Vorgabe ``FAHRSCHUTZ_RAND_M``). Gebraucht
+        beim Anstupsen der Zustandserkennung, das bewusst bis zur Berührung
+        fährt; Tempo- und Akkugrenze gelten trotzdem.
         """
         jetzt = time.monotonic()
         grenze_xy_x, grenze_xy_y = config.MAX_SPEED_X, config.MAX_SPEED_Y
@@ -125,7 +132,7 @@ class SafetyWatchdog:
             # Ohne Prüfung None, sonst sähen die Modi ein veraltetes Ergebnis.
             self.letzte_pruefung = None
             if self.fahrschutz is not None and config.AUTONOM_SCHUTZ_AKTIV:
-                self.letzte_pruefung = self.fahrschutz.pruefen(safe)
+                self.letzte_pruefung = self.fahrschutz.pruefen(safe, rand_m=rand_m)
                 safe = self.letzte_pruefung.befehl
                 if self.letzte_pruefung.grund is not None:
                     self.fahrschutz.eingriff_melden(self.letzte_pruefung.grund, jetzt)
