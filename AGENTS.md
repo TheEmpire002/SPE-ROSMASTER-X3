@@ -25,6 +25,11 @@ python main.py            # auf dem Roboter
 Die Simulation deckt Antrieb, Lidar (gedachter Raum) und Kamera (Testbild)
 ab. Alle Endpunkte verhalten sich wie am Roboter.
 
+Tests: `python scripts/alle_tests.py` startet alle Testskripte parallel
+und zeigt nur Fehlschläge ausführlich (Filter: `... alle_tests.py ziel`).
+Dazu `python scripts/smoke_test.py` gegen einen laufenden Mock-Server.
+Für Claude Code liegen passende Subagents in `.claude/agents/`.
+
 ## Regeln für Änderungen
 
 - **`protocol.py` ist der Vertrag.** Bestehende Nachrichten und Feldnamen

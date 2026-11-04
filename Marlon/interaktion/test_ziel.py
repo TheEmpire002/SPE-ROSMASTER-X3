@@ -299,7 +299,10 @@ pruefe("App-Start mit Auswahl: folgt", ia._modus == vh.FOLGEN and ia._sperre.id 
        ia.zustand()["ziel"])
 pruefe("App-Start mit Auswahl: dreht zur gewählten Person (rechts)", v[-1][2].omega < 0, v[-1][2])
 
-# Zweite Person tritt während der Suche ein -> sicher anhalten, nicht folgen
+# Zweite Person tritt während der Suche ein -> sicher anhalten, nicht folgen.
+# Standard ist Suchen ohne Zeitgrenze; das sichere Anhalten am Ende gibt es
+# nur mit Grenze, also hier eine setzen.
+suchen_alt, config.FOLGEN_SUCHEN_S = config.FOLGEN_SUCHEN_S, 6.0
 ia, wd, po = interaktion()
 folgt_rot(ia, po)
 pruefe("Suche: vorher folgt er Rot", ia._sperre.zustand == zl.FOLGT, ia.zustand()["ziel"])
@@ -313,6 +316,7 @@ pruefe("Suche: fährt dabei nie vorwärts", all(b is None or b.vx <= 0 for _, _,
 pruefe("Suche: am Ende sicher angehalten",
        ia._modus == vh.BEREIT and ia._sperre.zustand == zl.SICHER_HALT and wd.stopps >= 1,
        ia.zustand()["ziel"])
+config.FOLGEN_SUCHEN_S = suchen_alt
 
 # Rot kommt während der Suche zurück, Blau steht daneben -> folgt Rot
 ia, wd, po = interaktion()

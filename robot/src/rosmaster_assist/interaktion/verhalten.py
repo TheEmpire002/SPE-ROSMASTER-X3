@@ -256,10 +256,6 @@ class Interaktion:
             # BEREIT zurücksetzen. Eine ID gibt es hier noch nicht: Tracks
             # entstehen erst, wenn der Modus läuft.
             return self.start(FOLGEN)
-        if self._anlauf:
-            # Sanfter Start läuft noch: Folgen beginnt nach der Ansage.
-            self._start_modus = FOLGEN
-            return True
         jetzt = time.monotonic()
         if ziel_id is not None:
             if self._tracker.track(ziel_id) is None:
@@ -270,6 +266,11 @@ class Interaktion:
             if self._sperre.id != ziel_id:
                 self._sperre.freigeben()
             self._auswahl_id = ziel_id
+        if self._anlauf:
+            # Sanfter Start läuft noch: Folgen beginnt nach der Ansage. Die
+            # Auswahl oben gilt trotzdem schon, sonst ginge sie verloren.
+            self._start_modus = FOLGEN
+            return True
         text = f"folgt Person {ziel_id} (per App)" if ziel_id is not None else "folgt (per App)"
         self._wechseln(FOLGEN, text, jetzt, sagen="Ich folge dir.")
         return True

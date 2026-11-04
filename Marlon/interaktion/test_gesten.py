@@ -346,8 +346,12 @@ pruefe("Suchen: danach weiterdrehen", b and b.omega > 0, b)
 # Ohne Zeitgrenze (Standard): auch nach Minuten noch auf der Suche
 ia._schritt(start + 300.0)
 pruefe("Suchen ohne Zeitgrenze -> sucht weiter", config.FOLGEN_SUCHEN_S == 0 and ia._modus == vh.SUCHEN, ia._modus)
-po.liste = [mit_zeit(person(), start + 300.1)]
-ia._schritt(start + 300.1)
+# Wiedergefunden gilt erst nach ZIEL_BESTAETIGEN_BILDER Bildern, damit kein
+# Passant als "wiedergefunden" übernommen wird.
+for i in range(config.ZIEL_BESTAETIGEN_BILDER + 1):
+    t = start + 300.1 + 0.1 * i
+    po.liste = [mit_zeit(person(), t)]
+    ia._schritt(t)
 pruefe("Person wieder da -> folgt wieder", ia._modus == vh.FOLGEN, ia._modus)
 
 # Mit Zeitgrenze: danach bereit und angehalten

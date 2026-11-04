@@ -625,6 +625,14 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Ergebnis:** Alle geänderten Dateien am Pi geparst, das ganze Paket lässt sich importieren.
 - **Offen:** Am Boden prüfen: genaue Fahrbefehle, Folgen mit sanftem Start und Antippen. Der Zweig `feat-mapping` hat mit dem Fahrschutz eine eigene zentrale Prüfung. Beim nächsten Abgleich mit `main` müssen Fahrschutz und `AutonomSchutz` zu einer Schicht zusammengeführt werden.
 
+### 04.11.2026 – Schnellere Tests und Helfer für die KI-Arbeit (Marlon, mit Claude)
+- **Was:**
+  - Neues Skript `scripts/alle_tests.py`: Es startet alle Testskripte gleichzeitig, schreibt je Skript eine Zeile und zeigt die volle Ausgabe nur bei Fehlschlägen. Mit Namensfilter laufen nur einzelne Tests (`python scripts/alle_tests.py ziel gesten`).
+  - Vier Subagents für Claude Code in `.claude/agents/`: `test-laeufer` (Tests ausführen), `smoke-tester` (Server im Mock auf Port 8037 prüfen), `regel-pruefer` (Diff gegen die AGENTS.md-Regeln) und `doku-schreiber` (Projekttagebuch und `docs/`).
+- **Warum:** Nacheinander dauerten die 14 Tests über zehn Minuten, und die seitenlange Ausgabe der bestandenen Prüfungen kostete beim Arbeiten mit der KI viel Kontext. Die Subagents erledigen Routinearbeit mit kleineren Modellen, ohne den Hauptverlauf zu füllen.
+- **Ergebnis:** Alle 14 Tests in rund 6,5 Minuten. Das langsamste Skript (`test_ausweichen.py`) bestimmt die Dauer.
+- **Probleme:** Beim ersten Lauf nach dem Merge von `main` schlugen zwei Tests fehl. Auf `main` sucht der Roboter jetzt ohne Zeitgrenze, und ein Wiedergefunden zählt erst nach mehreren bestätigten Bildern. Die Tests wurden daran angepasst.
+
 ---
 
 ## 3. Ergebnisse und Messwerte
