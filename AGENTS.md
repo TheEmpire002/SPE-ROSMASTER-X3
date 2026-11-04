@@ -5,6 +5,27 @@ RPLIDAR A1, Orbbec-Kamera). Reines Python, kein ROS. Ein FastAPI-Server auf
 dem Pi ist der einzige Ein- und Ausgang; Web-App und ESP32 sprechen ihn per
 WebSocket an.
 
+## Offene Aufgabe für die nächste KI: Code auf Englisch umstellen
+
+Wunsch des Teams (04.11.2026): **Der gesamte Code soll auf Englisch
+umgearbeitet werden**, also Bezeichner, Kommentare, Docstrings und
+Log-Meldungen. Sobald das erledigt ist, gilt die Sprachregel unten
+(„Sprache: Deutsch“) nicht mehr und wird hier angepasst.
+
+- Vorher mit dem Nutzer klären, ob auch `docs/`, das Projekttagebuch,
+  die Texte der Web-App und die Commit-Nachrichten englisch werden.
+- **`protocol.py` ist der Vertrag.** Nachrichten- und Feldnamen (z. B.
+  `ziel_id`, `state.sprache`, `pause`) benutzen Web-App und ESP32. Entweder
+  so lassen oder Server, Web-App, ESP32 und `docs/api.md` gemeinsam
+  umstellen und die alten Namen eine Weile weiter annehmen. Dasselbe gilt
+  für gespeicherte Einstellungen (`settings.py`): Alte Schlüssel müssen
+  beim Laden noch verstanden werden.
+- In Etappen, Modul für Modul. Nach jeder Etappe `python scripts/alle_tests.py`
+  und `python scripts/smoke_test.py` gegen den Mock-Server.
+- Erst beginnen, wenn die offenen Branches (z. B. `dev/improve-mapping`,
+  `zustandserkennung`) in `main` sind. Sonst gibt es Konflikte in fast
+  jeder Datei.
+
 ## Zuerst lesen
 
 - [`docs/api.md`](docs/api.md): **die Schnittstelle des Roboters.** Fahren,
