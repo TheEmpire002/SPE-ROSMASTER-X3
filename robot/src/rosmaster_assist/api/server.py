@@ -62,6 +62,7 @@ from ..sensors.lidar import LidarService, create_lidar
 from ..sensors.personen import Personenerkennung
 from ..sensors.pose import SKELETT, Posenerkennung
 from ..sensors.tiefe import create_tiefe
+from ..sensors import tiefe_anzeige
 
 log = logging.getLogger(__name__)
 
@@ -601,6 +602,12 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         return {
             "standard": camera.name if camera is not None else None,
             "personen": personen.status().get("kamera"),
+            # Ansichten der Tiefenkamera -- eigene Liste, weil sie keine Kameras
+            # mit Rolle und Einstellungen sind (Einstellungsseite listet "kameras").
+            "tiefe": [
+                {"name": "tiefe", "kamera": "Tiefe", "basis": "/tiefe"},
+                {"name": "tiefe-ueber", "kamera": "Tiefe + Farbbild", "basis": "/tiefe/ueberlagert"},
+            ] if tiefe is not None else [],
             "kameras": [
                 {
                     **k.status(),
@@ -662,6 +669,102 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         tiefe.aktivieren("test", True)
         asyncio.get_running_loop().call_later(20.0, tiefe.aktivieren, "test", False)
         return {"ok": True, "hinweis": "an für 20 s, dann /tiefe/status abfragen"}
+
+    # Tiefenbild zum Ansehen (sensors/tiefe_anzeige.py): allein oder über dem
+    # Farbbild der Orbbec. Wer zusieht, schaltet die Kamera ein.
+
+    def _tiefe_jpeg(bild, ueber: bool) -> bytes:
+        hintergrund = fov = None
+        if ueber:
+            farbkamera = kameras.get(config.TIEFE_UEBER_KAMERA)
+            frame = farbkamera.latest() if farbkamera is not None else None
+            hintergrund = frame[0] if frame is not None else None
+            fov = config.CAMERA_ROLES.get(config.TIEFE_UEBER_KAMERA, {}).get("fov_deg")
+        return tiefe_anzeige.zeichnen(bild, tiefe.hfov, hintergrund, fov)
+
+    def _tiefe_anzeige_fehlt():
+        if tiefe is None:
+            return Response("Keine Tiefenkamera (siehe /tiefe/status)", status_code=503)
+        try:
+            import cv2  # noqa: F401
+        except ImportError:
+            return Response("OpenCV fehlt -- ohne lässt sich das Tiefenbild nicht zeichnen",
+                            status_code=503)
+        return None
+
+    zuschauer = iter(range(1, 1_000_000_000))
+
+    def _tiefe_stream(ueber: bool):
+        fehlt = _tiefe_anzeige_fehlt()
+        if fehlt is not None:
+            return fehlt
+        # Jeder Zuschauer meldet sich einzeln an: Schließt einer das Bild,
+        # bleibt die Kamera für die anderen an.
+        wer = f"anzeige-{next(zuschauer)}"
+
+        async def bilder():
+            tiefe.aktivieren(wer, True)
+            zuletzt = None
+            try:
+                while True:
+                    b = tiefe.bild()
+                    if b is not None and b.roh is not None and b.zeit != zuletzt:
+                        zuletzt = b.zeit
+                        data = await asyncio.to_thread(_tiefe_jpeg, b, ueber)
+                        yield (
+                            f"--{GRENZE}\r\nContent-Type: image/jpeg\r\n"
+                            f"Content-Length: {len(data)}\r\n\r\n".encode() + data + b"\r\n"
+                        )
+                    await asyncio.sleep(0.05)
+            finally:
+                tiefe.aktivieren(wer, False)
+
+        return StreamingResponse(
+            bilder(),
+            media_type=f"multipart/x-mixed-replace; boundary={GRENZE}",
+            headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+        )
+
+    einzelbild_aus: list = []  # Zeitgeber, der die Kamera nach Einzelbildern abschaltet
+
+    async def _tiefe_snapshot(ueber: bool):
+        fehlt = _tiefe_anzeige_fehlt()
+        if fehlt is not None:
+            return fehlt
+        # Einzelbilder (Safari) kommen in kurzer Folge: Die Kamera bleibt an,
+        # bis 10 s lang keins mehr abgeholt wurde.
+        tiefe.aktivieren("anzeige-einzelbild", True)
+        for alt in einzelbild_aus:
+            alt.cancel()
+        einzelbild_aus[:] = [asyncio.get_running_loop().call_later(
+            10.0, tiefe.aktivieren, "anzeige-einzelbild", False)]
+        frist = time.monotonic() + 3.0  # Einschalten dauert etwa 1-2 s
+        b = tiefe.bild()
+        while (b is None or b.roh is None) and time.monotonic() < frist:
+            await asyncio.sleep(0.1)
+            b = tiefe.bild()
+        if b is None or b.roh is None:
+            return Response("Noch kein Tiefenbild", status_code=503)
+        data = await asyncio.to_thread(_tiefe_jpeg, b, ueber)
+        return Response(data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+    @app.get("/tiefe/stream")
+    async def tiefe_stream():
+        """Tiefenbild als MJPEG: rot nah, blau fern, magenta Hindernis."""
+        return _tiefe_stream(False)
+
+    @app.get("/tiefe/snapshot")
+    async def tiefe_snapshot():
+        return await _tiefe_snapshot(False)
+
+    @app.get("/tiefe/ueberlagert/stream")
+    async def tiefe_ueberlagert_stream():
+        """Dasselbe halbdurchsichtig über dem Farbbild der Orbbec."""
+        return _tiefe_stream(True)
+
+    @app.get("/tiefe/ueberlagert/snapshot")
+    async def tiefe_ueberlagert_snapshot():
+        return await _tiefe_snapshot(True)
 
     @app.get("/lidar/scan")
     async def lidar_scan():

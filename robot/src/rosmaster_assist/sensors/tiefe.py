@@ -163,14 +163,20 @@ class TiefenBild(NamedTuple):
     hindernisse: object          # Nx2: Mitten der Rasterzellen mit Hindernis
     frei: object                 # Mx2: Mitten der Zellen, in denen nur Boden ist
     boden: tuple | None          # (a, b, c) der Ebene z = a*x + b*y + c, None = geschätzt
+    # Für die Anzeige (/tiefe/stream): Rohbild in mm und welche Bildpunkte
+    # als Hindernis zählten (jeder zweite Punkt, also halbe Auflösung).
+    roh: object = None
+    maske: object = None
 
 
 def auswerten(tiefe_mm, hfov: float, vfov: float, boden_vorher=None):
-    """Tiefenbild -> (Hindernispunkte, freie Zellen, Bodenebene, neu erkannt?).
+    """Tiefenbild -> (Hindernispunkte, freie Zellen, Bodenebene, neu erkannt?,
+    Hindernis-Maske).
 
     Reine Rechnung, ohne Kamera prüfbar. ``boden_vorher`` ist die zuletzt
     erkannte Ebene; findet sich diesmal keine, gilt sie weiter (dann ist der
-    vierte Wert False).
+    vierte Wert False). Die Maske hat die halbe Bildauflösung und markiert
+    jeden Bildpunkt, der als Hindernis zählte -- nur für die Anzeige.
     """
     import numpy as np
 
@@ -195,6 +201,8 @@ def auswerten(tiefe_mm, hfov: float, vfov: float, boden_vorher=None):
 
     imbereich = (x >= config.TIEFE_MIN_M) & (x <= config.TIEFE_MAX_M + 0.5)
     x, y, z = x[imbereich], y[imbereich], z[imbereich]
+    # Wo im (ausgedünnten) Bild jeder verbliebene Punkt liegt -- für die Maske.
+    stelle = np.flatnonzero(gueltig)[imbereich]
 
     # Boden: Ebene durch die Punkte nahe der erwarteten Bodenhöhe, zweimal
     # mit Ausreißern weniger. Nur übernehmen, wenn sie plausibel liegt.
@@ -240,6 +248,8 @@ def auswerten(tiefe_mm, hfov: float, vfov: float, boden_vorher=None):
 
     hindernis = nah & (hoehe >= min_hoehe) & (hoehe <= config.TIEFE_MAX_HOEHE_M)
     hindernisse, belegt = zellen(hindernis)
+    maske = np.zeros(t.shape, dtype=bool)
+    maske.flat[stelle[hindernis]] = True
     frei, frei_zellen = zellen(nah & (np.abs(hoehe) < 0.02))
     if len(frei) and belegt:
         ix = np.floor(frei[:, 0] / zelle).astype(int)
@@ -247,7 +257,7 @@ def auswerten(tiefe_mm, hfov: float, vfov: float, boden_vorher=None):
         nicht_belegt = np.array([(i, j) not in belegt for i, j in zip(ix, iy)])
         frei = frei[nicht_belegt]
     boden = tuple(float(w) for w in boden) if boden is not None else None
-    return hindernisse, frei, boden, neu
+    return hindernisse, frei, boden, neu, maske
 
 
 # --- Dienst --------------------------------------------------------------------------
@@ -380,13 +390,13 @@ class TiefenKamera:
                     continue
                 letzte_auswertung = jetzt
                 boden_vorher = self._boden if jetzt - self._boden_zeit < 10.0 else None
-                hindernisse, frei, boden, neu = auswerten(tiefe, kamera.hfov, kamera.vfov,
-                                                          boden_vorher)
+                hindernisse, frei, boden, neu, maske = auswerten(
+                    tiefe, kamera.hfov, kamera.vfov, boden_vorher)
                 if neu:
                     self._boden, self._boden_zeit = boden, jetzt
                 with self._lock:
                     if self._wer:
-                        self._bild = TiefenBild(jetzt, hindernisse, frei, boden)
+                        self._bild = TiefenBild(jetzt, hindernisse, frei, boden, tiefe, maske)
                 zaehler += 1
                 if jetzt - zaehler_start >= 2.0:
                     self._fps = zaehler / (jetzt - zaehler_start)

@@ -388,6 +388,20 @@ TIEFE_NEUVERSUCH_S = 5.0
 TIEFE_GEDAECHTNIS_S = 30.0
 TIEFE_GEDAECHTNIS_M = 2.5
 
+# Anzeige (/tiefe/stream): Farbskala von nah (rot) bis fern (blau), in m.
+TIEFE_ANZEIGE_NAH_M = 0.5
+TIEFE_ANZEIGE_FERN_M = 3.0
+# Überlagert über dieses Farbbild (dieselbe Orbbec, Kamera daneben).
+TIEFE_UEBER_KAMERA = "orientierung"
+# Die beiden Kameras sitzen ~2,5 cm auseinander und haben verschiedene
+# Bildwinkel. Die Skalierung kommt aus den Bildwinkeln; was dann noch
+# daneben liegt, hier von Hand nachschieben (Pixel im Farbbild, + = rechts/unten)
+# und Zoom (1.0 = nur nach Bildwinkel).
+TIEFE_UEBER_VERSATZ_PX = (0, 0)
+TIEFE_UEBER_ZOOM = 1.0
+# Deckkraft der Tiefenfarben über dem Farbbild (0..1).
+TIEFE_UEBER_DECKKRAFT = 0.45
+
 # --- Fortschrittswache (navigation/fortschritt.py) ------------------------------
 #
 # Vergleicht, was gefahren wurde (Befehl nach Rampe und Fahrschutz), mit dem,

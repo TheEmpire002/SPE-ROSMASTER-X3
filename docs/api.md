@@ -591,6 +591,10 @@ Testbild als `image/png`, mit eigener Balkenfarbe.
 {
   "standard": "orientierung",
   "personen": "personen",
+  "tiefe": [
+    {"name": "tiefe", "kamera": "Tiefe", "basis": "/tiefe"},
+    {"name": "tiefe-ueber", "kamera": "Tiefe + Farbbild", "basis": "/tiefe/ueberlagert"}
+  ],
   "kameras": [
     {"name": "orientierung", "kamera": "Orbbec (Farbbild)", "geoeffnet": true,
      "stream": "/camera/orientierung/stream",
@@ -604,6 +608,8 @@ Testbild als `image/png`, mit eigener Balkenfarbe.
 
 `personen` ist der Name der Kamera, auf deren Bild die Personenrahmen aus
 `state.autonomie.personen` liegen.
+`tiefe` (neu 04.11.) sind die Ansichten der Tiefenkamera, leer ohne sie. Bild
+unter `<basis>/stream` bzw. `<basis>/snapshot`, siehe [Tiefenkamera](#tiefenkamera).
 
 `/camera/status` bzw. `/camera/<name>/status`:
 
@@ -696,6 +702,25 @@ wird sie per OpenNI2, Einrichtung siehe [hardware.md](hardware.md#tiefenkamera-o
 
 **`POST /tiefe/test`**: schaltet die Kamera für 20 s ein, um im Stand
 Bodenerkennung und Einbaulage zu prüfen.
+
+**Tiefenbild ansehen** (neu 04.11., braucht OpenCV am Pi):
+
+| Endpunkt | Liefert |
+|---|---|
+| `GET /tiefe/stream` | MJPEG: Tiefenbild in Farbe |
+| `GET /tiefe/snapshot` | ein Bild davon (JPEG) |
+| `GET /tiefe/ueberlagert/stream` | dasselbe halbdurchsichtig über dem Farbbild der Orbbec (`TIEFE_UEBER_KAMERA`) |
+| `GET /tiefe/ueberlagert/snapshot` | ein Bild davon |
+
+Rot ist nah, blau fern (`TIEFE_ANZEIGE_NAH_M` bis `…_FERN_M`). Schwarz heißt
+keine Messung: näher als ~0,6 m, zu weit, spiegelnd. Magenta zählt als
+Hindernis. Dazu kommen die Entfernung in der Bildmitte (Kreuz), das nächste
+Hindernis und ob der Boden erkannt ist. Wer zusieht, schaltet die Kamera
+ein; nach dem Schließen geht sie wieder aus. Die Überlagerung deckt sich nur
+ungefähr, denn die Kameras haben verschiedene Bildwinkel und sitzen 2–3 cm
+auseinander. Nachstellen lässt sie sich mit `TIEFE_UEBER_VERSATZ_PX` und
+`TIEFE_UEBER_ZOOM`. In der App sind beide Ansichten im Kamera-Umschalter
+wählbar, aber nicht unter „Alle“.
 
 ### Autonomes Fahren
 

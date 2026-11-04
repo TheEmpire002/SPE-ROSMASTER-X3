@@ -84,7 +84,7 @@ Menschen aus. Es bewertet keinen Gesundheitszustand.
 | `protocol.py`  | Nachrichtenformat — die gemeinsame Sprache aller Beteiligten |
 | `drive/`       | Fahren. `base.py` = Schnittstelle, dazu echter Treiber + Mock |
 | `safety/`      | Watchdog, Not-Aus, Geschwindigkeitsbegrenzung, Fahrschutz über die Grundfläche (`fahrschutz.py`) |
-| `sensors/`     | Lidar, Kamera, Tiefenkamera (`tiefe.py`, OpenNI2), Personenerkennung, Körperpose (Hailo) |
+| `sensors/`     | Lidar, Kamera, Tiefenkamera (`tiefe.py`, OpenNI2; Anzeige `tiefe_anzeige.py`), Personenerkennung, Körperpose (Hailo) |
 | `navigation/`  | Odometrie, Lidar-Ortung, Heimfahrt, Erkunder, Ausweichen (`ausweichen.py`), Hindernis-Benennung, Hindernisgedächtnis für Tiefenpunkte (`hindernisgedaechtnis.py`), Fortschrittswache gegen Festhängen (`fortschritt.py`) |
 | `interaktion/` | Gesten, Verhalten (Folgen, Herkommen, Weggehen), Stimme (Sprachausgabe) und Sprachbefehle mit dem Weckwort „Robi“; geplant: Geist — siehe [`interaktion.md`](interaktion.md) |
 | `diagnose.py`  | Sammelt Ausfälle (Akku, USB, Unterspannung, Temperatur, Geräte, Log) und macht daraus verständliche Probleme für die Seite `/diagnose` |

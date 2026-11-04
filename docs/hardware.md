@@ -289,6 +289,8 @@ der Server ohne Tiefe weiter und meldet das im Log und unter `/tiefe/status`.
   `TIEFE_NEUVERSUCH_S` neu. Die Fahrt läuft derweil mit dem Lidar allein.
 - Die Tiefenpunkte gehen bewusst **nicht** in die Karte (SLAM). Die Karte
   bleibt eine Lidar-Karte, die Punkte dienen nur dem Ausweichen.
+- Ansehen: in der App im Kamera-Umschalter „Tiefe“ bzw. „Tiefe + Farbbild“
+  (oder `/tiefe/stream` im Browser), Farben siehe `docs/api.md`.
 - Prüfen im Stand: `curl -X POST <IP>:8000/tiefe/test`, dann
   `/tiefe/status`. Auf dem Boden stehend sollte `boden_erkannt` true sein
   und `kamera_hoehe_m` ungefähr die echte Höhe zeigen. Zur Kontrolle von
