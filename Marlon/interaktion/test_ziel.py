@@ -11,7 +11,11 @@ Synthetische Szenen mit mehreren Personen:
 * zwei gleich gekleidete Personen nach Verlust -> sicher anhalten;
 * Folgen-Start ohne Auswahl bei zwei Personen -> abgelehnt;
 * die Folgen-Geste macht den Gestikulierenden zum Ziel, nicht den Größten;
-* ein Passant kann das Folgen nicht umlenken, aber per Geste anhalten.
+* ein Passant kann das Folgen nicht umlenken, aber per Geste anhalten;
+* er merkt sich, wem er folgt: Nach Stopp oder sicherem Anhalten nimmt
+  „Folgen“ bei zwei Personen wieder dieselbe; Loslassen und Ablauf löschen das;
+* schnelleres Wiederfinden: früher suchen, wenn die Person am Bildrand
+  verschwand, zu einer Lidar-Person drehen, stillhalten beim Bestätigen.
 
 Braucht nur numpy (über die Paketimporte).
 """
@@ -180,8 +184,11 @@ zurueck = lauf(tr, sp, [[person(5, ROT), person(-25, BLAU)] for _ in range(8)], 
 gefunden = [x for x in zurueck if x is not None]
 pruefe("Verdeckung lang: Rot wird wiedererkannt", gefunden and gefunden[-1].person["merkmal"] is ROT
        and sp.zustand == zl.FOLGT and sp.id != ziel_id, sp.als_dict())
+# Rot passt klar (andere Farbe als Blau) -> die kurze Bestätigung reicht.
 pruefe("Verdeckung lang: erst nach Bestätigung",
-       all(x is None for x in zurueck[:config.ZIEL_BESTAETIGEN_BILDER - 1]), [x and x.id for x in zurueck])
+       all(x is None for x in zurueck[:config.ZIEL_BESTAETIGEN_SCHNELL_BILDER - 1]), [x and x.id for x in zurueck])
+pruefe("Verdeckung lang: klarer Treffer schnell bestätigt",
+       zurueck[config.ZIEL_BESTAETIGEN_SCHNELL_BILDER - 1] is not None, [x and x.id for x in zurueck])
 
 # Kreuzen mit Sperre: dem richtigen bleiben
 tr, sp = zl.PersonenTracker(), zl.ZielSperre()
@@ -461,6 +468,162 @@ ia._sperre.sicher_anhalten("Test", 1.0)
 ia._modus = vh.BEREIT
 ia.folgen_stop()
 pruefe("Loslassen: aus safe_stop wird idle", ia._sperre.zustand == zl.IDLE, ia.zustand()["ziel"])
+
+# --- Gemerkte Person (F4) -------------------------------------------------------
+
+
+def rot_folgen(start=0.0):
+    tr, sp = zl.PersonenTracker(), zl.ZielSperre()
+    sp.erfassen(None, start)
+    lauf(tr, sp, [[person(0, ROT)] for _ in range(15)], start=start)
+    return tr, sp
+
+
+def wieder_starten(tr, sp, start, szene=lambda: [person(10, ROT), person(-15, BLAU)], bilder=10):
+    """"Folgen" ohne Antippen bei mehreren Personen; meldet, ob es mehrdeutig wurde."""
+    sp.erfassen(None, start)
+    mehrdeutig = False
+    for i in range(bilder):
+        t = start + i / 10.0
+        liste = [dict(p, zeit=t) for p in szene()]
+        tr.aktualisieren(liste, t)
+        sp.zuordnen(tr.tracks, t, t)
+        mehrdeutig |= sp.mehrdeutig
+    return mehrdeutig
+
+
+tr, sp = rot_folgen()
+pruefe("Merken: nach dem Folgen gemerkt", sp.gemerkt is not None)
+sp.freigeben()
+mehrdeutig = wieder_starten(tr, sp, 2.0)
+ziel = tr.track(sp.id) if sp.id is not None else None
+pruefe("Merken: nach Freigabe nimmt er bei zwei Personen wieder Rot",
+       not mehrdeutig and ziel is not None and ziel.person["merkmal"] is ROT, sp.als_dict())
+
+tr, sp = rot_folgen()
+sp.sicher_anhalten("Test", 1.5)
+mehrdeutig = wieder_starten(tr, sp, 2.0)
+ziel = tr.track(sp.id) if sp.id is not None else None
+pruefe("Merken: auch nach sicherem Anhalten",
+       not mehrdeutig and ziel is not None and ziel.person["merkmal"] is ROT, sp.als_dict())
+
+tr, sp = rot_folgen()
+sp.vergessen()
+pruefe("Merken: vergessen() löscht", sp.gemerkt is None)
+pruefe("Merken: danach bei zwei Personen wieder mehrdeutig", wieder_starten(tr, sp, 2.0))
+
+tr, sp = rot_folgen()
+sp.freigeben()
+pruefe("Merken: nach ZIEL_MERKEN_S abgelaufen -> mehrdeutig",
+       wieder_starten(tr, sp, 1.5 + config.ZIEL_MERKEN_S + 1.0))
+
+tr, sp = rot_folgen()
+sp.freigeben()
+mehrdeutig = wieder_starten(tr, sp, 2.0, szene=lambda: [person(10, GRUEN), person(-15, BLAU)])
+pruefe("Merken: gemerkte Person nicht da -> wie bisher mehrdeutig", mehrdeutig and sp.id is None,
+       sp.als_dict())
+
+# Antippen merkt das Aussehen sofort: Verliert der Tracker die Person, bevor
+# auch nur ein Bild gelernt ist, findet er genau sie wieder.
+tr, sp = zl.PersonenTracker(), zl.ZielSperre()
+lauf(tr, sp, [[person(10, ROT), person(-15, BLAU)] for _ in range(3)])
+rot_id = next(t.id for t in tr.tracks if t.person["merkmal"] is ROT)
+sp.erfassen(rot_id, 0.3, merkmal=ROT)
+lauf(tr, sp, [[person(-15, BLAU)] for _ in range(25)], start=0.3)
+pruefe("Antippen merkt: alter Track verworfen", tr.track(rot_id) is None)
+zurueck = lauf(tr, sp, [[person(12, ROT), person(-15, BLAU)] for _ in range(8)], start=2.8)
+gefunden = [x for x in zurueck if x is not None]
+pruefe("Antippen merkt: findet Rot wieder, nie Blau",
+       gefunden and all(x.person["merkmal"] is ROT for x in gefunden), sp.als_dict())
+
+# Verhalten: Stopp-Geste/Modus bereit behält die Person, Loslassen nicht
+ia, wd, po = interaktion()
+ia._task = LaeuftNoch()
+folgt_rot(ia, po)
+ia._wechseln(vh.BEREIT, "Test", 1.5)
+ia._wechseln(vh.FOLGEN, "Test", 1.6)
+spielen(ia, po, zwei, 1.6, 3.0)
+ziel = ia._ziel_waehlen(3.0)
+pruefe("Merken (Verhalten): Folgen bei zwei Personen nimmt wieder Rot",
+       ia._modus == vh.FOLGEN and ziel is not None and ziel["merkmal"] is ROT,
+       (ia._modus, ia.zustand()["ziel"]))
+ia.folgen_stop()
+pruefe("Merken (Verhalten): Loslassen vergisst", ia._sperre.gemerkt is None and ia._modus == vh.BEREIT)
+ia._wechseln(vh.FOLGEN, "Test", 3.1)
+spielen(ia, po, zwei, 3.1, 3.6)
+pruefe("Merken (Verhalten): danach wieder ablehnen", ia._modus == vh.BEREIT
+       and "antippen" in ia.zustand()["ziel"]["grund"], ia.zustand()["ziel"])
+
+ia, wd, po = interaktion()
+folgt_rot(ia, po)
+ia._ziel_vergessen()
+pruefe("Merken (Verhalten): Interaktion aus vergisst", ia._sperre.gemerkt is None)
+
+# --- Schneller wiederfinden (F4) ------------------------------------------------
+
+# Am Bildrand verschwunden -> früher suchen als in der Bildmitte
+rand = FOV / 2 - config.ZIEL_RAND_GRAD + 3
+for name, winkel, erwartet in (("Rand", rand, vh.SUCHEN), ("Mitte", 0, vh.FOLGEN)):
+    ia, wd, po = interaktion()
+    ia._wechseln(vh.FOLGEN, "Test", 0.0)
+    spielen(ia, po, lambda t, w=winkel: [person(w, ROT)], 0.0, 1.5)
+    weg = 1.5 + config.FOLGEN_VERLOREN_RAND_S + 0.3
+    spielen(ia, po, lambda t: [], 1.5, weg)
+    pruefe(f"Bildrand: zuletzt {name} -> nach {weg - 1.5:.1f} s {erwartet}", ia._modus == erwartet,
+           (ia._modus, ia._sperre.zustand))
+
+
+def om(b):
+    return 0.0 if b is None else b.omega
+
+
+class Mensch:
+    def __init__(self, winkel):
+        self.art, self.winkel, self.abstand = vh.hd.MENSCH, winkel, 2.0
+
+
+def in_suche(ia, po):
+    """Folgt Rot (leicht links), dann verschwindet Rot -> Suche; gibt die Zeit zurück."""
+    ia._wechseln(vh.FOLGEN, "Test", 0.0)
+    spielen(ia, po, lambda t: [person(5, ROT)], 0.0, 1.5)
+    ende = 1.5 + config.FOLGEN_VERLOREN_S + 0.5
+    spielen(ia, po, lambda t: [], 1.5, ende)
+    return ende
+
+
+# Lidar sieht hinten rechts eine Person -> dreht nach rechts, obwohl Rot
+# zuletzt links war; steht sie dann im Bild, hält er kurz still.
+ia, wd, po = interaktion()
+ende = in_suche(ia, po)
+pruefe("Lidar-Hinweis: sucht", ia._modus == vh.SUCHEN, ia._modus)
+richtung = [-120.0]
+ia._hinderniserkennung.aktuell = lambda scan, *a: [Mensch(richtung[0])]
+v = spielen(ia, po, lambda t: [], ende, ende + 0.5)
+pruefe("Lidar-Hinweis: dreht zur Person (rechts)", all(om(b) < 0 for _, _, b in v), [om(b) for _, _, b in v][:3])
+richtung[0] = -5.0
+v = spielen(ia, po, lambda t: [], ende + 0.5, ende + 0.5 + config.ZIEL_HINWEIS_S - 0.2)
+pruefe("Lidar-Hinweis: im Bild -> schaut still hin", all(om(b) == 0 for _, _, b in v), [om(b) for _, _, b in v][:3])
+t1 = ende + 0.5 + config.ZIEL_HINWEIS_S
+v = spielen(ia, po, lambda t: [], t1, t1 + config.FOLGEN_SUCHEN_DREH_S + config.FOLGEN_SUCHEN_PAUSE_S)
+pruefe("Lidar-Hinweis: niemand erkannt -> wieder fester Suchtakt", any(om(b) != 0 for _, _, b in v))
+
+# Kein Lidar-Mensch -> fester Takt zur letzten Seite (links) wie bisher
+ia, wd, po = interaktion()
+ende = in_suche(ia, po)
+ia._hinderniserkennung.aktuell = lambda scan, *a: []
+v = spielen(ia, po, lambda t: [], ende, ende + 0.5)
+pruefe("Ohne Lidar-Hinweis: dreht zur letzten Seite (links)", om(v[0][2]) > 0, v[0][2])
+
+# Während ein Kandidat bestätigt wird, stillhalten statt weiterdrehen
+ia, wd, po = interaktion()
+ende = in_suche(ia, po)
+v = spielen(ia, po, lambda t: [person(20, ROT), person(-15, BLAU)], ende, ende + 1.0)
+pruefend = [b for _, m, b in v if m == vh.SUCHEN]
+pruefe("Kandidat prüfen: Bestätigung dauert mehrere Bilder", len(pruefend) >= 1, len(pruefend))
+pruefe("Kandidat prüfen: dreht dabei nicht", all(om(b) == 0 and (b is None or b.vx == 0) for b in pruefend),
+       [om(b) for b in pruefend])
+pruefe("Kandidat prüfen: danach folgt er Rot", ia._modus == vh.FOLGEN
+       and ia._ziel_waehlen(ende + 1.0)["merkmal"] is ROT, ia.zustand()["ziel"])
 
 print()
 print("alles bestanden" if not fehler else f"{fehler} Fehler")

@@ -716,6 +716,19 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Probleme:** Der Gesamtlauf dauert jetzt rund 12,5 statt 6,5 Minuten. Die Fortschrittswache läuft in den Erkunder-Tests jetzt wirklich mit, und `test_ausweichen.py` braucht allein 747 s.
 - **Offen:** prüfen, ob sich `test_ausweichen.py` kürzen lässt.
 
+### 04.11.2026 – Autonomie F4: gemerkte Person und schnelleres Wiederfinden (Marlon, mit Claude)
+- **Was:** Der Roboter merkt sich das Aussehen der Person, die zuletzt das Folgen ausgelöst hat, und nimmt beim nächsten „Folgen“ ohne Antippen wieder sie. Verliert er die Person, sucht er sie schneller wieder: kürzere Frist, wenn sie am Bildrand verschwand, Lidar-Hinweis zur Suchrichtung, Stillhalten beim Prüfen eines Kandidaten und schnellere Bestätigung bei klarem Treffer.
+- **Warum:** Nutzerwunsch: „er soll auch der selben person hinterherfahren und sich merken, wer den folgenbefehl gegeben hat. außerdem, wenn er die person verloren hat, muss diese schneller gefunden werden.“ Bisher lehnte er bei mehreren Personen im Bild ohne Antippen immer ab, und nach einem Verlust drehte er blind im festen Takt, egal wo die Person zuletzt war oder was der Lidar sah.
+- **Änderungen:**
+  - `ZielSperre` (`interaktion/ziel.py`): neues Feld `gemerkt` (Farbhistogramm Rumpf, nur RAM) mit Zeitstempel. Start von „Folgen“ ohne Antippen bei mehreren Sichtbaren: passt die gemerkte Person klar, wird sie genommen, sonst wie bisher „bitte antippen“. Beim Antippen (`erfassen(..., merkmal=...)`) ist das Merkmal der gewählten Person sofort die Referenz, ein kurzer Trackverlust in der Erfassung verliert sie dadurch nicht. `vergessen()` löscht die gemerkte Person zusätzlich zum normalen `freigeben()`; sie bleibt bei Stopp-Geste und sicherem Anhalten erhalten, verfällt nach `ZIEL_MERKEN_S` = 120 s.
+  - Passt ein Kandidat beim Wiederfinden klar (Abstand unter halber Schwelle, Marge zum Zweitbesten mindestens doppelt so groß), reichen `ZIEL_BESTAETIGEN_SCHNELL_BILDER` = 3 statt 5 Bestätigungsbilder.
+  - `verhalten.py`: Verschwand die Person im Zustand „kurz weg“ nahe am Bildrand (`|Winkel| > FOV/2 − ZIEL_RAND_GRAD`, 8°), beginnt die Suche schon nach `FOLGEN_VERLOREN_RAND_S` = 0,7 s statt `FOLGEN_VERLOREN_S`. Beim Suchen dreht er zu einem Lidar-Personencluster (Beinpaar) statt blind zur letzten Seite, wenn der Cluster außerhalb des Kamerabilds liegt; steht er im Bild, hält er `ZIEL_HINWEIS_S` = 1,5 s still zum Hinschauen, danach wieder fester Suchtakt. Der Lidar übernimmt nie das Ziel, nur die Blickrichtung. Während die Sperre einen Kandidaten prüft (`prueft_kandidat`), hält der Roboter still statt weiterzudrehen.
+  - Neue Werte in `config.py`: `ZIEL_MERKEN_S`, `ZIEL_BESTAETIGEN_SCHNELL_BILDER`, `ZIEL_RAND_GRAD`, `FOLGEN_VERLOREN_RAND_S`, `ZIEL_HINWEIS_S`.
+  - `docs/api.md` bleibt unverändert, kein neuer Befehl und kein neues Feld im Protokoll.
+- **Ergebnis:** `Marlon/interaktion/test_ziel.py` um Fälle zu Merken, Ablauf nach `ZIEL_MERKEN_S`, Löschen bei Loslassen, Referenz direkt beim Antippen, Bildrand-Frist, Lidar-Hinweis, Stillhalten beim Prüfen und schneller Bestätigung erweitert. Alle Tests bestanden.
+- **Probleme:** Die verkürzte Frist am Bildrand hätte direkt nach einem Moduswechsel mit noch veraltetem Winkel gegriffen; deshalb gilt sie nur im Zustand „kurz weg“ (`KURZ_WEG`), nicht gleich beim Start der Suche.
+- **Offen:** Bodentest: gleiche Person nach Loslassen erneut per „Folgen“ ohne Antippen auswählen lassen; Lidar-Hinweis bei echtem Beinpaar hinter dem Roboter prüfen.
+
 ---
 
 ## 3. Ergebnisse und Messwerte

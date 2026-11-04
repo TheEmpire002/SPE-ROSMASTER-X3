@@ -187,12 +187,24 @@ class ZielSperre:
     """Welcher Track ist das Ziel? Zustandsautomat, siehe docs/interaktion.md."""
 
     def __init__(self) -> None:
+        # Aussehen der Person, die zuletzt das Folgen ausgelöst hat bzw.
+        # verfolgt wurde. Überdauert Freigabe und sicheres Anhalten, damit er
+        # beim nächsten "Folgen" wieder dieselbe Person nimmt statt
+        # abzulehnen, wenn mehrere im Bild stehen. Nur im RAM, gelöscht bei
+        # vergessen() und nach ZIEL_MERKEN_S.
+        self.gemerkt: list | None = None
+        self._gemerkt_zeit = 0.0
         self.freigeben()
 
     # --- Übergänge von außen --------------------------------------------------
 
+    def vergessen(self) -> None:
+        """Loslassen durch den Menschen: auch die gemerkte Person löschen."""
+        self.gemerkt = None
+        self.freigeben()
+
     def freigeben(self, grund: str = "") -> None:
-        """Ziel loslassen und alles Gelernte vergessen."""
+        """Ziel loslassen und das Gelernte verwerfen (die gemerkte Person bleibt)."""
         self.zustand = IDLE
         self.id = None
         self.referenz: list | None = None
@@ -204,15 +216,26 @@ class ZielSperre:
         self._seit = 0.0
         self._fehl = 0
         self._letztes_bild = None
+        self._unklar_bilder = 0
         self._kandidat_neu()
 
-    def erfassen(self, track_id, jetzt: float) -> None:
-        """Neues Ziel aufnehmen: eine bestimmte ID oder (None) die einzige Person."""
+    def erfassen(self, track_id, jetzt: float, merkmal: list | None = None) -> None:
+        """Neues Ziel aufnehmen: eine bestimmte ID oder (None) die einzige Person.
+
+        ``merkmal`` ist das Aussehen der gewählten Person in diesem Moment
+        (Antippen/Geste). Damit kennt er sie sofort -- verliert der Tracker
+        sie in der Lernphase kurz, findet er genau sie wieder, statt neu zu
+        wählen.
+        """
         self.freigeben()
         self.zustand = ERFASSEN
         self.id = track_id
         self._nie_gesperrt = track_id is None
         self._seit = jetzt
+        if track_id is not None and merkmal is not None:
+            self.referenz = list(merkmal)
+            self._proben = 1
+            self._merken(jetzt)
 
     def suchen(self, jetzt: float) -> None:
         if self.zustand in (IDLE, SICHER_HALT):
@@ -235,6 +258,12 @@ class ZielSperre:
             "grund": self.grund,
         }
 
+    @property
+    def prueft_kandidat(self) -> bool:
+        """Beim Suchen passt gerade jemand und wird bestätigt -- dann stillhalten,
+        sonst dreht er die Person wieder aus dem Bild."""
+        return self._kandidat is not None and self.zustand in (KURZ_WEG, SUCHT)
+
     # --- je Takt ----------------------------------------------------------------
 
     def zuordnen(self, tracks: list[Track], bild_zeit, jetzt: float) -> Track | None:
@@ -251,13 +280,23 @@ class ZielSperre:
         gemessen = [t for t in tracks if t.gemessen]
 
         if self.zustand == ERFASSEN and self.id is None:
-            # Ohne Antippen nur, wenn die Wahl eindeutig ist.
+            # Ohne Antippen nur, wenn die Wahl eindeutig ist -- oder wenn er
+            # sich die Person vom letzten Folgen gemerkt hat und sie sicher
+            # unter den Sichtbaren wiedererkennt.
             if len(gemessen) > 1:
-                self.mehrdeutig = True
+                if not self._gemerkt_gueltig(jetzt):
+                    self.mehrdeutig = True
+                    return None
+                bester = self._gemerkt_waehlen(gemessen, neu)
+                if bester is None:
+                    return None
+                self.id = bester.id
+                self.referenz = list(self.gemerkt)
+                self._proben = 1
+            elif not gemessen:
                 return None
-            if not gemessen:
-                return None
-            self.id = gemessen[0].id
+            else:
+                self.id = gemessen[0].id
             self._nie_gesperrt = False
 
         ziel = next((t for t in tracks if t.id == self.id), None) if self.id is not None else None
@@ -284,6 +323,75 @@ class ZielSperre:
         self._kandidat = None
         self._kandidat_bilder = 0
         self._knapp_bilder = 0
+
+    def _merken(self, jetzt: float) -> None:
+        self.gemerkt = list(self.referenz) if self.referenz is not None else None
+        self._gemerkt_zeit = jetzt
+
+    def _gemerkt_gueltig(self, jetzt: float) -> bool:
+        return self.gemerkt is not None and jetzt - self._gemerkt_zeit <= config.ZIEL_MERKEN_S
+
+    def _gemerkt_waehlen(self, gemessen: list[Track], neu: bool) -> Track | None:
+        """Die gemerkte Person unter mehreren Sichtbaren bestätigen."""
+        treffer = self._vergleichen(self.gemerkt, gemessen, neu)
+        if treffer is None:
+            # Niemand passt (andere Kleidung, anderes Licht): nach kurzer
+            # Zeit wie bisher ablehnen, damit jemand im Bild antippt.
+            if neu:
+                self._unklar_bilder += 1
+            if self._unklar_bilder >= config.ZIEL_BESTAETIGEN_BILDER:
+                self.mehrdeutig = True
+            return None
+        self._unklar_bilder = 0
+        if not self._bestaetigen(*treffer, neu):
+            return None
+        self._kandidat_neu()
+        return treffer[0]
+
+    def _vergleichen(self, referenz: list | None, gemessen: list[Track], neu: bool) -> tuple[Track, bool] | None:
+        """Bester Kandidat zum Merkmal und ob er klar passt -- oder None.
+
+        Klar heißt: deutlich unter der Schwelle und weit vor dem
+        Zweitbesten. Dann reichen weniger Bestätigungsbilder.
+        """
+        bewertet = sorted(
+            (d, t.id, t)
+            for t in gemessen
+            if (d := bhattacharyya(referenz, t.person.get("merkmal"))) is not None
+        )
+        if not bewertet or bewertet[0][0] > config.ZIEL_MERKMAL_SCHWELLE:
+            self._kandidat_neu()
+            return None
+        if len(bewertet) > 1 and bewertet[1][0] - bewertet[0][0] < config.ZIEL_MERKMAL_MARGE:
+            # Zwei passen fast gleich gut (gleiche Kleidung?): nicht raten.
+            if neu:
+                self._knapp_bilder += 1
+            if self._knapp_bilder >= config.ZIEL_BESTAETIGEN_BILDER:
+                self.mehrdeutig = True
+            return None
+        self._knapp_bilder = 0
+        d0 = bewertet[0][0]
+        self.sicherheit = 1.0 - d0
+        klar = d0 < config.ZIEL_MERKMAL_SCHWELLE / 2 and (
+            len(bewertet) == 1 or bewertet[1][0] - d0 >= 2 * config.ZIEL_MERKMAL_MARGE
+        )
+        return bewertet[0][2], klar
+
+    def _bestaetigen(self, bester: Track, klar: bool, neu: bool) -> bool:
+        """Zählt Folgebilder für denselben Kandidaten; True, wenn genug."""
+        if self._kandidat != bester.id:
+            self._kandidat = bester.id
+            self._kandidat_bilder = 1 if neu else 0
+        elif neu:
+            self._kandidat_bilder += 1
+        noetig = config.ZIEL_BESTAETIGEN_SCHNELL_BILDER if klar else config.ZIEL_BESTAETIGEN_BILDER
+        return self._kandidat_bilder >= noetig
+
+    def _noch_lernen(self) -> bool:
+        # Ging das Ziel schon in der Lernphase verloren, ist das Aussehen
+        # noch dünn belegt -- nach dem Wiederfinden weiterlernen statt
+        # gleich als bestätigt zu gelten.
+        return self.referenz is None or self._proben < config.ZIEL_BESTAETIGEN_BILDER
 
     def _ziel_gemessen(self, ziel: Track, gemessen: list[Track], neu: bool, jetzt: float) -> Track | None:
         merkmal = ziel.person.get("merkmal")
@@ -317,10 +425,12 @@ class ZielSperre:
             ):
                 self.zustand = FOLGT
         elif self.zustand in (KURZ_WEG, SUCHT):
-            self.zustand = FOLGT
+            self.zustand = ERFASSEN if self._noch_lernen() else FOLGT
         elif neu and eindeutig and d is not None and d < config.ZIEL_MERKMAL_SCHWELLE / 2:
             self.referenz = _mischen(self.referenz, merkmal, config.ZIEL_MERKMAL_NACHFUEHREN)
         self.sicherheit = 1.0 - d if d is not None else 0.5
+        if self.referenz is not None:
+            self._merken(jetzt)
         return ziel
 
     def _wiederfinden(self, gemessen: list[Track], neu: bool, jetzt: float) -> Track | None:
@@ -338,33 +448,14 @@ class ZielSperre:
             if len(gemessen) > 1:
                 self.mehrdeutig = True
                 return None
-            bester = gemessen[0]
+            bester, klar = gemessen[0], False
         else:
-            bewertet = sorted(
-                (d, t.id, t)
-                for t in gemessen
-                if (d := bhattacharyya(self.referenz, t.person.get("merkmal"))) is not None
-            )
-            if not bewertet or bewertet[0][0] > config.ZIEL_MERKMAL_SCHWELLE:
-                self._kandidat_neu()
+            treffer = self._vergleichen(self.referenz, gemessen, neu)
+            if treffer is None:
                 return None
-            if len(bewertet) > 1 and bewertet[1][0] - bewertet[0][0] < config.ZIEL_MERKMAL_MARGE:
-                # Zwei passen fast gleich gut (gleiche Kleidung?): nicht raten.
-                if neu:
-                    self._knapp_bilder += 1
-                if self._knapp_bilder >= config.ZIEL_BESTAETIGEN_BILDER:
-                    self.mehrdeutig = True
-                return None
-            self._knapp_bilder = 0
-            bester = bewertet[0][2]
-            self.sicherheit = 1.0 - bewertet[0][0]
+            bester, klar = treffer
 
-        if self._kandidat != bester.id:
-            self._kandidat = bester.id
-            self._kandidat_bilder = 1 if neu else 0
-        elif neu:
-            self._kandidat_bilder += 1
-        if self._kandidat_bilder < config.ZIEL_BESTAETIGEN_BILDER:
+        if not self._bestaetigen(bester, klar, neu):
             return None
 
         self.id = bester.id
@@ -376,5 +467,5 @@ class ZielSperre:
             self.zustand = ERFASSEN
             self._seit = jetzt
         else:
-            self.zustand = FOLGT
+            self.zustand = ERFASSEN if self._noch_lernen() else FOLGT
         return bester

@@ -69,7 +69,7 @@ from ..navigation.explorer import frei_in_richtung
 from ..protocol import DriveCommand
 from ..safety import SafetyWatchdog
 from . import gesten as gs
-from .ziel import ERFASSEN, IDLE, SICHER_HALT, PersonenTracker, ZielSperre
+from .ziel import ERFASSEN, IDLE, KURZ_WEG, SICHER_HALT, PersonenTracker, ZielSperre
 
 if TYPE_CHECKING:  # nur für die Typangaben -- vermeidet Ringimporte
     from ..navigation.odometry import Odometry
@@ -172,6 +172,11 @@ class Interaktion:
         self._gesehen = 0.0  # wann die Zielperson zuletzt zu sehen war
         self._letzte_seite = 1.0  # +1 links, -1 rechts -- dorthin wird gesucht
         self._suchen_fuer = FOLGEN  # in diesen Modus nach erfolgreicher Suche
+        # Lidar-Hinweis beim Suchen: Richtung (Grad, Roboterrahmen), in der
+        # die Person erwartet wird -- wird mit der Eigendrehung nachgeführt.
+        self._such_richtung = 0.0
+        self._hinweis_im_bild_seit: float | None = None
+        self._hinweis_aus = False
         self._letztes_bild = -1.0
         self._ohne_lidar_seit: float | None = None
 
@@ -352,6 +357,10 @@ class Interaktion:
             # „Loslassen“ quittiert auch ein sicheres Anhalten -- danach
             # zeigt die App wieder „kein Ziel“ statt „bitte neu wählen“.
             self._sperre.freigeben()
+        if self.aktiv:
+            # Loslassen heißt auch: die gemerkte Person vergessen. Das
+            # nächste „Folgen“ ohne Antippen wählt dann wieder neu.
+            self._sperre.vergessen()
 
     def meldungen_abholen(self) -> list[str]:
         """Ereignisse seit dem letzten Aufruf -- für Hinweise in der App."""
@@ -580,10 +589,10 @@ class Interaktion:
             return halt
 
         if self._modus == SUCHEN:
-            return self._suchen(jetzt, ziel)
+            return self._suchen(jetzt, ziel, scan, dt)
 
         if ziel is None:
-            if jetzt - self._gesehen > config.FOLGEN_VERLOREN_S:
+            if jetzt - self._gesehen > self._verloren_frist():
                 self._suchen_fuer = self._modus
                 return self._wechseln(SUCHEN, "Person verloren -- suche", jetzt, melden=True,
                                      sagen="Wo bist du?")
@@ -731,7 +740,7 @@ class Interaktion:
         self._text = "fährt zurück"
         return DriveCommand(-config.WEGGEHEN_SPEED, 0.0, omega)
 
-    def _suchen(self, jetzt: float, ziel: dict | None) -> DriveCommand:
+    def _suchen(self, jetzt: float, ziel: dict | None, scan=None, dt: float = 0.0) -> DriveCommand:
         # ziel kommt nur noch aus der ZielSperre: Sie liefert erst etwas, wenn
         # die Person über mehrere Bilder als das Ziel wiedererkannt ist --
         # früher galt hier jede beliebige Person als "wiedergefunden".
@@ -745,6 +754,14 @@ class Interaktion:
             self._wechseln(BEREIT, "Person nicht wiedergefunden", jetzt, melden=True,
                           sagen="Ich habe dich verloren.")
             return DriveCommand(0.0, 0.0, 0.0)
+        if self._sperre.prueft_kandidat:
+            # Jemand passt und wird gerade bestätigt: stillhalten, sonst
+            # dreht er die Person wieder aus dem Bild und fängt von vorn an.
+            self._text = "sucht die Person -- prüft eine Person"
+            return DriveCommand(0.0, 0.0, 0.0)
+        hinweis = self._lidar_hinweis(jetzt, scan, dt)
+        if hinweis is not None:
+            return hinweis
         # Drehen und kurz stillhalten im Wechsel: Im Drehen verwischt das
         # Bild, im Stand sieht die Posenerkennung scharf.
         takt = config.FOLGEN_SUCHEN_DREH_S + config.FOLGEN_SUCHEN_PAUSE_S
@@ -755,6 +772,62 @@ class Interaktion:
         # meist aus dem Bild gelaufen. Ohne Zeitgrenze immer weiter im Kreis.
         self._text = "sucht die Person"
         return DriveCommand(0.0, 0.0, self._letzte_seite * config.EXPLORE_TURN_SPEED)
+
+    def _verloren_frist(self) -> float:
+        """Wie lange die Person fehlen darf, bevor er sucht.
+
+        Zuletzt am Bildrand gesehen heißt: Sie ist seitlich hinausgegangen,
+        und jede Sekunde Warten vergrößert den Weg, den er nachdrehen muss.
+        In der Bildmitte verschwindet sie dagegen meist nur kurz (verdeckt).
+        Nur wenn die Sperre das Ziel gerade verloren hat -- ``_winkel`` kann
+        sonst noch vom letzten Folgen stammen.
+        """
+        if self._winkel is None or self._sperre.zustand != KURZ_WEG:
+            return config.FOLGEN_VERLOREN_S
+        fov = self._pose.fov_deg if self._pose is not None else config.CAMERA_FOV_DEG
+        if abs(self._winkel) > fov / 2 - config.ZIEL_RAND_GRAD:
+            return min(config.FOLGEN_VERLOREN_S, config.FOLGEN_VERLOREN_RAND_S)
+        return config.FOLGEN_VERLOREN_S
+
+    def _lidar_hinweis(self, jetzt: float, scan, dt: float) -> DriveCommand | None:
+        """Beim Suchen zu einem Lidar-Personencluster drehen statt blind.
+
+        Der Lidar sieht rundum, die Kamera nur vorn: Steht jemand hinter ihm,
+        dreht er gezielt hin statt im festen Takt in eine Richtung.
+        Wiedererkannt wird weiter nur über die Kamera (ZielSperre) -- der
+        Lidar sagt nur, wo es sich lohnt hinzuschauen. Erkennt die Kamera
+        dort nach ZIEL_HINWEIS_S niemanden, gilt für den Rest der Suche
+        wieder der feste Takt (Stuhlbeine sehen für den Lidar wie Beine aus).
+        """
+        # Erwartete Richtung mit der eigenen Drehung mitführen.
+        richtung = self._such_richtung - math.degrees(self._eigendrehung()) * dt
+        self._such_richtung = (richtung + 180.0) % 360.0 - 180.0
+        if self._hinweis_aus or scan is None:
+            return None
+        menschen = [h for h in self._hinderniserkennung.aktuell(scan) if h.art == hd.MENSCH]
+        if not menschen:
+            self._hinweis_im_bild_seit = None
+            return None
+
+        def norm(w: float) -> float:
+            return (w + 180.0) % 360.0 - 180.0
+
+        # Bei mehreren den, der der erwarteten Richtung am nächsten ist.
+        bester = min(menschen, key=lambda h: abs(norm(h.winkel - self._such_richtung)))
+        winkel = norm(bester.winkel)
+        fov = self._pose.fov_deg if self._pose is not None else config.CAMERA_FOV_DEG
+        if abs(winkel) > fov / 2 - config.ZIEL_RAND_GRAD:
+            self._hinweis_im_bild_seit = None
+            self._letzte_seite = 1.0 if winkel > 0 else -1.0
+            self._text = "sucht die Person -- dreht zu einer Person (Lidar)"
+            return DriveCommand(0.0, 0.0, self._letzte_seite * config.EXPLORE_TURN_SPEED)
+        if self._hinweis_im_bild_seit is None:
+            self._hinweis_im_bild_seit = jetzt
+        if jetzt - self._hinweis_im_bild_seit < config.ZIEL_HINWEIS_S:
+            self._text = "sucht die Person -- schaut zur Person (Lidar)"
+            return DriveCommand(0.0, 0.0, 0.0)
+        self._hinweis_aus = True
+        return None
 
     # --- Hilfen ------------------------------------------------------------------
 
@@ -778,13 +851,20 @@ class Interaktion:
         if self._modus in _FAHRMODI:
             if self._sperre.zustand == IDLE:
                 # Modus wurde gesetzt, ohne dass _wechseln lief (Tests).
-                self._sperre.erfassen(self._auswahl_id, jetzt)
+                self._sperre.erfassen(self._auswahl_id, jetzt, self._merkmal_von(self._auswahl_id))
                 self._auswahl_id = None
             track = self._sperre.zuordnen(self._tracker.tracks, self._tracker_bild, jetzt)
         else:
             gemessen = [t for t in self._tracker.tracks if t.gemessen]
             track = max(gemessen, key=lambda t: t.hoehe) if gemessen else None
         return dict(track.person, id=track.id) if track is not None else None
+
+    def _merkmal_von(self, track_id) -> list | None:
+        """Aussehen des gewählten Tracks -- damit die Sperre ihn sofort kennt."""
+        if track_id is None:
+            return None
+        track = self._tracker.track(track_id)
+        return track.person.get("merkmal") if track is not None else None
 
     def _eigendrehung(self) -> float:
         """Drehrate des Roboters (rad/s): gemessen, sonst der Fahrbefehl."""
@@ -807,7 +887,7 @@ class Interaktion:
     def _ziel_vergessen(self) -> None:
         """Tracks, gesperrtes Ziel und gelerntes Aussehen löschen."""
         self._tracker.leeren()
-        self._sperre.freigeben()
+        self._sperre.vergessen()
         self._tracker_bild = None
         self._auswahl_id = None
         self._gesten_je_track.clear()
@@ -1025,11 +1105,15 @@ class Interaktion:
         # dem Stand gesperrt, nie beim Wechsel zwischen fahrenden Modi.
         if modus == SUCHEN:
             self._sperre.suchen(jetzt)
+            # Suche beginnt dort, wo die Person zuletzt war.
+            self._such_richtung = self._winkel or 0.0
+            self._hinweis_im_bild_seit = None
+            self._hinweis_aus = False
         elif modus == BEREIT:
             if self._sperre.zustand not in (IDLE, SICHER_HALT):
                 self._sperre.freigeben()
         elif modus in _FAHRMODI and self._sperre.zustand in (IDLE, SICHER_HALT):
-            self._sperre.erfassen(self._auswahl_id, jetzt)
+            self._sperre.erfassen(self._auswahl_id, jetzt, self._merkmal_von(self._auswahl_id))
             self._auswahl_id = None
         self._modus = modus
         self._modus_seit = jetzt
