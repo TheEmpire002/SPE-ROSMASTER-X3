@@ -283,9 +283,16 @@ class Stimme:
 class Mukke:
     def __init__(self) -> None:
         self.gespielt: list[tuple[str, str]] = []
+        self.laeuft = False
+        self.stopps = 0
 
     def datei_abspielen(self, pfad: str, titel: str) -> None:
         self.gespielt.append((pfad, titel))
+        self.laeuft = True
+
+    def stoppen(self) -> None:
+        self.laeuft = False
+        self.stopps += 1
 
 
 class Aufbau:
@@ -464,6 +471,36 @@ async def fall_abbrechen() -> None:
     pruefe("Pose wieder freigegeben", a.pose.aktiviert[-1] == (False, "healthbot"))
 
 
+async def fall_alarm_beenden() -> None:
+    # Testprotokoll: Nach dem Stopp lief die Alarm-Musik weiter, und der
+    # Roboter blieb im Zustand hilfe. Nach _hilfe ist der Ablauf schon
+    # vorbei -- abbrechen() allein tat dann nichts.
+    print("Stopp beendet den Alarm")
+    a = Aufbau("liegend")
+    a.hb.starten(*sim.STANDARD_ORT)
+    a.hb._task.cancel()
+    await asyncio.sleep(0.05)
+    await a.hb._hilfe("Test")
+    s = a.hb.status()
+    pruefe("Alarm läuft, Ablauf vorbei", s["alarm"] and not s["aktiv"] and a.mukke.laeuft, str(s["alarm"]))
+    await a.hb.alarm_beenden("Not-Stopp")
+    s = a.hb.status()
+    pruefe("Musik aus", not a.mukke.laeuft and a.mukke.stopps == 1, str(a.mukke.stopps))
+    pruefe("Alarm aus", not s["alarm"])
+    pruefe("Zustand bereit", s["zustand"] == ab.BEREIT, s["zustand"] + " / " + s["schritt"])
+    pruefe("Zeitleiste vermerkt es", "Alarm beendet" in s["timeline"][-1]["text"], s["timeline"][-1]["text"])
+    await a.hb.alarm_beenden("Not-Stopp")
+    pruefe("zweiter Stopp stoppt nichts mehr", a.mukke.stopps == 1, str(a.mukke.stopps))
+    pruefe("danach wieder startbar", a.hb.starten(*sim.STANDARD_ORT) is None)
+    await asyncio.sleep(0.3)
+    stopps = a.watchdog.stopps
+    await a.hb.alarm_beenden("Not-Stopp")
+    s = a.hb.status()
+    pruefe("laufende Prüfung abgebrochen", not s["aktiv"] and s["zustand"] == ab.ABGEBROCHEN, s["zustand"])
+    pruefe("dabei angehalten", a.watchdog.stopps > stopps)
+    pruefe("fremde Musik nicht angefasst", a.mukke.stopps == 1, str(a.mukke.stopps))
+
+
 async def fall_wache() -> None:
     print("Wache erkennt liegende Person")
     a = Aufbau("liegend")
@@ -502,6 +539,7 @@ async def alle() -> None:
     await fall_ohne_stupsen()
     await fall_stehend()
     await fall_abbrechen()
+    await fall_alarm_beenden()
     await fall_wache()
 
 

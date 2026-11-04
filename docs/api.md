@@ -161,7 +161,7 @@ Reihenfolge:
 | `type` | Felder | Wirkung | Antwort |
 |---|---|---|---|
 | `drive` | `vx`, `vy`, `omega` (Zahlen, fehlende = 0) | Fahren. Siehe Regeln 1, 3, 4. Bricht eine laufende Heimfahrt ab, sobald ein Wert ≠ 0 ist; Nullbefehle werden während der Heimfahrt ignoriert. | keine; bei ungültigen Werten `error` |
-| `stop` | – | Sofort anhalten, Heimfahrt, autonomes Fahren und Interaktion abbrechen. | keine |
+| `stop` | – | Sofort anhalten, Heimfahrt, autonomes Fahren, Interaktion und Healthbot abbrechen. Beendet auch einen schon gerufenen Healthbot-Alarm samt seiner Musik (wie `health_stop`). | keine |
 | `explore` | – | Autonomes Fahren starten (siehe unten). Braucht den Lidar; bricht eine Heimfahrt ab. | `alert` an alle; ohne Lidar `alert` (warning) |
 | `explore_stop` | – | Autonomes Fahren beenden und anhalten. | `alert` an alle |
 | `move` | `richtung`: `"vor"` / `"zurueck"` / `"links"` / `"rechts"`, `meter` (0 < m ≤ 5) | Genau so weit fahren, links/rechts seitwärts (siehe „Genaue Fahrbefehle im Detail“). Braucht den Lidar; bricht Heimfahrt, autonomes Fahren und Interaktion ab. Abbrechen mit `stop` oder einer Fahreingabe ≠ 0. | `alert` an alle, am Ende `alert` mit Ergebnis (warning, wenn nicht geschafft); sonst `alert` (warning) |
@@ -185,7 +185,7 @@ Reihenfolge:
 | `box` | `action`: `"open"` / `"close"` | Noch nicht gebaut. | `alert` „Box ist noch nicht angebaut“ |
 | `ping` | – | Verbindung prüfen. | `pong` |
 | `health_check` | `x`, `y` (m, Kartenrahmen, optional, nur beide zusammen) | Healthbot (neu 04.11.): zur Stelle fahren, die Person beurteilen, ansprechen, bei Bedarf anstupsen, im Notfall Hilfe holen (siehe „Healthbot“ unter HTTP). Ohne `x`/`y` prüft er die Person in seiner Nähe. **Fährt und berührt die Person.** Bricht Heimfahrt, autonomes Fahren, Interaktion und Fahrbefehle ab; jede Fahreingabe ≠ 0 und `stop` brechen ihn ab. | `alert` „Healthbot: prüft …“ an alle; läuft schon, abgeschaltet oder ohne Posenerkennung `alert` (warning); x/y ungültig `error` |
-| `health_stop` | – | Healthbot-Prüfung abbrechen und anhalten. | keine |
+| `health_stop` | – | Healthbot-Prüfung abbrechen und anhalten. Läuft schon der Alarm (`alarm` true), endet er: Musik des Healthbots aus, `alarm` false, `zustand` `bereit`; Urteil, Zeichen und Zeitleiste bleiben sichtbar. Musik, die der Nutzer selbst gestartet hat, läuft weiter. | keine |
 | `health_wache` | `an` (bool) | Wache ein/aus: Der Roboter achtet selbst auf eine liegende Person und startet dann `health_check` an ihrer Stelle. Braucht die Posenerkennung. | ohne Posenerkennung `alert` (warning) |
 
 Ein unbekannter `type` liefert `{"type": "error", "text": "Unbekannter Nachrichtentyp: …"}`.

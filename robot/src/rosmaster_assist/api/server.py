@@ -1214,7 +1214,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                 homing.abbrechen("Not-Stopp")
                 erkunder.abbrechen("Not-Stopp")
                 manoever.abbrechen("Not-Stopp")
-                healthbot.abbrechen("Not-Stopp")
+                await healthbot.alarm_beenden("Not-Stopp")
                 interaktion.wechseln_zu(vh.BEREIT, "angehalten (per Sprache)")
                 watchdog.stop()
                 stimme.sagen("Okay, ich halte an.", vorrang=True)
@@ -1424,7 +1424,9 @@ async def _handle(
         if manoever is not None:
             manoever.abbrechen("Not-Stopp")
         if healthbot is not None:
-            healthbot.abbrechen("Not-Stopp")
+            # Beendet auch einen schon gerufenen Alarm samt Musik (Testprotokoll:
+            # nach dem Stopp lief sie weiter). Hält sofort an, wartet danach.
+            await healthbot.alarm_beenden("Not-Stopp")
         watchdog.stop()
         if stimme is not None:
             # Vorrang: alles, was noch in der Schlange stand, ist überholt.
@@ -1661,7 +1663,7 @@ async def _handle(
 
     if kind == "health_stop":
         if healthbot is not None:
-            healthbot.abbrechen("vom Nutzer beendet")
+            await healthbot.alarm_beenden("vom Nutzer beendet")
         watchdog.stop()
         return None
 

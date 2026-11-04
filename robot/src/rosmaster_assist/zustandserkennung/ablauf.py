@@ -19,6 +19,7 @@ der Roboter immer einige Zentimeter vor der Person und berührte sie nie.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import math
 import os
@@ -78,6 +79,9 @@ class Healthbot:
         self._urteil: dict | None = None
         self._ziel: dict | None = None
         self._alarm = False
+        # Merkt, ob die laufende Musik vom Healthbot stammt: Der Stopp soll
+        # nur den Alarm beenden, nicht die Musik, die der Nutzer gewählt hat.
+        self._musik_gestartet = False
         self._person: dict | None = None
         self._stupser: list[dict] = []
 
@@ -158,6 +162,24 @@ class Healthbot:
         self._homing.abbrechen(grund)
         self._watchdog.stop()
         self._notiz(f"abgebrochen: {grund}", ABGEBROCHEN)
+
+    async def alarm_beenden(self, grund: str) -> None:
+        """Stopp durch den Menschen: Prüfung abbrechen, Alarm-Musik aus und
+        zurück nach bereit. Nach dem Hilferuf ist der Ablauf schon vorbei,
+        abbrechen() allein ließe Musik und Alarm weiterlaufen."""
+        task = self._task if self.aktiv else None
+        self.abbrechen(grund)
+        if task is not None:
+            # Abwarten, bis finally (anhalten, Pose aus) gelaufen ist.
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        if self._musik_gestartet and self._mukke is not None:
+            self._musik_gestartet = False
+            # stoppen() wartet bis zu 2 s auf mpv, darum nicht im Event-Loop.
+            await asyncio.to_thread(self._mukke.stoppen)
+        if self._alarm:
+            self._alarm = False
+            self._notiz(f"Alarm beendet: {grund} – bereit", BEREIT)
 
     def wache_setzen(self, an: bool) -> str | None:
         """Selbst nach liegenden Personen Ausschau halten (fährt nicht los,
@@ -528,10 +550,14 @@ class Healthbot:
         from ..audio.mukke import MukkeFehler
 
         pfad = os.path.join(_MUSIK_PFAD, config.HEALTH_MUSIK_DATEI)
+        # Vor dem Start setzen: Kommt der Stopp, während mpv noch startet,
+        # soll er die Musik trotzdem beenden.
+        self._musik_gestartet = True
         try:
             await asyncio.to_thread(self._mukke.datei_abspielen, pfad, config.HEALTH_MUSIK_TITEL)
             self._notiz(f"spielt „{config.HEALTH_MUSIK_TITEL}“")
         except MukkeFehler as e:
+            self._musik_gestartet = False
             self._notiz(f"Musik geht nicht: {e}")
 
     # ------------------------------------------------------------------- Wache

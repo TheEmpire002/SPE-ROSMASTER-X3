@@ -736,6 +736,14 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Probleme:** Kontakt nur indirekt, da die Räder beim Anstupsen stehen bleiben; die Schwellen für die vier Zeichen stammen bisher aus der Simulation; ohne Pose-Erkennung kann der Ablauf nicht starten. Der Rand des Fahrschutzes wurde beim Stupsen auf `HEALTH_STUPSEN_RAND_M` gesenkt, sonst käme es nie zur Berührung.
 - **Offen:** Feldtest am Roboter steht aus.
 
+### 04.11.2026 – Testprotokoll „Aufgetretene Probleme beim Roboter“: Stopp und Alarm (Marlon, mit Claude)
+- **Was:** Problem aus dem Testprotokoll behoben: Nach dem Stopp-Knopf lief die Alarm-Musik des Healthbots weiter, der Roboter war nicht wieder betriebsbereit.
+- **Warum:** Nach dem Hilferuf ist der Healthbot-Ablauf schon beendet (`aktiv = False`). `stop`/`health_stop` riefen nur `abbrechen()` auf, das bei inaktivem Ablauf nichts tut; Musik und `alarm` blieben stehen.
+- **Änderungen:** Neue Methode `Healthbot.alarm_beenden(grund)` in `zustandserkennung/ablauf.py`: bricht eine laufende Prüfung ab und wartet, bis deren `finally` (anhalten, Pose aus) gelaufen ist; stoppt nur die vom Healthbot selbst gestartete Musik (Merker `_musik_gestartet`, eigene Musik des Nutzers bleibt unberührt), per `asyncio.to_thread`, weil `stoppen()` bis zu 2 s auf mpv wartet; setzt `alarm` zurück und den Zustand auf `bereit` (Zeitleiste: „Alarm beendet: … – bereit“). Urteil, Zeichen und Zeitleiste bleiben sichtbar. Aufgerufen von `stop` (App), dem Sprach-STOPP und `health_stop` in `api/server.py`. Bewusst nicht bei Verbindungsverlust, Handsteuerung oder anderen Modi – der Alarm soll dann weiter Menschen rufen.
+- **Ergebnis:** Neuer Fall `fall_alarm_beenden` in `Marlon/zustandserkennung/test_zustand.py` (Alarm und Musik aus, Zustand bereit, zweiter Stopp ohne Wirkung, Stopp während laufender Prüfung hält an und lässt fremde Musik in Ruhe). Alle Tests grün, Regelprüfung ohne Befund.
+- **Probleme:** Läuft mpv gerade erst an, während gestoppt wird, kann die Musik trotzdem starten (Reihenfolge im Thread-Pool nicht garantiert); dann hilft ein zweiter Stopp.
+- **Offen:** Die Punkte Anstupsen und Kamera/Personenerkennung werden in eigenen Schritten bearbeitet; Mikrofon/Sprachsteuerung (Befehle teils nicht erkannt, langsam, z. B. „Robby, spiel Beatbox.“, „Robby, folge mir.“) wird als eigener Themenbereich separat untersucht.
+
 ---
 
 ## 3. Ergebnisse und Messwerte
