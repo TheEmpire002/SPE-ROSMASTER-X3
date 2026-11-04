@@ -532,8 +532,11 @@ Lidar, Mikrofon, Lautsprecher und den Antrieb.
    als Ampel mit Zeitleiste. So sieht man, *warum* er Alarm schlägt.
 2. **Ansprechen vor Anstupsen.** Erst fragen, nur ohne Antwort berühren.
 3. **Echte Berührung, aber begrenzt:** 0,05 m/s, höchstens
-   `HEALTH_STUPSEN_TIEFE_M` weiter, als der Lidar Luft sieht, Kontakt =
-   Räder stehen trotz Befehl; danach sofort zurück. Abschaltbar mit
+   `HEALTH_STUPSEN_TIEFE_M` weiter, als Lidar oder Fahrschutz Luft sehen,
+   Kontakt = Räder stehen trotz Befehl; danach sofort zurück. Liegt die
+   Person flacher als die Lidar-Ebene, gilt das Halten des Fahrschutzes
+   (Tiefe, Gedächtnis) knapp vor ihr als „nah genug“ (Testprotokoll
+   04.11.: er hielt nur an und stupste nie). Abschaltbar mit
    `HEALTH_STUPSEN_AKTIV`.
 4. **Fahrschutz-Rand beim Stupsen gesenkt** (`HEALTH_STUPSEN_RAND_M`),
    statt den Fahrschutz zu umgehen. Sonst hielte er immer einige

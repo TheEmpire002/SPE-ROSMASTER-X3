@@ -27,7 +27,12 @@ import time
 
 from .. import config
 from ..protocol import DriveCommand, alert_message
+from ..safety import fahrschutz
 from . import bewertung as bw
+
+# Stups-Ende, wenn der Fahrschutz hält (Tiefe/Gedächtnis sehen die Person
+# knapp vor dem Roboter), nicht die Räder gegen sie drücken.
+FAHRSCHUTZ_HAELT = "Fahrschutz hält"
 
 log = logging.getLogger(__name__)
 
@@ -476,20 +481,39 @@ class Healthbot:
                 # Fahrschutz hält knapp vor dem Ziel: Das reicht zum Stupsen.
                 self._watchdog.stop()
                 return True
+            if gefahren.vx <= 0.0 and self._haelt_knapp():
+                # Liegt die Person flacher als die Lidar-Ebene, misst d die Wand
+                # dahinter. Tiefe und Gedächtnis sehen sie aber, der Fahrschutz
+                # hält knapp vor ihr (Testprotokoll: hielt nur an, stupste nie).
+                self._watchdog.stop()
+                self._notiz("Fahrschutz hält knapp vor der Person (Tiefe/Gedächtnis) -- nah genug zum Stupsen")
+                return True
             await asyncio.sleep(_TAKT_S)
         self._watchdog.stop()
         return False
+
+    def _haelt_knapp(self) -> bool:
+        """Hat der Fahrschutz wegen eines Hindernisses knapp voraus gehalten?
+        Fehlende Lidar-Daten zählen nicht: Dann weiß er nichts über die Person."""
+        p = self._watchdog.letzte_pruefung
+        grund = getattr(p, "grund", None)
+        frei = getattr(p, "frei_m", None)
+        return grund not in (None, fahrschutz.KEIN_LIDAR) and frei is not None and frei <= config.HEALTH_HERAN_REICHT_M
 
     async def _stups(self, nr: int) -> dict:
         """Ein Stups: langsam vor, bis Kontakt oder Weggrenze.
 
         Weggrenze = Luft bis zur Person + HEALTH_STUPSEN_TIEFE_M, gemessen
-        mit der Odometrie -- so drückt er höchstens ~10 cm weiter, als der
-        Lidar Luft sieht. Kontakt = er steht, obwohl er fahren soll (Räder
-        drehen nicht weiter, oder der Fahrschutz hält).
+        mit der Odometrie -- so drückt er höchstens ~10 cm weiter, als
+        Lidar oder Fahrschutz Luft sehen. Kontakt = die Räder drehen nicht
+        weiter, obwohl er fahren soll; hält vorher der Fahrschutz, endet der
+        Stups mit FAHRSCHUTZ_HAELT.
         """
         d = self._abstand(self._gesehen())
         luft = max(0.0, (d if d is not None else config.ROBOTER_VORN_M) - config.ROBOTER_VORN_M)
+        # Mehr Luft, als _heranfahren zulässt, heißt: Der Lidar sieht über die
+        # Person hinweg auf die Wand. Dann nicht dem Lidar-Wert glauben.
+        luft = min(luft, config.HEALTH_STUPSEN_START_M + config.HEALTH_HERAN_REICHT_M - config.ROBOTER_VORN_M)
         grenze = luft + config.HEALTH_STUPSEN_TIEFE_M
         self._notiz(f"Stups {nr}: {luft:.2f} m Luft, höchstens {grenze:.2f} m vor")
         start = self._odometry.pose()
@@ -501,13 +525,25 @@ class Healthbot:
                 grund = "Weggrenze"
                 break
             gefahren = self._fahren(vx=config.HEALTH_STUPSEN_SPEED, rand_m=config.HEALTH_STUPSEN_RAND_M)
+            # Der Fahrschutz sieht auch, was unter der Lidar-Ebene liegt: Sein
+            # Weg bis zur Berührung begrenzt die Stupstiefe zusätzlich.
+            frei = getattr(self._watchdog.letzte_pruefung, "frei_m", None)
+            if frei is not None:
+                grenze = min(grenze, self._strecke(start) + frei + config.HEALTH_STUPSEN_TIEFE_M)
             vx_ist = self._odometry.geschwindigkeit()[0]
             # Erst nach dem Anfahren (Rampe) auf Stillstand achten.
             steht = time.monotonic() - beginn > 0.6 and (gefahren.vx <= 0.0 or vx_ist < config.HEALTH_STUPSEN_STEHT_MS)
             if steht:
                 steht_seit = steht_seit or time.monotonic()
                 if time.monotonic() - steht_seit >= config.HEALTH_STUPSEN_KONTAKT_S:
-                    grund = "Kontakt"
+                    if gefahren.vx > 0.0:
+                        grund = "Kontakt"
+                    elif getattr(self._watchdog.letzte_pruefung, "grund", None) == fahrschutz.KEIN_LIDAR:
+                        # Gehalten, weil der Lidar ausfiel -- nicht wegen der
+                        # Person. So soll es auch im Protokoll stehen.
+                        grund = fahrschutz.KEIN_LIDAR
+                    else:
+                        grund = FAHRSCHUTZ_HAELT
                     break
             else:
                 steht_seit = None

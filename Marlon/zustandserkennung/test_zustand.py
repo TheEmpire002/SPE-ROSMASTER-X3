@@ -19,7 +19,9 @@ Fälle:
 * Anstupsen abgeschaltet -> Alarm ohne Stups;
 * Person steht und antwortet nicht -> unauffällig, kein Stups;
 * Abbrechen mitten im Ablauf -> hält an, Heimfahrt abgebrochen;
-* Wache: liegende Person selbst erkannt -> Prüfung startet.
+* Wache: liegende Person selbst erkannt -> Prüfung startet;
+* Person liegt unter der Lidar-Ebene, nur der Fahrschutz (Tiefe,
+  Gedächtnis) sieht sie -> fährt trotzdem heran und stupst (Testprotokoll).
 """
 
 import asyncio
@@ -36,6 +38,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "robot" / "
 
 from rosmaster_assist import config  # noqa: E402
 from rosmaster_assist.protocol import DriveCommand  # noqa: E402
+from rosmaster_assist.safety.fahrschutz import Pruefung  # noqa: E402
 from rosmaster_assist.sensors import pose as pose_modul  # noqa: E402
 from rosmaster_assist.sensors.lidar import Scan  # noqa: E402
 from rosmaster_assist.zustandserkennung import ablauf as ab  # noqa: E402
@@ -61,13 +64,16 @@ class Welt:
 
     RAUM = (-3.0, 5.0, -3.0, 3.0)
 
-    def __init__(self, person: str | None = "liegend", bewegt: bool = False) -> None:
+    def __init__(self, person: str | None = "liegend", bewegt: bool = False, lidar_sieht: bool = True) -> None:
         self.x = self.y = self.th = 0.0
         self.vx = self.omega = 0.0
         self.letzter_befehl = time.monotonic()
         self.zuletzt = time.monotonic()
         self.person = person
         self.bewegt = bewegt
+        # False: Die Person liegt flacher als die Lidar-Ebene. Der Scan sieht
+        # über sie hinweg, nur der Fahrschutz (Tiefe, Gedächtnis) sieht sie.
+        self.lidar_sieht = lidar_sieht
         ox, oy = sim.STANDARD_ORT
         if person == "liegend":
             self.kreise = [(ox + dx, oy + dy, r) for dx, dy, r in sim._KREISE]
@@ -113,7 +119,7 @@ class Welt:
             tx = np.where(ux > 0, (x1 - self.x) / ux, (x0 - self.x) / ux)
             ty = np.where(uy > 0, (y1 - self.y) / uy, (y0 - self.y) / uy)
         r = np.minimum(np.abs(tx), np.abs(ty))
-        for cx, cy, rad in self.kreise:
+        for cx, cy, rad in (self.kreise if self.lidar_sieht else []):
             # Strahl x + t*u trifft Kreis: t^2 - 2 t (u.d) + |d|^2 - rad^2 = 0
             dx, dy = cx - self.x, cy - self.y
             b = ux * dx + uy * dy
@@ -138,14 +144,19 @@ class Watchdog:
         luft = w.luft_vorn()
         rand = config.FAHRSCHUTZ_RAND_M if rand_m is None else rand_m
         vx = cmd.vx
-        self.letzte_pruefung = {"luft": luft, "rand": rand}
-        if vx > 0 and luft < config.ROBOTER_VORN_M + rand:
-            vx = 0.0
+        frei = luft - config.ROBOTER_VORN_M - rand if vx > 0 and math.isfinite(luft) else None
+        grund = None
+        if vx > 0 and frei is not None and frei < 0.0:
+            vx, grund = 0.0, "Hindernis im Weg"
+        befehl = DriveCommand(vx=vx, vy=cmd.vy, omega=cmd.omega)
+        # Wie der echte Fahrschutz: Weg bis zur Berührung, Rand eingerechnet.
+        self.letzte_pruefung = Pruefung(befehl, 1.0 if grund is None else 0.0,
+                                        None if frei is None else max(0.0, frei), grund)
         w.vx, w.omega = vx, cmd.omega
         w.letzter_befehl = time.monotonic()
         self.kleinste_luft = min(self.kleinste_luft, luft)
         self.befehle += 1
-        return DriveCommand(vx=vx, vy=cmd.vy, omega=cmd.omega)
+        return befehl
 
     def stop(self) -> None:
         self.welt.aktualisieren()
@@ -296,8 +307,9 @@ class Mukke:
 
 
 class Aufbau:
-    def __init__(self, person: str | None = "liegend", bewegt: bool = False, antworten=None) -> None:
-        self.welt = Welt(person, bewegt)
+    def __init__(self, person: str | None = "liegend", bewegt: bool = False, antworten=None,
+                 lidar_sieht: bool = True) -> None:
+        self.welt = Welt(person, bewegt, lidar_sieht)
         self.watchdog = Watchdog(self.welt)
         self.homing = Heimfahrt(self.welt)
         self.pose = Pose(self.welt)
@@ -357,7 +369,8 @@ async def fall_regungslos() -> None:
     pruefe("Urteil notfall", (s["urteil"] or {}).get("stufe") == "notfall", str(s["urteil"]))
     pruefe("zweimal gestupst", len(s["stupser"]) == config.HEALTH_STUPSEN_ANZAHL, str(s["stupser"]))
     pruefe("Stupser enden an Person oder Weggrenze",
-           all(st["grund"] in ("Kontakt", "Weggrenze") for st in s["stupser"]), str(s["stupser"]))
+           all(st["grund"] in ("Kontakt", ab.FAHRSCHUTZ_HAELT, "Weggrenze") for st in s["stupser"]),
+           str(s["stupser"]))
     pruefe("keine Reaktion bemerkt", not any(st["reaktion"] for st in s["stupser"]))
     grenze = config.ROBOTER_VORN_M - config.HEALTH_STUPSEN_TIEFE_M - 0.01
     pruefe("nie tiefer als die Stupstiefe in die Person", a.watchdog.kleinste_luft >= grenze,
@@ -501,6 +514,28 @@ async def fall_alarm_beenden() -> None:
     pruefe("fremde Musik nicht angefasst", a.mukke.stopps == 1, str(a.mukke.stopps))
 
 
+async def fall_unter_lidar() -> None:
+    print("Liegt unter der Lidar-Ebene, nur der Fahrschutz sieht sie")
+    a = Aufbau("liegend", lidar_sieht=False)
+    pruefe("startet", a.hb.starten(*sim.STANDARD_ORT) is None)
+    await a.bis_fertig(90.0)
+    s = a.hb.status()
+    texte = " | ".join(e["text"] for e in s["timeline"])
+    pruefe("nicht am Heranfahren gescheitert", "nicht nah genug" not in texte, texte)
+    pruefe("zweimal gestupst", len(s["stupser"]) == config.HEALTH_STUPSEN_ANZAHL, str(s["stupser"]))
+    pruefe("Stupser melden den Fahrschutz als Ende",
+           all(st["grund"] == ab.FAHRSCHUTZ_HAELT for st in s["stupser"]), str(s["stupser"]))
+    pruefe("kam nah heran", a.watchdog.kleinste_luft <= config.ROBOTER_VORN_M + 0.02,
+           f"{a.watchdog.kleinste_luft:.3f}")
+    grenze = config.ROBOTER_VORN_M - config.HEALTH_STUPSEN_TIEFE_M - 0.01
+    pruefe("nie tiefer als die Stupstiefe in die Person", a.watchdog.kleinste_luft >= grenze,
+           f"{a.watchdog.kleinste_luft:.3f} < {grenze:.3f}")
+    pruefe("Stupsweg begrenzt, obwohl der Lidar weit Luft sieht",
+           all(st["weg_m"] <= config.HEALTH_STUPSEN_TIEFE_M + 0.12 for st in s["stupser"]), str(s["stupser"]))
+    pruefe("Zeitleiste nennt den Fahrschutz", "Fahrschutz" in texte, texte)
+    pruefe("Zustand hilfe", s["zustand"] == ab.HILFE, s["zustand"])
+
+
 async def fall_wache() -> None:
     print("Wache erkennt liegende Person")
     a = Aufbau("liegend")
@@ -540,6 +575,7 @@ async def alle() -> None:
     await fall_stehend()
     await fall_abbrechen()
     await fall_alarm_beenden()
+    await fall_unter_lidar()
     await fall_wache()
 
 

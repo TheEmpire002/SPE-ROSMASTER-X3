@@ -744,6 +744,14 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Probleme:** Läuft mpv gerade erst an, während gestoppt wird, kann die Musik trotzdem starten (Reihenfolge im Thread-Pool nicht garantiert); dann hilft ein zweiter Stopp.
 - **Offen:** Die Punkte Anstupsen und Kamera/Personenerkennung werden in eigenen Schritten bearbeitet; Mikrofon/Sprachsteuerung (Befehle teils nicht erkannt, langsam, z. B. „Robby, spiel Beatbox.“, „Robby, folge mir.“) wird als eigener Themenbereich separat untersucht.
 
+### 04.11.2026 – Testprotokoll: Anstupsen (Marlon, mit Claude)
+- **Was:** Beim Test fuhr der Healthbot nur vor die Person und hielt an, stupste nie.
+- **Ursache (im Mock nachgestellt, Test `fall_unter_lidar` in `Marlon/zustandserkennung/test_zustand.py`):** Der Lidar misst in einer Ebene etwa 20 cm über dem Boden und sieht über eine liegende Person hinweg auf die Wand. Tiefenkamera und Gedächtnis sehen sie; der Fahrschutz hält knapp vor ihr. `_heranfahren` wartete aber auf einen Lidar-Abstand ≤ 0,40 m, gab nach 15 s auf („kommt nicht nah genug heran – kein Stupsen möglich“) und rief gleich Hilfe. Am Roboter noch nicht bestätigt.
+- **Änderung (`ablauf.py`):** Halten des Fahrschutzes knapp vor der Person (`frei_m` ≤ `HEALTH_HERAN_REICHT_M`, nicht bei fehlenden Lidar-Daten) gilt als nah genug. Der Stups nimmt dem Lidar nicht mehr Luft ab, als das Heranfahren zulässt, und begrenzt seinen Weg zusätzlich mit dem Weg bis zur Berührung aus dem Fahrschutz, damit er nie mehr als `HEALTH_STUPSEN_TIEFE_M` weiter drückt. Neuer Endgrund „Fahrschutz hält“ neben „Kontakt“ (vorher wurde beides als Kontakt gemeldet).
+- **Zur Idee aus dem Protokoll, die Erkennung/Bewegungslogik beim Stupsen zu pausieren:** Wache und Interaktion sind während des Healthbots schon pausiert. Der Fahrschutz bleibt bewusst an (E12.4): Beim Stupsen ist nur sein Rand auf 0 gesenkt. Ihn ganz abzuschalten hieße, ohne Abstandsmessung in eine Person zu fahren.
+- **Ergebnis:** `test_zustand.py` alle Fälle bestehen; `scripts/alle_tests.py` 16/16 bestanden. Regelprüfung ohne Verstoß; ihr Hinweis wurde übernommen: Hält der Fahrschutz, weil der Lidar ausfiel, heißt der Endgrund „keine frischen Lidar-Daten“ statt „Fahrschutz hält“.
+- **Offen:** Am Roboter prüfen, ob der Fahrschutz tatsächlich ~0–3 cm vor der Person hält und ob der Stups damit spürbar ist; „Lage am Boden“ wertet bei unsichtbarer Person die Wand als breites Stück (fälschlich auffällig).
+
 ---
 
 ## 3. Ergebnisse und Messwerte

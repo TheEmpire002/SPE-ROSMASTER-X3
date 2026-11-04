@@ -826,7 +826,7 @@ käme er nie bis zur Person. Alle Einstellungen beginnen mit `HEALTH_` in
 `{"name", "titel", "zustand": "auffaellig" | "ok" | "unbekannt", "wert", "text"}`.
 `urteil`: `{"stufe": "notfall" | "auffaellig" | "ansprechbar" |
 "unauffaellig", "punkte" (auffällige Zeichen), "text"}` oder `null`.
-`stupser`: je `nr`, `grund`, `weg_m`, `zeit`, `reaktion`, `bewegung`,
+`stupser`: je `nr`, `grund` (`Kontakt`: Räder stehen trotz Befehl; `Fahrschutz hält`: er hielt knapp vor der Person, z. B. wenn sie flacher als die Lidar-Ebene liegt und nur Tiefe/Gedächtnis sie sehen; `keine frischen Lidar-Daten`: der Fahrschutz hielt, weil der Lidar ausfiel; `Weggrenze`, `Zeitgrenze`), `weg_m`, `zeit`, `reaktion`, `bewegung`,
 `gehoert`. `timeline`: je `zeit` (Unix-Zeit), `zustand`, `text`.
 
 ### Fahrtenschreiber
