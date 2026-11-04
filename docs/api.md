@@ -299,8 +299,24 @@ weicht allem aus, was der Lidar sieht. Werte in `config.py` (`EXPLORE_*`):
 - **Festfahr-Erkennung:** Fährt er laut Befehl, aber das Board meldet
   kaum Tempo oder das Lidar-Bild rundum ändert sich über `EXPLORE_FEST_S`
   (1,5 s) nicht, befreit er sich ebenso.
+- **Tiefenkamera (seit 04.11.):** Während jeder autonomen Fahrt läuft
+  der Tiefenkanal der Orbbec Astra mit. Was zwischen 4 und 40 cm über dem
+  Boden steht (Stuhlbeine, Tischkanten, Kisten unter der Lidar-Ebene),
+  wird zu Hindernispunkten. Die Astra misst erst ab ~0,6 m. Deshalb merkt
+  sich ein **Hindernisgedächtnis** die Punkte und rechnet sie mit der
+  eigenen Bewegung nach, bis er vorbei ist (`TIEFE_GEDAECHTNIS_S`, 30 s).
+  Ausweichen, Kartierfahrt und Fahrschutz sehen sie wie Lidar-Punkte.
+  Ohne Kamera oder in der Simulation fehlt nur dieser Zusatz.
+- **Fortschrittswache (seit 04.11., beide Modi):** Alle 0,5 s vergleicht
+  er die Bewegung, die der Watchdog über die letzten ~2 s an die Motoren
+  gab, mit der laut Lidar-Abgleich (ICP) gefahrenen. Kam weniger als 30 %
+  an (`FORTSCHRITT_ANTEIL`), hängt er fest. Dann trägt er an dieser Stelle
+  ein **Phantom-Hindernis** ein (verfällt nach `FORTSCHRITT_PHANTOM_S`,
+  30 s) und schiebt sich vom Hindernis weg frei. Ist die Umgebung für den
+  Abgleich mehrdeutig (langer Flur), urteilt er nicht.
 - Erst nach `EXPLORE_BEFREIEN_MAX` (3) erfolglosen Befreiungen hintereinander
-  endet die Fahrt mit „festgefahren“.
+  endet die Fahrt mit „festgefahren“. Beim Kartieren zählen die Versuche
+  neu, wenn `FORTSCHRITT_ERHOLT_S` (15 s) lang keiner nötig war.
 - **Umfahren in Bögen (seit 03.11., F2):** Vor einem Hindernis rechnet er
   mögliche Bögen (Drehrate, etwas seitliches Schieben) gut eine Sekunde
   voraus und nimmt den besten, bei dem sein Umriss überall Luft behält.
@@ -348,6 +364,8 @@ Ist OpenCV installiert, sucht die Personenkamera (Logitech C270, siehe
   "ausweichen": 5,
   "menschen": 1,
   "befreien": 0,
+  "tiefe": 14,
+  "festgefahren": 0,
   "grund": null,
   "hindernisse": [
     {"art": "Stuhl", "winkel": 31.5, "abstand": 0.84, "breite": 0.41,
@@ -368,6 +386,8 @@ Ist OpenCV installiert, sucht die Personenkamera (Logitech C270, siehe
 | `text` | Erklärung für die Anzeige |
 | `frei_vorn` | freie Strecke im Korridor vor dem Roboter (m) |
 | `ausweichen`, `menschen`, `befreien` | Zähler dieser Fahrt (`befreien` neu 03.11., fehlt bei älteren Servern) |
+| `tiefe` | Punkte im Hindernisgedächtnis (Tiefenkamera und Phantome); `null` ohne Tiefenkamera (neu 04.11.) |
+| `festgefahren` | wie oft die Fortschrittswache in dieser Fahrt ein Festhängen erkannte (neu 04.11.) |
 | `grund` | warum die letzte Fahrt endete |
 | `hindernisse` | die 12 nächsten, nächstes zuerst. `winkel` in Grad wie beim Lidar, `x`/`y` Mitte in Roboterkoordinaten (m) |
 | `personen` | Personenrahmen im Bild der Personenkamera, relativ zur Bildgröße (0..1) |
@@ -643,6 +663,39 @@ xy = [(m * math.cos(math.radians(g)), m * math.sin(math.radians(g))) for g, m in
 
 `letztes_residuum_m` sagt, wie gut die aktuelle Aufnahme auf die Referenz
 vom Startpunkt passt. Unter 0,05 ist gut.
+
+### Tiefenkamera
+
+Die Kamera läuft nur während autonomer Fahrten (Strom am USB-Hub). Eingebunden
+wird sie per OpenNI2, Einrichtung siehe [hardware.md](hardware.md#tiefenkamera-orbbec-astra).
+
+**`GET /tiefe/status`**:
+
+```json
+{
+  "kamera": {
+    "verfuegbar": true, "verbunden": true, "aktiv_fuer": ["erkunder"],
+    "bilder_pro_s": 7.6, "hindernisse": 12, "frei_zellen": 230, "naechstes": [0.71, 0.12],
+    "boden_erkannt": true, "kamera_hoehe_m": 0.214, "neigung_grad": -1.5,
+    "bildwinkel_grad": 57.9, "fehler": null
+  },
+  "hinweis": null,
+  "gedaechtnis": {"punkte": 14, "phantome": 0, "rahmen": "lidar"},
+  "fortschritt_aktiv": true
+}
+```
+
+- `kamera` ist `null` in der Simulation oder ohne OpenNI2 (dann steht der
+  Grund in `hinweis`).
+- `boden_erkannt`: Im Bild wurde eine Bodenebene gefunden. Dann stimmen die
+  Höhen, und `kamera_hoehe_m`/`neigung_grad` zeigen die gemessene
+  Einbaulage. Ohne Boden rechnet er vorsichtiger: 5 cm mehr Mindesthöhe,
+  nur bis 1,3 m.
+- `gedaechtnis.rahmen`: worin die Punkte gemerkt werden, `lidar`
+  (Lidar-Odometrie, beim Kartieren) oder `rad` (Odometrie).
+
+**`POST /tiefe/test`**: schaltet die Kamera für 20 s ein, um im Stand
+Bodenerkennung und Einbaulage zu prüfen.
 
 ### Autonomes Fahren
 

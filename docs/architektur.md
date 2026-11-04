@@ -66,6 +66,10 @@ prüfen weiterhin selbst; der Schutz ist das Netz darunter. Werte:
 zum Zusammenführen am 03.11. tat das ein `AutonomSchutz` mit einem Streifen
 in Fahrtrichtung, der Drehungen nicht prüfte.
 
+Seit dem 04.11. bekommt der Fahrschutz neben den Lidar-Punkten auch die
+des Hindernisgedächtnisses: Was die Tiefenkamera unter der Lidar-Ebene
+sah, und Phantom-Hindernisse der Fortschrittswache (Entscheidung E11).
+
 **4. Die Notfall-Logik entscheidet nicht, sie meldet.**
 Erkennt das System einen möglichen Notfall, löst es einen Alarm an einen
 Menschen aus. Es bewertet keinen Gesundheitszustand.
@@ -80,8 +84,8 @@ Menschen aus. Es bewertet keinen Gesundheitszustand.
 | `protocol.py`  | Nachrichtenformat — die gemeinsame Sprache aller Beteiligten |
 | `drive/`       | Fahren. `base.py` = Schnittstelle, dazu echter Treiber + Mock |
 | `safety/`      | Watchdog, Not-Aus, Geschwindigkeitsbegrenzung, Fahrschutz über die Grundfläche (`fahrschutz.py`) |
-| `sensors/`     | Lidar, Kamera, Personenerkennung, Körperpose (Hailo)        |
-| `navigation/`  | Odometrie, Lidar-Ortung, Heimfahrt, Erkunder, Ausweichen (`ausweichen.py`), Hindernis-Benennung |
+| `sensors/`     | Lidar, Kamera, Tiefenkamera (`tiefe.py`, OpenNI2), Personenerkennung, Körperpose (Hailo) |
+| `navigation/`  | Odometrie, Lidar-Ortung, Heimfahrt, Erkunder, Ausweichen (`ausweichen.py`), Hindernis-Benennung, Hindernisgedächtnis für Tiefenpunkte (`hindernisgedaechtnis.py`), Fortschrittswache gegen Festhängen (`fortschritt.py`) |
 | `interaktion/` | Gesten, Verhalten (Folgen, Herkommen, Weggehen), Stimme (Sprachausgabe) und Sprachbefehle mit dem Weckwort „Robi“; geplant: Geist — siehe [`interaktion.md`](interaktion.md) |
 | `diagnose.py`  | Sammelt Ausfälle (Akku, USB, Unterspannung, Temperatur, Geräte, Log) und macht daraus verständliche Probleme für die Seite `/diagnose` |
 | `aufzeichnung.py` | Fahrtenschreiber: letzte Minute (Scans, Befehle, Odometrie, Zustände) im Speicher, auf Knopfdruck als Datei; dazu Laden und Nachspielen für `scripts/abspielen.py` |

@@ -72,11 +72,16 @@ class Fahrschutz:
     #: Eingriffe höchstens so oft protokollieren (s).
     MELDE_ABSTAND_S = 3.0
 
-    def __init__(self, lidar) -> None:
+    def __init__(self, lidar, zusatz=None) -> None:
         self._lidar = lidar
+        # Weitere Hindernispunkte im Roboterrahmen: Tiefenkamera samt
+        # Gedächtnis und die Stellen, an denen er hängen blieb
+        # (navigation/hindernisgedaechtnis.py). Der Lidar sieht nur seine Ebene.
+        self._zusatz = zusatz
         self.eingriffe = 0  # bei autonomer Fahrt, siehe eingriff_melden()
         self._zuletzt_gemeldet = -1e9
         self._scan = None
+        self._scan_version = None
         self._scan_punkte = None
 
     def pruefen(self, cmd: DriveCommand, rand_m: float | None = None) -> Pruefung:
@@ -185,14 +190,24 @@ class Fahrschutz:
         # der Roboter schon blind weitergefahren.
         alter = jetzt - (scan.zeit - getattr(scan, "dauer", 0.0))
 
+        zusatz = self._zusatz if config.FAHRSCHUTZ_MIT_TIEFE else None
+        version = None
+        if zusatz is not None:
+            zusatz.aktualisieren(jetzt)
+            version = zusatz.version
+
         # Punkte nur einmal pro Runde aufbereiten: Der Lidar liefert 7,5
         # Runden pro Sekunde, gefragt wird 20-mal.
-        if scan is self._scan:
+        if scan is self._scan and version == self._scan_version:
             return self._scan_punkte, alter
 
         import numpy as np
 
         punkte = scan.punkte()
+        if zusatz is not None:
+            weitere = zusatz.punkte()
+            if len(weitere):
+                punkte = np.concatenate((punkte, weitere)) if len(punkte) else weitere
         if len(punkte):
             punkte = punkte[np.hypot(punkte[:, 0], punkte[:, 1]) < _REICHWEITE_M]
         # Punkte innerhalb der Grundfläche selbst kann es nicht geben -- das
@@ -201,7 +216,7 @@ class Fahrschutz:
         # ausschalten (näher als null geht nicht).
         if len(punkte):
             punkte = punkte[_abstand_zur_flaeche(punkte[:, 0], punkte[:, 1]) > 0.01]
-        self._scan, self._scan_punkte = scan, punkte
+        self._scan, self._scan_version, self._scan_punkte = scan, version, punkte
         return punkte, alter
 
     @staticmethod

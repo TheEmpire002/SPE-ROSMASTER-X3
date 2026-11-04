@@ -446,3 +446,70 @@ unterschiedlich geprüft. Übrig bleibt eine:
 
 **Neu bewerten, wenn:** die Orbbec-Tiefe eingebunden wird. Ihre Punkte
 können in dieselbe Prüfung gehen.
+
+**Nachtrag 04.11.:** Die Tiefe ist eingebunden (E11). Ihre Punkte gehen
+über das Hindernisgedächtnis in dieselbe Prüfung (`FAHRSCHUTZ_MIT_TIEFE`).
+
+---
+
+## E11 — Tiefenkamera fürs Ausweichen, Fortschrittswache gegen Festhängen
+
+**Datum:** 2026-11-04
+**Status:** umgesetzt (`sensors/tiefe.py`, `navigation/hindernisgedaechtnis.py`,
+`navigation/fortschritt.py`), am Roboter noch nicht im Fahrbetrieb getestet
+
+**Kontext.** Beim Kartieren und Erkunden blieb der Roboter an Stuhlbeinen
+und ähnlich niedrigen oder dünnen Dingen hängen. Der Lidar sieht nur seine
+eine Ebene. Für die Fahrlogik war vorn frei, der Befehl ging raus, nur
+bewegte er sich nicht. Die Kartierfahrt hatte dafür keine Erkennung (die
+Festfahr-Erkennung des Erkunders lief nur beim Zufallsfahren), also stand er,
+und die Karte wuchs nicht.
+
+**Entscheidung.** Zwei unabhängige Hilfen, beide für alle autonomen Modi:
+1. **Sehen, was der Lidar nicht sieht.** Der Tiefenkanal der Astra liefert
+   Punkte, die 4–40 cm über dem selbst gefundenen Boden liegen. Weil die
+   Astra erst ab 0,6 m misst, merkt sich ein Hindernisgedächtnis die Punkte
+   im Lage-Rahmen (Lidar-Odometrie beim Kartieren, sonst Odometrie) und
+   gibt sie im Roboterrahmen zurück. Sieht die Kamera an einer Stelle
+   wieder freien Boden, fliegt der Punkt raus. Erkunder, Kartierfahrt und
+   Fahrschutz bekommen die Punkte einfach zu den Lidar-Punkten dazu, ohne
+   eigene Logik.
+2. **Merken, dass es nicht vorangeht.** Die Fortschrittswache vergleicht
+   alle 0,5 s die befohlene Bewegung der letzten 2 s (was der Watchdog nach
+   Rampe und Fahrschutz wirklich ausgab) mit der vom Lidar gemessenen (ICP
+   zwischen zwei Aufnahmen). Kommt weniger als 30 % an, gilt er als
+   festgefahren. Dann setzt sie ein Phantom-Hindernis vor die Grundfläche
+   in Fahrtrichtung und schiebt den Roboter von dort weg frei.
+
+**Warum so.**
+- *Lidar statt Rad als Messung:* Durchdrehende oder blockierte Räder sieht
+  die Odometrie nicht; sie rechnet aus den Motoren. Der Abgleich der
+  Lidar-Aufnahmen schaut auf die Wände.
+- *Befohlen nach dem Watchdog:* Bremst der Fahrschutz vor einer Wand auf
+  null, ist auch die Erwartung null. Stehen vor einem Hindernis ist kein
+  Festhängen.
+- *Doppelter Abgleich:* ICP wird einmal ab „nicht bewegt“ und einmal ab
+  „wie befohlen“ gerechnet. Liegen die Ergebnisse auseinander (Flur, kahle
+  Wand), urteilt die Wache nicht. Ein falsches „festgefahren“ würde mitten
+  im freien Raum Befreiungsmanöver auslösen.
+- *Tiefe nicht in die Karte:* Die Karte (E8) bleibt eine reine Lidar-Karte.
+  Tiefenpunkte haben eine andere Höhe und mehr Rauschen; in slam_toolbox
+  würden sie den Abgleich stören.
+- *Kamera nur während der Fahrt:* Der Projektor zieht viel Strom am Hub,
+  der bei Spannungseinbrüchen USB-Geräte verliert (hardware.md, USB-Resets).
+- *Eigene ctypes-Anbindung an OpenNI2:* Das pip-Paket läuft nicht unter
+  Python 3.13, ein ROS-Knoten widerspräche „kein ROS im Server“.
+
+**Konsequenzen.**
+- *Gut:* Stuhlbeine werden ab ~1,5 m gesehen und umfahren. Was keiner
+  sieht, erkennt die Wache nach ~2 s und meidet die Stelle 30 s lang.
+- *Schlecht:* Unter 0,6 m ist die Kamera blind. Was dort neu auftaucht,
+  erkennt erst die Fortschrittswache.
+- *Schlecht:* Im Zufallsmodus rechnet das Gedächtnis mit der Rad-Odometrie.
+  Rutscht er beim Festhängen, verschieben sich gemerkte Punkte etwas.
+- *Schlecht:* Ohne erkannten Boden (dunkler Boden) wird es ungenauer und
+  vorsichtiger (erst ab 9 cm, nur bis 1,3 m).
+
+**Neu bewerten, wenn:** sich die Wache im Betrieb oft irrt (dann
+`FORTSCHRITT_ANTEIL`/`_FENSTER_S` anpassen) oder ein Sensor für den
+Nahbereich (Ultraschall, Bumper) dazukommt.

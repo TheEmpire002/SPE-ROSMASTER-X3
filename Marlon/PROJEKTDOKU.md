@@ -683,6 +683,21 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Ergebnis:** Am Pi lässt sich das ganze Paket importieren, die Testskripte kompilieren. `test_schutz.py` prüft jetzt den Fahrschutz (dazu neu: Drehen neben der Wand, Tischbein neben dem Rad).
 - **Offen:** `test_schutz.py`, `test_erkunder.py`, `test_ausweichen.py`, `test_umfahren.py` und `test_manoever.py` am Pi laufen lassen. Am Boden: Erkunden und Folgen in engen Räumen. Der Fahrschutz sperrt jetzt auch Drehungen, bei denen eine Ecke anstößt, was `AutonomSchutz` immer durchließ. Heck-Maß `ROBOTER_HINTEN_M` nachmessen.
 
+### 04.11.2026 – Tiefenkamera und Fortschrittswache gegen Hängenbleiben
+- **Problem:** Beim Kartieren blieb der Roboter an Stuhlbeinen und ähnlichen Dingen hängen, die der Lidar auf seiner Ebene nicht oder zu spät sieht. Die Räder liefen, er bewegte sich nicht, und die Karte wuchs nicht weiter. Die Festfahr-Erkennung des Erkunders galt nur beim Zufallsfahren, nicht bei der Kartierfahrt.
+- **Was:**
+  - **Tiefenkamera** (`sensors/tiefe.py`): Der Tiefenkanal der Orbbec Astra läuft über eine eigene ctypes-Anbindung an Orbbecs OpenNI2 (aus dem Yahboom-Container, `scripts/orbbec_einrichten.sh`). Das pip-Paket `openni` läuft unter Python 3.13 nicht. Jedes Bild wird zu Hindernispunkten: alles 4–40 cm über dem Boden. Den Boden sucht er als Ebene im Bild und gleicht damit die Einbaulage aus. Die Kamera läuft nur während autonomer Fahrten, weil ihr Projektor viel Strom am USB-Hub zieht.
+  - **Hindernisgedächtnis** (`navigation/hindernisgedaechtnis.py`): Die Astra misst erst ab 0,6 m. Ein Stuhlbein verschwindet also aus dem Bild, kurz bevor es wichtig wird. Das Gedächtnis merkt sich die Punkte und rechnet sie mit der eigenen Bewegung nach, beim Kartieren mit der Lidar-Odometrie. Erkunder, Kartierfahrt und Fahrschutz sehen sie wie Lidar-Punkte.
+  - **Fortschrittswache** (`navigation/fortschritt.py`): Sie vergleicht die vom Watchdog ausgegebene Bewegung mit der vom Lidar-Abgleich (ICP) gemessenen. Kommt über 2 s weniger als 30 % an, hängt er fest. Dann setzt er ein Phantom-Hindernis an die Stelle (30 s) und schiebt sich in die Gegenrichtung frei. Gilt in beiden Modi. Damit er in langen Fluren nicht falsch urteilt, wird der Abgleich doppelt gerechnet und muss eindeutig sein.
+  - Neu: `GET /tiefe/status`, `POST /tiefe/test` (Kamera 20 s an), in `state.autonomie` die Felder `tiefe` und `festgefahren`. Entscheidung E11.
+- **Ergebnis (am Pi, im Stand):** Die Kamera verbindet sich, liefert ~7,5 Bilder/s, schaltet sich ab, wenn niemand sie braucht, und meldet Hindernisse in 0,58–1,33 m. Der Boden wurde beim Test nicht erkannt (Roboter stand erhöht).
+- **Offen:**
+  - Am Boden `/tiefe/test` und `/tiefe/status`: Muss `boden_erkannt` true sein? Stimmt `kamera_hoehe_m`? Hand links → `naechstes` mit positivem y.
+  - Kamerahöhe und -position nachmessen (`TIEFE_KAMERA_*`).
+  - Kartierfahrt mit Stühlen im Raum.
+  - Im Log auf „Fortschrittswache“ achten, ob sie sich im freien Raum irrt.
+  - Auf USB-Resets achten, solange die Kamera läuft.
+
 ---
 
 ## 3. Ergebnisse und Messwerte
@@ -753,11 +768,12 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - Sprachbefehle am Pi: `libportaudio2`, `pip install -e "robot[sprache]"` und Vosk-Modell installieren, `/sprache/status` prüfen, „Robi, folgen“ am Boden testen; erkennt Vosk „Robi“ schlecht, Varianten in `SPRACHE_WECKWORT_VARIANTEN` ergänzen.
 - Lautsprecher teilen: MUKKE und Stimme blockieren sich gegenseitig (exklusives ALSA-Gerät); gemeinsamer Mixer (dmix/PipeWire) offen.
 - Prüfen, ob der Antrieb beim Einschalten der Gesten jetzt verbunden bleibt (warmer Hailo).
-- Später: lokales LLM auf dem Hailo, Gesichter wiedererkennen, Orbbec-Tiefe für niedrige Hindernisse.
+- Später: lokales LLM auf dem Hailo, Gesichter wiedererkennen.
 - Diagnoseseite am Pi prüfen (Kernel-Log-Berechtigung, echte Akku- und Überlastwerte).
 - Sanftes Fahren am Boden prüfen: Folgen ohne USB-Resets, Rampe nicht zu träge.
 - Smoke-Test „Heimfahrt startet“ schlägt im Mock zeitweise fehl (auch ohne die Änderungen vom 03.11.; am 03.11. nachmittags einmal 19/19): Die Fahrt zuvor legt nur ~0,02 m zurück, die Heimfahrt endet sofort. Ursache prüfen.
 - Drehtest 90° am Boden: Blickrichtung aus der Board-Drehrate gegen den Lidar prüfen.
+- Tiefenkamera am Boden einmessen (`/tiefe/test`, Boden erkannt? links/rechts?) und Kartierfahrt mit Stühlen testen (E11).
 - Folgen mit zwei Personen am Boden: kreuzen, kurz verdecken, gleiche Kleidung. Merkmal-Schwellen ggf. nachstellen (`ZIEL_MERKMAL_*`).
 
 ---

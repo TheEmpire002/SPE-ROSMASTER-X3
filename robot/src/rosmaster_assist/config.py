@@ -330,6 +330,85 @@ FAHRSCHUTZ_MIN_ANTEIL = 0.2
 # weiter, gibt sie auf, statt ewig vor dem Hindernis zu stehen.
 FAHRSCHUTZ_FEST_S = 10.0
 
+# Die Hindernisse aus der Tiefenkamera (samt Gedächtnis, unten) gehen in den
+# Fahrschutz ein -- er bremst dann auch vor Stuhlfüßen und Kabelkanälen,
+# die unter der Lidar-Ebene liegen.
+FAHRSCHUTZ_MIT_TIEFE = True
+
+# --- Tiefenkamera (Orbbec Astra, sensors/tiefe.py) -----------------------------
+#
+# Der Lidar sieht nur in seiner Ebene (~17 cm über dem Boden). Darunter --
+# Stuhlfüße, Kufen, Kabelkanäle, Bettgestell -- fährt er auf und bleibt
+# hängen. Die Tiefenkamera sieht nach vorn alles zwischen Boden und
+# Roboteroberkante. Angesprochen über Orbbecs OpenNI2-Build (liegt im
+# Yahboom-Container, siehe scripts/orbbec_einrichten.sh), ohne ROS.
+
+TIEFE_AKTIV = True
+# Ordner mit libOpenNI2.so und OpenNI2/Drivers/liborbbec.so.
+TIEFE_OPENNI_PFAD = "~/orbbec_openni2"
+# 320x240 reicht für Hindernisse und spart Rechenzeit und USB-Bandbreite.
+TIEFE_BREITE = 320
+TIEFE_HOEHE_PX = 240
+# So oft (Hz) wird ein Bild ausgewertet; die Kamera liefert 30.
+TIEFE_HZ = 8.0
+# Einbau, gemessen ab Lidar-Mitte am Boden: Höhe der Kamera über dem Boden,
+# Abstand nach vorn, Neigung nach unten. Am Roboter nachmessen -- grobe Fehler
+# gleicht die Bodenerkennung aus, solange sie den Boden sieht.
+TIEFE_KAMERA_HOEHE_M = 0.22
+TIEFE_KAMERA_VOR_M = 0.05
+TIEFE_KAMERA_NEIGUNG_GRAD = 0.0
+# Ausgewertet wird nur dieser Bereich vor dem Roboter (m). Unter ~0,6 m misst
+# die Astra Pro gar nicht (Mindestreichweite), weiter weg wird sie ungenau,
+# und dort sieht der Lidar die Dinge ohnehin, bevor sie wichtig werden.
+TIEFE_MIN_M = 0.55
+TIEFE_MAX_M = 1.8
+# Als Hindernis zählt, was so hoch über dem erkannten Boden liegt (m). Unten
+# nicht unter ~4 cm, sonst wird jede Teppichkante und das Rauschen des
+# Bodens zum Hindernis; oben bis knapp über die Roboteroberkante.
+TIEFE_MIN_HOEHE_M = 0.04
+TIEFE_MAX_HOEHE_M = 0.40
+# Sieht die Kamera keinen Boden (dunkel, glänzend), zählen nur die
+# Einbauwerte. Dann vorsichtiger: höher ansetzen und nicht so weit schauen --
+# 2° falsche Neigung sind in 1,8 m schon 6 cm.
+TIEFE_OHNE_BODEN_ZUSCHLAG_M = 0.05
+TIEFE_OHNE_BODEN_MAX_M = 1.3
+# Rasterzelle (m) und Mindestzahl Punkte je Zelle: Einzelne Ausreißer im
+# Tiefenbild sollen kein Hindernis erzeugen, ein Stuhlfuß hat Dutzende.
+TIEFE_ZELLE_M = 0.05
+TIEFE_MIN_PUNKTE_ZELLE = 4
+# Älter darf ein Tiefenbild nicht sein, sonst gilt die Kamera als aus.
+TIEFE_MAX_ALTER_S = 1.0
+# Wartezeit (s) vor dem nächsten Verbindungsversuch nach einem Fehler.
+TIEFE_NEUVERSUCH_S = 5.0
+
+# Gedächtnis (navigation/hindernisgedaechtnis.py): Unter 0,6 m ist die Kamera
+# blind -- genau dort, wo das Hindernis zählt. Was sie weiter vorn gesehen
+# hat, wird deshalb mit der eigenen Bewegung mitgeführt, bis er vorbei ist.
+# So lange (s) bleibt ein Punkt höchstens, und nur bis zu dieser Entfernung.
+TIEFE_GEDAECHTNIS_S = 30.0
+TIEFE_GEDAECHTNIS_M = 2.5
+
+# --- Fortschrittswache (navigation/fortschritt.py) ------------------------------
+#
+# Vergleicht, was gefahren wurde (Befehl nach Rampe und Fahrschutz), mit dem,
+# was der Lidar an Bewegung sieht (ICP zweier Aufnahmen). Dreht er die Räder,
+# kommt aber nicht vom Fleck, hängt er an etwas, das keiner sieht.
+FORTSCHRITT_AKTIV = True
+# Vergleichsfenster (s) und wie oft (s) eine Aufnahme gemerkt wird.
+FORTSCHRITT_FENSTER_S = 2.0
+FORTSCHRITT_TAKT_S = 0.5
+# Erst ab so viel befohlener Bewegung im Fenster wird geurteilt.
+FORTSCHRITT_MIN_WEG_M = 0.12
+FORTSCHRITT_MIN_DREH_GRAD = 25.0
+# Festgefahren, wenn laut Lidar weniger als dieser Anteil davon geschah.
+FORTSCHRITT_ANTEIL = 0.3
+# An die Stelle, an der er hing, kommt ein gedachtes Hindernis, damit er
+# nicht gleich wieder dort hineinfährt. So lange (s) bleibt es.
+FORTSCHRITT_PHANTOM_S = 30.0
+# So lange ohne neues Befreien, dann zählen die Versuche beim Kartieren neu
+# (beim Zufallsfahren übernimmt das EXPLORE_FREI_ZURUECK_S).
+FORTSCHRITT_ERHOLT_S = 15.0
+
 # --- Heimfahrt ---------------------------------------------------------------------
 
 # Takt, in dem die Position fortgeschrieben wird. Höher = genauer, aber die

@@ -54,10 +54,13 @@ from ..protocol import DriveCommand
 from ..safety import SafetyWatchdog
 from . import ausweichen
 from . import hindernisse as hd
+from .fortschritt import Festgefahren, Fortschrittswache
 
 if TYPE_CHECKING:  # nur für die Typangaben -- vermeidet Ringimporte
     from ..sensors.lidar import LidarService
     from ..sensors.personen import Personenerkennung
+    from ..sensors.tiefe import TiefenKamera
+    from .hindernisgedaechtnis import Hindernisgedaechtnis
     from .kartierfahrt import Kartierfahrt
     from .odometry import Odometry
 
@@ -130,6 +133,8 @@ class Erkunder:
         personen: "Personenerkennung | None" = None,
         odometry: "Odometry | None" = None,
         kartierfahrt: "Kartierfahrt | None" = None,
+        hindernisse: "Hindernisgedaechtnis | None" = None,
+        tiefe: "TiefenKamera | None" = None,
     ) -> None:
         self._watchdog = watchdog
         self._lidar = lidar
@@ -137,6 +142,11 @@ class Erkunder:
         self._personen = personen
         self._odometry = odometry
         self._kartierfahrt = kartierfahrt
+        # Was der Lidar nicht sieht: Tiefenkamera samt Gedächtnis und Stellen,
+        # an denen er hängen blieb. Beides darf fehlen (Simulation, keine Astra).
+        self._hindernisse = hindernisse
+        self._tiefe = tiefe
+        self._fortschritt = Fortschrittswache(watchdog)
         self._modus = ZUFALL
         self._task: asyncio.Task[None] | None = None
         self._grund: str | None = None
@@ -175,6 +185,8 @@ class Erkunder:
         self._befrei_ende = 0.0
         self._befreiungen = 0  # in Folge, ohne dazwischen frei zu fahren
         self._frei_seit: float | None = None
+        self._befreit_zuletzt = jetzt  # wann zuletzt ein Befreien begann
+        self._fortschritt.zuruecksetzen()
         # Festfahr-Erkennung
         self._fest_start: float | None = None
         self._fest_bild: dict[int, float] = {}
@@ -255,6 +267,10 @@ class Erkunder:
             "ausweichen": self._ausweichen,
             "menschen": self._menschen_gesehen,
             "befreien": self._befreit_gesamt,
+            # Punkte, die nur die Tiefenkamera sah bzw. Stellen, an denen er
+            # trotz Fahrbefehl nicht vorankam (None ohne Tiefenkamera).
+            "tiefe": self._hindernisse.anzahl if self._hindernisse is not None else None,
+            "festgefahren": self._fortschritt.urteile,
             "grund": self._grund,
         }
 
@@ -266,6 +282,7 @@ class Erkunder:
         self._ausweichen = 0
         self._menschen_gesehen = 0
         self._befreit_gesamt = 0
+        self._fortschritt.urteile = 0
         self._grund = None
         self._zuruecksetzen(jetzt)
         self._naechster_wechsel = jetzt + self._wanderzeit()
@@ -281,6 +298,10 @@ class Erkunder:
         # Menschen); die Kartierfahrt hält sich an den Nahbereich.
         if self._personen is not None and not karte:
             self._personen.aktivieren(True)
+        # Die Tiefenkamera nur während der Fahrt: Ihr Projektor zieht Strom,
+        # und am X3 kippt dann leichter ein USB-Gerät weg.
+        if self._tiefe is not None:
+            self._tiefe.aktivieren("erkunder", True)
         log.info("Erkundung gestartet (%s)", self._modus)
 
         gesperrt_seit: float | None = None
@@ -324,6 +345,8 @@ class Erkunder:
         finally:
             if self._personen is not None and self._modus != KARTE:
                 self._personen.aktivieren(False)
+            if self._tiefe is not None:
+                self._tiefe.aktivieren("erkunder", False)
 
     def _schritt(self, jetzt: float) -> DriveCommand | None:
         """Ein Takt: Lage ansehen, Fahrbefehl zurückgeben. None = Ende."""
@@ -352,6 +375,8 @@ class Erkunder:
             self._gedreht += math.degrees(drehrate) * dt
         # Eigene Lage fürs Kurzgedächtnis -- jeden Takt, auch ohne neue Runde.
         self._gedaechtnis.fortschreiben(dt)
+        # Was zuletzt wirklich an die Motoren ging, für die Fortschrittswache.
+        self._fortschritt.mitzaehlen(jetzt)
 
         # Ohne frische Lidar-Runde fährt er nicht. Kurze Aussetzer (USB-Reset)
         # werden abgewartet, längere beenden die Fahrt.
@@ -376,6 +401,8 @@ class Erkunder:
         if self._hoch.pruefen(scan, lage):
             if self._zustand != HOCHGEHOBEN:
                 self._hochgehoben()
+            # Getragen werden ist kein Festhängen -- danach neu beobachten.
+            self._fortschritt.zuruecksetzen()
             return halt
         if self._zustand == HOCHGEHOBEN:
             self._naechster_wechsel = jetzt + self._wanderzeit()
@@ -386,6 +413,16 @@ class Erkunder:
         # dem Blickfeld gerutscht ist.
         roh = scan.punkte()
         punkte = self._gedaechtnis.punkte(scan)
+        # Dazu, was nur die Tiefenkamera sah (Stuhlbeine, Tischkanten unter
+        # der Lidar-Ebene), und Stellen, an denen er schon hängen blieb.
+        # Damit planen Ausweichen und Kartierfahrt gleich drumherum.
+        if self._hindernisse is not None:
+            self._hindernisse.aktualisieren(jetzt)
+            zusatz = self._hindernisse.punkte()
+            if len(zusatz):
+                import numpy as np
+
+                punkte = np.concatenate((np.asarray(punkte, dtype=float).reshape(-1, 2), zusatz))
         breite = config.EXPLORE_HALF_WIDTH_M
         vorn = frei_in_richtung(punkte, 0.0, breite)
         self._frei_vorn = vorn
@@ -413,7 +450,19 @@ class Erkunder:
         if self._zustand == WARTET:
             self._setzen(FAEHRT, "Weg wieder frei")
 
+        # Räder drehen, aber laut Lidar kein Vorankommen: Dort steckt etwas,
+        # das keiner sieht. Die Stelle merken, damit er nicht gleich wieder
+        # hineinfährt, und weg davon freischieben -- in jedem Modus.
+        fest = self._fortschritt.pruefen(jetzt, scan)
+        if fest is not None:
+            self._phantom_setzen(fest, jetzt)
+            return self._befreien_beginnen(jetzt, punkte, fest.anlass, weg_von=fest.richtung_grad)
+
         if karte:
+            # Beim Kartieren gibt es kein "Geradeaus" mit Erholungszeit; also
+            # zählen die Befreiungen neu, wenn eine Weile keine nötig war.
+            if self._befreiungen and jetzt - self._befreit_zuletzt >= config.FORTSCHRITT_ERHOLT_S:
+                self._befreiungen = 0
             befehl = self._kartierfahrt.schritt(jetzt, scan, punkte)
             self._setzen(KARTIERT, self._kartierfahrt.anzeige())
             if befehl is None:
@@ -606,16 +655,21 @@ class Erkunder:
     # --- Befreien ----------------------------------------------------------------
 
     def _befreien_beginnen(
-        self, jetzt: float, punkte, anlass: str, vorwaerts: bool = True
+        self, jetzt: float, punkte, anlass: str, vorwaerts: bool = True,
+        weg_von: float | None = None,
     ) -> DriveCommand | None:
         """Ohne Drehung in die freieste Richtung schieben.
 
         ``vorwaerts=False`` schließt die vordere Hälfte aus: Steckt er fest,
         obwohl vorn frei aussieht, ist dort etwas, das der Lidar nicht sieht.
+        ``weg_von`` (Grad) tut dasselbe für eine beliebige Richtung -- die,
+        in die er laut Fortschrittswache nicht vorankam.
         """
         self._frei_seit = None
         self._fest_start = None
         self._fest_still_s = 0.0
+        self._befreit_zuletzt = jetzt
+        self._fortschritt.zuruecksetzen()
         if self._befreiungen >= config.EXPLORE_BEFREIEN_MAX:
             self._grund = f"festgefahren -- {self._befreiungen} Befreiungsversuche ohne Erfolg"
             log.warning("Erkundung: %s (%s)", self._grund, anlass)
@@ -627,7 +681,8 @@ class Erkunder:
         kandidaten = [
             (r, frei_in_richtung(punkte, r, breite))
             for r in _BEFREI_RICHTUNGEN
-            if vorwaerts or abs(r) >= 90
+            if (vorwaerts or abs(r) >= 90)
+            and (weg_von is None or abs((r - weg_von + 180.0) % 360.0 - 180.0) >= 90)
         ]
         r, frei = max(kandidaten, key=lambda k: (k[1], -abs(k[0])))
         if frei < config.EXPLORE_BEFREIEN_FREI_M:
@@ -727,11 +782,37 @@ class Erkunder:
         self._fest_bild = bild
         return None
 
+    def _phantom_setzen(self, fest: Festgefahren, jetzt: float) -> None:
+        """Gedachtes Hindernis knapp vor der Grundfläche, wohin er nicht kam.
+
+        Eine Punktreihe quer zur Fahrtrichtung, so breit wie der Roboter:
+        Ausweichen, Kartierfahrt und Fahrschutz halten dann Abstand, bis sie
+        verfällt. Beim Drehen gibt es keine Richtung -- dann nur befreien.
+        """
+        if self._hindernisse is None or fest.richtung_grad is None:
+            return
+        import numpy as np
+
+        a = math.radians(fest.richtung_grad)
+        c, s = math.cos(a), math.sin(a)
+        # Abstand bis zum Rand der Grundfläche in dieser Richtung.
+        laengs = config.ROBOTER_VORN_M if c >= 0 else config.ROBOTER_HINTEN_M
+        quer = config.ROBOTER_HALBE_BREITE_M
+        rand = min(laengs / abs(c) if abs(c) > 1e-6 else math.inf,
+                   quer / abs(s) if abs(s) > 1e-6 else math.inf)
+        d = rand + 0.03
+        versatz = np.arange(-quer, quer + 1e-6, 0.03)
+        punkte = np.column_stack((d * c - versatz * s, d * s + versatz * c))
+        self._hindernisse.phantom(punkte, jetzt)
+        log.info("Erkundung: Phantom-Hindernis bei %+.0f° gemerkt", fest.richtung_grad)
+
     # --- Hochgehoben -------------------------------------------------------------
 
     def _hochgehoben(self) -> None:
         """Alles vergessen, was am alten Ort galt -- danach beginnt er neu."""
         self._gedaechtnis.leeren()
+        if self._hindernisse is not None:
+            self._hindernisse.leeren()
         self._ziel_kurs = None
         self._nah_seit = None
         self._frei_seit = None

@@ -54,12 +54,14 @@ from ..navigation import Erkunder, Hinderniserkennung, Homing, Localizer, Manoev
 from ..navigation import manoever as mv
 from ..navigation.explorer import KARTE
 from ..navigation.kartierfahrt import Kartierfahrt
+from ..navigation.hindernisgedaechtnis import Hindernisgedaechtnis
 from ..navigation.scan_odometrie import ScanOdometrie
 from ..safety import CollisionGuard, Fahrschutz, SafetyWatchdog
 from ..sensors.camera import CameraService, create_cameras
 from ..sensors.lidar import LidarService, create_lidar
 from ..sensors.personen import Personenerkennung
 from ..sensors.pose import SKELETT, Posenerkennung
+from ..sensors.tiefe import create_tiefe
 
 log = logging.getLogger(__name__)
 
@@ -205,11 +207,32 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     )
     localizer = Localizer(odometry, lidar)
     homing = Homing(watchdog, odometry, localizer)
+    # Tiefenkamera (Astra) für das, was unter der Lidar-Ebene liegt:
+    # Stuhlbeine, Tischkanten. Ihr Gedächtnis rechnet die Punkte mit der
+    # eigenen Bewegung nach -- beim Kartieren mit der Lidar-Odometrie, sonst
+    # mit der Odometrie. scan_odometrie wird erst unten angelegt, daher
+    # der Umweg über die Liste.
+    tiefe = create_tiefe(use_mock_camera)
+    scan_odo_ref: list = []
+
+    def lage_quelle():
+        so = scan_odo_ref[0] if scan_odo_ref else None
+        if so is not None and so.laeuft:
+            alter = so.alter()
+            p = so.pose()
+            if p is not None and alter is not None and alter < 1.0:
+                return "lidar", p
+        x, y, grad = odometry.pose()
+        return "rad", (x, y, math.radians(grad))
+
+    hindernisse = Hindernisgedaechtnis(tiefe, lage_quelle)
     # Fahrschutz: prüft jeden autonomen Befehl über die Grundfläche des
     # Roboters (im Watchdog, quelle="autonom") und die Handsteuerung, wenn
     # der Hindernisstopp an ist. Ohne Lidar gibt es ihn nicht -- dann
     # fahren nur Heimfahrt (blind wie bisher) und Hand.
-    fahrschutz = Fahrschutz(lidar) if lidar is not None else None
+    fahrschutz = (
+        Fahrschutz(lidar, zusatz=hindernisse) if lidar is not None else None
+    )
     watchdog.fahrschutz = fahrschutz
     guard = CollisionGuard(localizer, fahrschutz)
     erkennung = Hinderniserkennung()
@@ -221,9 +244,11 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     # kommt aus dem Lidar, weil die IMU am X3 keine liefert. Gestartet wird
     # sie vom MappingManager, nur solange kartiert wird.
     scan_odometrie = ScanOdometrie(lidar, odometry)
+    scan_odo_ref.append(scan_odometrie)
     erkunder = Erkunder(
         watchdog, lidar, erkennung, personen, odometry=odometry,
         kartierfahrt=Kartierfahrt(scan_odometrie),
+        hindernisse=hindernisse, tiefe=tiefe,
     )
     manoever = Manoever(watchdog, driver, lidar)
     pose = Posenerkennung(personen_kamera, mock=use_mock_camera)
@@ -282,6 +307,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             kamera.start()
         personen.start()
         pose.start()  # rechnet erst, wenn die Interaktion läuft
+        if tiefe is not None:
+            tiefe.start()  # Kamera bleibt aus, bis eine Fahrt sie braucht
         stimme.start()
         # Hörbarer Selbsttest: Wer den Roboter einschaltet, weiß sofort,
         # ob der Lautsprecher geht.
@@ -365,6 +392,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             stimme.stop()
             for kamera in kameras.values():
                 kamera.stop()
+            if tiefe is not None:
+                tiefe.stop()
             if lidar is not None:
                 lidar.stop()
             # Vor dem Trennen beenden, sonst meldete sie das Abschalten
@@ -608,6 +637,31 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         if lidar is None:
             return {"lidar": None, "hinweis": "LIDAR_ENABLED ist False"}
         return {**lidar.status(), "ortung": localizer.status()}
+
+    # --- Tiefenkamera ---
+
+    @app.get("/tiefe/status")
+    async def tiefe_status():
+        """Tiefenkamera und Hindernisgedächtnis (Stuhlbeine, Phantome)."""
+        return {
+            "kamera": tiefe.status() if tiefe is not None else None,
+            "hinweis": None if tiefe is not None else (
+                "Simulation" if use_mock_camera else
+                "aus (TIEFE_AKTIV) oder OpenNI2 fehlt, siehe scripts/orbbec_einrichten.sh"
+            ),
+            "gedaechtnis": hindernisse.status(),
+            "fortschritt_aktiv": config.FORTSCHRITT_AKTIV,
+        }
+
+    @app.post("/tiefe/test")
+    async def tiefe_test():
+        """Kamera für 20 s einschalten -- um Bodenerkennung und Einbaulage im
+        Stand zu prüfen. Sonst läuft sie nur während autonomer Fahrten."""
+        if tiefe is None:
+            return {"ok": False, "hinweis": "keine Tiefenkamera"}
+        tiefe.aktivieren("test", True)
+        asyncio.get_running_loop().call_later(20.0, tiefe.aktivieren, "test", False)
+        return {"ok": True, "hinweis": "an für 20 s, dann /tiefe/status abfragen"}
 
     @app.get("/lidar/scan")
     async def lidar_scan():
