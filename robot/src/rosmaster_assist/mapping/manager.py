@@ -38,8 +38,10 @@ from typing import Any
 
 from .. import config
 from .einspeisung import Einspeisung
+from .karte import Karte, zusatz_lesen, zusatz_schreiben
 from .map_service import MapService
 from .ros_bridge import ROSMapBridge
+from .simulation import SimKartierung
 
 
 class MappingManager:
@@ -57,6 +59,8 @@ class MappingManager:
         docker_bin: str | None = None,
         lidar=None,
         scan_odometrie=None,
+        ortung=None,
+        simulation: bool = False,
     ) -> None:
         self.container = container or os.getenv("ROSMAP_CONTAINER", config.MAP_CONTAINER)
         self.setup_file = setup_file or os.getenv("ROSMAP_ROS_SETUP", config.MAP_ROS_SETUP)
@@ -85,6 +89,14 @@ class MappingManager:
             Einspeisung(lidar, scan_odometrie, self.container, self.setup_file, self.docker_bin)
             if scan_odometrie is not None
             else None
+        )
+        # Lage in der Karte (navigation/kartenortung.py). Sie bekommt die
+        # Karte vom Server-Takt; hier wird sie nur vor einer neuen Kartierung
+        # geleert und mit gespeicherten Karten versorgt.
+        self.ortung = ortung
+        # --mock: Karte in Python statt slam_toolbox im Container.
+        self.simulation = (
+            SimKartierung(scan_odometrie) if simulation and scan_odometrie is not None else None
         )
         self._lock = threading.RLock()
         self._started_at: float | None = None
@@ -244,6 +256,19 @@ class MappingManager:
     def start(self) -> dict[str, Any]:
         """Ensure x3 is running, then start the map subscriber and SLAM."""
         with self._lock:
+            # Jede Kartierung beginnt einen neuen Kartenrahmen am jetzigen
+            # Standort. Eine geladene Karte (samt Lage darin) gehört nicht
+            # mehr dazu; und die Lidar-Odometrie soll neu bei (0, 0) beginnen,
+            # wo auch slam_toolbox seinen Ursprung setzt.
+            if self.ortung is not None:
+                self.ortung.entladen()
+            if self.simulation is not None:
+                if self.scan_odometrie is not None:
+                    self.scan_odometrie.start()
+                self.simulation.start()
+                self._started_at = time.time()
+                self._last_error = None
+                return self.status()
             try:
                 self._ensure_container()
                 self._slam_paket_pruefen()
@@ -271,6 +296,12 @@ class MappingManager:
     def stop(self) -> dict[str, Any]:
         """Stop SLAM and the ROS map subscriber; leave Docker container up."""
         with self._lock:
+            if self.simulation is not None:
+                self.simulation.stop()
+                if self.scan_odometrie is not None:
+                    self.scan_odometrie.stop()
+                self._started_at = None
+                return self.status()
             try:
                 self._stop_slam()
             finally:
@@ -287,26 +318,78 @@ class MappingManager:
         """Gestartet und nicht gestoppt (SLAM kann trotzdem abgestürzt sein)."""
         return self._started_at is not None
 
-    def get_map(self) -> dict[str, Any] | None:
+    def kartierte_karte(self) -> dict[str, Any] | None:
+        """Die Karte aus der (laufenden oder letzten) Kartierung."""
+        if self.simulation is not None:
+            return self.simulation.get_latest_map()
         return self.bridge.get_latest_map()
+
+    def get_map(self) -> dict[str, Any] | None:
+        """Was die Seite /map zeigen soll: die Karte, mit der er gerade fährt.
+
+        Ist eine gespeicherte Karte geladen, ist es diese, sonst die aus
+        der Kartierung.
+        """
+        if self.ortung is not None and self.ortung.karte is not None and not self.ortung.live:
+            return self.ortung.karte.als_payload()
+        return self.kartierte_karte()
 
     def wait_for_map(self, timeout: float = 10.0) -> dict[str, Any] | None:
         return self.bridge.wait_for_map(timeout=timeout)
 
     def save_map(self, name: str | None = None) -> dict[str, Any]:
-        """Save the most recent received map to PGM + YAML on the Pi host."""
+        """Save the most recent received map to PGM + YAML on the Pi host.
+
+        Dazu kommt eine kleine JSON-Datei mit dem Ausgangspunkt der Karte
+        ("zu Hause"): Dort wird nach dem Laden zuerst nach der eigenen Lage
+        gesucht, und dorthin fährt die Heimfahrt mit Karte.
+        """
         payload = self.get_map()
         if payload is None:
             raise RuntimeError(
                 "Es liegt noch keine Karte vor. Starte das Mapping und warte, "
                 "bis ROS ein /map-Topic veröffentlicht."
             )
-        return self.map_service.save_map(payload, name=name)
+        ergebnis = self.map_service.save_map(payload, name=name)
+        start = list(self.ortung.start) if self.ortung is not None else [0.0, 0.0, 0.0]
+        zusatz_schreiben(ergebnis["yaml"], {"start": start, "gespeichert": time.time()})
+        return ergebnis
 
     def list_maps(self) -> list[dict[str, Any]]:
         return self.map_service.list_maps()
 
+    def load_map(self, name: str) -> dict[str, Any]:
+        """Gespeicherte Karte laden, um darin zu fahren (Ortung sucht dann die Lage)."""
+        if self.ortung is None:
+            raise RuntimeError("Ortung in der Karte ist nicht eingerichtet.")
+        if self.aktiv:
+            raise RuntimeError("Erst das Mapping stoppen: Gerade entsteht eine neue Karte.")
+        eintrag = next((m for m in self.list_maps() if m["name"] == name), None)
+        if eintrag is None or not eintrag.get("image"):
+            raise ValueError(f"Karte '{name}' nicht gefunden.")
+        karte = Karte.laden(eintrag["yaml"])
+        start = zusatz_lesen(eintrag["yaml"]).get("start") or [0.0, 0.0, 0.0]
+        self.ortung.karte_setzen(karte, start=tuple(float(v) for v in start[:3]), live=False)
+        return {"name": karte.name, "breite": karte.breite, "hoehe": karte.hoehe,
+                "aufloesung": karte.aufloesung, "start": start}
+
+    def start_merken(self, start) -> None:
+        """Neuer Ausgangspunkt für die geladene Karte -- auch in ihrer Datei."""
+        if self.ortung is None or self.ortung.karte is None:
+            return
+        self.ortung.start_setzen(start)
+        name = self.ortung.karte.name
+        if not name or self.ortung.live:
+            return
+        eintrag = next((m for m in self.list_maps() if m["name"] == name), None)
+        if eintrag is not None:
+            daten = zusatz_lesen(eintrag["yaml"])
+            daten["start"] = [float(v) for v in start[:3]]
+            zusatz_schreiben(eintrag["yaml"], daten)
+
     def status(self) -> dict[str, Any]:
+        if self.simulation is not None:
+            return self._status_simulation()
         try:
             container_running = self._container_running()
         except Exception as exc:
@@ -347,6 +430,39 @@ class MappingManager:
             "slam_log": slam_log,
             "hinweis": hinweis,
             "hinweis_fehler": hinweis_fehler,
+        }
+
+    def _status_simulation(self) -> dict[str, Any]:
+        """Dieselben Felder wie ``status()``, ohne Docker zu fragen."""
+        sim = self.simulation.status()
+        aktiv = self._started_at is not None
+        if not aktiv:
+            hinweis = "Mapping ist gestoppt."
+        elif not sim["map_available"]:
+            hinweis = "Simulation: warte auf die erste Karte …"
+        else:
+            hinweis = (f"Simulation: Karte aus dem simulierten Lidar "
+                       f"({sim['scans']} Aufnahmen, ohne slam_toolbox).")
+        return {
+            "container": "simulation",
+            "container_running": False,
+            "mapping_running": sim["running"],
+            "bridge_running": sim["running"],
+            "map_available": sim["map_available"],
+            "map_topic": self.map_topic,
+            "last_map_at": sim["last_map_at"],
+            "started_at": self._started_at,
+            "error": self._last_error,
+            "slam_log_file": None,
+            "aktiv": aktiv,
+            "einspeisung": None,
+            "lidar_odometrie": (
+                self.scan_odometrie.status() if self.scan_odometrie is not None else None
+            ),
+            "slam_log": [],
+            "hinweis": hinweis,
+            "hinweis_fehler": False,
+            "simulation": True,
         }
 
     def _hinweis(

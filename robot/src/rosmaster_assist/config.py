@@ -4,6 +4,7 @@ Alle Werte, die man beim Ausprobieren verstellen will, stehen hier -- nicht
 verstreut im Code. Wer am Fahrverhalten schraubt, muss nur diese Datei öffnen.
 """
 
+import os
 from pathlib import Path
 
 # --- Serielle Verbindung zum Expansion Board ---------------------------------
@@ -260,8 +261,139 @@ MAP_FAHRT_INSEL_M = 5.0
 # Räume: dann kommt er vielleicht nie zurück).
 MAP_FAHRT_RAND_MAX_S = 300.0
 
-# Höchstdauer der ganzen Kartierfahrt (s), danach hält er an.
-MAP_FAHRT_MAX_S = 1200.0
+# Höchstdauer der ganzen Kartierfahrt (s), danach hält er an. Mit dem
+# Weiterfahren in andere Räume (MAP_LUECKE_*) dauert eine Wohnung länger
+# als ein Zimmer.
+MAP_FAHRT_MAX_S = 3600.0
+
+# Ist das erste Zimmer abgefahren (oder kommt er dort nicht weiter), hört
+# er nicht auf, sondern fährt die nächste Stelle an, an der die Karte ins
+# Unbekannte übergeht -- offene Türen, Flure, Schatten hinter Möbeln. Erst
+# wenn keine solche Stelle mehr erreichbar ist, ist die Karte fertig.
+MAP_LUECKE_AKTIV = True
+# Kleinere Übergänge ins Unbekannte (m) sind Messlücken, keine Durchgänge.
+MAP_LUECKE_MIN_M = 0.4
+# So nah (m) an eine angefahrene Stelle kommt keine neue Lücke mehr in
+# Frage: Was nach dem Hinfahren noch unbekannt ist, sieht er von dort
+# nicht (Spiegel, Glas, zu weit weg).
+MAP_LUECKE_ERLEDIGT_M = 0.8
+# Ankunft an der Lücke: so nah (m) heranfahren genügt, der Lidar sieht
+# von dort weit hinein.
+MAP_LUECKE_NAH_M = 0.5
+# So viele Lücken in Folge darf er verfehlen (blockiert, kein Weg), bevor
+# die Kartierfahrt endet.
+MAP_LUECKE_MAX_FEHLER = 6
+# Am Ende zum Ausgangspunkt der Karte zurückfahren -- dort steht er dann
+# für die nächste Fahrt mit dieser Karte richtig.
+MAP_FAHRT_ZURUECK = True
+
+# Beim Kartieren länger auf den Lidar warten als beim Zufallsfahren (s):
+# Der A1 meldet sich am X3 bei Spannungseinbrüchen ab und wieder an, und
+# eine lange Kartierfahrt soll daran nicht enden.
+MAP_FAHRT_LIDAR_WARTEN_S = 30.0
+# Fällt der Antrieb während der Kartierfahrt aus (USB-Reset), hält er an
+# und fährt nach dem Neuverbinden weiter, wenn das binnen so vieler
+# Sekunden geschieht. SLAM und Karte laufen währenddessen weiter.
+MAP_FAHRT_WIEDER_S = 60.0
+# Schließen alle Seiten (/map und App), wartet er so lange (s), bevor er
+# anhält: Ein Handy, dessen Bildschirm kurz ausgeht, soll die Fahrt nicht
+# beenden. Danach gilt wieder: Ohne Zuschauer fährt er nicht.
+MAP_ZUSCHAUER_WARTEN_S = 20.0
+
+# --- Karte nutzen: Ortung, Planung, Fahrt zum Ziel ------------------------------
+#
+# Ist eine Karte da (beim Kartieren live, danach gespeichert), weiß der
+# Roboter, wo er in ihr steht, und fährt auf Wunsch zu einem Punkt auf der
+# Karte (Begründung: E12 in docs/entscheidungen.md).
+
+# So oft (Hz) wird die Lidar-Aufnahme auf die Karte gelegt.
+KARTE_ORTUNG_HZ = 4.0
+# Bis zu dieser Entfernung (m) zählt ein Kartenpunkt als getroffen. Das
+# Abstandsfeld der Karte endet bei KARTE_ABSTAND_MAX_M.
+KARTE_TREFFER_M = 0.15
+KARTE_ABSTAND_MAX_M = 1.0
+# Mindestanteil getroffener Punkte, damit ein Abgleich zählt. Möbel, die
+# verrückt wurden, und Menschen treffen nichts -- deshalb nicht 100 %.
+KARTE_MIN_ANTEIL = 0.45
+# Mehr als so weit (m, Grad) darf ein Abgleich die Lage nicht versetzen,
+# sonst hat er wahrscheinlich eine falsche, ähnliche Stelle gefunden.
+KARTE_MAX_SPRUNG_M = 0.4
+KARTE_MAX_SPRUNG_GRAD = 20.0
+# Gewicht eines gelungenen Abgleichs (0..1). Kleiner: ruhiger, folgt aber
+# langsamer.
+KARTE_VERTRAUEN = 0.5
+# So lange (s) ohne gelungenen Abgleich gilt die Lage als unsicher. Fahrten
+# zum Ziel halten dann an.
+KARTE_SICHER_S = 4.0
+# Suche nach der eigenen Lage (nach dem Laden einer Karte, nach dem
+# Hochheben): so weit (m) um den Hinweis herum, in diesem Raster.
+KARTE_SUCH_RADIUS_M = 1.5
+KARTE_SUCH_RASTER_M = 0.1
+KARTE_SUCH_GRAD = 5.0
+# Mindestanteil getroffener Punkte, damit eine Suche zählt: Sucht er von
+# selbst (nach dem Laden, nach dem Hochheben), muss es ein klarer Treffer
+# sein -- rechteckige Zimmer sehen sich ähnlich, eine falsche Lage wäre
+# schlimmer als keine. Hat jemand auf der Karte gezeigt, wo er steht, reicht
+# weniger.
+KARTE_SUCH_MIN_ANTEIL = 0.8
+KARTE_HINWEIS_MIN_ANTEIL = 0.6
+# Passt eine deutlich andere Lage (weiter als so viele m bzw. Grad) fast
+# genauso gut (bis auf so viel Anteil), ist die Suche mehrdeutig: dann
+# lieber nachfragen.
+KARTE_MEHRDEUTIG_M = 0.5
+KARTE_MEHRDEUTIG_GRAD = 30.0
+KARTE_MEHRDEUTIG_ANTEIL = 0.05
+
+# Pfadplanung: auf einem gröberen Raster (m) als die Karte, das reicht für
+# Wege und rechnet am Pi in Sekundenbruchteilen.
+KARTE_PLAN_AUFLOESUNG_M = 0.1
+# Näher (m, ab Lidar-Mitte) führt kein Weg an einer Wand vorbei: halbe
+# Roboterdiagonale (0,21 m) plus Rand. Ein Durchgang braucht also 0,5 m.
+KARTE_SICHERHEIT_M = 0.25
+# Bis zu diesem Abstand (m) kostet die Nähe zur Wand extra -- Wege laufen
+# so durch die Türmitte und nicht an der Kante entlang.
+KARTE_WUNSCH_ABSTAND_M = 0.5
+KARTE_WANDKOSTEN = 3.0
+# Liegt das Ziel in einer Wand oder zu nah daran, wird es bis so weit (m)
+# auf die nächste befahrbare Stelle verschoben.
+KARTE_ZIEL_FANG_M = 0.6
+
+# Fahrt entlang des Weges.
+KARTE_FAHRT_TEMPO = 0.25
+KARTE_DREH_MAX = 0.6  # rad/s, zum Ausrichten in Fahrtrichtung
+# Wegpunkt erreicht, wenn er so nah (m) ist; Ziel erreicht bei
+# KARTE_ZIEL_TOLERANZ_M.
+KARTE_WEGPUNKT_M = 0.3
+KARTE_ZIEL_TOLERANZ_M = 0.15
+KARTE_ZIEL_GRAD = 8.0
+# Weiter als das (m) vom Weg abgekommen: neu planen.
+KARTE_ABWEICHUNG_M = 0.7
+# Ist der Weg so lange (s) versperrt, plant er drumherum neu; die
+# versperrte Stelle gilt dabei für KARTE_SPERRE_S als Wand.
+KARTE_BLOCKIERT_S = 3.0
+KARTE_SPERRE_S = 60.0
+KARTE_SPERRE_RADIUS_M = 0.3
+# So oft in Folge neu planen, dann aufgeben.
+KARTE_MAX_NEUPLANUNG = 5
+# Höchstdauer einer Fahrt zum Ziel: so viele Sekunden je Meter Weg, aber
+# mindestens KARTE_FAHRT_MIN_S.
+KARTE_FAHRT_S_JE_M = 12.0
+KARTE_FAHRT_MIN_S = 60.0
+
+# Gespeicherte Spur in der Anzeige: ein Punkt je so viel Meter, höchstens
+# so viele Punkte.
+KARTE_SPUR_M = 0.1
+KARTE_SPUR_MAX = 3000
+
+# Kartierung in der Simulation (--mock): kein Docker, kein slam_toolbox.
+# Die Karte entsteht dann in Python aus dem simulierten Lidar, damit die
+# Seite /map und alles, was die Karte nutzt, am Schreibtisch läuft.
+MAP_SIM_AUFLOESUNG_M = 0.05
+MAP_SIM_HZ = 2.0
+# Gedachte Wohnung statt eines Zimmers: eine Zwischenwand mit Tür. Für die
+# Weiterfahrt in den Nachbarraum (--mock, Tests). Einschalten ohne die
+# Datei zu ändern: ROSMASTER_MOCK_WOHNUNG=1 python main.py --mock
+MOCK_ZWISCHENWAND = os.environ.get("ROSMASTER_MOCK_WOHNUNG") == "1"
 
 # Kommt so lange (s) nach dem Start keine Karte, meldet die Seite das
 # zusammen mit dem SLAM-Protokoll. slam_toolbox veröffentlicht die Karte

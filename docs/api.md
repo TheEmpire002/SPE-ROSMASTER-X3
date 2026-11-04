@@ -166,8 +166,12 @@ Reihenfolge:
 | `explore_stop` | – | Autonomes Fahren beenden und anhalten. | `alert` an alle |
 | `move` | `richtung`: `"vor"` / `"zurueck"` / `"links"` / `"rechts"`, `meter` (0 < m ≤ 5) | Genau so weit fahren, links/rechts seitwärts (siehe „Genaue Fahrbefehle im Detail“). Braucht den Lidar; bricht Heimfahrt, autonomes Fahren und Interaktion ab. Abbrechen mit `stop` oder einer Fahreingabe ≠ 0. | `alert` an alle, am Ende `alert` mit Ergebnis (warning, wenn nicht geschafft); sonst `alert` (warning) |
 | `turn` | `grad` (+ = links, − = rechts, Betrag 1–720) | Auf der Stelle um genau diesen Winkel drehen. Sonst wie `move`. | wie `move` |
-| `home` | – | Selbstständig zum Startpunkt zurückfahren (siehe unten). | `alert` an alle |
+| `home` | – | Selbstständig zum Startpunkt zurückfahren (siehe unten). Mit Karte und sicherer Lage darin: auf geplantem Weg zum Ausgangspunkt der Karte. | `alert` an alle |
 | `home_cancel` | – | Heimfahrt abbrechen und anhalten. | `alert` an alle |
+| `goto` | `x`, `y` (m im Kartenrahmen), `winkel` (Grad, optional: Blickrichtung am Ziel) | Zu diesem Punkt der Karte fahren, auf geplantem Weg um Wände herum (neu 04.11., siehe „Karte nutzen“ unter Kartierung). Braucht eine Karte und eine sichere Lage darin; bricht andere Fahrten ab. Läuft technisch als Heimfahrt mit Ziel: `state.homing` ist `true`, `stop`, `home_cancel` und Fahreingaben beenden sie. | `alert` an alle; ohne Karte/Lage `alert` (warning) mit Grund |
+| `goto_cancel` | – | Fahrt zum Ziel abbrechen und anhalten (wie `home_cancel`). | – |
+| `map_pose` | `x`, `y` (m), `winkel` (Grad, optional) | „Hier stehe ich“: Die Ortung sucht die eigene Lage im Umkreis dieses Punkts (mit `winkel` enger). Für den Fall, dass sie sich nach dem Laden einer Karte nicht selbst findet. | `alert` (info); ohne Karte `alert` (warning) |
+| `map_load` | `name` (gespeicherte Karte) | Gespeicherte Karte laden, um darin zu fahren. Die Ortung sucht dann die Lage am Ausgangspunkt der Karte. Nicht während einer Kartierung. | `alert` (info/warning) |
 | `interaction_start` | – | Interaktionsmodus an: Der Roboter wartet auf Handzeichen (siehe „Interaktion im Detail“). Braucht Lidar und Posenerkennung; bricht Heimfahrt und autonomes Fahren ab. | `alert` an alle; sonst `alert` (warning) |
 | `interaction_stop` | – | Interaktionsmodus aus und anhalten. | `alert` an alle |
 | `follow` | `ziel_id` (optional, Zahl) | „Folge mir“ ohne Geste. Schaltet den Interaktionsmodus bei Bedarf mit ein. Mit `ziel_id` (die `id` einer Person aus `/interaktion/pose`) folgt er genau dieser Person, auch als Wechsel während des Folgens. Ist sie nicht mehr im Bild, lehnt er ab. | `alert` an alle |
@@ -178,7 +182,7 @@ Reihenfolge:
 | `say` | `text` (string, höchstens 300 Zeichen), `vorrang` (bool, optional) | Über den Lautsprecher sprechen (siehe „Stimme im Detail“). `vorrang: true` bricht den laufenden Satz ab und leert die Warteschlange. | keine; ohne `text` `error`, ohne Lautsprecher/Synthese `alert` (warning) |
 | `say_stop` | – | Sofort verstummen, Warteschlange leeren. | keine |
 | `speech` | `text` (string) | Text so behandeln, als wäre er ins Mikrofon gesprochen worden (siehe „Sprachbefehle im Detail“). Zum Ausprobieren ohne Mikrofon und in `--mock`. | `alert` „Sprachbefehl: …“ an alle, wenn ein Befehl erkannt wurde; sonst `alert` (info) „Kein Befehl erkannt …“; ohne `text` `error` |
-| `set_home` | – | Aktuelle Stelle wird neuer Startpunkt (0, 0, 0°), Lidar-Referenz wird neu aufgenommen. | `alert` an alle |
+| `set_home` | – | Aktuelle Stelle wird neuer Startpunkt (0, 0, 0°), Lidar-Referenz wird neu aufgenommen. Mit Karte und sicherer Lage wird die Stelle auch Ausgangspunkt der Karte (und in ihrer Datei gemerkt). | `alert` an alle |
 | `collision` | `enabled` (bool, optional), `distance` (m, optional) | Kollisionsvermeidung ein/aus, Mindestabstand. `distance` wird auf 0,15–1,5 m begrenzt. | `collision` an alle |
 | `beep` | `ms` (int, Standard 100) | Buzzer. | keine |
 | `vitals` | `bpm` (Zahl/null), `motion` (bool/null) | Messwerte vom ESP32, werden an alle weitergereicht. | `vitals` an alle |
@@ -216,7 +220,10 @@ er nur noch.
   "autonomie": {"aktiv": false, "verfuegbar": true, "zustand": null, "...": "siehe unten"},
   "interaktion": {"aktiv": false, "verfuegbar": true, "modus": null, "...": "siehe unten"},
   "stimme": {"verfuegbar": true, "spricht": false, "text": "Ich bin bereit."},
-  "sprache": {"verfuegbar": true, "geweckt": false, "gehoert": "robi folgen", "befehl": "folgen"}
+  "sprache": {"verfuegbar": true, "geweckt": false, "gehoert": "robi folgen", "befehl": "folgen"},
+  "karte": {"name": "wohnung", "live": false, "pose": {"x": 2.1, "y": -0.4, "winkel": 87.0},
+            "sicher": true, "text": "Lage in der Karte bekannt",
+            "fahrt": {"aktiv": true, "art": "ziel", "ziel": [3.5, -1.0], "rest_m": 2.4, "grund": null}}
 }
 ```
 
@@ -233,6 +240,7 @@ er nur noch.
 | `interaktion` | Interaktionsmodus (Handzeichen, Folgen), siehe „Interaktion im Detail“. Fehlt bei älteren Servern. |
 | `stimme` | Sprachausgabe: `verfuegbar` (es kommt Ton heraus), `spricht` (gerade ein Satz), `text` (zuletzt gesagter Satz oder `null`). Siehe „Stimme im Detail“. Fehlt bei älteren Servern. |
 | `sprache` | Sprachbefehle: `verfuegbar` (Mikrofon und Modell bereit), `geweckt` („Robi“ wurde gerade allein gesagt, der nächste Satz braucht keinen Namen), `gehoert` (zuletzt verstandener Satz oder `null`), `befehl` (erkannter Befehl, wenige Sekunden lang, sonst `null`). Siehe „Sprachbefehle im Detail“. Fehlt bei älteren Servern. |
+| `karte` | Nur, wenn eine Karte da ist (neu 04.11.): `name` (gespeicherte Karte, `null` bei der Live-Karte der Kartierung), `live`, `pose` (Lage **im Kartenrahmen**, nicht zu verwechseln mit `pose` oben im Odometrie-Rahmen; `null`, solange unbekannt), `sicher` (nur dann geht `goto`), `text`, `fahrt` (laufende oder letzte Fahrt nach Karte: `art` `"heim"`/`"ziel"`, `ziel`, `rest_m`, `grund`). Siehe „Karte nutzen“ unter Kartierung. |
 
 **`collision`**: beim Verbinden und nach jeder Änderung, Felder wie
 `state.collision`.
@@ -274,6 +282,22 @@ der Roboter dafür nicht drehen. Die Werte stehen in `config.py`:
 - ohne frischen Lidar-Scan hält er wie früher an, sobald etwas näher als
   0,45 m in Fahrtrichtung steht
 - endet mit einem `alert` „Heimfahrt: …“ und `state.homing = false`
+
+**Mit Karte (neu 04.11.):** Ist eine Karte geladen und `state.karte.sicher`,
+fährt `home` nicht mehr geradewegs, sondern auf einem geplanten Weg zum
+**Ausgangspunkt der Karte** (dort begann die Kartierung, oder wo zuletzt
+`set_home` gedrückt wurde) -- durch Türen, in andere Räume. Dieselbe Fahrt
+steckt hinter `goto`. Unterschiede zur Fahrt ohne Karte:
+- Tempo `KARTE_FAHRT_TEMPO` (0,25 m/s), dreht sich langsam in Fahrtrichtung,
+  am Ziel auf Wunsch in die verlangte Blickrichtung
+- angekommen bei `KARTE_ZIEL_TOLERANZ_M` (0,15 m)
+- Steht etwas im Weg, das die Karte nicht kennt, schiebt er vorbei wie oben;
+  geht das `KARTE_BLOCKIERT_S` (3 s) lang nicht, trägt er die Stelle für
+  60 s als Wand ein und plant drumherum (höchstens 5-mal)
+- verliert er die Lage in der Karte länger als 4 s, oder wird er
+  hochgehoben, hält er an (`alert` „… Lage in der Karte verloren“)
+- Zeitgrenze nach Weglänge (12 s je Meter, mindestens 60 s)
+- endet mit `alert` „Heimfahrt: …“ bzw. „Fahrt zum Ziel: …“
 
 ### Autonomes Fahren im Detail
 
@@ -928,7 +952,18 @@ Bedienoberfläche: `GET /map`.
 | `GET /api/mapping/map` | letzte Karte (`nav_msgs/OccupancyGrid`, Zellen als Base64), 404 vor der ersten |
 | `POST /api/mapping/save` | speichert die letzte Karte als PGM + YAML, Body `{"name": "wohnzimmer"}` |
 | `GET /api/mapping/maps` | gespeicherte Karten |
-| `WS /api/mapping/ws` | alle 3 s `{"type": "status"}`, bei jeder neuen Karte `{"type": "map"}`, bei Änderungen der Kartierfahrt `{"type": "fahrt"}` |
+| `POST /api/mapping/laden` | gespeicherte Karte laden, um darin zu fahren, Body `{"name": "wohnzimmer"}`; 404 unbekannt, 409 während einer Kartierung |
+| `GET /api/mapping/ortung` | Lage in der Karte, Spur, laufende Fahrt, offene Lücken (siehe „Karte nutzen“) |
+| `POST /api/mapping/ziel` | zu einem Punkt fahren, Body `{"x": 2.5, "y": -1.0, "winkel": 90}` (`winkel` optional); 409 mit Grund, wenn es nicht geht |
+| `POST /api/mapping/ziel/stop` | Fahrt zum Ziel abbrechen |
+| `POST /api/mapping/pose` | „Hier stehe ich“, Body wie bei `ziel`: Lage dort suchen |
+| `WS /api/mapping/ws` | alle 3 s `{"type": "status"}`, bei jeder neuen Karte `{"type": "map"}`, bei Änderungen der Kartierfahrt `{"type": "fahrt"}`, bei Änderungen der Lage `{"type": "ortung"}` (Inhalt wie `GET /api/mapping/ortung`) |
+
+`GET /api/mapping/map` und die `map`-Pakete liefern die Karte, **mit der er
+gerade fährt**: die Live-Karte der Kartierung oder, wenn eine gespeicherte
+Karte geladen ist, diese. Neben `<name>.pgm` und `<name>.yaml` legt
+`save` eine `<name>.json` mit dem Ausgangspunkt der Karte ab
+(`{"start": [x, y, Bogenmaß]}`).
 
 Für die Rückmeldung im Status:
 
@@ -960,12 +995,76 @@ sondern fährt vor, rutscht seitlich weiter und fährt rückwärts zurück
 mitten im Raum: Er verlässt es und sucht die Wand. Werte: `MAP_FAHRT_*` in
 `config.py`.
 
+**Raum für Raum (neu 04.11.):** Ist das Zimmer fertig, hört er nicht auf.
+Er fährt zur nächsten Stelle, an der die Karte ins Unbekannte übergeht
+(offene Tür, Flur, Schatten hinter Möbeln; „Lücke“), sieht sich dort um und
+sucht die nächste -- bis keine erreichbare mehr übrig ist. Dann fährt er zum
+Ausgangspunkt zurück und meldet „Kartierfahrt fertig -- Karte vollständig
+(n Lücken angefahren), zurück am Ausgangspunkt“. Auch wenn er im Zimmer
+nicht weiterkommt (keine Wand in Sicht, festgefahren, der Fahrschutz lässt
+nichts durch), endet die Fahrt nicht mehr, sondern geht zur nächsten Lücke.
+Unerreichbare Lücken überspringt er; erst nach `MAP_LUECKE_MAX_FEHLER` (6)
+Fehlschlägen in Folge gibt er auf. `fahrt.luecken` zählt die angefahrenen
+Lücken. Werte: `MAP_LUECKE_*`, `MAP_FAHRT_ZURUECK`. Höchstdauer jetzt
+`MAP_FAHRT_MAX_S` = 1 h.
+
 Technisch ist sie ein Modus des Erkunders (`state.autonomie.modus =
 "karte"`). Deshalb beenden sie dieselben Dinge wie `explore`: `stop`,
-`explore_stop`, jede Fahreingabe ≠ 0, `home`, `set_home`, Interaktion,
-Antriebsverlust. Zusätzlich hält sie an, wenn die letzte Seite `/map`
-geschlossen wird (Totmannschaltung), und mit `POST /api/mapping/stop`. Das
-Ende meldet `alert` „Autonomes Fahren beendet: Kartierfahrt fertig -- …“.
+`explore_stop`, jede Fahreingabe ≠ 0, `home`, `set_home`, Interaktion und
+`POST /api/mapping/stop`. Das Ende meldet `alert` „Autonomes Fahren beendet:
+Kartierfahrt fertig -- …“. Was sie **nicht mehr** beendet (neu 04.11.):
+- *Seite zu:* Erst wenn weder eine Seite `/map` noch die App verbunden ist,
+  hält sie an, und auch dann erst nach `MAP_ZUSCHAUER_WARTEN_S` (20 s). Ein
+  Handy, dessen Bildschirm kurz ausgeht, beendet sie also nicht mehr.
+- *Antrieb kurz weg (USB-Reset):* Sie hält an und fährt nach dem
+  Neuverbinden weiter (direkt zur nächsten Lücke), wenn das binnen
+  `MAP_FAHRT_WIEDER_S` (60 s) geschieht. `fahrt.unterbrochen` ist so lange
+  `true`. Ein `stop` verwirft das Weiterfahren.
+- *Lidar kurz weg:* Sie wartet bis `MAP_FAHRT_LIDAR_WARTEN_S` (30 s), beim
+  Zufallsfahren bleibt es bei 3 s.
+
+**Karte nutzen (neu 04.11.).** Ist eine Karte da, weiß der Roboter, wo er
+in ihr steht. Beim Kartieren gilt das sofort; danach (Mapping gestoppt)
+bleibt die Karte samt Lage erhalten, er kann also gleich darin fahren. Eine
+gespeicherte Karte lädt man mit `POST /api/mapping/laden` bzw. `map_load`;
+dann sucht er seine Lage am Ausgangspunkt der Karte, und wenn er sich dort
+nicht findet, zeigt man sie mit `POST /api/mapping/pose` bzw. `map_pose`
+(auf der Seite `/map`: „Hier stehe ich“, tippen, für die Blickrichtung
+ziehen). Die Ortung legt mehrmals pro Sekunde die Lidar-Aufnahme auf die
+Karte und gleicht so die Drift der Odometrie aus (E12). Sie sagt lieber
+„weiß nicht“ als etwas Falsches: Zwei gleiche leere Zimmer (oder eines, das
+um 180° gedreht genauso aussieht) kann sie nicht unterscheiden; dann fragt
+sie nach.
+
+`GET /api/mapping/ortung`:
+
+```json
+{
+  "ortung": {"karte": true, "name": "wohnung", "live": false,
+             "pose": {"x": 2.1, "y": -0.4, "winkel": 87.0}, "sicher": true, "sucht": false,
+             "text": "Lage in der Karte bekannt", "anteil": 0.93, "residuum_m": 0.031,
+             "start": [0.0, 0.0, 0.0], "abgleiche": 412, "verworfen": 3},
+  "spur": [[0.0, 0.0], [0.1, 0.02], "..."],
+  "fahrt": {"aktiv": true, "art": "ziel", "nach_karte": true, "ziel": [3.5, -1.0],
+            "weg": [[1.2, 1.8], [3.5, -1.0]], "rest_m": 2.4, "grund": null},
+  "kartierfahrt": {"weg": [], "ziel": null},
+  "luecken": [[1.4, 1.85]]
+}
+```
+
+`anteil` ist der Anteil der Lidar-Punkte, die auf eine Wand der Karte
+treffen; unter `KARTE_MIN_ANTEIL` (0,45) zählt ein Abgleich nicht. `sicher`
+heißt: in den letzten 4 s hat einer gepasst. `spur` ist der gefahrene Weg
+(ein Punkt je 10 cm), `luecken` sind die offenen Übergänge ins Unbekannte
+(nur, solange eine Seite `/map` offen ist). Die Seite `/map` zeigt das alles
+auf der Karte und hat die Knöpfe „Hierhin fahren“, „Hier stehe ich“, „Zum
+Ausgangspunkt“ und „Fahrt abbrechen“. Werte: `KARTE_*` in `config.py`.
+
+**In der Simulation** (`--mock`) gibt es weder Docker noch slam_toolbox;
+dann baut der Server die Karte selbst aus dem simulierten Lidar
+(`mapping/simulation.py`, `status.simulation = true`). Mit
+`ROSMASTER_MOCK_WOHNUNG=1` wird aus dem gedachten Zimmer eine Wohnung mit
+zwei Zimmern, Tür und Möbeln -- zum Ausprobieren der Weiterfahrt.
 
 ### Sonstiges
 
@@ -992,7 +1091,11 @@ Alle Endpunkte und Nachrichten verhalten sich wie am Roboter:
   erscheinen im Log.
 - **Lidar:** tastet einen gedachten Raum ab (8 × 6 m mit einer Säule), der
   sich passend zur Fahrt bewegt. Ortung, Heimfahrt und Kollisionsvermeidung
-  lassen sich damit vollständig ausprobieren.
+  lassen sich damit vollständig ausprobieren. Mit `ROSMASTER_MOCK_WOHNUNG=1`
+  zwei Zimmer mit Tür, Schrank und Sofa.
+- **Kartierung:** ohne Docker; die Karte entsteht in Python aus dem
+  simulierten Lidar. Kartierfahrt, Ortung und Fahrt zum Ziel laufen wie am
+  Roboter.
 - **Kamera:** je Kamera (`orientierung`, `personen`) ein bewegtes Testbild.
 
 `driver: "mock"` in der `state`-Nachricht zeigt, dass man in der Simulation

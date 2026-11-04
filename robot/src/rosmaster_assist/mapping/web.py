@@ -25,23 +25,36 @@ class SaveMapRequest(BaseModel):
     name: str | None = Field(default=None, max_length=64)
 
 
+class PunktRequest(BaseModel):
+    """Ein Punkt auf der Karte (m, Kartenrahmen), Blickrichtung optional (Grad)."""
+
+    x: float
+    y: float
+    winkel: float | None = None
+
+
+class LadenRequest(BaseModel):
+    name: str = Field(max_length=64)
+
+
 def create_mapping_router(manager: MappingManager | None = None, fahrt=None) -> APIRouter:
     """Create the mapping routes.
 
     The manager is intentionally created here (not started here). Opening
     /map therefore does not start SLAM; only POST /api/mapping/start does.
 
-    ``fahrt`` steuert die Kartierfahrt (automatisches Abfahren des Raums).
-    Der Server reicht ein Objekt mit ``starten() -> str | None`` (Fehlertext
-    oder None), ``stoppen(grund)``, ``aktiv`` und ``zustand()`` herein: Nur
-    er kennt Watchdog, Heimfahrt und Interaktion, die dafür weichen müssen.
+    ``fahrt`` ist die ``Kartensteuerung`` des Servers (api/kartensteuerung.py):
+    Kartierfahrt starten/stoppen, Karte laden, zu einem Punkt fahren, Lage
+    setzen. Nur der Server kennt Watchdog, Heimfahrt und Interaktion, die
+    dafür weichen müssen. Ohne sie (Tests) gibt es nur Kartierung und Karte.
     """
     mapping_manager = manager or MappingManager()
     router = APIRouter()
-    # Offene /map-Seiten. Die Kartierfahrt wird von dort gestartet und
-    # braucht jemanden, der zusieht: Schließt die letzte, hält er an --
-    # dieselbe Totmannschaltung wie bei der App.
-    seiten = {"offen": 0}
+
+    def _steuerung():
+        if fahrt is None:
+            raise HTTPException(status_code=503, detail="Kartensteuerung ist nicht eingerichtet.")
+        return fahrt
 
     def _status() -> dict[str, Any]:
         status = mapping_manager.status()
@@ -123,6 +136,46 @@ def create_mapping_router(manager: MappingManager | None = None, fahrt=None) -> 
     async def mapping_maps() -> list[dict[str, Any]]:
         return await run_in_threadpool(mapping_manager.list_maps)
 
+    # --- Karte nutzen -------------------------------------------------------------
+
+    @router.post("/api/mapping/laden")
+    async def mapping_laden(request: LadenRequest) -> dict[str, Any]:
+        try:
+            return await run_in_threadpool(_steuerung().laden, request.name)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except OSError as exc:
+            log.exception("Karte konnte nicht geladen werden")
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @router.get("/api/mapping/ortung")
+    async def mapping_ortung() -> dict[str, Any]:
+        return _steuerung().anzeige()
+
+    @router.post("/api/mapping/ziel")
+    async def mapping_ziel(request: PunktRequest) -> dict[str, Any]:
+        steuerung = _steuerung()
+        fehler = steuerung.ziel(request.x, request.y, request.winkel)
+        if fehler:
+            raise HTTPException(status_code=409, detail=fehler)
+        return steuerung.anzeige()
+
+    @router.post("/api/mapping/ziel/stop")
+    async def mapping_ziel_stop() -> dict[str, Any]:
+        steuerung = _steuerung()
+        steuerung.ziel_stop()
+        return steuerung.anzeige()
+
+    @router.post("/api/mapping/pose")
+    async def mapping_pose(request: PunktRequest) -> dict[str, Any]:
+        steuerung = _steuerung()
+        fehler = steuerung.lage_setzen(request.x, request.y, request.winkel)
+        if fehler:
+            raise HTTPException(status_code=409, detail=fehler)
+        return steuerung.anzeige()
+
     @router.websocket("/api/mapping/ws")
     async def mapping_websocket(websocket: WebSocket) -> None:
         """Push the latest map to the browser when a new map arrives."""
@@ -130,7 +183,11 @@ def create_mapping_router(manager: MappingManager | None = None, fahrt=None) -> 
         last_map_received_at: float | None = None
         last_status_at = 0.0
         letzte_fahrt: dict[str, Any] | None = None
-        seiten["offen"] += 1
+        letzte_ortung: dict[str, Any] | None = None
+        # Die Seite zählt als Zuschauer: Schließen alle (und keine App ist
+        # offen), hält eine Kartierfahrt oder Fahrt zum Ziel nach einer Frist an.
+        if fahrt is not None:
+            fahrt.seite_auf()
         try:
             while True:
                 now = asyncio.get_running_loop().time()
@@ -154,6 +211,11 @@ def create_mapping_router(manager: MappingManager | None = None, fahrt=None) -> 
                     if zustand != letzte_fahrt:
                         await websocket.send_json({"type": "fahrt", "data": zustand})
                         letzte_fahrt = zustand
+                    # Wo er in der Karte steht, wohin er fährt.
+                    ortung = fahrt.anzeige()
+                    if ortung != letzte_ortung:
+                        await websocket.send_json({"type": "ortung", "data": ortung})
+                        letzte_ortung = ortung
 
                 payload = await run_in_threadpool(mapping_manager.get_map)
                 if payload is not None:
@@ -172,10 +234,8 @@ def create_mapping_router(manager: MappingManager | None = None, fahrt=None) -> 
             except Exception:
                 pass
         finally:
-            seiten["offen"] -= 1
-            if seiten["offen"] <= 0 and fahrt is not None and fahrt.aktiv:
-                log.warning("Keine /map-Seite mehr offen -- Kartierfahrt hält an")
-                fahrt.stoppen("Seite /map geschlossen")
+            if fahrt is not None:
+                fahrt.seite_zu()
 
     # Expose the instance for optional application shutdown handling.
     router.mapping_manager = mapping_manager  # type: ignore[attr-defined]

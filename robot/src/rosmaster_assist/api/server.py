@@ -53,9 +53,12 @@ from ..protocol import (
 from ..navigation import Erkunder, Hinderniserkennung, Homing, Localizer, Manoever, Odometry
 from ..navigation import manoever as mv
 from ..navigation.explorer import KARTE
+from ..navigation.kartenortung import Kartenortung
 from ..navigation.kartierfahrt import Kartierfahrt
 from ..navigation.hindernisgedaechtnis import Hindernisgedaechtnis
+from ..navigation.pfadplanung import HintergrundPlaner
 from ..navigation.scan_odometrie import ScanOdometrie
+from .kartensteuerung import Kartensteuerung
 from ..safety import CollisionGuard, Fahrschutz, SafetyWatchdog
 from ..sensors.camera import CameraService, create_cameras
 from ..sensors.lidar import LidarService, create_lidar
@@ -207,18 +210,25 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         else None
     )
     localizer = Localizer(odometry, lidar)
-    homing = Homing(watchdog, odometry, localizer)
+    # Lidar-Odometrie für Kartierung, Kartierfahrt und Ortung in der Karte:
+    # Die Blickrichtung kommt aus dem Lidar, weil die IMU am X3 keine
+    # liefert. Sie läuft nur, solange kartiert wird oder eine Karte geladen
+    # ist (MappingManager bzw. Kartenortung melden sich an).
+    scan_odometrie = ScanOdometrie(lidar, odometry)
+    # Lage in der Karte (E12) und Wege durch sie: für die Weiterfahrt beim
+    # Kartieren und für Fahrten zu einem Punkt auf der Karte.
+    ortung = Kartenortung(scan_odometrie)
+    planer = HintergrundPlaner()
+    homing = Homing(watchdog, odometry, localizer, ortung=ortung, planer=planer)
     # Tiefenkamera (Astra) für das, was unter der Lidar-Ebene liegt:
     # Stuhlbeine, Tischkanten. Ihr Gedächtnis rechnet die Punkte mit der
-    # eigenen Bewegung nach -- beim Kartieren mit der Lidar-Odometrie, sonst
-    # mit der Odometrie. scan_odometrie wird erst unten angelegt, daher
-    # der Umweg über die Liste.
+    # eigenen Bewegung nach -- mit der Lidar-Odometrie, wenn sie läuft,
+    # sonst mit der Odometrie.
     tiefe = create_tiefe(use_mock_camera)
-    scan_odo_ref: list = []
 
     def lage_quelle():
-        so = scan_odo_ref[0] if scan_odo_ref else None
-        if so is not None and so.laeuft:
+        so = scan_odometrie
+        if so.laeuft:
             alter = so.alter()
             p = so.pose()
             if p is not None and alter is not None and alter < 1.0:
@@ -241,14 +251,9 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     # durch die Personenkamera (C270), siehe docs/interaktion.md.
     personen_kamera = kameras.get(config.PERSON_CAMERA, camera)
     personen = Personenerkennung(personen_kamera)
-    # Lidar-Odometrie für Kartierung und Kartierfahrt: Die Blickrichtung
-    # kommt aus dem Lidar, weil die IMU am X3 keine liefert. Gestartet wird
-    # sie vom MappingManager, nur solange kartiert wird.
-    scan_odometrie = ScanOdometrie(lidar, odometry)
-    scan_odo_ref.append(scan_odometrie)
     erkunder = Erkunder(
         watchdog, lidar, erkennung, personen, odometry=odometry,
-        kartierfahrt=Kartierfahrt(scan_odometrie),
+        kartierfahrt=Kartierfahrt(scan_odometrie, ortung=ortung, planer=planer),
         hindernisse=hindernisse, tiefe=tiefe,
     )
     manoever = Manoever(watchdog, driver, lidar)
@@ -332,19 +337,22 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             _status_loop(
                 hub, watchdog, driver, odometry, homing, localizer, guard,
                 erkunder, erkennung, lidar, personen, interaktion, stimme, sprache, manoever,
+                karten=karten,
             )
         )
         sprach_task = asyncio.create_task(_sprach_loop())
         odo_task = asyncio.create_task(_odometry_loop(watchdog, odometry))
         match_task = asyncio.create_task(_match_loop(localizer))
         hw_task = asyncio.create_task(
-            _hardware_loop(hub, watchdog, driver, homing, erkunder, interaktion, manoever)
+            _hardware_loop(hub, watchdog, driver, homing, erkunder, interaktion, manoever,
+                           karten=karten)
         )
         puls_task = asyncio.create_task(_puls_loop(diagnose))
+        karten_task = asyncio.create_task(karten.takt_schleife(_schleifenfehler))
         for task, name in [
             (status_task, "Statusmeldungen"), (sprach_task, "Sprachbefehle"),
             (odo_task, "Positionsverfolgung"), (hw_task, "Verbindungsüberwachung"),
-            (puls_task, "Puls"),
+            (puls_task, "Puls"), (karten_task, "Ortung in der Karte"),
         ]:
             diagnose.task_ueberwachen(task, name)
         aufz_task = None
@@ -374,6 +382,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             match_task.cancel()
             hw_task.cancel()
             sprach_task.cancel()
+            karten_task.cancel()
             homing.abbrechen("Server wird beendet")
             erkunder.abbrechen("Server wird beendet")
             manoever.abbrechen("Server wird beendet")
@@ -386,6 +395,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                 mapping_manager.stop()
             except Exception:
                 log.exception("Mapping ließ sich beim Beenden nicht sauber stoppen")
+            ortung.entladen()
             personen.stop()
             pose.stop()
             mukke.stoppen()
@@ -411,67 +421,22 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
 
     # Bekommt Lidar und Lidar-Odometrie, um sie in ROS einzuspeisen:
     # slam_toolbox im Container braucht /scan und TF, und beides hält
-    # dieser Server.
-    mapping_manager = MappingManager(lidar=lidar, scan_odometrie=scan_odometrie)
+    # dieser Server. In der Simulation entsteht die Karte in Python.
+    mapping_manager = MappingManager(
+        lidar=lidar, scan_odometrie=scan_odometrie, ortung=ortung,
+        simulation=lidar is not None and lidar.ist_simulation,
+    )
     app.state.mapping_manager = mapping_manager
 
-    class _KartierfahrtSteuerung:
-        """Start und Stopp der Kartierfahrt für die Seite /map.
-
-        Die Fahrt ist ein Modus des Erkunders. So gelten Not-Stopp, Eingreifen
-        von Hand, Verbindungsverlust und Antriebsausfall ohne Extrawege.
-        """
-
-        @property
-        def aktiv(self) -> bool:
-            return erkunder.modus == KARTE
-
-        def zustand(self) -> dict[str, Any]:
-            z = erkunder.zustand()
-            aktiv = self.aktiv
-            return {
-                "aktiv": aktiv,
-                "text": z["text"] if aktiv else None,
-                "dauer_s": z["dauer_s"] if aktiv else None,
-                "schritt": (z["kartierfahrt"] or {}).get("schritt") if aktiv else None,
-                "bahnen": (z["kartierfahrt"] or {}).get("bahnen") if aktiv else None,
-                # Warum die letzte Kartierfahrt endete (nicht die letzte
-                # Zufallsfahrt).
-                "grund": (
-                    erkunder.letzter_grund
-                    if not aktiv and erkunder.letzter_modus == KARTE
-                    else None
-                ),
-            }
-
-        def starten(self) -> str | None:
-            if self.aktiv:
-                return None
-            if not mapping_manager.aktiv:
-                return ("Erst das Mapping starten: Die Kartierfahrt lenkt mit der "
-                        "Lidar-Odometrie, und die läuft nur beim Kartieren.")
-            if not erkunder.verfuegbar:
-                return "Die Kartierfahrt geht nur mit Lidar."
-            if not driver.connected:
-                return "Keine Verbindung zum Antrieb."
-            # Nur ein Programm lenkt.
-            homing.abbrechen("Kartierfahrt gestartet")
-            erkunder.abbrechen("Kartierfahrt gestartet")
-            interaktion.abbrechen("Kartierfahrt gestartet")
-            manoever.abbrechen("Kartierfahrt gestartet")
-            if not erkunder.start(KARTE):
-                return "Die Kartierfahrt ließ sich nicht starten."
-            asyncio.get_running_loop().create_task(
-                hub.broadcast(alert_message("info", "Kartierfahrt gestartet"))
-            )
-            return None
-
-        def stoppen(self, grund: str) -> None:
-            if self.aktiv:
-                erkunder.abbrechen(grund)
-                watchdog.stop()
-
-    app.include_router(create_mapping_router(mapping_manager, _KartierfahrtSteuerung()))
+    # Kartierfahrt, Karte laden, Lage zeigen, Fahrt zum Ziel -- für /map und
+    # die App. Die Kartierfahrt ist ein Modus des Erkunders; so gelten
+    # Not-Stopp, Eingreifen von Hand und Verbindungsverlust ohne Extrawege.
+    karten = Kartensteuerung(
+        mapping_manager=mapping_manager, ortung=ortung, erkunder=erkunder, homing=homing,
+        interaktion=interaktion, manoever=manoever, watchdog=watchdog, driver=driver, hub=hub,
+    )
+    app.state.karten = karten
+    app.include_router(create_mapping_router(mapping_manager, karten))
 
     @app.websocket("/ws")
     async def websocket_endpoint(ws: WebSocket) -> None:
@@ -492,7 +457,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                     reply = await _handle(
                         msg, watchdog, driver, hub, odometry, homing, localizer, guard,
                         erkunder, interaktion, stimme, sprache, aufzeichnung,
-                        manoever=manoever, absender=ws,
+                        manoever=manoever, absender=ws, karten=karten,
                     )
                 except Exception:
                     # Früher trennte ein fehlerhafter Befehl die Verbindung --
@@ -510,12 +475,22 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             await hub.remove(ws)
             # Letzter Client weg? Dann hat niemand mehr die Kontrolle.
             if hub.count == 0:
-                log.warning("Kein Client mehr verbunden -- halte an")
-                homing.abbrechen("Verbindung verloren")
-                erkunder.abbrechen("Verbindung verloren")
+                # Ausnahme: Kartierfahrt und Fahrt nach Karte. Sie laufen
+                # lange und werden oft von /map aus beobachtet; ist auch die
+                # zu, halten sie erst nach einer Frist an -- ein Handy, dessen
+                # Bildschirm ausgeht, soll sie nicht beenden (Kartensteuerung).
+                mit_karte = erkunder.modus == KARTE or homing.nach_karte
+                log.warning("Kein Client mehr verbunden -- halte an"
+                            + (" (Fahrt mit Karte erst nach einer Frist)" if mit_karte else ""))
+                if not mit_karte:
+                    homing.abbrechen("Verbindung verloren")
+                    erkunder.abbrechen("Verbindung verloren")
                 manoever.abbrechen("Verbindung verloren")
                 interaktion.abbrechen("Verbindung verloren")
-                watchdog.stop()
+                if mit_karte:
+                    karten.zuschauer_pruefen("Verbindung verloren")
+                else:
+                    watchdog.stop()
 
     # --- Kamera ---
     #
@@ -1126,7 +1101,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         """App-Befehl ausführen. False, wenn er mit einer Warnung abgelehnt wurde."""
         antwort = await _handle(
             {"type": typ, **felder}, watchdog, driver, hub, odometry, homing, localizer, guard,
-            erkunder, interaktion, stimme, sprache, manoever=manoever,
+            erkunder, interaktion, stimme, sprache, manoever=manoever, karten=karten,
         )
         if antwort is None:
             return True
@@ -1278,6 +1253,7 @@ async def _handle(
     aufzeichnung: Fahrtenschreiber | None = None,
     manoever: Manoever | None = None,
     absender: object | None = None,
+    karten: Kartensteuerung | None = None,
 ) -> dict[str, Any] | None:
     """Eine eingehende Nachricht verarbeiten.
 
@@ -1351,6 +1327,9 @@ async def _handle(
 
     if kind == "stop":
         homing.abbrechen("Not-Stopp")
+        if karten is not None:
+            # Auch ein wartendes Weiterfahren nach einem USB-Reset verwerfen.
+            karten.stoppen("Not-Stopp")
         if erkunder is not None:
             erkunder.abbrechen("Not-Stopp")
         if interaktion is not None:
@@ -1460,7 +1439,8 @@ async def _handle(
         return None
 
     if kind == "home":
-        if not odometry.misst_tatsaechlich:
+        nach_karte = homing.karte_bereit
+        if not odometry.misst_tatsaechlich and not nach_karte:
             log.warning("Heimfahrt ohne Bewegungsmessung -- Position ist geschätzt")
         abstand = odometry.distanz_zum_start()
         if erkunder is not None:
@@ -1470,10 +1450,45 @@ async def _handle(
         if manoever is not None:
             manoever.abbrechen("Heimfahrt gestartet")
         if homing.start():
-            await hub.broadcast(
-                alert_message("info", f"Heimfahrt gestartet ({abstand:.2f} m)")
+            text = (
+                "Heimfahrt nach Karte gestartet (zum Ausgangspunkt der Karte)"
+                if nach_karte else f"Heimfahrt gestartet ({abstand:.2f} m)"
             )
+            await hub.broadcast(alert_message("info", text))
         return None
+
+    if kind == "goto":
+        if karten is None:
+            return alert_message("warning", "Fahrt zum Ziel geht hier nicht")
+        fehler = karten.ziel(msg.get("x"), msg.get("y"), msg.get("winkel"))
+        if fehler:
+            return alert_message("warning", fehler)
+        return None  # Meldung kommt aus der Kartensteuerung
+
+    if kind == "goto_cancel":
+        homing.abbrechen("vom Nutzer abgebrochen")
+        watchdog.stop()
+        return None
+
+    if kind == "map_pose":
+        if karten is None:
+            return alert_message("warning", "Keine Karte eingerichtet")
+        fehler = karten.lage_setzen(msg.get("x"), msg.get("y"), msg.get("winkel"))
+        if fehler:
+            return alert_message("warning", fehler)
+        return alert_message("info", "Suche die Lage an der gezeigten Stelle")
+
+    if kind == "map_load":
+        if karten is None:
+            return alert_message("warning", "Keine Karte eingerichtet")
+        name = msg.get("name")
+        if not isinstance(name, str) or not name:
+            return alert_message("warning", "map_load braucht einen Kartennamen (name)")
+        try:
+            info = await asyncio.to_thread(karten.laden, name)
+        except (ValueError, RuntimeError, OSError) as exc:
+            return alert_message("warning", f"Karte nicht geladen: {exc}")
+        return alert_message("info", f"Karte „{info['name']}“ geladen -- suche die eigene Lage")
 
     if kind == "home_cancel":
         homing.abbrechen("vom Nutzer abgebrochen")
@@ -1504,6 +1519,9 @@ async def _handle(
             if eingemessen
             else "Startpunkt gesetzt (ohne Lidar -- Position wird nur geschätzt)"
         )
+        # Mit Karte: Hier ist auch das Ziel der Heimfahrt nach Karte.
+        if karten is not None and karten.start_hier():
+            text += ", auch in der Karte"
         await hub.broadcast(alert_message("info", text))
         return None
 
@@ -1608,6 +1626,7 @@ async def _hardware_loop(
     erkunder: Erkunder | None = None,
     interaktion: Interaktion | None = None,
     manoever: Manoever | None = None,
+    karten: Kartensteuerung | None = None,
 ) -> None:
     """Hält die Verbindung zum Antrieb am Leben.
 
@@ -1628,6 +1647,10 @@ async def _hardware_loop(
             verbunden = jetzt
             if not jetzt:
                 homing.abbrechen("Verbindung zum Antrieb verloren")
+                if karten is not None:
+                    # Merkt sich die laufende Kartierfahrt, um nach dem
+                    # Neuverbinden weiterzufahren (MAP_FAHRT_WIEDER_S).
+                    karten.antrieb_weg()
                 if erkunder is not None:
                     erkunder.abbrechen("Verbindung zum Antrieb verloren")
                 if manoever is not None:
@@ -1648,6 +1671,8 @@ async def _hardware_loop(
                 )
             else:
                 await hub.broadcast(alert_message("info", "Antrieb wieder verbunden"))
+                if karten is not None:
+                    karten.antrieb_wieder()
         except Exception:
             # Früher war hier Schluss: kein Neuverbinden mehr bis zum Neustart.
             _schleifenfehler("Verbindungsüberwachung")
@@ -1735,6 +1760,7 @@ async def _status_loop(
     stimme: Stimme | None = None,
     sprache: Spracherkennung | None = None,
     manoever: Manoever | None = None,
+    karten: Kartensteuerung | None = None,
 ) -> None:
     """Schickt regelmäßig den Zustand an alle Clients."""
     zuletzt_aktiv = False
@@ -1748,7 +1774,7 @@ async def _status_loop(
             # ohne dass jemand danach fragt.
             if zuletzt_aktiv and not homing.aktiv and homing.letzter_grund:
                 await hub.broadcast(
-                    alert_message("info", f"Heimfahrt: {homing.letzter_grund}")
+                    alert_message("info", f"{homing.bezeichnung}: {homing.letzter_grund}")
                 )
             zuletzt_aktiv = homing.aktiv
 
@@ -1806,6 +1832,7 @@ async def _status_loop(
                         interaktion=interaktion.zustand() if interaktion is not None else None,
                         stimme=stimme.zustand() if stimme is not None else None,
                         sprache=sprache.zustand() if sprache is not None else None,
+                        karte=karten.zustand_kurz() if karten is not None else None,
                     )
                 )
         except Exception:

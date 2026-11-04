@@ -148,6 +148,7 @@ class Erkunder:
         self._tiefe = tiefe
         self._fortschritt = Fortschrittswache(watchdog)
         self._modus = ZUFALL
+        self._fortsetzen = False
         self._task: asyncio.Task[None] | None = None
         self._grund: str | None = None
 
@@ -225,14 +226,22 @@ class Erkunder:
         """Modus der laufenden oder zuletzt gelaufenen Fahrt."""
         return self._modus
 
-    def start(self, modus: str = ZUFALL) -> bool:
-        """Erkundung beginnen. False, wenn schon eine läuft oder kein Lidar da ist."""
+    def start(self, modus: str = ZUFALL, fortsetzen: bool = False) -> bool:
+        """Erkundung beginnen. False, wenn schon eine läuft oder kein Lidar da ist.
+
+        ``fortsetzen`` (nur KARTE): nach einer Unterbrechung gleich mit der
+        Weiterfahrt ins Unbekannte beginnen, statt das Zimmer neu abzufahren.
+        """
         if self.aktiv or not self.verfuegbar:
             return False
         if modus == KARTE and self._kartierfahrt is None:
             return False
         self._modus = modus
+        self._fortsetzen = fortsetzen and modus == KARTE
         self._grund = None
+        # Gleich hier, nicht erst im Task: Sonst zeigt der erste Status die
+        # Dauer seit dem Serverstart.
+        self._gestartet = time.monotonic()
         self._task = asyncio.create_task(self._fahren())
         return True
 
@@ -288,7 +297,7 @@ class Erkunder:
         self._naechster_wechsel = jetzt + self._wanderzeit()
         self._setzen(FAEHRT, "fährt los")
         if self._modus == KARTE:
-            self._kartierfahrt.beginnen(jetzt)
+            self._kartierfahrt.beginnen(jetzt, fortsetzen=self._fortsetzen)
 
     async def _fahren(self) -> None:
         takt = 1.0 / max(1, config.ODOMETRY_HZ)
@@ -325,6 +334,14 @@ class Erkunder:
                         gesperrt_seit = gesperrt_seit or jetzt
                         if jetzt - gesperrt_seit > config.FAHRSCHUTZ_FEST_S:
                             self._watchdog.stop()
+                            # Beim Kartieren nicht aufgeben: Die Kartierfahrt
+                            # sucht sich eine andere Stelle.
+                            if karte and self._kartierfahrt.hindernis_melden(
+                                f"Fahrschutz: {pruefung.grund}"
+                            ):
+                                gesperrt_seit = None
+                                await asyncio.sleep(takt)
+                                continue
                             self._grund = f"kommt nicht weiter -- {pruefung.grund}"
                             log.info("Erkundung beendet -- %s", self._grund)
                             return
@@ -385,7 +402,10 @@ class Erkunder:
             if self._ohne_lidar_seit is None:
                 self._ohne_lidar_seit = jetzt
                 log.warning("Erkundung: keine frischen Lidar-Daten -- halte an")
-            if jetzt - self._ohne_lidar_seit > config.EXPLORE_LIDAR_WAIT_S:
+            # Beim Kartieren länger: Der A1 meldet sich bei Spannungseinbrüchen
+            # ab und wieder an, eine lange Kartierfahrt soll daran nicht enden.
+            warten = config.MAP_FAHRT_LIDAR_WARTEN_S if karte else config.EXPLORE_LIDAR_WAIT_S
+            if jetzt - self._ohne_lidar_seit > warten:
                 self._grund = "Lidar liefert keine Daten mehr"
                 return None
             # Eine laufende Drehung oder Befreiung bleibt gemerkt, nur die
@@ -671,6 +691,13 @@ class Erkunder:
         self._befreit_zuletzt = jetzt
         self._fortschritt.zuruecksetzen()
         if self._befreiungen >= config.EXPLORE_BEFREIEN_MAX:
+            if self._modus == KARTE and self._kartierfahrt.hindernis_melden(
+                f"festgefahren ({anlass})"
+            ):
+                # Die Kartierfahrt nimmt sich ein anderes Ziel vor; die
+                # Versuche zählen für das neue neu.
+                self._befreiungen = 0
+                return DriveCommand(0.0, 0.0, 0.0)
             self._grund = f"festgefahren -- {self._befreiungen} Befreiungsversuche ohne Erfolg"
             log.warning("Erkundung: %s (%s)", self._grund, anlass)
             return None

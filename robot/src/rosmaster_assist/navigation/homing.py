@@ -13,6 +13,16 @@ herum, nicht durch Labyrinthe. Ist ``HOME_AUSWEICH_WARTEN_S`` lang nirgends
 Platz, hält er an und meldet es. Wird er hochgehoben, bricht er ab: Die
 Koppelnavigation weiß vom Tragen nichts, die Richtung nach Hause stimmt dann
 nicht mehr. Deshalb weiter das gemächliche Tempo und die Zeitbegrenzung.
+
+**Mit Karte (04.11.2026, E12):** Ist eine Karte geladen und die Lage darin
+sicher (``kartenortung.py``), fährt er nicht mehr geradewegs, sondern einen
+geplanten Weg (``pfadplanung.py``) -- durch Türen, um Ecken, in andere
+Räume. Zu Hause ist dann der Ausgangspunkt der Karte. Dieselbe Klasse
+fährt auch zu jedem anderen Punkt auf der Karte (``start(ziel=...)``).
+Sie bleibt eine Klasse, damit jeder bestehende Abbruch (Not-Stopp, Hand,
+Verbindung weg, andere Fahrt startet) auch die Fahrt zum Ziel beendet.
+Wird der Weg versperrt, gilt die Stelle eine Weile als Wand, und er plant
+drumherum neu.
 """
 
 from __future__ import annotations
@@ -28,28 +38,43 @@ from .. import config
 from ..protocol import DriveCommand
 from ..safety import SafetyWatchdog
 from . import ausweichen
+from . import pfadfolger as pf
 from .odometry import Odometry
+from .pfadplanung import HintergrundPlaner
 
 if TYPE_CHECKING:  # nur für die Typangabe -- vermeidet einen Ringimport
+    from .kartenortung import Kartenortung
     from .localizer import Localizer
 
 log = logging.getLogger(__name__)
 
 
 class Homing:
-    """Steuert den Roboter zurück zum Startpunkt."""
+    """Steuert den Roboter zurück zum Startpunkt -- oder mit Karte zu jedem Ziel."""
 
     def __init__(
         self,
         watchdog: SafetyWatchdog,
         odometry: Odometry,
         localizer: "Localizer | None" = None,
+        ortung: "Kartenortung | None" = None,
+        planer: HintergrundPlaner | None = None,
     ) -> None:
         self._watchdog = watchdog
         self._odometry = odometry
         self._localizer = localizer
+        self._ortung = ortung
+        self._planer = planer if planer is not None else (
+            HintergrundPlaner() if ortung is not None else None
+        )
         self._task: asyncio.Task[None] | None = None
         self._grund: str | None = None
+        # Fahrt nach Karte: Ziel (None = nach Hause), Weg, Folger.
+        self._ziel: tuple[float, float] | None = None
+        self._nach_karte = False
+        self._folger = pf.Pfadfolger()
+        self._weg: list[tuple[float, float]] = []
+        self._sperren: list[tuple[float, float, float]] = []  # x, y, gültig bis
         # Ausweichen (F3): Kurzgedächtnis, Hochheben, zuletzt gewählte Seite
         # (gegen Pendeln vor breiten Hindernissen).
         self._gedaechtnis = ausweichen.Kurzgedaechtnis(odometry)
@@ -66,13 +91,58 @@ class Homing:
         """Warum die letzte Heimfahrt endete -- für die Anzeige in der App."""
         return self._grund
 
-    def start(self) -> bool:
-        """Heimfahrt beginnen. False, wenn schon eine läuft."""
+    @property
+    def bezeichnung(self) -> str:
+        """Für Meldungen: "Heimfahrt" oder "Fahrt zum Ziel"."""
+        return "Heimfahrt" if self._ziel is None else "Fahrt zum Ziel"
+
+    @property
+    def nach_karte(self) -> bool:
+        """Läuft gerade eine Fahrt nach Karte?"""
+        return self.aktiv and self._nach_karte
+
+    @property
+    def karte_bereit(self) -> bool:
+        """Lage in einer Karte bekannt -- dann geht es nach Karte."""
+        return self._ortung is not None and self._planer is not None and self._ortung.sicher
+
+    def start(self, ziel: tuple[float, float] | None = None, winkel: float | None = None) -> bool:
+        """Heimfahrt bzw. Fahrt zu ``ziel`` (Kartenrahmen, m) beginnen.
+
+        ``winkel`` (Bogenmaß): am Ziel noch so ausrichten. False, wenn schon
+        eine Fahrt läuft oder ein Ziel ohne sichere Lage in der Karte
+        verlangt wird (Grund dann in ``letzter_grund``).
+        """
         if self.aktiv:
             return False
+        if ziel is not None and not self.karte_bereit:
+            self._grund = "ohne sichere Lage in einer Karte geht keine Fahrt zum Ziel"
+            return False
         self._grund = None
-        self._task = asyncio.create_task(self._fahren())
+        self._ziel = None if ziel is None else (float(ziel[0]), float(ziel[1]))
+        self._weg = []
+        self._nach_karte = self.karte_bereit
+        if self._nach_karte:
+            if ziel is None:
+                start = self._ortung.start
+                ziel, winkel = (start[0], start[1]), start[2]
+            self._task = asyncio.create_task(self._fahren_karte((ziel[0], ziel[1]), winkel))
+        else:
+            self._task = asyncio.create_task(self._fahren())
         return True
+
+    def zustand(self) -> dict:
+        """Für state.karte und die Seite /map."""
+        aktiv = self.aktiv
+        return {
+            "aktiv": aktiv,
+            "art": "heim" if self._ziel is None else "ziel",
+            "nach_karte": self._nach_karte if aktiv else None,
+            "ziel": list(self._ziel) if self._ziel is not None else None,
+            "weg": [[round(p[0], 2), round(p[1], 2)] for p in self._weg] if aktiv else [],
+            "rest_m": round(self._folger.rest_m, 2) if aktiv and self._nach_karte else None,
+            "grund": None if aktiv else self._grund,
+        }
 
     def abbrechen(self, grund: str = "abgebrochen") -> None:
         """Sofort beenden. Auch aufzurufen, wenn der Mensch eingreift."""
@@ -174,6 +244,158 @@ class Homing:
             self._watchdog.stop()
             self._grund = "Fehler während der Fahrt"
             log.exception("Heimfahrt abgebrochen")
+
+    # --- Mit Karte -------------------------------------------------------------------
+
+    async def _fahren_karte(self, ziel: tuple[float, float], winkel: float | None) -> None:
+        takt = 1.0 / max(1, config.ODOMETRY_HZ)
+        self._gedaechtnis.leeren()
+        self._hoch.zuruecksetzen()
+        neuplanungen = 0
+        unsicher_seit: float | None = None
+        blockiert_seit: float | None = None
+        name = self.bezeichnung
+        try:
+            weg = await self._planen(ziel)
+            if weg is None:
+                self._beenden("kein Weg durch die bekannte Karte", warnung=True)
+                return
+            log.info("%s nach Karte -- %.1f m Weg, %d Wegpunkte", name, weg.laenge, len(weg.punkte))
+            frist = time.monotonic() + max(config.KARTE_FAHRT_MIN_S,
+                                           weg.laenge * config.KARTE_FAHRT_S_JE_M)
+            self._weg_setzen(weg, winkel)
+
+            while True:
+                jetzt = time.monotonic()
+                if jetzt > frist:
+                    self._beenden(f"Zeit abgelaufen, noch {self._folger.rest_m:.2f} m", warnung=True)
+                    return
+
+                # Ohne sichere Lage nicht weiterfahren -- aber kurz abwarten:
+                # Ein Mensch, der vor dem Lidar steht, verdeckt nur kurz.
+                pose = self._ortung.pose()
+                if pose is None or not self._ortung.sicher:
+                    unsicher_seit = unsicher_seit or jetzt
+                    if jetzt - unsicher_seit > config.KARTE_SICHER_S:
+                        self._beenden("Lage in der Karte verloren", warnung=True)
+                        return
+                    self._watchdog.submit(DriveCommand(0.0, 0.0, 0.0), quelle="autonom")
+                    await asyncio.sleep(takt)
+                    continue
+                unsicher_seit = None
+
+                self._gedaechtnis.fortschreiben(takt)
+                scan = self._localizer.scan() if self._localizer is not None else None
+                if scan is None:
+                    # Blind fährt er nicht; der Lidar meldet sich meist gleich wieder.
+                    self._watchdog.submit(DriveCommand(0.0, 0.0, 0.0), quelle="autonom")
+                    await asyncio.sleep(takt)
+                    continue
+                lage = self._gedaechtnis.lage if self._gedaechtnis.misst else None
+                if self._hoch.pruefen(scan, lage):
+                    self._beenden("hochgehoben -- Lage wird neu gesucht", warnung=True)
+                    return
+
+                punkte = self._gedaechtnis.punkte(scan)
+                befehl, zustand = self._folger.schritt(pose, punkte)
+                if zustand == pf.ANGEKOMMEN:
+                    rest = math.hypot(ziel[0] - pose[0], ziel[1] - pose[1])
+                    self._beenden(f"angekommen ({rest:.2f} m Restabweichung)")
+                    return
+
+                # Steht er, obwohl er fahren will (Weg versperrt oder der
+                # Fahrschutz lässt nichts durch), plant er nach einer Weile
+                # drumherum.
+                pruefung = self._watchdog.letzte_pruefung
+                gesperrt = (
+                    zustand == pf.BLOCKIERT
+                    or (pruefung is not None and pruefung.anteil == 0.0 and not befehl.is_stop())
+                )
+                if zustand == pf.ABGEKOMMEN or gesperrt:
+                    blockiert_seit = blockiert_seit or jetzt
+                    if zustand == pf.ABGEKOMMEN or jetzt - blockiert_seit > config.KARTE_BLOCKIERT_S:
+                        neuplanungen += 1
+                        if neuplanungen > config.KARTE_MAX_NEUPLANUNG:
+                            self._beenden(
+                                f"Weg bleibt versperrt, noch {self._folger.rest_m:.2f} m",
+                                warnung=True,
+                            )
+                            return
+                        if gesperrt:
+                            self._sperre_setzen(pose, punkte)
+                        self._watchdog.stop()
+                        weg = await self._planen(ziel)
+                        if weg is None:
+                            self._beenden("kein Weg mehr frei", warnung=True)
+                            return
+                        self._weg_setzen(weg, winkel)
+                        blockiert_seit = None
+                        continue
+                    if zustand == pf.BLOCKIERT:
+                        befehl = DriveCommand(0.0, 0.0, 0.0)
+                else:
+                    blockiert_seit = None
+
+                self._watchdog.submit(befehl, quelle="autonom")
+                await asyncio.sleep(takt)
+
+        except asyncio.CancelledError:
+            self._watchdog.stop()
+            raise
+        except Exception:
+            self._watchdog.stop()
+            self._grund = "Fehler während der Fahrt"
+            log.exception("%s abgebrochen", name)
+
+    def _beenden(self, grund: str, warnung: bool = False) -> None:
+        self._watchdog.stop()
+        self._grund = grund
+        (log.warning if warnung else log.info)("%s beendet -- %s", self.bezeichnung, grund)
+
+    def _weg_setzen(self, weg, winkel: float | None) -> None:
+        self._weg = list(weg.punkte)
+        self._folger.setzen(weg.punkte, von=self._ortung.pose(), ziel_winkel=winkel)
+
+    async def _planen(self, ziel):
+        pose = self._ortung.pose()
+        karte = self._ortung.karte
+        if pose is None or karte is None:
+            return None
+        jetzt = time.monotonic()
+        self._sperren = [s for s in self._sperren if s[2] > jetzt]
+        zukunft = self._planer.weg(karte, (pose[0], pose[1]), ziel,
+                                   [(s[0], s[1]) for s in self._sperren])
+        return await asyncio.wrap_future(zukunft)
+
+    def _sperre_setzen(self, pose, punkte) -> None:
+        """Die Stelle, die den Weg versperrt, eine Weile als Wand eintragen.
+
+        Das nächste Hindernis in Richtung des Weges, sonst einfach ein
+        Stück voraus. In Kartenkoordinaten, damit es beim Neuplanen zählt.
+        """
+        import numpy as np
+
+        x, y, th = pose
+        ziel = self._folger.punkte[-1] if self._folger.punkte else (x, y)
+        for p in self._folger.punkte:
+            if math.hypot(p[0] - x, p[1] - y) > 0.3:
+                ziel = p
+                break
+        richtung = math.atan2(ziel[1] - y, ziel[0] - x) - th
+        stelle = (0.4 * math.cos(richtung), 0.4 * math.sin(richtung))
+        pkt = np.asarray(punkte, dtype=float).reshape(-1, 2)
+        if len(pkt):
+            winkel = np.arctan2(pkt[:, 1], pkt[:, 0]) - richtung
+            winkel = np.arctan2(np.sin(winkel), np.cos(winkel))
+            r = np.hypot(pkt[:, 0], pkt[:, 1])
+            vorn = (np.abs(winkel) < math.radians(40.0)) & (r < 1.0)
+            if vorn.any():
+                i = int(np.argmin(np.where(vorn, r, np.inf)))
+                stelle = (float(pkt[i, 0]), float(pkt[i, 1]))
+        c, s = math.cos(th), math.sin(th)
+        wx, wy = x + c * stelle[0] - s * stelle[1], y + s * stelle[0] + c * stelle[1]
+        self._sperren.append((wx, wy, time.monotonic() + config.KARTE_SPERRE_S))
+        log.info("Weg versperrt bei (%.2f, %.2f) -- plane drumherum", wx, wy)
 
     def _hindernis(self, befehl: DriveCommand) -> float | None:
         """Steht etwas im Weg? Gibt die Entfernung zurück, sonst None.

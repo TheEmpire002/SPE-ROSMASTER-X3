@@ -218,5 +218,5 @@ python scripts/check_hardware.py
 - [x] Autonomes Fahren, Test 1: Erkunder mit Hindernis-Benennung (ohne SLAM)
 - [x] Interaktion, Stufe 2+3: Gesten (Hailo-Pose) und Verhalten Folgen/Stopp/Herkommen/Weggehen (siehe [`docs/interaktion.md`](docs/interaktion.md))
 - [ ] Interaktion: Sprache, Stimme, „Geist“
-- [ ] SLAM / Karte
+- [x] SLAM / Karte: Kartierfahrt Raum für Raum, Lage in der Karte, Fahrt zu einem Punkt auf der Karte (Seite `/map`; am Roboter noch zu prüfen)
 - [ ] Box-Mechanik
