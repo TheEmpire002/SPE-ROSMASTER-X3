@@ -699,6 +699,36 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
   - Im Log auf „Fortschrittswache“ achten, ob sie sich im freien Raum irrt.
   - Auf USB-Resets achten, solange die Kamera läuft.
 
+### 04.11.2026 – Schnellere Tests und Helfer für die KI-Arbeit (Marlon, mit Claude)
+- **Was:**
+  - Neues Skript `scripts/alle_tests.py`: Es startet alle Testskripte gleichzeitig, schreibt je Skript eine Zeile und zeigt die volle Ausgabe nur bei Fehlschlägen. Mit Namensfilter laufen nur einzelne Tests (`python scripts/alle_tests.py ziel gesten`).
+  - Vier Subagents für Claude Code in `.claude/agents/`: `test-laeufer` (Tests ausführen), `smoke-tester` (Server im Mock auf Port 8037 prüfen), `regel-pruefer` (Diff gegen die AGENTS.md-Regeln) und `doku-schreiber` (Projekttagebuch und `docs/`).
+- **Warum:** Nacheinander dauerten die 14 Tests über zehn Minuten, und die seitenlange Ausgabe der bestandenen Prüfungen kostete beim Arbeiten mit der KI viel Kontext. Die Subagents erledigen Routinearbeit mit kleineren Modellen, ohne den Hauptverlauf zu füllen.
+- **Ergebnis:** Alle 14 Tests in rund 6,5 Minuten. Das langsamste Skript (`test_ausweichen.py`) bestimmt die Dauer.
+- **Probleme:** Beim ersten Lauf nach dem Merge von `main` schlugen zwei Tests fehl. Auf `main` sucht der Roboter jetzt ohne Zeitgrenze, und ein Wiedergefunden zählt erst nach mehreren bestätigten Bildern. Die Tests wurden daran angepasst.
+
+### 04.11.2026 – Vier Tests nach dem Kartierungs-Merge repariert (Marlon, mit Claude)
+- **Was:** `test_erkunder.py`, `test_ausweichen.py`, `test_aufzeichnung.py` und `test_schutz.py` schlugen auf `main` fehl, auch schon auf dem unveränderten Stand von `origin/main`. Alle vier waren veraltete Tests, kein Fehler im Roboter-Code.
+- **Warum:**
+  - Die neue Fortschrittswache (`navigation/fortschritt.py`) liest `watchdog.current_command`. Die Watchdog-Attrappen in den drei Erkunder-Tests hatten dieses Feld nicht. Sie merken sich jetzt den zuletzt angenommenen Befehl, wie der echte Watchdog.
+  - `test_schutz.py` „Wand links: seitlich nach links gebremst“: Der Fahrschutz-Rand wurde bewusst von 6 auf 4 cm verkleinert. Bei einer Wand in 0,30 m bleiben damit 13,5 cm Platz, und der Anhalteweg bei 0,25 m/s beträgt rund 13 cm. Der Fahrschutz muss dort also zu Recht nicht bremsen. Der Test stellt die Wand jetzt auf 0,25 m; dort bremst er auf 0,16 m/s.
+- **Ergebnis:** 14/14 Tests bestanden.
+- **Probleme:** Der Gesamtlauf dauert jetzt rund 12,5 statt 6,5 Minuten. Die Fortschrittswache läuft in den Erkunder-Tests jetzt wirklich mit, und `test_ausweichen.py` braucht allein 747 s.
+- **Offen:** prüfen, ob sich `test_ausweichen.py` kürzen lässt.
+
+### 04.11.2026 – Autonomie F4: gemerkte Person und schnelleres Wiederfinden (Marlon, mit Claude)
+- **Was:** Der Roboter merkt sich das Aussehen der Person, die zuletzt das Folgen ausgelöst hat, und nimmt beim nächsten „Folgen“ ohne Antippen wieder sie. Verliert er die Person, sucht er sie schneller wieder: kürzere Frist, wenn sie am Bildrand verschwand, Lidar-Hinweis zur Suchrichtung, Stillhalten beim Prüfen eines Kandidaten und schnellere Bestätigung bei klarem Treffer.
+- **Warum:** Nutzerwunsch: „er soll auch der selben person hinterherfahren und sich merken, wer den folgenbefehl gegeben hat. außerdem, wenn er die person verloren hat, muss diese schneller gefunden werden.“ Bisher lehnte er bei mehreren Personen im Bild ohne Antippen immer ab, und nach einem Verlust drehte er blind im festen Takt, egal wo die Person zuletzt war oder was der Lidar sah.
+- **Änderungen:**
+  - `ZielSperre` (`interaktion/ziel.py`): neues Feld `gemerkt` (Farbhistogramm Rumpf, nur RAM) mit Zeitstempel. Start von „Folgen“ ohne Antippen bei mehreren Sichtbaren: passt die gemerkte Person klar, wird sie genommen, sonst wie bisher „bitte antippen“. Beim Antippen (`erfassen(..., merkmal=...)`) ist das Merkmal der gewählten Person sofort die Referenz, ein kurzer Trackverlust in der Erfassung verliert sie dadurch nicht. `vergessen()` löscht die gemerkte Person zusätzlich zum normalen `freigeben()`; sie bleibt bei Stopp-Geste und sicherem Anhalten erhalten, verfällt nach `ZIEL_MERKEN_S` = 120 s.
+  - Passt ein Kandidat beim Wiederfinden klar (Abstand unter halber Schwelle, Marge zum Zweitbesten mindestens doppelt so groß), reichen `ZIEL_BESTAETIGEN_SCHNELL_BILDER` = 3 statt 5 Bestätigungsbilder.
+  - `verhalten.py`: Verschwand die Person im Zustand „kurz weg“ nahe am Bildrand (`|Winkel| > FOV/2 − ZIEL_RAND_GRAD`, 8°), beginnt die Suche schon nach `FOLGEN_VERLOREN_RAND_S` = 0,7 s statt `FOLGEN_VERLOREN_S`. Beim Suchen dreht er zu einem Lidar-Personencluster (Beinpaar) statt blind zur letzten Seite, wenn der Cluster außerhalb des Kamerabilds liegt; steht er im Bild, hält er `ZIEL_HINWEIS_S` = 1,5 s still zum Hinschauen, danach wieder fester Suchtakt. Der Lidar übernimmt nie das Ziel, nur die Blickrichtung. Während die Sperre einen Kandidaten prüft (`prueft_kandidat`), hält der Roboter still statt weiterzudrehen.
+  - Neue Werte in `config.py`: `ZIEL_MERKEN_S`, `ZIEL_BESTAETIGEN_SCHNELL_BILDER`, `ZIEL_RAND_GRAD`, `FOLGEN_VERLOREN_RAND_S`, `ZIEL_HINWEIS_S`.
+  - `docs/api.md` bleibt unverändert, kein neuer Befehl und kein neues Feld im Protokoll.
+- **Ergebnis:** `Marlon/interaktion/test_ziel.py` um Fälle zu Merken, Ablauf nach `ZIEL_MERKEN_S`, Löschen bei Loslassen, Referenz direkt beim Antippen, Bildrand-Frist, Lidar-Hinweis, Stillhalten beim Prüfen und schneller Bestätigung erweitert. Alle Tests bestanden.
+- **Probleme:** Die verkürzte Frist am Bildrand hätte direkt nach einem Moduswechsel mit noch veraltetem Winkel gegriffen; deshalb gilt sie nur im Zustand „kurz weg“ (`KURZ_WEG`), nicht gleich beim Start der Suche.
+- **Offen:** Bodentest: gleiche Person nach Loslassen erneut per „Folgen“ ohne Antippen auswählen lassen; Lidar-Hinweis bei echtem Beinpaar hinter dem Roboter prüfen.
+
 ### 04.11.2026 – Personen beim Folgen nicht mehr unterscheiden
 - **Problem:** Beim Folgen bekam jede Person eine Nummer („Person 1, 2 …“ in der App). Ging die verfolgte Person aus dem Bild und kam zurück, musste sie am Aussehen (Farbe des Oberkörpers) wiedererkannt werden. Das klappte oft nicht: Sie galt als neue Person, und der Roboter blieb mit „bitte neu wählen“ stehen.
 - **Was:** Die Ziel-Sperre (03.11.) ist durch eine einfache `ZielWahl` ersetzt (`interaktion/ziel.py`). Er folgt der Person im Bild. Ist sie weg, wartet er `ZIEL_WECHSEL_S` (1 s), dann folgt er der Person, die dort steht, wo die letzte war. In der Suche folgt er dem Nächsten, der auftaucht. Der Tracker bleibt intern, damit die Gesten zweier Personen getrennt bleiben und er bei Vorbeilaufenden nicht springt.
@@ -707,6 +737,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
   - Schnittstelle unverändert: `follow` nimmt `ziel_id` weiter an (ältere Clients), `state.interaktion.ziel` und `/interaktion/pose` behalten ihre Felder. `safe_stop` kommt nicht mehr vor.
 - **Ergebnis:** `test_ziel.py` neu gefasst (57 Prüfungen, darunter Weggehen und Wiederkommen), am Pi bestanden; `test_gesten.py`, `test_sprache.py`, `test_stimme.py` ebenso.
 - **Kehrseite:** Sind mehrere Personen da und die verfolgte geht weg, folgt er nach einer Sekunde der anderen.
+- **Zusammengeführt mit F4 (Marlon, gleicher Tag):** F4 hatte die Wiedererkennung am Aussehen ausgebaut (gemerkte Person, schnellere Bestätigung). Das entfällt mit der Zielwahl. Übernommen sind die beiden Teile, die nicht vom Aussehen abhängen: früher suchen, wenn die Person am Bildrand verschwand, und beim Suchen zu einer Person drehen, die der Lidar sieht. Abgesprochen mit dem Nutzer; Marlon bitte Bescheid geben.
 
 ---
 

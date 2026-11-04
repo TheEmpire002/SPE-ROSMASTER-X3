@@ -248,6 +248,27 @@ Eigendrehung, kurze Verdeckung, Weggehen und Wiederkommen, Wechsel nach
 `ZIEL_WECHSEL_S`, App-Start bei zwei Personen, dass die Geste den
 Gestikulierenden wählt und dass Passanten per Stopp anhalten können.
 
+### Schneller wiederfinden (04.11., Marlon, F4)
+
+Aus F4 bleiben die zwei Teile, die nicht vom Aussehen abhängen. Die
+„gemerkte Person“ und die schnellere Bestätigung am Aussehen sind mit der
+Zielwahl oben weggefallen.
+
+- **Kürzere Suchfrist am Bildrand:** Verschwindet die Person im Zustand
+  `target_temporarily_lost` nahe am Bildrand (`|Winkel| > FOV/2 −
+  ZIEL_RAND_GRAD`, 8°), beginnt die Suche schon nach
+  `FOLGEN_VERLOREN_RAND_S` (0,7 s) statt nach `FOLGEN_VERLOREN_S`. In der
+  Bildmitte gilt weiter die längere Frist, denn dort ist sie meist nur kurz
+  verdeckt. Direkt nach einem Moduswechsel (noch kein frischer Winkel)
+  oder schon in `searching_for_target` gilt immer die normale Frist.
+- **Lidar-Hinweis beim Suchen:** Sieht die Hinderniserkennung einen
+  Personen-Cluster (Beinpaar) außerhalb des Kamerabilds, dreht der Roboter
+  dorthin, statt im festen Takt zur zuletzt bekannten Seite zu drehen.
+  Liegt der Cluster schon im Bild, hält er `ZIEL_HINWEIS_S` (1,5 s) still,
+  damit die Kamera ihn erkennen kann. Findet sie dort niemanden, gilt für
+  den Rest der Suche wieder der feste Dreh-Pause-Takt. Gefolgt wird nur,
+  wen die Kamera sieht. Der Lidar liefert nur die Blickrichtung.
+
 ### Bedienung in der Web-App (03.11., geändert 04.11.)
 
 Gesteuert wird über die Web-App; Gesten und Sprache bleiben Nebenwege.

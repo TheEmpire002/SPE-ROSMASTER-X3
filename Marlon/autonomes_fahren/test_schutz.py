@@ -132,7 +132,10 @@ pruefe("Brett im Rand vorn: rückwärts weg erlaubt", c == DriveCommand(-0.1, 0.
 c = schutz.pruefen(DriveCommand(0.0, 0.15, 0.0)).befehl
 pruefe("Brett im Rand vorn: seitlich daran entlang erlaubt", c == DriveCommand(0.0, 0.15, 0.0), c)
 
-li.s = scan(strecken=[(-2.0, 0.3, 2.0, 0.3)])  # Wand links in 0,30 m
+# Wand links in 0,25 m: 8,5 cm Platz bis zum Rand, weniger als der
+# Anhalteweg bei 0,25 m/s (rund 13 cm). Bei 0,30 m reicht es seit dem
+# 4-cm-Rand (vorher 6 cm) ohne Bremsen, dort gibt es nichts zu prüfen.
+li.s = scan(strecken=[(-2.0, 0.25, 2.0, 0.25)])
 c = schutz.pruefen(DriveCommand(0.0, 0.25, 0.0)).befehl
 pruefe("Wand links: seitlich nach links gebremst", 0.0 <= c.vy < 0.25, c)
 c = schutz.pruefen(DriveCommand(0.25, 0.0, 0.0)).befehl

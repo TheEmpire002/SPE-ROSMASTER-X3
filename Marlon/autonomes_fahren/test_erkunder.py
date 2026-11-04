@@ -22,6 +22,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "robot" / "
 from rosmaster_assist import config  # noqa: E402
 from rosmaster_assist.navigation import explorer as ex  # noqa: E402
 from rosmaster_assist.navigation import hindernisse as hd  # noqa: E402
+from rosmaster_assist.protocol import DriveCommand  # noqa: E402
 from rosmaster_assist.sensors.lidar import Scan  # noqa: E402
 
 fehler = 0
@@ -122,8 +123,11 @@ class OdometrieAttrappe:
 
 
 class WatchdogAttrappe:
+    # Die Fortschrittswache liest den zuletzt angenommenen Befehl mit.
+    current_command = DriveCommand()
+
     def submit(self, befehl, quelle=""):
-        pass
+        self.current_command = befehl
 
     def stop(self):
         pass

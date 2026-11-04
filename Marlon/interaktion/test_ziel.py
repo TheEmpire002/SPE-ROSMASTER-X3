@@ -11,7 +11,9 @@ Synthetische Szenen mit mehreren Personen:
   (der Grund, warum Personen seit 04.11. nicht mehr unterschieden werden);
 * Folgen-Start bei zwei Personen -> die größere;
 * die Folgen-Geste macht den Gestikulierenden zum Ziel, nicht den Größten;
-* ein Passant kann das Folgen nicht umlenken, aber per Geste anhalten.
+* ein Passant kann das Folgen nicht umlenken, aber per Geste anhalten;
+* schneller wiederfinden (F4): früher suchen, wenn die Person am Bildrand
+  verschwand, und zu einer Person drehen, die der Lidar sieht.
 
 Braucht nur numpy (über die Paketimporte).
 """
@@ -443,6 +445,61 @@ ia._zielwahl.freigeben("Person nicht wiedergefunden")
 ia.folgen_stop()
 pruefe("Loslassen: kein Grund mehr", ia._zielwahl.zustand == zl.IDLE and not ia._zielwahl.grund,
        ia.zustand()["ziel"])
+
+# --- Schneller wiederfinden (F4) ------------------------------------------------
+
+# Am Bildrand verschwunden -> früher suchen als in der Bildmitte
+rand = FOV / 2 - config.ZIEL_RAND_GRAD + 3
+for name, winkel, erwartet in (("Rand", rand, vh.SUCHEN), ("Mitte", 0, vh.FOLGEN)):
+    ia, wd, po = interaktion()
+    ia._wechseln(vh.FOLGEN, "Test", 0.0)
+    spielen(ia, po, lambda t, w=winkel: [person(w, ROT)], 0.0, 1.5)
+    weg = 1.5 + config.FOLGEN_VERLOREN_RAND_S + 0.3
+    spielen(ia, po, lambda t: [], 1.5, weg)
+    pruefe(f"Bildrand: zuletzt {name} -> nach {weg - 1.5:.1f} s {erwartet}", ia._modus == erwartet,
+           (ia._modus, ia._zielwahl.zustand))
+
+
+def om(b):
+    return 0.0 if b is None else b.omega
+
+
+class Mensch:
+    def __init__(self, winkel):
+        self.art, self.winkel, self.abstand = vh.hd.MENSCH, winkel, 2.0
+
+
+def in_suche(ia, po):
+    """Folgt Rot (leicht links), dann verschwindet Rot -> Suche; gibt die Zeit zurück."""
+    ia._wechseln(vh.FOLGEN, "Test", 0.0)
+    spielen(ia, po, lambda t: [person(5, ROT)], 0.0, 1.5)
+    ende = 1.5 + config.FOLGEN_VERLOREN_S + 0.5
+    spielen(ia, po, lambda t: [], 1.5, ende)
+    return ende
+
+
+# Lidar sieht hinten rechts eine Person -> dreht nach rechts, obwohl Rot
+# zuletzt links war; steht sie dann im Bild, hält er kurz still.
+ia, wd, po = interaktion()
+ende = in_suche(ia, po)
+pruefe("Lidar-Hinweis: sucht", ia._modus == vh.SUCHEN, ia._modus)
+richtung = [-120.0]
+ia._hinderniserkennung.aktuell = lambda scan, *a: [Mensch(richtung[0])]
+v = spielen(ia, po, lambda t: [], ende, ende + 0.5)
+pruefe("Lidar-Hinweis: dreht zur Person (rechts)", all(om(b) < 0 for _, _, b in v), [om(b) for _, _, b in v][:3])
+richtung[0] = -5.0
+v = spielen(ia, po, lambda t: [], ende + 0.5, ende + 0.5 + config.ZIEL_HINWEIS_S - 0.2)
+pruefe("Lidar-Hinweis: im Bild -> schaut still hin", all(om(b) == 0 for _, _, b in v), [om(b) for _, _, b in v][:3])
+t1 = ende + 0.5 + config.ZIEL_HINWEIS_S
+v = spielen(ia, po, lambda t: [], t1, t1 + config.FOLGEN_SUCHEN_DREH_S + config.FOLGEN_SUCHEN_PAUSE_S)
+pruefe("Lidar-Hinweis: niemand erkannt -> wieder fester Suchtakt", any(om(b) != 0 for _, _, b in v))
+
+# Kein Lidar-Mensch -> fester Takt zur letzten Seite (links) wie bisher
+ia, wd, po = interaktion()
+ende = in_suche(ia, po)
+ia._hinderniserkennung.aktuell = lambda scan, *a: []
+v = spielen(ia, po, lambda t: [], ende, ende + 0.5)
+pruefe("Ohne Lidar-Hinweis: dreht zur letzten Seite (links)", om(v[0][2]) > 0, v[0][2])
 
 print()
 print("alles bestanden" if not fehler else f"{fehler} Fehler")

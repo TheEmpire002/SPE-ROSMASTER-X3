@@ -70,7 +70,7 @@ from ..navigation.explorer import frei_in_richtung
 from ..protocol import DriveCommand
 from ..safety import SafetyWatchdog
 from . import gesten as gs
-from .ziel import IDLE, PersonenTracker, ZielWahl
+from .ziel import IDLE, KURZ_WEG, PersonenTracker, ZielWahl
 
 if TYPE_CHECKING:  # nur für die Typangaben -- vermeidet Ringimporte
     from ..navigation.odometry import Odometry
@@ -173,6 +173,11 @@ class Interaktion:
         self._gesehen = 0.0  # wann die Zielperson zuletzt zu sehen war
         self._letzte_seite = 1.0  # +1 links, -1 rechts -- dorthin wird gesucht
         self._suchen_fuer = FOLGEN  # in diesen Modus nach erfolgreicher Suche
+        # Lidar-Hinweis beim Suchen: Richtung (Grad, Roboterrahmen), in der
+        # die Person erwartet wird -- wird mit der Eigendrehung nachgeführt.
+        self._such_richtung = 0.0
+        self._hinweis_im_bild_seit: float | None = None
+        self._hinweis_aus = False
         self._letztes_bild = -1.0
         self._ohne_lidar_seit: float | None = None
 
@@ -256,15 +261,16 @@ class Interaktion:
             # nächsten Durchlauf des Event-Loops und würde ihn sonst auf
             # BEREIT zurücksetzen.
             return self.start(FOLGEN)
-        if self._anlauf:
-            # Sanfter Start läuft noch: Folgen beginnt nach der Ansage.
-            self._start_modus = FOLGEN
-            return True
         jetzt = time.monotonic()
         if ziel_id is not None and self._tracker.track(ziel_id) is not None:
             if self._zielwahl.id != ziel_id:
                 self._zielwahl.freigeben()
             self._auswahl_id = ziel_id
+        if self._anlauf:
+            # Sanfter Start läuft noch: Folgen beginnt nach der Ansage. Die
+            # Auswahl oben gilt trotzdem schon, sonst ginge sie verloren.
+            self._start_modus = FOLGEN
+            return True
         self._wechseln(FOLGEN, "folgt (per App)", jetzt, sagen="Ich folge dir.")
         return True
 
@@ -570,10 +576,10 @@ class Interaktion:
             return halt
 
         if self._modus == SUCHEN:
-            return self._suchen(jetzt, ziel)
+            return self._suchen(jetzt, ziel, scan, dt)
 
         if ziel is None:
-            if jetzt - self._gesehen > config.FOLGEN_VERLOREN_S:
+            if jetzt - self._gesehen > self._verloren_frist():
                 self._suchen_fuer = self._modus
                 return self._wechseln(SUCHEN, "Person verloren -- suche", jetzt, melden=True,
                                      sagen="Wo bist du?")
@@ -721,7 +727,7 @@ class Interaktion:
         self._text = "fährt zurück"
         return DriveCommand(-config.WEGGEHEN_SPEED, 0.0, omega)
 
-    def _suchen(self, jetzt: float, ziel: dict | None) -> DriveCommand:
+    def _suchen(self, jetzt: float, ziel: dict | None, scan=None, dt: float = 0.0) -> DriveCommand:
         # Wer jetzt auftaucht, ist es (ZielWahl in ziel.py) -- auch mit neuer
         # Track-Nummer, weil sie kurz aus dem Bild war.
         if ziel is not None:
@@ -734,6 +740,9 @@ class Interaktion:
             self._wechseln(BEREIT, "Person nicht wiedergefunden", jetzt, melden=True,
                           sagen="Ich habe dich verloren.")
             return DriveCommand(0.0, 0.0, 0.0)
+        hinweis = self._lidar_hinweis(jetzt, scan, dt)
+        if hinweis is not None:
+            return hinweis
         # Drehen und kurz stillhalten im Wechsel: Im Drehen verwischt das
         # Bild, im Stand sieht die Posenerkennung scharf.
         takt = config.FOLGEN_SUCHEN_DREH_S + config.FOLGEN_SUCHEN_PAUSE_S
@@ -744,6 +753,62 @@ class Interaktion:
         # meist aus dem Bild gelaufen. Ohne Zeitgrenze immer weiter im Kreis.
         self._text = "sucht die Person"
         return DriveCommand(0.0, 0.0, self._letzte_seite * config.EXPLORE_TURN_SPEED)
+
+    def _verloren_frist(self) -> float:
+        """Wie lange die Person fehlen darf, bevor er sucht.
+
+        Zuletzt am Bildrand gesehen heißt: Sie ist seitlich hinausgegangen,
+        und jede Sekunde Warten vergrößert den Weg, den er nachdrehen muss.
+        In der Bildmitte verschwindet sie dagegen meist nur kurz (verdeckt).
+        Nur wenn die Zielwahl die Person gerade verloren hat -- ``_winkel`` kann
+        sonst noch vom letzten Folgen stammen.
+        """
+        if self._winkel is None or self._zielwahl.zustand != KURZ_WEG:
+            return config.FOLGEN_VERLOREN_S
+        fov = self._pose.fov_deg if self._pose is not None else config.CAMERA_FOV_DEG
+        if abs(self._winkel) > fov / 2 - config.ZIEL_RAND_GRAD:
+            return min(config.FOLGEN_VERLOREN_S, config.FOLGEN_VERLOREN_RAND_S)
+        return config.FOLGEN_VERLOREN_S
+
+    def _lidar_hinweis(self, jetzt: float, scan, dt: float) -> DriveCommand | None:
+        """Beim Suchen zu einem Lidar-Personencluster drehen statt blind.
+
+        Der Lidar sieht rundum, die Kamera nur vorn: Steht jemand hinter ihm,
+        dreht er gezielt hin statt im festen Takt in eine Richtung.
+        Gefolgt wird weiter nur dem, den die Kamera sieht (ZielWahl) -- der
+        Lidar sagt nur, wo es sich lohnt hinzuschauen. Erkennt die Kamera
+        dort nach ZIEL_HINWEIS_S niemanden, gilt für den Rest der Suche
+        wieder der feste Takt (Stuhlbeine sehen für den Lidar wie Beine aus).
+        """
+        # Erwartete Richtung mit der eigenen Drehung mitführen.
+        richtung = self._such_richtung - math.degrees(self._eigendrehung()) * dt
+        self._such_richtung = (richtung + 180.0) % 360.0 - 180.0
+        if self._hinweis_aus or scan is None:
+            return None
+        menschen = [h for h in self._hinderniserkennung.aktuell(scan) if h.art == hd.MENSCH]
+        if not menschen:
+            self._hinweis_im_bild_seit = None
+            return None
+
+        def norm(w: float) -> float:
+            return (w + 180.0) % 360.0 - 180.0
+
+        # Bei mehreren den, der der erwarteten Richtung am nächsten ist.
+        bester = min(menschen, key=lambda h: abs(norm(h.winkel - self._such_richtung)))
+        winkel = norm(bester.winkel)
+        fov = self._pose.fov_deg if self._pose is not None else config.CAMERA_FOV_DEG
+        if abs(winkel) > fov / 2 - config.ZIEL_RAND_GRAD:
+            self._hinweis_im_bild_seit = None
+            self._letzte_seite = 1.0 if winkel > 0 else -1.0
+            self._text = "sucht die Person -- dreht zu einer Person (Lidar)"
+            return DriveCommand(0.0, 0.0, self._letzte_seite * config.EXPLORE_TURN_SPEED)
+        if self._hinweis_im_bild_seit is None:
+            self._hinweis_im_bild_seit = jetzt
+        if jetzt - self._hinweis_im_bild_seit < config.ZIEL_HINWEIS_S:
+            self._text = "sucht die Person -- schaut zur Person (Lidar)"
+            return DriveCommand(0.0, 0.0, 0.0)
+        self._hinweis_aus = True
+        return None
 
     # --- Hilfen ------------------------------------------------------------------
 
@@ -1002,6 +1067,10 @@ class Interaktion:
         # dem Stand, nie beim Wechsel zwischen fahrenden Modi.
         if modus == SUCHEN:
             self._zielwahl.suchen(jetzt)
+            # Suche beginnt dort, wo die Person zuletzt war.
+            self._such_richtung = self._winkel or 0.0
+            self._hinweis_im_bild_seit = None
+            self._hinweis_aus = False
         elif modus == BEREIT:
             if self._zielwahl.zustand != IDLE:
                 self._zielwahl.freigeben()
