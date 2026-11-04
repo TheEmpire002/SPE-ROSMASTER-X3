@@ -242,7 +242,7 @@ class Mukke:
             # einmal bei YouTube nachfragen.
             "--ytdl=no",
             f"--audio-device={config.MUKKE_AUDIO_DEVICE}",
-            f"--volume={self._lautstaerke}",
+            f"--volume={self._wirksam()}",
             f"--input-ipc-server={self._socket}",
         ]
         if titel:
@@ -296,9 +296,20 @@ class Mukke:
         with self._lock:
             self._lautstaerke = max(0, min(100, wert))
             if self.laeuft:
-                self._ipc(["set_property", "volume", self._lautstaerke])
+                self._ipc(["set_property", "volume", self._wirksam()])
+
+    def lautstaerke_anwenden(self) -> None:
+        """Nach einer Änderung der Gesamtlautstärke (config.LAUTSTAERKE)."""
+        with self._lock:
+            if self.laeuft:
+                self._ipc(["set_property", "volume", self._wirksam()])
 
     # --- intern ---------------------------------------------------------------------
+
+    def _wirksam(self) -> int:
+        """Was mpv bekommt: der Musik-Regler als Anteil der Gesamtlautstärke."""
+        gesamt = max(0.0, min(100.0, float(config.LAUTSTAERKE)))
+        return round(self._lautstaerke * gesamt / 100.0)
 
     def _beenden(self, leise: bool = False) -> None:
         proc, self._proc = self._proc, None

@@ -484,6 +484,142 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 
 ---
 
+### 03.11.2026 – Roboter schaltet die Interaktion von selbst ein
+- **Was:** Die Spracherkennung prüft jeden Satz, bevor er als Befehl gilt (`Spracherkennung._auswerten`). Bei laufender Musik zählen nur Stopp und „Musik aus“. Ist Vosk sich bei einem Wort unsicher (`SPRACHE_MIN_KONFIDENZ` = 0,7) oder war mehr als die Hälfte des Satzes unbekannt (`SPRACHE_MAX_UNK_ANTEIL`), zählt nur Stopp. Dasselbe gilt für Wortsalat: Weckwort doppelt oder Wörter neben Weckwort und Wendung (`SPRACHE_MAX_ZUSATZWOERTER` = 0). `/sprache/status` zeigt jetzt `konfidenz`, `verworfen` und `zuletzt_verworfen`.
+- **Warum:** Der Roboter startete ohne Zutun die Interaktion. Ursache: Vosk mit fester Grammatik macht aus *jedem* Geräusch einen erlaubten Satz. Das Mikrofon hört die eigene Musik (MUKKE) und Gespräche im Raum mit. Abgeschaltet wurde es bisher nur, solange die Stimme spricht. Im Serverlog vom Morgen (per SSH ausgewertet) stehen innerhalb von zwei Minuten vier solche Befehle, die niemand gesagt hat: „aufwachen morgen“ → `start`, „robin hallo hause zu weg ruby“ → `weggehen`, „heim ruby zurück“ → `weggehen`, „ruby komm da fahr mir la ruby leise box“ → `herkommen`. Jeder davon schaltete die Interaktion ein, zwei ließen den Roboter fahren.
+- **Ergebnis:** Mit den Original-Sätzen am Pi geprüft: Alle vier werden verworfen, „robbie komm her“, „folge mir robbie“, „robbie fahr nach hause“, „stopp“ und „halt an“ gelten weiter.
+- **Offen:** Am Pi prüfen, welche Konfidenzen echte Befehle bekommen (`/sprache/status`, Feld `konfidenz`). Werden echte Befehle verworfen, `SPRACHE_MIN_KONFIDENZ` senken. Als Mikrofon lief die C270 (das USB-Mikrofon war nicht angesteckt); sie hört weiter weg und rauschiger.
+
+### 03.11.2026 – USB-Überlast per SSH untersucht
+- **Was:** Kernel-Log, Versorgung und Serverlog am Pi ausgewertet (Uptime 15 min, Server lief im Stand).
+- **Ergebnis:**
+  - Über 400 „over-current“-Meldungen in 15 min, immer auf **allen** Root-Ports gleichzeitig (auch dem leeren `usb4-port1`). Der gemeinsame 1,6-A-Schalter der Pi-Buchsen löst aus, nicht ein einzelnes Gerät.
+  - Versorgung des Pi selbst in Ordnung: `throttled=0x0`, EXT5V 5,09 V, 51 °C, `arm_freq=2000`, `usb_max_current_enable=1`, `PSU_MAX_CURRENT=5000`. Mehr lässt sich in Software nicht freigeben.
+  - Schon **vor** dem Serverstart 24 Überlasten (beim Booten melden sich alle Geräte gleichzeitig an). Der erste Zusammenbruch im Lauf kam in derselben Sekunde, in der Hailo, Lidar-Motor, beide Kameras und die Ansage „Ich bin bereit“ starteten. Danach Dauerschleife (Geräte melden sich an, ziehen Anlaufstrom, Schalter löst wieder aus).
+  - Die **Orbbec steckt wieder** (seit 28.10. war sie abgezogen). Sie ist der größte Verbraucher am Hub und bringt einen eigenen internen Hub mit (Genesys `05e3:0608`).
+  - **Der Hub:** VIA VL817 (`2109:2817`/`0817`, Firmware 0.50), meldet sich als *self powered* (0 mA vom Pi). Uns wurde gesagt, es sei die veraltete V1 mit Stromproblemen. Das passt zum Muster (Überlast auf allen Pi-Ports gleichzeitig, auch auf leeren). Per Software lässt sich die Version nicht ablesen.
+  - Das USB-Mikrofon steckt nicht, die Spracherkennung nutzt das Mikrofon der C270.
+  - Fallstrick beim Lesen der Logs: Der Pi hat keine Echtzeituhr. Bis die Netzwerkzeit greift, stehen im Log alte Zeiten (heute „29.10. 15:04“ statt 07:5x).
+- **Folgerung:** Wie am 28./29.10.: Die Ursache ist die gemeinsame 5-V-Versorgung, Abhilfe schafft nur Hardware (`docs/hardware.md`, „Was am Roboter tun“, Punkt 4: aktiver Hub mit eigener Versorgung bzw. VBUS zwischen Pi und Hub trennen). Bis dahin die Orbbec wieder abziehen. Mit dem Hinweis auf den V1-Hub ist der Tausch gegen eine neuere Version bzw. einen Hub mit sauberer eigener Versorgung der naheliegende Schritt. Gegenprobe vorher: Hub ab, Board und Lidar direkt an den Pi.
+- **Nachtrag – Treiberboard V1:** Der Hinweis „V1 mit Stromproblemen“ bezog sich auf das Treiberboard (Yahboom ROS Driver Board). Laut Yahboom kann erst V3.0 das Stromprotokoll des Pi 5 (5,1 V/5 A). Am Pi bestätigt: Es wurde nichts ausgehandelt (`usbpd_power_data_objects` = 0). Die 5 A stehen nur von Hand im EEPROM (`PSU_MAX_CURRENT=5000`), der Pi gibt deshalb 1,6 A für USB frei, die das V1-Board unter Last nicht liefert. Board-Firmware 2.4, Akku 11,9 V. Ein Firmware-Update hilft nicht: Die Firmware steuert Motoren und IMU, die Versorgung ist Hardware. Abhilfe: Board V3.0 oder ein eigener 5-V/5-A-Wandler mit Pi-5-Protokoll für den Pi.
+
+### 03.11.2026 – „Robi“ wieder hörbar, natürlichere Stimme
+- **Was:**
+  - **„Robi“ nach einem Befehl:** Der letzte Befehl im Test war „Robi, Beatbox“. Danach ließ die Regel vom Vormittag bei laufender Musik nur Stopp und „Musik aus“ durch, auch das Weckwort fiel weg. Der Roboter war also bis zum Liedende taub. Jetzt gilt bei Musik jeder Befehl, wenn er das Weckwort hat und Vosk sich sicher ist (`SPRACHE_MIN_KONFIDENZ_MUSIK` = 0,85).
+  - **„Robi“ allein wird beantwortet:** Nach 1 s sagt er „Ja?“, außer der Befehl kam schon. Bisher kam keine hörbare Rückmeldung, man wusste nicht, ob er zugehört hat. Das Weckfenster (5 s) läuft erst ab, wenn er ausgeredet hat. Ein „Robi“ mitten im Wortsalat weckt nicht mehr.
+  - **Stimme:** Piper mit der Stimme „Thorsten medium“ am Pi eingerichtet (`~/piper/`). Bisher fehlte Piper, der Server sprach mit espeak-ng, deshalb klang er so robotisch. Der Server findet Piper jetzt auch im Release-Ordner (`STIMME_PIPER`).
+- **Ergebnis:** Geschwindigkeit am Pi gemessen: „medium“ etwa doppelt so schnell wie Echtzeit, „high“ langsamer als Echtzeit (5,7 s für 3,5 s Sprache), deshalb medium. Testskripte `test_sprache.py` und `test_stimme.py` am Pi bestanden.
+- **Offen:** Am Roboter ausprobieren: „Robi“ → „Ja?“ → „folge mir“; während eines Lieds „Robi, stopp“ und „Robi, komm her“. Klang der neuen Stimme im Raum beurteilen.
+- **Nebenbefund:** Die Absturzerfassung (`~/.rosmaster/diagnose/server.log`) liegt nur auf dem Branch `fehlersuche-abstuerze`. Auf `main` schrieb der Server deshalb kein Log, nur in das Terminal. Am selben Tag in `main` gemergt (Konflikte nur in der Doku, beide Seiten behalten).
+
+### 03.11.2026 – Weibliche Stimme, und warum Thorsten nicht sprach
+- **Was:** Stimme auf „Kerstin“ umgestellt (weiblich, `de_DE-kerstin-low`). Piper rechnet nur noch auf einem CPU-Kern (`STIMME_KERNE`, per `taskset`), die Lautstärke steht auf 70 statt 80 %. `main.py` nutzt bei einem Start mit `sudo` das Home-Verzeichnis des eigentlichen Benutzers.
+- **Warum:** Thorsten sprach aus zwei Gründen nicht:
+  1. **Over-Current beim Sprechen:** Im Log brach jeder längere Satz mit `aplay: write error: No such device` ab. Im Kernel-Log stand in derselben Sekunde ein Over-Current-Sturm, alle USB-Geräte fielen ab, auch der Lautsprecher. Piper auf vier Kernen plus Lautsprecher bei 80 % war ein Lastsprung, den die schwache Versorgung (Treiberboard V1) nicht abfing.
+  2. **Start mit `sudo`:** Der Server lief danach als root, `~` zeigte auf `/root`, Piper wurde nicht gefunden, und er sprach wieder mit espeak.
+- **Ergebnis:** Am Pi gemessen: Mit nur einem Kern ist Piper kaum langsamer (1,27 statt 1,28 s für 3,5 s Sprache). Ein Testsatz mit Kerstin bei 70 % lief vollständig und ohne eine neue Over-Current-Meldung (7 vorher, 7 nachher). `test_stimme.py` bestanden.
+- **Offen:** Im Betrieb beobachten, ob beim Sprechen noch USB-Ausfälle kommen (`/diagnose`). Die eigentliche Abhilfe bleibt die Versorgung (Board V3.0 oder eigener 5-V/5-A-Wandler).
+
+### 03.11.2026 – Absturz bei „folge mir“: sanfter Start, ein Lautstärkeregler
+- **Was:**
+  - **Sanfter Start der Interaktion:** Erst läuft 5 s nur die Posenerkennung warm (`INTERAKTION_ANLAUF_S`, still, im Stand), dann sagt er „Jetzt folge ich dir.“, und gefahren wird erst, wenn der Satz zu Ende ist. Befehle in dieser Zeit (z. B. Stopp) gelten danach.
+  - **Ein Lautstärkeregler:** `LAUTSTAERKE` auf der Einstellungsseite (Gruppe „Ton & Lautstärke“) gilt für Stimme und Musik. Der Mixer des Lautsprechers steht immer auf 100 % (`TON_MIXER`) und wird vor jeder Satzfolge neu gesetzt (nach einem USB-Aussetzer kommt der Lautsprecher mit seinem Standardwert zurück). Leiser wird in Software: Piper-Töne rechnet der Server herunter, espeak bekommt `-a`, mpv bekommt Musik-Regler × Gesamtlautstärke.
+- **Warum:** Im Log stand um 08:50:25 alles in derselben Sekunde: „ruby folge mir“ → Interaktion an, Posenerkennung an, Ansage „Ich folge dir.“, Motoren an. Eine Sekunde später brach die USB-Versorgung zusammen, kurz darauf startete der ganze Pi neu (Uptime danach 5 min). Nacheinander statt gleichzeitig verteilt die Lastsprünge.
+- **Ergebnis:** Am Pi: `test_gesten.py` (mit neuen Prüfungen für den sanften Start), `test_sprache.py` und `test_stimme.py` bestanden. Echter Satz über die `Stimme`-Klasse mit Lautstärke 60 % in Software: Piper spricht, Mixer steht auf 100 %, keine neue Over-Current-Meldung (16 vorher, 16 nachher).
+- **Offen:** Am Boden testen: „Robi, folge mir“ → 5 s Stille → „Jetzt folge ich dir.“ → losfahren, dabei `/diagnose` beobachten. Die Lautstärke im Raum einstellen.
+
+### 03.11.2026 – Mikrofon live in der App
+- **Was:** Zwei Schalter im Bereich „Interaktion“ der Web-App:
+  - **Mitlesen:** Pegelbalken, was Vosk im laufenden Satz gerade versteht, und die letzten 15 Sätze mit Urteil (Befehl, verworfen samt Grund, Weckwort, kein Befehl). Neu: `GET /sprache/live`, die App fragt 4x pro Sekunde.
+  - **Mithören:** der Ton des Roboter-Mikrofons im Browser. Neu: WebSocket `/sprache/ton` (Rohton 16 bit mono, Wiedergabe mit der Web-Audio-API). Hinkt die Wiedergabe hinterher, springt sie nach vorn statt immer später zu werden.
+- **Warum:** Bei den Fehlauslösern war bisher nur im Log zu sehen, was der Roboter gehört hat. Jetzt hört man live mit und sieht, warum ein Satz (nicht) als Befehl galt. Das hilft auch beim Einstellen der Konfidenz-Schwellen.
+- **Kosten:** Pegel und Zwischentext rechnet der Server nur, solange jemand mitliest (3 s nach dem letzten Abruf ist Schluss), Ton verschickt er nur an verbundene Zuhörer. Ausgeschaltet kostet beides nichts.
+- **Ergebnis:** Am Pi mit einem zweiten Server im Simulationsmodus geprüft: `/sprache/live` liefert, `mikro.js` wird ausgeliefert, der Ton-WebSocket meldet sich (ohne Mikrofon mit `{"rate": null}`; dabei ein Fehler gefunden und behoben: Die erste Meldung fehlte, die App hätte ewig „verbinde …“ gezeigt). Getippte Sätze erscheinen mit Urteil im Feed. Testskripte bestanden.
+- **Offen:** Mit echtem Mikrofon nach dem Neustart des Servers ausprobieren (Ton, Verzögerung).
+
+### 03.11.2026 – Sprachbefehle nach einem Absturz: Failsafe
+- **Was:** Die Spracherkennung erholt sich jetzt auch dann von einem USB-Aussetzer, wenn keine Fehlermeldung kommt:
+  - Das Mikrofon wird per Callback mit Warteschlange gelesen statt mit blockierendem `read()`. Kommt 3 s kein Ton (`SPRACHE_HAENGT_S`), wird es neu geöffnet. Hängt das Schließen des toten Streams, bleibt er liegen.
+  - 5 s nur exakte Nullen (`SPRACHE_STUMM_S`) gelten als toter Stream.
+  - Läuft die Erkennung nach einem Aussetzer auf der C270, wechselt sie zurück zum USB-Mikrofon, sobald es wieder angemeldet ist.
+- **Warum:** Nach einem Absturz reagierte der Roboter nicht mehr auf Sprache. Am laufenden Server zeigte `/sprache/live` einen eingefrorenen Pegel, Zustand „hoert“ und keine neuen Sätze, `/sprache/ton` lieferte keinen Ton. Im Kernel-Log hatte sich das USB-Mikrofon um 09:12 und 09:13 ab- und wieder angemeldet. Der Hör-Thread hing in `strom.read()`, ohne Fehler. Der alte Failsafe (Neuversuch alle 3 s) greift nur bei einer Fehlermeldung und kam deshalb nie zum Zug.
+- **Ergebnis:** Am Pi: Lesen per Callback mit dem echten Mikrofon geht (keine reinen Nullen, also keine Fehlauslösung der Stille-Erkennung). Neuer Test in `test_sprache.py`: Ein Stream, der nie liefert, wird nach der Frist erkannt und geschlossen. Alle drei Testskripte bestanden.
+- **Offen:** Server neu starten und bei einem echten Aussetzer im Log auf „Stream hängt“ und „Mikrofon wieder da“ achten.
+
+### 03.11.2026 – Mithören bleibt an, auch nach Befehlen und Hängern
+- **Was:**
+  - **Server:** Eine Wache über den Hör-Thread. Kommt er 15 s nicht voran (z. B. hängt schon das Öffnen des Mikrofons in PortAudio), startet sie einen neuen, höchstens dreimal hintereinander. Das Vosk-Modell wird dafür nicht neu geladen. Der Ton-WebSocket schickt ohne Ton jede Sekunde ein Lebenszeichen.
+  - **App:** Mithören verbindet selbst neu, wenn 5 s nichts kommt, auch wenn die Verbindung nicht sauber geschlossen wurde (Pi hängt). Das Mitlesen fragt mit 2 s Frist. Hält der Browser den Ton an, läuft er beim nächsten Paket weiter.
+- **Warum:** Nach einem Befehl konnte man nicht mehr mithören. Der Roboter antwortet auf einen Befehl, der Lautsprecher zieht Strom, und das USB-Mikrofon fällt ab (im Kernel-Log achtmal in acht Sekunden). Mit dem alten Code hing der Hör-Thread danach für immer.
+- **Ergebnis:** Am laufenden Server nach dem Neustart: „Robi, folge mir“ → Mikrofon fällt beim Sprechen ab → nach 3 s „Mikrofon wieder da“, die Erkennung hört weiter. Neuer Test: Ein Hör-Thread, der beim Öffnen für immer hängt, wird dreimal ersetzt, danach meldet `/sprache/status` „Server neu starten“. Alle Testskripte bestanden.
+- **Offen:** Die eigentliche Ursache bleibt die Versorgung (Board V3.0 oder eigener 5-V/5-A-Wandler). Bis dahin gibt es nach jedem Satz des Roboters eine Lücke von etwa 3 s im Mithören.
+
+### 03.11.2026 – Langsam nach dem Folgen: Fahrvorrang; Suchen bis gefunden
+- **Was:**
+  - **Fahrvorrang:** Lenkt ein Gerät, ignoriert der Server für 0,5 s (`DRIVE_VORRANG_S`) die Nullen aller anderen Verbindungen. „stop“ wirkt weiter von jedem Gerät.
+  - **Suchen:** Verliert er die Person beim Folgen, dreht er sich so lange im Kreis, bis er wieder jemanden sieht (`FOLGEN_SUCHEN_S` = 0, vorher Abbruch nach 6 s). Er dreht dabei in Schritten von etwa 40° mit kurzem Stillhalten dazwischen, weil das Kamerabild im Drehen verwischt.
+- **Warum langsam:** Im Log wechselten sich die Fahrbefehle mehrmals pro Sekunde ab: Vollgas, 0, Vollgas, 0. Zur selben Zeit waren zwei Geräte verbunden (10.42.0.60 und 10.42.0.206). Die Web-App schickt auch im Stillstand zehnmal pro Sekunde „vx=0“ (Totmannschaltung). Ein Gerät lenkte, das andere bremste dazwischen, und er fuhr stotternd mit etwa halbem Tempo. Erst nach dem Folgen fiel es auf, weil der Server während der Interaktion die Nullen ohnehin verwirft. Die Anfahrrampe war auf der Einstellungsseite ausgeschaltet, deshalb schlug jede Null voll durch.
+- **Ergebnis:** Am Pi: Test für den Fahrvorrang (Gerät A fährt, Gerät B schickt Nullen → nur A zählt, A lässt los → Stopp). `test_gesten.py` mit neuen Prüfungen: Suchen hält nach dem Drehen kurz still, dreht weiter, sucht nach 5 min noch, folgt, sobald jemand da ist. Mit Zeitgrenze gibt er weiter auf. Alle Testskripte bestanden.
+- **Nebenbefund:** Der Pi ist um etwa 09:41 wieder neu gestartet (Uptime danach 4 min), im Log davor viele Not-Stopps.
+- **Offen:** Am Boden testen: Person verlieren, er sucht im Kreis, findet sie wieder. Fahren mit zwei offenen Apps.
+
+### 03.11.2026 – Durchsage: über den Roboter sprechen
+- **Was:** Neuer Schalter „Über den Roboter sprechen“ in der App. Das Mikrofon von Laptop oder Handy geht live über den Lautsprecher des Roboters.
+  - Browser: Mikrofon mit Echo- und Rauschunterdrückung, auf 16 kHz heruntergerechnet, als Rohton über den WebSocket `/sprache/durchsage`.
+  - Roboter: Die Durchsage steht in der Warteschlange der Stimme. Musik pausiert, die Spracherkennung hört weg, ein Stopp bricht ab, die zentrale Lautstärke gilt. Nach 2 s Stille ist der Lautsprecher wieder frei.
+  - Zusätzlich HTTPS auf Port 8443 mit selbst erzeugtem Zertifikat. Ohne HTTPS geben Browser das Mikrofon nicht frei, unter `http://` zeigt die App einen Link dorthin.
+- **Warum:** Wunsch, über den Roboter mit Leuten zu sprechen, ohne danebenzustehen.
+- **Ergebnis:** Am echten Lautsprecher: Testton über die Durchsage abgespielt, Spracherkennung hört so lange weg, keine neue Over-Current-Meldung. Mit einem zweiten Server (Simulation): HTTP auf 8100 und HTTPS auf 8443 laufen gleichzeitig, das Zertifikat wurde erzeugt, die Durchsage kommt über `wss://` an, Strg+C beendet sauber. `test_stimme.py` mit neuen Prüfungen: Die Durchsage hält „spricht“, endet mit dem Ende, nach einer Pause und durch einen Stopp. Gefunden und behoben: War der Lautsprecher belegt, hätte jedes Tonpaket ein neues aplay gestartet. Jetzt wartet der Server 2 s und meldet es der App.
+- **Offen:** Im Browser auf Laptop und Handy ausprobieren (Zertifikatswarnung, Verzögerung, Lautstärke).
+
+### 03.11.2026 – Genaue Fahrbefehle: „2 Meter vor“, „90 Grad drehen“
+- **Was:** Neue Befehle, die eine Strecke oder einen Winkel genau fahren:
+  - App: Panel „Genau fahren“ (Strecke bzw. Winkel eingeben, Richtung wählen), Nachrichten `move` und `turn`.
+  - Sprache: „Robi, fahr zwei Meter vor“, „Robi, einen halben Meter nach links“, „Robi, dreh dich um neunzig Grad nach rechts“, „Robi, dreh dich um“. Er sagt an, was er tut, und meldet sich, wenn es nicht geklappt hat.
+  - Neues Modul `navigation/manoever.py`.
+- **Wie:**
+  - Das Lidar misst: Jede Aufnahme wird auf die vom Start gelegt (ICP), daraus folgt, wie weit er wirklich gefahren bzw. gedreht ist. Räder und Fahrbefehl schätzen nur die Zeit zwischen zwei Aufnahmen.
+  - Geradeaus hält der Regler auch die seitliche Abweichung und die Richtung bei null. Mecanum gleicht seitwärts aus.
+  - Am Ende misst er im Stand nach und bessert nach. Im Fahren ist eine Lidar-Umdrehung verzerrt.
+  - Die Kamera wird nicht gebraucht: Sie sieht nur nach vorn und misst keine Entfernungen.
+- **Warum Lidar:** Nach Zeit zu fahren taugt nicht. Der Fahrbefehl überschätzt die Bewegung um 10–30 %, Mecanum rutscht beim Drehen, und der Gyro hat Bias und falsches Vorzeichen (Sensor-Check 28.10.).
+- **Ergebnis:** Simulation mit absichtlich rutschendem Antrieb (dreht 20 % weniger als befohlen, die Räder melden noch weniger), `Marlon/autonomes_fahren/test_manoever.py`:
+  - 1 m vor, 0,5 m seitwärts, 0,3 m zurück: 1–2 cm daneben, geradeaus.
+  - 90°, 180°, 360° drehen: 1–2° daneben. Ohne Lidar wären es bei 90° etwa 18° gewesen.
+  - Vor der Wand hält er an und meldet es. Abbrechen hält sofort.
+  - Mit einem Simulations-Server am Pi: Befehl aus der App und Sprachbefehl laufen durch, die Ansage kommt. Die größere Vosk-Grammatik (2209 Sätze) baut in 0,01 s.
+- **Probleme unterwegs:**
+  - Zuerst wechselte die Bezugsaufnahme alle 25°. Jeder Wechsel brachte etwa 0,2° Fehler, nach 360° lag er um 3,4° daneben. Jetzt wird gegen die Startaufnahme abgeglichen, gewechselt nur bei schlechtem Abgleich.
+  - Er hielt knapp innerhalb der Toleranz an (2,9 von 3 cm). Jetzt fährt er bis zur halben Toleranz heran.
+  - Gefunden: War Port 8443 belegt, riss der HTTPS-Teil den ganzen Server mit. Jetzt läuft HTTP trotzdem weiter.
+- **Offen:** Am Boden testen (echter Lidar, Teppich/glatter Boden). Tempo und Toleranzen ggf. anpassen. In großen, leeren Räumen oder langen Fluren findet das Lidar weniger Halt.
+
+### 03.11.2026 – Bodentest genaue Fahrbefehle, Drehen nachgebessert
+- **Was:** Erster Test am Boden, per App, per Sprache und per Fernsteuerung über SSH.
+- **Ergebnis:**
+  - 1 m und 2 m vor: laut Lidar 1 cm daneben. Sprachbefehle („Robi, fahr zwei Meter nach vorne“) laufen durch.
+  - Drehen bei freier Fläche: 45° auf 0,1° genau, 90° links auf 0,9°, 90° rechts auf 1,1°, 180° auf 0,4°, 360° auf 0,0°. Dabei wandert er 3–12 cm (Mecanum).
+- **Probleme:**
+  - Beim Drehen sagte er oft „Das hat nicht ganz geklappt“. Dahinter steckten zwei Ursachen:
+    - Etwas stand näher als 30 cm (Beine, Möbel). Er dreht dann aus Sicherheitsgründen nicht.
+    - Er besserte dreimal nach (+1,3°, +2,2°, +1,7°) und bewegte sich dabei nicht. Die Schätzung hielt 1–2° schon nach einem Takt für erledigt, obwohl die Rampe erst 0,3 rad/s ausgab und die Motoren aus dem Stand nicht anliefen.
+  - Gelöst:
+    - Aus dem Stand zählt eine Drehung erst nach `MANOEVER_ANLAUF_S` (0,25 s).
+    - Er sagt jetzt den Grund: „Zum Drehen ist es mir hier zu eng“, „Da ist etwas im Weg …“, „Fast geschafft, ich liege 2 Grad daneben“.
+  - Nebenbei gefunden:
+    - `motor.py` im Repo am Pi steuert das Board direkt an. Läuft es neben dem Server, streiten beide um den Port, und die Bewegungsmessung fällt aus (Log 10:51).
+    - `server.log` gehört root, seit der Server als `pi` läuft, landet nichts mehr darin.
+- **Offen:** Nachgebesserte Version am Boden prüfen. Winkel mit einer Linie am Boden gegenmessen, das Lidar kontrolliert sich bisher nur selbst.
+
+### 03.11.2026 – Spracherkennung nur noch über das angesteckte Mikrofon
+- **Problem:** Manchmal hörte die Spracherkennung über das Mikrofon der Logitech C270. Das klingt so schlecht, dass kaum ein Befehl ankam.
+- **Ursache:** In `SPRACHE_MIKROFON_NAMEN` stand „C270“ als letzter Ersatz. War das USB-Mikrofon nach einem USB-Aussetzer kurz weg, nahm der Neuversuch die C270.
+- **Was:** „C270“ aus der Liste gestrichen, das angesteckte FongLun („USB Microphone“, am Pi Karte 5) steht vorn. Neu `SPRACHE_MIKROFON_NIE` (C270, Logi, WebCam, Orbbec): Diese Geräte nimmt die automatische Suche nie, auch wenn ein allgemeiner Name wie „Microphone“ passt. Ist das USB-Mikrofon weg, ist die Erkennung lieber aus und sucht alle 3 s neu.
+- **Ergebnis:** Am Pi mit den echten Gerätenamen nachgeprüft: C270 und Orbbec fallen heraus, übrig bleiben nur „pulse“ und „default“, die zu keinem Namen passen. Das USB-Mikrofon hält der laufende Server belegt (`/sprache/status`: „USB Microphone (hw:5,0)“).
+- **Offen:** Nach dem nächsten Server-Neustart in `/sprache/status` prüfen, dass `mikrofon` das USB-Mikrofon ist. Mikrofon kurz abziehen: Die Erkennung muss „kein Mikrofon“ melden statt auf die C270 zu wechseln.
+
+---
+
 ## 3. Ergebnisse und Messwerte
 
 | Thema | Ergebnis | Quelle |
@@ -532,6 +668,10 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 | Ausfälle nur per SSH auffindbar | Kernel-Log, vcgencmd und Serverlog getrennt | Diagnoseseite `/diagnose` mit Problemen, Zeitleiste und Log (29.10.) |
 | Push aus dem Laptop hängt | Git Credential Manager wartet auf Login-Fenster | Nutzer pusht selbst, der Pi zieht nur (`git pull`) |
 | MUKKE: mpv meldet „Failed to recognize file format“ | mpvs ytdl-Skript findet yt-dlp in der venv nicht und gibt den YouTube-Link roh weiter | Server löst den Link selbst mit der yt-dlp-Bibliothek auf, mpv bekommt nur noch die direkte Tonspur; YouTube-Fehler erscheinen im Fenster |
+| Roboter startet die Interaktion von selbst | Vosk mit Grammatik macht aus Musik und Gesprächen erlaubte Sätze („robbie hallo“) | Konfidenz- und `[unk]`-Prüfung; bei Musik nur Stopp und „Musik aus“ (03.11.) |
+| Drehen/Strecke nach Zeit ungenau | Fahrbefehl überschätzt 10–30 %, Mecanum rutscht, Gyro unbrauchbar | Genaue Fahrbefehle messen mit dem Lidar (`navigation/manoever.py`, 03.11.) |
+| Fährt nach dem Folgen nur langsam und stotternd | Zweite offene App schickt im Leerlauf laufend „vx=0“ zwischen die Befehle des Lenkenden | Fahrvorrang für das lenkende Gerät, `DRIVE_VORRANG_S` (03.11.) |
+| Nach einem Absturz keine Sprachbefehle mehr | Mikrofon fiel kurz vom USB ab, `strom.read()` blieb ohne Fehler für immer hängen | Lesen per Callback mit Frist, Neuöffnen nach 3 s ohne Ton; Rückwechsel von der C270 zum USB-Mikrofon (03.11.) |
 
 ---
 
@@ -542,7 +682,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Stresstest am Boden** (Räder mit Last): erst am Netzteil, dann am Akku. Auf dem Podest gibt es mit beiden 0 Resets (29.10.), deshalb ist offen, ob das Netzteil unter Last hilft. Bleiben am Boden Resets, braucht es die getrennte 5-V-Versorgung für Pi bzw. Hub (siehe `docs/hardware.md`, „Was am Roboter tun“).
 - Stresstest mit eingeschalteter Interaktion (Hailo-Pose und Gesten unter Fahrlast) wiederholen.
 - Interaktion: Hailo-Pose am Pi prüfen, Fahrtest Folgen/Herkommen am Boden; danach Stufen 4–5 (Sprache, Geist).
-- Stimme: Piper am Pi installieren, Lautsprecher und Lautstärke prüfen.
+- Stimme: Piper ist seit 03.11. am Pi; Lautsprecher und Lautstärke im Raum prüfen.
 - Sprachbefehle am Pi: `libportaudio2`, `pip install -e "robot[sprache]"` und Vosk-Modell installieren, `/sprache/status` prüfen, „Robi, folgen“ am Boden testen; erkennt Vosk „Robi“ schlecht, Varianten in `SPRACHE_WECKWORT_VARIANTEN` ergänzen.
 - Lautsprecher teilen: MUKKE und Stimme blockieren sich gegenseitig (exklusives ALSA-Gerät); gemeinsamer Mixer (dmix/PipeWire) offen.
 - Prüfen, ob der Antrieb beim Einschalten der Gesten jetzt verbunden bleibt (warmer Hailo).

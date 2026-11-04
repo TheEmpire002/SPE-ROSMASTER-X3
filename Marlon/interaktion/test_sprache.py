@@ -93,7 +93,11 @@ pruefe("Fenster läuft ab", s.hoeren("komm her") is None)
 config.SPRACHE_WECK_FENSTER_S = alt
 
 abgeholt = s.befehle_abholen()
-pruefe("Befehl in der Schlange", abgeholt == [{"befehl": sp.FOLGEN, "text": "folge mir"}], abgeholt)
+pruefe("Robi allein meldet sich zum Antworten", abgeholt[0] == {"befehl": sp.WECKEN, "text": "robi"}, abgeholt)
+befehle = [e for e in abgeholt if e["befehl"] != sp.WECKEN]
+pruefe("Befehl in der Schlange", befehle == [{"befehl": sp.FOLGEN, "text": "folge mir"}], abgeholt)
+s.hoeren("robin la")
+pruefe("Robi im Wortsalat weckt nicht", not s.geweckt and s.befehle_abholen() == [])
 pruefe("Schlange danach leer", s.befehle_abholen() == [])
 pruefe("Zustand zeigt den Befehl", s.zustand()["befehl"] == sp.FOLGEN, s.zustand())
 pruefe("leerer Text wird ignoriert", s.hoeren("   ") is None)
@@ -103,6 +107,49 @@ pruefe("Schlange begrenzt", len(s.befehle_abholen()) == 5)
 st = s.status()
 pruefe("Status vollständig", st["erkannt"] == 11 and st["weckwort"] == config.SPRACHE_WECKWORT, st)
 s.stop()
+
+# --- Genaue Fahrbefehle mit Zahl -----------------------------------------------------
+for text, erwartet in [
+    ("fahr zwei meter vor", ("vor", 2.0)),
+    ("fahre einen meter zurück", ("zurueck", 1.0)),
+    ("einen halben meter nach links", ("links", 0.5)),
+    ("fahr anderthalb meter nach rechts", ("rechts", 1.5)),
+    ("fahr zwanzig zentimeter vorwärts", ("vor", 0.2)),
+    ("fahr 1,5 m vor", ("vor", 1.5)),
+    ("dreh dich um neunzig grad", ("drehen", 90.0)),
+    ("dreh dich um neunzig grad nach rechts", ("drehen", -90.0)),
+    ("drehe dich um hundert achtzig grad", ("drehen", 180.0)),
+    ("dreh dich um dreihundertsechzig grad nach links", ("drehen", 360.0)),
+    ("dreh dich um", ("drehen", 180.0)),
+    ("dreh dich nach rechts", ("drehen", -90.0)),
+    ("fahr zwei meter vor bitte", None),       # ein Wort zu viel
+    ("zwei meter", None),                      # keine Richtung
+    ("dreh dich um neunzig", None),            # kein "Grad"
+]:
+    ergebnis = sp.manoever_erkennen(sp.normalisieren(text))
+    pruefe(f"Fahrbefehl {text!r} -> {erwartet}", ergebnis == erwartet, ergebnis)
+
+pruefe("mit Robi: Fahrbefehl", sp.erkennen("robi fahr zwei meter zurück") == (sp.MANOEVER, True))
+pruefe("'zwei meter zurück' ist kein Weggehen",
+       sp.erkennen("robbie zwei meter zurück")[0] == sp.MANOEVER)
+pruefe("ohne Robi: nichts", sp.erkennen("fahr zwei meter vor") == (None, False))
+pruefe("'fahr zurück' bleibt Weggehen", sp.erkennen("robi fahr zurück")[0] == sp.WEGGEHEN)
+pruefe("Fahrbefehl ist kein Wortsalat", sp.wortsalat("robi fahr zwei meter vor", sp.MANOEVER) is None)
+pruefe("Fahrbefehl mit doppeltem Robi ist Salat",
+       sp.wortsalat("robi fahr zwei meter vor robi", sp.MANOEVER) is not None)
+s = sp.Spracherkennung(mock=True)
+s.start()
+pruefe("Fahrbefehl gehört", s.hoeren("Robi, fahr zwei Meter vor") == sp.MANOEVER)
+abgeholt = s.befehle_abholen()
+pruefe("Fahrbefehl mit Richtung und Wert in der Schlange",
+       abgeholt and abgeholt[0].get("wie") == {"art": "vor", "wert": 2.0}, abgeholt)
+s.stop()
+saetze = sp._manoever_saetze()
+pruefe("Grammatik enthält Fahrbefehle", "fahr zwei meter vor" in saetze
+       and "dreh dich um neunzig grad nach rechts" in saetze, len(saetze))
+pruefe("jeder Grammatik-Satz wird verstanden",
+       all(sp.manoever_erkennen(sp.normalisieren(x)) is not None for x in saetze),
+       [x for x in saetze if sp.manoever_erkennen(sp.normalisieren(x)) is None][:3])
 
 # --- Grammatik gegen den Wortschatz des Modells ---------------------------------------
 with tempfile.TemporaryDirectory() as ordner:
@@ -118,6 +165,72 @@ with tempfile.TemporaryDirectory() as ordner:
     pruefe("unbekannte Wendungen fehlen", "geh weg" not in g and "komm her" in g)
     pruefe("alle Wörter bekannt", all(w in wortschatz or w == "[unk]" for s in g for w in s.split()))
     pruefe("Rest als [unk]", g[-1] == "[unk]")
+
+# --- Hängender Stream: Fehler statt ewig warten ----------------------------------------
+# Nach einem USB-Aussetzer kam vom Mikrofon nichts mehr, ohne Fehlermeldung.
+class _TotesSd:
+    class RawInputStream:
+        geschlossen = False
+
+        def __init__(self, **kw):
+            self.callback = kw["callback"]  # wird nie aufgerufen
+
+        def start(self):
+            pass
+
+        def close(self):
+            type(self).geschlossen = True
+
+
+class _Vosk:
+    class KaldiRecognizer:
+        def __init__(self, *a):
+            pass
+
+        def SetWords(self, _):
+            pass
+
+
+s = sp.Spracherkennung(mock=False)
+s._mikrofon_finden = lambda sd: (0, "USB Microphone")
+s._abtastrate = lambda sd, g: 16000
+t0 = time.monotonic()
+try:
+    s._hoeren_bis_fehler(_TotesSd, _Vosk, None, "[]")
+    meldung = ""
+except RuntimeError as exc:
+    meldung = str(exc)
+dauer = time.monotonic() - t0
+pruefe("hängender Stream wird erkannt", "hängt" in meldung, meldung)
+pruefe("nach der Frist, nicht ewig", dauer < config.SPRACHE_HAENGT_S + 2, dauer)
+pruefe("toter Stream wird geschlossen", _TotesSd.RawInputStream.geschlossen)
+
+
+# --- Hör-Thread steckt fest: Wache startet neu, dann Fehler ----------------------------
+class _HaengendesSd:
+    _terminate = _initialize = staticmethod(lambda: None)
+
+    class RawInputStream:
+        def __init__(self, **kw):
+            threading.Event().wait()  # Öffnen hängt in PortAudio, für immer
+
+
+import threading  # noqa: E402
+
+alt = config.SPRACHE_THREAD_HAENGT_S, config.SPRACHE_ENABLED
+config.SPRACHE_THREAD_HAENGT_S, config.SPRACHE_ENABLED = 0.5, True
+s = sp.Spracherkennung(mock=False)
+s._modell = (_HaengendesSd, _Vosk, None, "[]")  # Modell "schon geladen"
+s._mikrofon_finden = lambda sd: (0, "USB Microphone")
+s._abtastrate = lambda sd, g: 16000
+s.start()
+time.sleep(config.SPRACHE_THREAD_MAX_NEU + 3)
+st = s.status()
+pruefe("Wache startet hängenden Hör-Thread neu",
+       s._generation == 1 + config.SPRACHE_THREAD_MAX_NEU, s._generation)
+pruefe("danach Fehler mit Hinweis", st["zustand"] == sp.FEHLER and "neu starten" in (st["fehler"] or ""), st)
+s.stop()
+config.SPRACHE_THREAD_HAENGT_S, config.SPRACHE_ENABLED = alt
 
 # --- Ohne Vosk: aus, aber kein Absturz -------------------------------------------------
 sys.modules["vosk"] = None  # Import schlägt dann sicher fehl

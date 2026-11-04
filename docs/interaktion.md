@@ -116,7 +116,7 @@ mindestens Schultern und Handgelenke im Bild.
 - **Folgen:**
   - Ziel ist die Person, die die Geste gemacht hat. Die Richtung kommt aus der Kamera, der Abstand aus dem Lidar: aus dem Lidar-Cluster im Winkelbereich der Box (siehe „Abstand zur Person“).
   - Sollabstand `FOLGEN_ABSTAND_M` (1,0 m), P-Regler auf `vx` und `omega`, begrenzt durch `FOLGEN_MAX_SPEED`.
-  - Ist die Person länger als 2 s weg, hält er an und dreht sich kurz suchend.
+  - Ist die Person länger als 2 s weg, sagt er „Wo bist du?“ und sucht: Er dreht sich zu der Seite, auf der sie verschwand, je 1,2 s drehen und 0,8 s stillhalten (`FOLGEN_SUCHEN_DREH_S`, `FOLGEN_SUCHEN_PAUSE_S`). Im Drehen verwischt das Kamerabild, im Stand erkennt die Pose scharf. Seit dem 03.11. sucht er so lange im Kreis, bis er wieder jemanden sieht (`FOLGEN_SUCHEN_S` = 0), dann folgt er dieser Person. Vorher gab er nach 6 s auf. Beenden mit Stopp, Stopp-Geste oder „Robi, gute Nacht“.
 - **Herkommen:** fährt auf die Person zu bis 0,7 m und bleibt stehen.
 - **Weggehen:** weicht ~1 m zurück und bleibt stehen.
 - Es ist immer nur **ein** Verhalten aktiv. Erkunder, Heimfahrt und Interaktion brechen sich gegenseitig ab.
@@ -282,11 +282,24 @@ Loslassen aus `safe_stop`).
 
 ## Sprache
 
-- **Eingang:** das USB-Mikrofon (C-Media, `SPRACHE_MIKROFON_NAMEN`; Ersatz: Mikrofon der C270), erkannt mit **Vosk** und dem kleinen deutschen Modell (`SPRACHE_MODELL`) auf der CPU. Fehlen Vosk, Modell oder Mikrofon, ist die Erkennung aus (`/sprache/status` sagt warum), der Server läuft weiter.
+- **Eingang:** das USB-Mikrofon (FongLun „USB Microphone“ bzw. C-Media, `SPRACHE_MIKROFON_NAMEN`; die Mikrofone in C270 und Orbbec sind über `SPRACHE_MIKROFON_NIE` ausgeschlossen, das der C270 versteht zu schlecht), erkannt mit **Vosk** und dem kleinen deutschen Modell (`SPRACHE_MODELL`) auf der CPU. Fehlen Vosk, Modell oder Mikrofon, ist die Erkennung aus (`/sprache/status` sagt warum), der Server läuft weiter.
 - **Feste Grammatik:** Vosk darf nur die Wörter der Befehle und des Weckworts erkennen, der Rest wird `[unk]`. Das macht die Erkennung schnell und robust gegen Gespräche im Raum. Wörter, die das Modell nicht kennt (z. B. „robi“), fallen aus der Grammatik heraus; deshalb gibt es Varianten (`SPRACHE_WECKWORT_VARIANTEN`: „robbie“, „ruby“ …).
 - **Weckwort „Robi“:** Ein Befehl gilt nur, wenn „Robi“ im selben Satz vorkommt („Robi, folge mir“, „folgen Robi“) oder höchstens `SPRACHE_WECK_FENSTER_S` (5 s) vorher allein gesagt wurde. Ein Befehl verbraucht das Fenster.
 - **Stopp geht immer:** „Stopp“, „Halt“, „Bleib stehen“ wirken auch ohne Weckwort (`SPRACHE_STOPP_OHNE_WECKWORT`) und gewinnen gegen jeden Fahrbefehl im selben Satz.
 - **Nicht sich selbst zuhören:** Solange die Stimme spricht (`Stimme.spricht` plus `STIMME_NACHLAUF_S`), wird das Mikrofon verworfen.
+- **Kehrseite der Grammatik:** Vosk presst jedes Geräusch in einen erlaubten Satz. Musik und Gespräche wurden so zu „robbie hallo“ und schalteten die Interaktion ein (03.11.). Deshalb gilt ein Satz nur ganz, wenn jedes Wort mindestens `SPRACHE_MIN_KONFIDENZ` hat und höchstens `SPRACHE_MAX_UNK_ANTEIL` der Wörter `[unk]` sind; sonst nur Stopp. Ebenso bei Wortsalat: Ein gesprochener Befehl kommt als genau ein Grammatik-Satz, aus Geräuschen hängt Vosk dagegen mehrere aneinander („robin hallo hause zu weg ruby“ → weggehen, „ruby komm da fahr mir la ruby leise box“ → herkommen, beide am 03.11. im Log). Kommt das Weckwort doppelt oder stehen mehr als `SPRACHE_MAX_ZUSATZWOERTER` (0) Wörter neben Weckwort und Wendung, gilt nur Stopp. Läuft MUKKE, braucht jeder Befehl außer Stopp das Weckwort und mindestens `SPRACHE_MIN_KONFIDENZ_MUSIK`. Zuerst galten bei Musik nur Stopp und „Musik aus“, dann war der Roboter nach „Robi, Beatbox“ bis zum Liedende taub. Ein so verworfenes Weckwort öffnet kein Fenster, ebenso wenig ein Weckwort im Wortsalat („robin la“). Verworfenes steht im Log und in `/sprache/status`.
+- **„Robi“ allein wird beantwortet:** Nach `SPRACHE_WECK_ANTWORT_NACH_S` (1 s) sagt er „Ja?“ (`SPRACHE_WECK_ANTWORT`), außer der Befehl kam schon. Die Pause verhindert, dass das „Ja?“ jemandem ins Wort fällt, der „Robi … folge mir“ mit kurzem Absatz sagt, denn während er spricht, hört er nicht. Aus demselben Grund läuft das Weckfenster erst ab, wenn er ausgeredet hat.
+- **Live-Feed in der App:** Zwei Schalter im Bereich „Interaktion“. *Mitlesen* zeigt Pegel, den Zwischentext von Vosk und die letzten Sätze mit Urteil (Befehl, verworfen samt Grund, Weckwort, kein Befehl), über `GET /sprache/live`. *Mithören* spielt den Mikrofon-Ton im Browser ab (WebSocket `/sprache/ton`, Wiedergabe mit der Web-Audio-API). Beides kostet am Roboter nur etwas, solange es eingeschaltet ist. Gedacht für die Fehlersuche: Man hört, was beim Roboter ankommt, und sieht, warum ein Satz (nicht) als Befehl galt.
+- **Durchsage („Über den Roboter sprechen“):** Dritter Schalter. Was man ins Mikrofon von Laptop oder Handy spricht, kommt live aus dem Lautsprecher des Roboters (WebSocket `/sprache/durchsage`, 16 kHz mono, Verzögerung etwa eine halbe Sekunde). Die Durchsage steht in derselben Warteschlange wie die Sätze der Stimme: Musik pausiert, die Spracherkennung hört weg (sonst verstünde sie die Durchsage als Befehl), ein Stopp bricht ab, und die Lautstärke ist dieselbe (`LAUTSTAERKE`). Nach 2 s Stille gibt sie den Lautsprecher frei.
+  - **Nur über HTTPS:** Browser geben das Mikrofon nur auf sicheren Seiten frei. Unter `http://10.42.0.62:8000` zeigt die App deshalb einen Link auf `https://10.42.0.62:8443`. Dieselbe App läuft dort mit einem Zertifikat, das der Server beim ersten Start selbst erzeugt. Der Browser warnt einmal („nicht sicher“), die Warnung bestätigen.
+  - Gleichzeitig Mithören einschalten führt zu Echo: Das Roboter-Mikrofon hört den eigenen Lautsprecher.
+- **Failsafe nach USB-Aussetzern:** Das Mikrofon fällt bei einem Over-Current-Sturm mit ab. Bei einer Fehlermeldung sucht die Erkennung nach `SPRACHE_NEUVERSUCH_S` (3 s) neu, das gab es schon. Neu (03.11.) sind drei Fälle ohne Fehlermeldung:
+  - *Stream hängt:* Nach einem Aussetzer kam `strom.read()` nie wieder zurück. Der Pegel war eingefroren, der Zustand blieb „hoert“, Befehle kamen keine mehr, bis zum Neustart des Servers. Gelesen wird jetzt per Callback in eine Warteschlange mit Frist: Kommt `SPRACHE_HAENGT_S` (3 s) lang kein Block, öffnet sie neu. Hängt auch das Schließen des toten Streams, bleibt er liegen (`SPRACHE_SCHLIESSEN_S`), statt den Neuversuch zu blockieren.
+  - *Stream tot:* `SPRACHE_STUMM_S` (5 s) lang nur exakte Nullen → neu öffnen. Ein echtes Mikrofon rauscht immer etwas.
+  - *Falsches Mikrofon:* Die C270 meldete sich nach einem Aussetzer oft vor dem USB-Mikrofon zurück, und die Erkennung lief dann auf ihr. Seit dem 03.11. wird sie gar nicht mehr genommen; ist das USB-Mikrofon weg, ist die Erkennung aus, bis es wieder da ist. Läuft die Erkennung auf einem weniger bevorzugten Eintrag aus `SPRACHE_MIKROFON_NAMEN`, schaut sie weiterhin alle `SPRACHE_MIKROFON_PRUEFEN_S` in `/proc/asound/cards` nach und wechselt zurück, sobald das bessere wieder da ist.
+  - *Hör-Thread steckt fest:* Bleibt schon das Öffnen des Mikrofons in PortAudio hängen, helfen die Fristen oben nicht mehr. Eine Wache startet dann nach `SPRACHE_THREAD_HAENGT_S` (15 s) ohne Fortschritt einen neuen Hör-Thread, höchstens `SPRACHE_THREAD_MAX_NEU` (3) Mal hintereinander. Danach steht in `/sprache/status`: „Server neu starten“.
+  - *Mithören in der App:* Ohne Ton schickt der Server jede Sekunde ein Lebenszeichen. Kommt 5 s gar nichts (Pi hängt, WLAN weg, Server neu gestartet), verbindet die App von selbst neu, so lange, bis der Roboter wieder antwortet. Das Mitlesen fragt mit 2 s Frist, damit ein hängender Abruf es nicht anhält.
+  - Gemessen am 03.11.: Nach „Robi, folge mir“ fiel das Mikrofon beim Sprechen ab („Stream hängt“ um 09:22:51), 3 s später hörte die Erkennung wieder. Der Auslöser ist die Versorgung: Spricht er, zieht der Lautsprecher Strom, und das Mikrofon meldet sich teils acht Mal in acht Sekunden ab und an.
 - **Ausführung:** Der Server holt die Befehle alle 0,1 s ab und nutzt dieselben Wege wie die App (`_handle`). Wird ein Befehl abgelehnt (z. B. Kamera fehlt), kommt die Warnung in der App, und er sagt „Das geht gerade nicht.“.
 
 | Sagen (Beispiele) | Befehl | Wirkung |
@@ -302,6 +315,20 @@ Loslassen aus `safe_stop`).
 | „Robi, Beatbox“ | `beatbox` | spielt das Lied aus `SPRACHE_BEATBOX_URL` über MUKKE; läuft es schon, passiert nichts |
 | „Hallo Robi“, „Robi, wach auf“ | `start` | Interaktion an (ohne Fahren); ist sie schon an: „Ja? Ich bin da.“ |
 | „Robi, gute Nacht“, „Robi, Feierabend“ | `aus` | Heimfahrt/Erkunder abbrechen, Interaktion aus, „Gute Nacht.“ |
+| „Robi, fahr zwei Meter vor“, „Robi, einen halben Meter nach links“, „Robi, fahr fünfzig Zentimeter zurück“ | `manoever` | genau so weit fahren, das Lidar misst (wie `move`, siehe [`api.md`](api.md)) |
+| „Robi, dreh dich um neunzig Grad nach rechts“, „Robi, dreh dich um“ (180°), „Robi, dreh dich nach links“ (90°) | `manoever` | genau um den Winkel drehen (wie `turn`); ohne Seite links herum |
+
+Genaue Fahrbefehle tragen eine Zahl und stehen deshalb nicht in `BEFEHLE`,
+sondern werden von `manoever_erkennen()` gelesen. Der Satz muss ganz passen
+(„fahr zwei Meter vor bitte“ gilt nicht), damit Wortsalat nicht fährt. Vosk
+erkennt nur die ausgeschriebenen Zahlen aus `_manoever_saetze()` (1–5 Meter,
+halber und anderthalb Meter, 20/50 Zentimeter; 30–360 Grad). Getippt
+(Feld „Hören“, `speech`) geht jede Zahl, auch „fahr 1,5 m vor“. „Robi, fahr
+zwei Meter zurück“ ist ein Fahrbefehl, „Robi, fahr zurück“ bleibt Weggehen.
+Klappt ein Fahrbefehl nicht, sagt er den Grund („Zum Drehen ist es mir hier
+zu eng“, „Da ist etwas im Weg, ich habe angehalten“, „Fast geschafft, ich
+liege 2 Grad daneben“). Drehen braucht ringsum 30 cm Platz
+(`MANOEVER_DREH_FREI_M`).
 
 Die Wendungen stehen in `sprache.py` (`BEFEHLE`); die Reihenfolge dort ist
 die Rangfolge. „Musik stopp“ steht deshalb vor „Stopp“.
@@ -321,8 +348,9 @@ an derselben Stelle weiter (Pause allein gibt das Gerät nicht frei). Das
 Mikrofon hört die Musik mit; „Robi, Musik aus“ hilft.
 
 - **Freier Text** geht später nur nach dem Weckwort an `denken.py`.
-- **Ausgabe (umgesetzt):** über den USB-Lautsprecher mit **Piper** (offline, Stimme `de_DE-thorsten-medium`). Fehlt Piper, spricht espeak-ng, fehlt auch das, bleibt es beim Log. Der zuletzt gesagte Satz steht in `state.stimme` und in der App. Einrichtung: [`hardware.md`](hardware.md).
+- **Ausgabe (umgesetzt):** über den USB-Lautsprecher mit **Piper** (offline, weibliche Stimme `de_DE-kerstin-low`, nur auf einem CPU-Kern). Fehlt Piper, spricht espeak-ng, fehlt auch das, bleibt es beim Log. Der zuletzt gesagte Satz steht in `state.stimme` und in der App. Einrichtung: [`hardware.md`](hardware.md).
   - Er sagt kurz, was er tut: „Ich folge dir.“, „Ich komme.“, „Da bin ich.“, „Wo bist du?“, „Okay, ich halte an.“ und beim Not-Stopp „Halt.“. Die Sätze stehen in `verhalten.py` (`_GESTE_SAGEN` und die Aufrufe von `_wechseln(..., sagen=…)`).
+  - **Sanfter Start:** Beim Einschalten läuft erst die Posenerkennung `INTERAKTION_ANLAUF_S` (5 s) warm, still und im Stand. Dann kommt der Startsatz („Jetzt folge ich dir.“), und gefahren wird erst, wenn er zu Ende ist (`Stimme.beschaeftigt`). Wünsche in dieser Zeit (Sprache, App) merkt sich die Interaktion (`_start_modus`) und führt sie danach aus. Grund: Am 03.11. starteten Pose, Ansage und Motoren in derselben Sekunde, die USB-Versorgung brach zusammen, und der Pi startete neu.
   - Beim Start sagt er „Ich bin bereit.“. So hört man sofort, ob der Lautsprecher geht.
   - Aus der App: Feld „Sagen“ im Interaktionsbereich (Befehl `say`).
   - Gleiche Sätze innerhalb von `STIMME_WIEDERHOLUNG_S` werden verschluckt. Die Schlange hält höchstens `STIMME_MAX_WARTESCHLANGE` Sätze, das Älteste fällt weg. Stopp hat Vorrang und schneidet den laufenden Satz ab.

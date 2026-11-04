@@ -29,6 +29,11 @@ warum der Roboter stehen bleibt.
    Totmannschaltung für WLAN-Abriss und abgestürzte Apps. Die Web-App
    sendet mit **10 Hz**, und das ist auch die Empfehlung. Ein einzelnes
    `drive` bewegt den Roboter also nur für einen Moment.
+   Mehrere Clients: Wer gerade lenkt (ein `drive` ungleich 0), hat
+   Vorrang. Nullen von anderen Verbindungen zählen erst
+   `DRIVE_VORRANG_S` (0,5 s) nach seinem letzten echten Befehl wieder,
+   sonst bremsen die Leerlauf-Nullen einer zweiten offenen App ihn aus.
+   `stop` wirkt immer, von jeder Verbindung.
 2. **Letzter Client weg heißt Stopp.** Trennt sich die letzte
    WebSocket-Verbindung, hält der Roboter an und bricht eine laufende
    Heimfahrt ab.
@@ -152,6 +157,8 @@ Reihenfolge:
 | `stop` | – | Sofort anhalten, Heimfahrt, autonomes Fahren und Interaktion abbrechen. | keine |
 | `explore` | – | Autonomes Fahren starten (siehe unten). Braucht den Lidar; bricht eine Heimfahrt ab. | `alert` an alle; ohne Lidar `alert` (warning) |
 | `explore_stop` | – | Autonomes Fahren beenden und anhalten. | `alert` an alle |
+| `move` | `richtung`: `"vor"` / `"zurueck"` / `"links"` / `"rechts"`, `meter` (0 < m ≤ 5) | Genau so weit fahren, links/rechts seitwärts (siehe „Genaue Fahrbefehle im Detail“). Braucht den Lidar; bricht Heimfahrt, autonomes Fahren und Interaktion ab. Abbrechen mit `stop` oder einer Fahreingabe ≠ 0. | `alert` an alle, am Ende `alert` mit Ergebnis (warning, wenn nicht geschafft); sonst `alert` (warning) |
+| `turn` | `grad` (+ = links, − = rechts, Betrag 1–720) | Auf der Stelle um genau diesen Winkel drehen. Sonst wie `move`. | wie `move` |
 | `home` | – | Selbstständig zum Startpunkt zurückfahren (siehe unten). | `alert` an alle |
 | `home_cancel` | – | Heimfahrt abbrechen und anhalten. | `alert` an alle |
 | `interaction_start` | – | Interaktionsmodus an: Der Roboter wartet auf Handzeichen (siehe „Interaktion im Detail“). Braucht Lidar und Posenerkennung; bricht Heimfahrt und autonomes Fahren ab. | `alert` an alle; sonst `alert` (warning) |
@@ -364,6 +371,13 @@ dann und wartet auf ein Handzeichen vor der Kamera (Modus `bereit`). Die
 Körperpunkte rechnet der Hailo-Chip (YOLOv8-Pose); er arbeitet nur, solange
 der Modus an ist. **Nur am Boden benutzen.**
 
+**Sanfter Start:** Nach dem Einschalten läuft erst
+`INTERAKTION_ANLAUF_S` (5 s) nur die Posenerkennung warm, der Roboter steht
+und schweigt (`text`: „startet …“). Dann sagt er den Startsatz (z. B.
+„Jetzt folge ich dir.“) und fährt erst los, wenn der Satz zu Ende ist.
+Befehle in dieser Zeit (Folgen, Stopp …) gelten danach. Grund: Pose,
+Sprechen und Motoren gleichzeitig ließen die USB-Versorgung zusammenbrechen.
+
 | Handzeichen | Wie | Modus danach |
 |---|---|---|
 | Folgen | einen Arm über den Kopf halten (1 s) | `folgen`: bleibt `FOLGEN_ABSTAND_M` (1,0 m) hinter der Person |
@@ -374,7 +388,10 @@ der Modus an ist. **Nur am Boden benutzen.**
 - Die Richtung zur Person kommt aus der Kamera, der Abstand aus dem Lidar
   (Cluster der Person in dieser Richtung, ein Stuhl davor zählt nicht).
 - Verliert er die Person beim Folgen länger als `FOLGEN_VERLOREN_S` (2 s),
-  sucht er durch Drehen (Modus `sucht`, höchstens `FOLGEN_SUCHEN_S`).
+  sucht er durch Drehen (Modus `sucht`): je `FOLGEN_SUCHEN_DREH_S` drehen,
+  `FOLGEN_SUCHEN_PAUSE_S` stillhalten (im Drehen verwischt das Bild). Er
+  sucht, bis er wieder jemanden sieht; mit `FOLGEN_SUCHEN_S` > 0 gibt er
+  nach so vielen Sekunden auf.
 - Sicherheit wie beim autonomen Fahren: vorwärts nur bei freiem
   Fahrschlauch, rückwärts nur bei freiem Raum hinten, ohne frische
   Lidar-Daten steht er. `herkommen` und `weggehen` enden spätestens nach
@@ -421,6 +438,11 @@ was er tut: „Ich bin bereit.“ beim Start, „Ich folge dir.“, „Ich komme
 „Da bin ich.“, „Wo bist du?“, „Okay, ich halte an.“, beim `stop` „Halt.“.
 Mit `say` lässt sich beliebiger Text vorlesen.
 
+**Lautstärke:** Ein Regler für alles, `LAUTSTAERKE` (0–100 %) auf der
+Einstellungsseite (Gruppe „Ton & Lautstärke“, `POST /einstellungen`). Der
+Mixer des Lautsprechers steht fest auf 100 %, leiser wird in Software. Die
+Musik-Lautstärke (`/mukke/volume`) ist ein Anteil davon.
+
 - Gesprochen wird mit Piper (offline, deutsche Stimme). Fehlt Piper, spricht
   espeak-ng, fehlt auch das, landet der Text nur im Log (`verfuegbar: false`).
   In der Simulation (`--mock`) wird nur geloggt, `spricht` verhält sich aber
@@ -431,12 +453,49 @@ Mit `say` lässt sich beliebiger Text vorlesen.
 - `spricht` bleibt nach jedem Satz noch `STIMME_NACHLAUF_S` (0,4 s) wahr.
   Die Spracherkennung hört in dieser Zeit nicht zu.
 
+### Genaue Fahrbefehle im Detail
+
+`move` und `turn` fahren eine bestimmte Strecke oder drehen um einen
+bestimmten Winkel, und zwar wirklich: Gemessen wird mit dem Lidar, nicht
+nach Zeit oder Radumdrehungen (`navigation/manoever.py`).
+
+- Beim Start nimmt er im Stand eine Lidar-Aufnahme auf. Jede weitere wird
+  darauf gelegt (ICP); daraus folgt, wie weit er sich wirklich bewegt und
+  gedreht hat. Rutschende Mecanum-Räder und der unbrauchbare Gyro spielen
+  so keine Rolle. Räder und Fahrbefehl schätzen nur die Zeit zwischen zwei
+  Aufnahmen.
+- **Gerade fahren:** Der Regler hält neben dem Restweg auch die seitliche
+  Abweichung und die Blickrichtung bei null. Abweichungen gleicht er
+  seitwärts aus (Mecanum), statt zu lenken.
+- **Am Ende misst er im Stand nach** (im Fahren ist eine Lidar-Umdrehung
+  verzerrt) und bessert bis zu `MANOEVER_NACHBESSERN` Mal nach. Ziel:
+  `MANOEVER_TOLERANZ_M` (3 cm) und `MANOEVER_TOLERANZ_GRAD` (2°). In der
+  Simulation mit absichtlich rutschendem Antrieb lag er 1–2 cm und 1–2°
+  daneben.
+- Tempo `MANOEVER_SPEED` (0,2 m/s), drehen `MANOEVER_DREH` (0,6 rad/s).
+- **Sicherheit:** Er hält an, wenn in Fahrtrichtung etwas näher als
+  `EXPLORE_STOP_M` (0,4 m) kommt, beim Drehen, wenn ringsum etwas näher als
+  `MANOEVER_DREH_FREI_M` (0,3 m) ist, und wenn das Lidar die Umgebung
+  `MANOEVER_BLIND_S` (2 s) lang nicht wiedererkennt.
+- `GET /manoever/status`: `aktiv`, `art`, `wert`, `text` (Fortschritt),
+  `grund` (wie der letzte endete), `erfolgreich`, `gefahren_m`,
+  `gedreht_grad` (laut Lidar, gegenüber dem Start), `abgleiche`,
+  `fehlschlaege`.
+
 ### Sprachbefehle im Detail
 
 Der Roboter hört über das USB-Mikrofon zu (Vosk, offline). Befehle gelten
 nur mit dem Weckwort **„Robi“** im selben Satz oder bis zu 5 s
 (`SPRACHE_WECK_FENSTER_S`), nachdem „Robi“ allein gesagt wurde. „Stopp“,
 „Halt“ und „Bleib stehen“ gelten auch ohne Weckwort, ebenso „La da da“.
+Hört Vosk unsicher (Wort-Konfidenz unter `SPRACHE_MIN_KONFIDENZ` oder
+überwiegend unbekannte Wörter) oder kommt mehr als Weckwort plus Wendung
+(Wortsalat wie „robin hallo hause zu weg ruby“), gilt nur Stopp. Während MUKKE spielt,
+braucht jeder Befehl außer Stopp das Weckwort und eine höhere Konfidenz
+(`SPRACHE_MIN_KONFIDENZ_MUSIK`). Sonst würden Musik und Gespräche zu
+Befehlen. Auf „Robi“ allein antwortet er nach 1 s mit „Ja?“
+(`SPRACHE_WECK_ANTWORT`), sofern bis dahin kein Befehl kam. Die 5 s für den
+Befehl laufen erst ab, wenn er ausgeredet hat.
 
 | Befehl | Beispiele | wirkt wie |
 |---|---|---|
@@ -451,6 +510,7 @@ nur mit dem Weckwort **„Robi“** im selben Satz oder bis zu 5 s
 | `beatbox` | „Robi, Beatbox“ | `POST /mukke/play` mit `SPRACHE_BEATBOX_URL` |
 | `start` | „Hallo Robi“ | `interaction_start` |
 | `aus` | „Robi, gute Nacht“ | `interaction_stop`, Heimfahrt/Erkunder abbrechen |
+| `manoever` | „Robi, fahr zwei Meter vor“, „Robi, einen halben Meter nach links“, „Robi, dreh dich um neunzig Grad nach rechts“, „Robi, dreh dich um“ (180°) | `move` bzw. `turn`; er sagt an, was er tut |
 
 - Ausgeführt wird über dieselben Wege wie die Befehle der App, mit
   denselben Prüfungen und Meldungen. Wird ein Befehl abgelehnt, geht die
@@ -740,7 +800,7 @@ der Knopf „MUKKE“ oben links das Fenster dafür.
 | `POST /mukke/play` | Body `{"url": "https://youtu.be/…"}`. Ersetzt, was gerade läuft. Nur Links von youtube.com, music.youtube.com und youtu.be, sonst `400` mit `{"fehler": "…"}`. |
 | `POST /mukke/pause` | Pause an/aus |
 | `POST /mukke/stop` | anhalten |
-| `POST /mukke/volume` | Body `{"lautstaerke": 70}` |
+| `POST /mukke/volume` | Body `{"lautstaerke": 70}`: Anteil der Gesamtlautstärke `LAUTSTAERKE` (mpv bekommt beides multipliziert) |
 
 Alle `POST` antworten mit dem neuen Zustand wie `/mukke/status`. Bis der
 Titel bekannt ist, vergehen ein paar Sekunden (yt-dlp muss die Tonspur erst
@@ -757,7 +817,10 @@ finden). Voraussetzungen auf dem Pi: `mpv` und `yt-dlp`, siehe
 
 | Endpunkt | Liefert |
 |---|---|
-| `GET /sprache/status` | `aktiviert`, `verfuegbar`, `simuliert`, `zustand` (`aus`, `laedt`, `hoert`, `fehler`, `simuliert`), `mikrofon` (Gerätename), `modell` (Pfad), `weckwort`, `geweckt`, `zuletzt_gehoert`, `letzter_befehl`, `erkannt` (Anzahl), `befehle` (alle Wendungen je Befehl), `fehler` (z. B. „vosk fehlt (pip install vosk sounddevice)“, „Vosk-Modell fehlt: …“ oder „kein Mikrofon gefunden (vorhanden: …)“) |
+| `GET /sprache/status` | `aktiviert`, `verfuegbar`, `simuliert`, `zustand` (`aus`, `laedt`, `hoert`, `fehler`, `simuliert`), `mikrofon` (Gerätename), `modell` (Pfad), `weckwort`, `geweckt`, `zuletzt_gehoert`, `letzter_befehl`, `erkannt` (Anzahl), `konfidenz` (kleinste Wort-Konfidenz des letzten Satzes, 0..1), `verworfen` (Anzahl), `zuletzt_verworfen` (Befehl, Text, Grund), `befehle` (alle Wendungen je Befehl), `fehler` (z. B. „vosk fehlt (pip install vosk sounddevice)“, „Vosk-Modell fehlt: …“ oder „kein Mikrofon gefunden (vorhanden: …)“) |
+| `GET /sprache/live` | Mitlesen (App: Schalter „Mikrofon mitlesen“, fragt 4x pro Sekunde): `verfuegbar`, `zustand`, `mikrofon`, `rate` (Hz), `pegel` (0..1, −60 dBFS bis Vollaussteuerung), `teil` (was Vosk im laufenden Satz bisher versteht), `taub` (spricht gerade selbst, wertet nichts aus), `geweckt`, `ereignisse` (letzte Sätze: `zeit` (Unix-Zeit), `text`, `ergebnis` = `befehl` / `verworfen` / `weckwort` / `ohne`, dazu `befehl` und bei `verworfen` der `grund`). Pegel und `teil` rechnet der Server nur, solange jemand abfragt. |
+| `WS /sprache/ton` | Mithören (App: Schalter „Mikrofon mithören“): erst eine Textnachricht `{"rate": 16000}` (`null`, solange kein Mikrofon offen ist; bei jedem Wechsel neu und ohne Ton jede Sekunde als Lebenszeichen: Kommt 5 s gar nichts, verbindet die App neu), dann der Rohton als Binärnachrichten, 16 bit little-endian, mono, Blöcke à 0,25 s. Kommt der Browser nicht hinterher, fallen Blöcke weg (`SPRACHE_TON_PUFFER`). Nur solange jemand verbunden ist, wird etwas verschickt. |
+| `WS /sprache/durchsage` | Durchsage (App: Schalter „Über den Roboter sprechen“): Ton aus dem Browser-Mikrofon live über den Lautsprecher des Roboters. Der Server antwortet zuerst `{"bereit": true|false, "grund": …}`, später erneut, wenn der Lautsprecher ausfällt oder wieder geht. Der Client schickt `{"rate": 16000}` und danach Rohton als Binärnachrichten (16 bit little-endian, mono). Läuft in der Warteschlange der Stimme: Musik pausiert, die Spracherkennung hört so lange weg, ein Stopp bricht ab. Nach `DURCHSAGE_PAUSE_S` (2 s) ohne Ton ist der Lautsprecher wieder frei. Browser geben das Mikrofon nur über HTTPS frei, deshalb läuft dieselbe App zusätzlich unter `https://<roboter>:8443` (`HTTPS_PORT`, selbst unterschriebenes Zertifikat in `~/.rosmaster/https`, die Warnung im Browser einmal bestätigen). |
 
 ### Sonstiges
 
@@ -825,6 +888,7 @@ Vorbild ist `navigation/homing.py`.
 | `navigation/odometry.py` | Positionsschätzung |
 | `navigation/localizer.py` | Lidar-Abgleich gegen die Startpunkt-Aufnahme |
 | `navigation/homing.py` | Heimfahrt |
+| `navigation/manoever.py` | genaue Fahrbefehle (`move`, `turn`), Lidar misst Strecke und Winkel |
 | `sensors/lidar.py` | Lidar auslesen (echt und simuliert) |
 | `sensors/camera.py` | Kamera (CSI, USB, Testbild) |
 | `drive/` | Motortreiber (echt und simuliert) |

@@ -15,10 +15,12 @@ Getestet wird:
 Braucht nur numpy.
 """
 
+import asyncio
 import math
 import pathlib
 import random
 import sys
+import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "robot" / "src"))
 
@@ -260,7 +262,11 @@ class Lidar:
                 diff = (w - von) % 360
                 if diff <= (bis - von) % 360:
                     r[w] = min(r[w], d)
-        return Scan(winkel, r)
+        scan = Scan(winkel, r)
+        # Immer frisch, egal welche Zeit der Test spielt (sonst hinge das
+        # Ergebnis an der Laufzeit des Rechners seit dem Booten).
+        scan.zeit = float("inf")
+        return scan
 
 
 class Pose:
@@ -332,8 +338,32 @@ pruefe("Folgen: Person kurz weg -> hält", b and b.vx == 0 and b.omega == 0 and 
 ia._schritt(1.0 + config.FOLGEN_VERLOREN_S + 0.1)
 b = ia._schritt(1.2 + config.FOLGEN_VERLOREN_S)
 pruefe("Folgen: Person länger weg -> sucht", ia._modus == vh.SUCHEN and b and b.omega > 0, (ia._modus, b))
+start = 1.0 + config.FOLGEN_VERLOREN_S + 0.1  # da begann das Suchen
+b = ia._schritt(start + config.FOLGEN_SUCHEN_DREH_S + 0.1)
+pruefe("Suchen: nach dem Drehen kurz stillhalten", ia._modus == vh.SUCHEN and b and b.omega == 0, b)
+b = ia._schritt(start + config.FOLGEN_SUCHEN_DREH_S + config.FOLGEN_SUCHEN_PAUSE_S + 0.1)
+pruefe("Suchen: danach weiterdrehen", b and b.omega > 0, b)
+# Ohne Zeitgrenze (Standard): auch nach Minuten noch auf der Suche
+ia._schritt(start + 300.0)
+pruefe("Suchen ohne Zeitgrenze -> sucht weiter", config.FOLGEN_SUCHEN_S == 0 and ia._modus == vh.SUCHEN, ia._modus)
+# Wiedergefunden gilt erst nach ZIEL_BESTAETIGEN_BILDER Bildern, damit kein
+# Passant als "wiedergefunden" übernommen wird.
+for i in range(config.ZIEL_BESTAETIGEN_BILDER + 1):
+    t = start + 300.1 + 0.1 * i
+    po.liste = [mit_zeit(person(), t)]
+    ia._schritt(t)
+pruefe("Person wieder da -> folgt wieder", ia._modus == vh.FOLGEN, ia._modus)
+
+# Mit Zeitgrenze: danach bereit und angehalten
+alt_suchen = config.FOLGEN_SUCHEN_S
+config.FOLGEN_SUCHEN_S = 6.0
+ia, wd, li, po = interaktion([], vh.FOLGEN)
+ia._winkel = 10.0
+ia._schritt(1.0)
+ia._schritt(1.0 + config.FOLGEN_VERLOREN_S + 0.1)
 ia._schritt(1.3 + config.FOLGEN_VERLOREN_S + config.FOLGEN_SUCHEN_S)
 pruefe("Suchen erfolglos -> bereit und angehalten", ia._modus == vh.BEREIT and wd.stopps >= 1, ia._modus)
+config.FOLGEN_SUCHEN_S = alt_suchen
 
 # Stopp-Geste beim Folgen -> sofort bereit, Watchdog angehalten, keine Befehle mehr
 ia, wd, li, po = interaktion([(-5, 5, 2.0)], vh.FOLGEN)
@@ -570,6 +600,52 @@ verbunden[0] = False
 b = ia._schritt(0.1)
 pruefe("Schritt ohne Antrieb: kein Fahrbefehl, bereit",
        (b is None or b.is_stop()) and ia._modus == vh.BEREIT, (b, ia._modus))
+
+# --- Sanfter Start (03.11.): aufwärmen, ansagen, erst dann fahren ----------------
+class StimmeAttrappe:
+    """Spricht jeden Satz 0,3 s lang."""
+
+    def __init__(self):
+        self.gesagt, self.bis = [], 0.0
+
+    def sagen(self, text, vorrang=False):
+        self.gesagt.append(text)
+        self.bis = time.monotonic() + 0.3
+        return True
+
+    @property
+    def beschaeftigt(self):
+        return time.monotonic() < self.bis
+
+
+async def sanft_starten(stopp_waehrend_anlauf=False):
+    alt = config.INTERAKTION_ANLAUF_S
+    config.INTERAKTION_ANLAUF_S = 0.3
+    st = StimmeAttrappe()
+    ia = vh.Interaktion(Watchdog(), Lidar([(-5, 5, 2.0)]), Pose(), st)
+    try:
+        ia.start(vh.FOLGEN)
+        await asyncio.sleep(0.15)
+        if stopp_waehrend_anlauf:
+            ia.wechseln_zu(vh.BEREIT, "angehalten (per Sprache)")
+        anlauf = (ia._modus, list(st.gesagt))
+        await asyncio.sleep(0.3)   # Anlauf vorbei, Ansage läuft
+        ansage = (ia._modus, list(st.gesagt))
+        await asyncio.sleep(0.45)  # ausgeredet
+        return anlauf, ansage, ia._modus
+    finally:
+        ia.abbrechen()
+        config.INTERAKTION_ANLAUF_S = alt
+
+
+anlauf, ansage, danach = asyncio.run(sanft_starten())
+pruefe("Sanfter Start: erst still und stehend", anlauf == (vh.BEREIT, []), anlauf)
+pruefe("Sanfter Start: dann Ansage, noch stehend",
+       ansage == (vh.BEREIT, ["Jetzt folge ich dir."]), ansage)
+pruefe("Sanfter Start: nach der Ansage folgt er", danach == vh.FOLGEN, danach)
+anlauf, ansage, danach = asyncio.run(sanft_starten(stopp_waehrend_anlauf=True))
+pruefe("Sanfter Start: Stopp im Anlauf gilt", danach == vh.BEREIT and ansage[1] != ["Jetzt folge ich dir."],
+       (ansage, danach))
 
 print("\nalles bestanden" if not fehler else f"\n{fehler} Fehler")
 sys.exit(1 if fehler else 0)

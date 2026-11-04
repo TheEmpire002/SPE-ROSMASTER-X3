@@ -118,7 +118,7 @@ _GESTE_SAGEN = {
 #: (App-Knopf "Folgen" oder Sprachbefehl "Robi komm her").
 _START_TEXT = {
     BEREIT: ("wartet auf ein Handzeichen", "Hallo! Zeig mir ein Handzeichen."),
-    FOLGEN: ("folgt (per App)", "Ich folge dir."),
+    FOLGEN: ("folgt (per App)", "Jetzt folge ich dir."),
     HERKOMMEN: ("kommt her", "Ich komme."),
     WEGGEHEN: ("nimmt Abstand", "Ich fahre zurück."),
 }
@@ -153,6 +153,10 @@ class Interaktion:
         self._antrieb = antrieb
         self._gesten = gs.Gestenerkennung()
         self._task: asyncio.Task[None] | None = None
+        # Während des sanften Starts (siehe _laufen): Wünsche merken statt
+        # gleich losfahren.
+        self._anlauf = False
+        self._start_modus = BEREIT
         self._grund: str | None = None
         self._meldungen: list[str] = []
 
@@ -262,6 +266,9 @@ class Interaktion:
             if self._sperre.id != ziel_id:
                 self._sperre.freigeben()
             self._auswahl_id = ziel_id
+        if self._anlauf:
+            self._start_modus = FOLGEN
+            return True
         text = f"folgt Person {ziel_id} (per App)" if ziel_id is not None else "folgt (per App)"
         self._wechseln(FOLGEN, text, jetzt, sagen="Ich folge dir.")
         return True
@@ -326,12 +333,18 @@ class Interaktion:
         """Verhalten von außen setzen (Sprachbefehl). False, wenn nicht an."""
         if not self.aktiv:
             return False
+        if self._anlauf:
+            # Noch im sanften Start: gilt, sobald er fertig ist.
+            self._start_modus = modus
+            return True
         self._wechseln(modus, text, time.monotonic(), sagen=sagen)
         return self._modus == modus
 
     def folgen_stop(self) -> None:
         """Verhalten beenden, Interaktionsmodus bleibt an."""
-        if self.aktiv and self._modus != BEREIT:
+        if self.aktiv and self._anlauf:
+            self._start_modus = BEREIT
+        elif self.aktiv and self._modus != BEREIT:
             self._wechseln(BEREIT, "angehalten (per App)", time.monotonic(), sagen="Okay, ich bleibe stehen.")
         if self.aktiv and self._sperre.zustand == SICHER_HALT:
             # „Loslassen“ quittiert auch ein sicheres Anhalten -- danach
@@ -400,13 +413,33 @@ class Interaktion:
         self._letzter_takt = None
         self._ziel_vergessen()
         self._modus = BEREIT
-        text, satz = _START_TEXT.get(modus, _START_TEXT[BEREIT])
-        self._wechseln(modus, text, time.monotonic(), sagen=satz)
-        if self._pose is not None:
-            self._pose.aktivieren(True)
-        log.info("Interaktion gestartet")
+        self._start_modus = modus
 
         try:
+            # Sanfter Start: Posenerkennung, Ansage und Motoren nacheinander
+            # statt in derselben Sekunde -- zusammen brachen sie am 03.11. die
+            # USB-Versorgung (siehe config.INTERAKTION_ANLAUF_S).
+            if self._pose is not None:
+                self._pose.aktivieren(True)
+            log.info("Interaktion gestartet")
+            self._anlauf = True
+            self._text = "startet …"
+            if config.INTERAKTION_ANLAUF_S > 0:
+                await asyncio.sleep(config.INTERAKTION_ANLAUF_S)
+            # Was in der Zwischenzeit verlangt wurde, gilt (Sprache, App).
+            modus = self._start_modus
+            text, satz = _START_TEXT.get(modus, _START_TEXT[BEREIT])
+            if modus in _FAHRMODI and self._stimme is not None:
+                # Erst ausreden, dann losfahren.
+                self._sagen(satz)
+                await self._ausreden()
+                satz = None
+                if self._start_modus != modus:  # z.B. "Stopp" während der Ansage
+                    modus = self._start_modus
+                    text, satz = _START_TEXT.get(modus, _START_TEXT[BEREIT])
+            self._anlauf = False
+            self._wechseln(modus, text, time.monotonic(), sagen=satz)
+
             while True:
                 befehl = self._schritt(time.monotonic())
                 # None heißt: nichts schicken (BEREIT). Angehalten wurde beim
@@ -423,10 +456,19 @@ class Interaktion:
             self._grund = "Fehler in der Interaktion"
             log.exception("Interaktion abgebrochen")
         finally:
+            self._anlauf = False
             # Gelerntes Aussehen nicht über das Ausschalten hinaus behalten.
             self._ziel_vergessen()
             if self._pose is not None:
                 self._pose.aktivieren(False)
+
+    async def _ausreden(self) -> None:
+        """Warten, bis die Stimme den Satz gesprochen hat (höchstens STIMME_TIMEOUT_S)."""
+        ende = time.monotonic() + config.STIMME_TIMEOUT_S
+        # Kurz Zeit geben, bis der Satz in der Schlange angekommen ist.
+        await asyncio.sleep(0.1)
+        while self._stimme.beschaeftigt and time.monotonic() < ende:
+            await asyncio.sleep(0.1)
 
     def _schritt(self, jetzt: float) -> DriveCommand | None:
         """Ein Takt: Person und Geste ansehen, Fahrbefehl zurückgeben."""
@@ -695,13 +737,20 @@ class Interaktion:
             self._wechseln(self._suchen_fuer, "Person wiedergefunden", jetzt, melden=True,
                           sagen="Da bist du ja.")
             return DriveCommand(0.0, 0.0, 0.0)
-        if jetzt - self._modus_seit > config.FOLGEN_SUCHEN_S:
+        sucht_seit = jetzt - self._modus_seit
+        if config.FOLGEN_SUCHEN_S > 0 and sucht_seit > config.FOLGEN_SUCHEN_S:
             self._sperre.sicher_anhalten("Person nicht wiedergefunden", jetzt)
             self._wechseln(BEREIT, "Person nicht wiedergefunden", jetzt, melden=True,
                           sagen="Ich habe dich verloren.")
             return DriveCommand(0.0, 0.0, 0.0)
+        # Drehen und kurz stillhalten im Wechsel: Im Drehen verwischt das
+        # Bild, im Stand sieht die Posenerkennung scharf.
+        takt = config.FOLGEN_SUCHEN_DREH_S + config.FOLGEN_SUCHEN_PAUSE_S
+        if takt > 0 and sucht_seit % takt >= config.FOLGEN_SUCHEN_DREH_S:
+            self._text = "sucht die Person -- schaut"
+            return DriveCommand(0.0, 0.0, 0.0)
         # Zur Seite drehen, auf der die Person zuletzt war -- dort ist sie
-        # meist aus dem Bild gelaufen.
+        # meist aus dem Bild gelaufen. Ohne Zeitgrenze immer weiter im Kreis.
         self._text = "sucht die Person"
         return DriveCommand(0.0, 0.0, self._letzte_seite * config.EXPLORE_TURN_SPEED)
 

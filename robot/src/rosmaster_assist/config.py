@@ -107,6 +107,14 @@ AUTONOM_SCHUTZ_SCAN_MAX_S = 0.5
 # Zu kurz = ruckeliges Fahren, zu lang = Roboter fährt unkontrolliert weiter.
 COMMAND_TIMEOUT_S = 0.5
 
+# Fahrvorrang bei mehreren offenen Apps: Jede App schickt auch im Stillstand
+# zehnmal pro Sekunde "vx=0". Lenkt eine, kamen die Nullen der anderen
+# dazwischen, und er fuhr stotternd mit halbem Tempo (03.11., zwei Geräte,
+# fiel erst nach dem Folgen auf, weil die Interaktion Nullen ohnehin
+# verwirft). So lange (s) nach dem letzten echten Fahrbefehl zählen Nullen
+# nur von dem Gerät, das gerade lenkt. "stop" wirkt immer, von jedem Gerät.
+DRIVE_VORRANG_S = 0.5
+
 # Takt, in dem der Watchdog prüft. Muss deutlich kleiner als das Timeout sein.
 WATCHDOG_INTERVAL_S = 0.1
 
@@ -135,6 +143,14 @@ RAMPE_DT_MAX_S = 0.1
 # 0.0.0.0 = aus dem ganzen WLAN erreichbar (nötig, damit das Handy rankommt).
 HOST = "0.0.0.0"
 PORT = 8000
+
+# Zusätzlich dieselbe App über HTTPS (0 = aus). Browser geben das Mikrofon
+# nur auf sicheren Seiten frei, also nicht unter http://10.42.0.62:8000 --
+# für die Durchsage vom Handy braucht es https://10.42.0.62:8443. Das
+# Zertifikat erzeugt der Server beim ersten Start selbst (openssl); der
+# Browser warnt einmal, weil es niemand beglaubigt hat.
+HTTPS_PORT = 8443
+HTTPS_ORDNER = "~/.rosmaster/https"
 
 # Takt, in dem der Roboter von sich aus Statusmeldungen an die App schickt.
 STATUS_INTERVAL_S = 0.5
@@ -248,6 +264,59 @@ HOME_STOP_DISTANCE_M = 0.45
 # übersieht Tischbeine seitlich der Fahrlinie, zu breit hält wegen
 # Wänden an, an denen man problemlos vorbeifährt.
 HOME_CONE_DEG = 35.0
+
+# --- Genaue Fahrbefehle ("2 Meter vor", "90 Grad drehen") -------------------------
+# Siehe navigation/manoever.py. Gemessen wird mit dem Lidar: Jede Aufnahme
+# wird auf eine vom Anfang gelegt, daraus folgt, wie weit er wirklich
+# gefahren bzw. gedreht ist. Räder und IMU liefern nur die Schätzung
+# zwischen zwei Aufnahmen (die IMU-Drehung ist am X3 unzuverlässig).
+
+MANOEVER_SPEED = 0.20         # m/s  höchstens, beim Fahren
+MANOEVER_MIN_SPEED = 0.05     # m/s  darunter laufen die Motoren nicht sicher an
+MANOEVER_KP_V = 1.2           # (m/s)/m  Tempo je Meter Restweg
+MANOEVER_DREH = 0.6           # rad/s höchstens, beim Drehen
+# Unter 0,4 rad/s laufen die Motoren am Boden nicht zuverlässig an (Erkunder).
+MANOEVER_MIN_DREH = 0.4
+MANOEVER_KP_W = 1.5           # (rad/s)/rad
+# So lange (s) nach dem Losdrehen aus dem Stand zählt die befohlene Drehung
+# noch nicht. Sonst hielt die Schätzung kleine Nachbesserungen (1-2°) schon
+# nach einem Takt für erledigt -- die Rampe gab da erst 0,3 rad/s aus, die
+# Motoren liefen nicht an, und das Lidar maß im Stand denselben Rest wieder
+# (Bodentest 03.11.: dreimal vergeblich, dann "fast erledigt").
+MANOEVER_ANLAUF_S = 0.25
+# Fertig, wenn Restweg und Restwinkel darunter liegen ...
+MANOEVER_TOLERANZ_M = 0.03
+MANOEVER_TOLERANZ_GRAD = 2.0
+# ... und das auch eine Lidar-Aufnahme bestätigt, die im Stand entstand:
+# Im Fahren ist eine Umdrehung des A1 (0,18 s) verzerrt. So oft wird
+# höchstens nachgebessert.
+MANOEVER_NACHBESSERN = 3
+MANOEVER_RUHE_S = 0.3         # nach dem Anhalten so lange warten, dann messen
+# Möglichst alles gegen die Aufnahme vom Start abgleichen: Das Lidar sieht
+# rundum, nach einer Drehung also dieselben Wände. Jeder Wechsel der
+# Bezugsaufnahme bringt etwas Fehler mit (in der Simulation ~0,2° je
+# Wechsel, mit Wechsel alle 25° lag er nach 360° um 3,4° daneben).
+# Gewechselt wird nur, wenn der Abgleich schlechter wird -- er fährt aus dem
+# Raum, die alten Wände verschwinden: mittlerer Restabstand größer als ...
+MANOEVER_NEUER_BEZUG_RESIDUUM_M = 0.06
+# ... oder weniger als dieser Anteil der Punkte findet einen Partner.
+MANOEVER_NEUER_BEZUG_PAARE = 0.6
+# Im Fahren bis auf diesen Teil der Toleranz heran -- sonst hielt er knapp
+# innerhalb an (2,9 von 3 cm), und jede Ungenauigkeit kippte es nach außen.
+# Nicht viel kleiner: Mit einem Drittel (1 cm) lag das Ziel in der
+# Messgenauigkeit, und er besserte dreimal vergeblich nach.
+MANOEVER_ZIEL_ANTEIL = 0.5
+# So lange (s) darf der Abgleich am Stück scheitern, dann hält er an
+# (fremde Umgebung, Lidar weg) -- blind fahren wäre ungenau und unsicher.
+MANOEVER_BLIND_S = 2.0
+# Grenzen für einen Befehl.
+MANOEVER_MAX_M = 5.0
+MANOEVER_MAX_GRAD = 720.0
+# Drehen nur, wenn ringsum so viel Platz ist (Ecken schwenken aus), m ab
+# Lidar-Mitte.
+MANOEVER_DREH_FREI_M = 0.30
+# Für den Abgleich höchstens so viele Lidar-Punkte (Rechenzeit am Pi).
+MANOEVER_MAX_PUNKTE = 300
 
 # --- Kamera ---------------------------------------------------------------------
 
@@ -696,9 +765,16 @@ FOLGEN_CLUSTER_GUT_S = 1.0
 FOLGEN_NAH_HALTEN_S = 0.5
 
 # So lange darf die Person aus dem Bild sein, bevor er sucht, und so lange
-# sucht er (langsam drehen in die Richtung, in der sie verschwand).
+# sucht er (drehen in die Richtung, in der sie verschwand). 0 = so lange,
+# bis er wieder jemanden sieht; abbrechen mit Stopp oder "Robi, gute Nacht".
 FOLGEN_VERLOREN_S = 2.0
-FOLGEN_SUCHEN_S = 6.0
+FOLGEN_SUCHEN_S = 0.0
+# Beim Suchen abwechselnd drehen und stillhalten (s): Während der Drehung
+# verwischt das Kamerabild, und die Posenerkennung übersieht die Person.
+# 1,2 s bei EXPLORE_TURN_SPEED (0,6 rad/s) sind rund 40°, weniger als das
+# Bildfeld der C270 -- so bleibt keine Lücke im Rundblick.
+FOLGEN_SUCHEN_DREH_S = 1.2
+FOLGEN_SUCHEN_PAUSE_S = 0.8
 
 # Herkommen: bis zu diesem Abstand heranfahren, dann stehen bleiben.
 HERKOMMEN_ABSTAND_M = 0.70
@@ -758,6 +834,13 @@ ZIEL_TRACK_HALTEN_S = 1.5
 # Höchstens so stark darf sich die Boxhöhe zwischen Vorhersage und Messung
 # ändern (Verhältnis klein/groß), sonst ist es nicht derselbe Track.
 ZIEL_HOEHE_VERHAELTNIS = 0.6
+
+# Sanfter Start (s): Wird die Interaktion eingeschaltet, läuft erst nur die
+# Posenerkennung warm, der Roboter steht still und schweigt. Danach sagt er
+# den Startsatz ("Jetzt folge ich dir.") und fährt erst los, wenn der Satz
+# zu Ende ist. Am 03.11. starteten Posenerkennung, Sprechen und Motoren in
+# derselben Sekunde, und die USB-Versorgung brach zusammen. 0 = sofort.
+INTERAKTION_ANLAUF_S = 5.0
 
 # --- Diagnose (Seite /diagnose) ------------------------------------------------
 # Wie oft die schnellen Messungen laufen (Akku, USB-Überlastzähler, Geräte-
@@ -870,8 +953,21 @@ MUKKE_ENABLED = True
 # die der Lautsprecher nicht selbst kann. "auto" nimmt das Standardgerät.
 MUKKE_AUDIO_DEVICE = "alsa/plughw:CARD=UACDemoV10,DEV=0"
 
-# Lautstärke beim Start in Prozent (0..100). In der App verstellbar.
+# Lautstärke der Musik in Prozent (0..100), als Anteil von LAUTSTAERKE.
+# In der App verstellbar.
 MUKKE_LAUTSTAERKE = 60
+
+# --- Ton -----------------------------------------------------------------------
+
+# Gesamtlautstärke in Prozent (0..100): der eine Regler für alles, was aus dem
+# Lautsprecher kommt (Stimme und Musik). Gerechnet wird in Software, der
+# Mixer des Lautsprechers steht fest auf TON_MIXER. Auf der Einstellungsseite
+# verstellbar. Leiser heißt auch: weniger Strom am USB des Pi.
+LAUTSTAERKE = 70
+
+# Hardware-Mixer des Lautsprechers (amixer) in Prozent. Bleibt immer gleich,
+# damit es nur einen Regler gibt (LAUTSTAERKE).
+TON_MIXER = 100
 
 # --- Stimme (USB-Lautsprecher) ------------------------------------------------
 # Sprachausgabe über den USB-Lautsprecher „UACDemoV1.0“. Siehe
@@ -883,17 +979,24 @@ STIMME_ENABLED = True
 # Piper spricht offline und klingt deutlich natürlicher als espeak-ng.
 # Fehlt Piper oder das Modell, weicht die Stimme auf espeak-ng aus und
 # zuletzt auf reine Log-Ausgabe -- der Server startet in jedem Fall.
-STIMME_PIPER = "piper"
-STIMME_MODELL = "~/piper/de_DE-thorsten-medium.onnx"
+# Orte für das Programm, der erste gefundene gilt. Das Release von
+# github.com/rhasspy/piper wird nach ~/piper/piper/ entpackt.
+STIMME_PIPER = ("~/piper/piper/piper", "piper")
+# Weibliche Stimme "Kerstin" (16 kHz). Liegt auch noch Thorsten (männlich)
+# unter ~/piper/de_DE-thorsten-medium.onnx, zum Umschalten nur hier ändern.
+STIMME_MODELL = "~/piper/de_DE-kerstin-low.onnx"
 STIMME_ESPEAK = "espeak-ng"
+
+# Piper nur auf diesen CPU-Kernen rechnen lassen (taskset; None = alle).
+# Auf allen vier Kernen war jeder Satz ein Lastsprung, und am 03.11. fielen
+# genau beim Sprechen alle USB-Geräte ab (Over-Current). Mit einem Kern ist
+# Piper kaum langsamer (gemessen 1,27 statt 1,28 s für 3,5 s Sprache).
+STIMME_KERNE = "3"
 
 # ALSA-Gerät über den Kartennamen statt der Nummer: die Nummer ändert sich,
 # wenn sich USB-Geräte nach einem Spannungseinbruch neu anmelden.
 # „plughw“ wandelt Abtastrate und Kanäle passend um.
 STIMME_GERAET = "plughw:CARD=UACDemoV10,DEV=0"
-
-# Lautstärke in Prozent; wird beim Start per amixer gesetzt (falls möglich).
-STIMME_LAUTSTAERKE = 80
 
 # Sprechtempo für Piper: >1 langsamer. Etwas langsamer ist im Raum mit
 # Motorgeräusch besser zu verstehen.
@@ -918,6 +1021,18 @@ STIMME_TIMEOUT_S = 20.0
 # als Eingabe verstehen.
 STIMME_NACHLAUF_S = 0.4
 
+# Durchsage: aus der App (Laptop/Handy-Mikrofon) live über den Lautsprecher
+# des Roboters sprechen (WebSocket /sprache/durchsage). Kommt so lange (s)
+# kein Ton, gilt sie als beendet und der Lautsprecher wird frei ...
+DURCHSAGE_PAUSE_S = 2.0
+# ... und mehr als so viel (s) Ton wird nicht gepuffert. Stand die Durchsage
+# hinter einem Satz an, fällt der Anfang weg, statt dass sie dauerhaft um
+# Sekunden hinterherhinkt.
+DURCHSAGE_MAX_PUFFER_S = 0.5
+# Puffer von aplay (µs). Kleiner = weniger Verzögerung, aber jedes Stocken
+# im WLAN wird hörbar.
+DURCHSAGE_APLAY_PUFFER_US = 200000
+
 # --- Sprachbefehle (USB-Mikrofon, Vosk) -------------------------------------------
 # Siehe interaktion/sprache.py und docs/interaktion.md. Ohne vosk/sounddevice,
 # Modell oder Mikrofon ist die Erkennung aus; der Server läuft trotzdem.
@@ -931,9 +1046,17 @@ SPRACHE_MODELL = "~/vosk-model-small-de-0.15"
 # Gerätenamens (str) oder die Gerätenummer von sounddevice (int).
 SPRACHE_MIKROFON = None
 
-# Reihenfolge = Vorliebe: das USB-Mikrofon (C-Media "USB PnP Sound Device")
-# vor den Mikrofonen in C270 und Orbbec, die weiter weg vom Sprecher zeigen.
-SPRACHE_MIKROFON_NAMEN = ("USB PnP", "C-Media", "Microphone", "C270")
+# Reihenfolge = Vorliebe. Nur angesteckte USB-Mikrofone: das FongLun
+# ("USB Microphone", hw:5 am 03.11.) bzw. C-Media ("USB PnP Sound Device").
+# Die Kamera-Mikrofone sind bewusst nicht dabei: Das der C270 klingt so
+# schlecht, dass Vosk kaum etwas versteht -- lieber taub und ehrlich
+# "kein Mikrofon" in /sprache/status als halb hörend.
+SPRACHE_MIKROFON_NAMEN = ("USB Microphone", "USB PnP", "C-Media", "Microphone")
+
+# Geräte mit diesen Namensteilen nimmt die automatische Suche nie, auch wenn
+# ein Eintrag oben passt (etwa "Webcam Microphone"). Ein fest eingetragenes
+# SPRACHE_MIKROFON gilt trotzdem.
+SPRACHE_MIKROFON_NIE = ("C270", "Logi", "WebCam", "ORBBEC", "Depth Sensor")
 
 # Der Name des Roboters. Vosk kennt "robi" nicht als Wort; es hört je nach
 # Aussprache eine der Varianten. Nur die, die im Modell stehen, werden benutzt.
@@ -956,9 +1079,74 @@ SPRACHE_LADADA_OHNE_WECKWORT = True
 # "Robi, Beatbox" spielt dieses Lied (mit Weckwort, wie die anderen Befehle).
 SPRACHE_BEATBOX_URL = "https://www.youtube.com/watch?v=EfSp8EjZikE"
 
+# Mit fester Grammatik macht Vosk aus jedem Geräusch einen erlaubten Satz:
+# Musik, Fernseher und Gespräche wurden zu "robbie hallo" und schalteten die
+# Interaktion ein. Deshalb gilt ein Satz nur, wenn Vosk sich bei jedem Wort
+# mindestens so sicher ist (0..1) ...
+SPRACHE_MIN_KONFIDENZ = 0.7
+# ... und höchstens dieser Anteil der Wörter unbekannt war ([unk]). Mehr
+# heißt: Da hat jemand geredet, und "komm" war nur ein Wort darin.
+SPRACHE_MAX_UNK_ANTEIL = 0.5
+# ... und neben Weckwort und Wendung höchstens so viele weitere Wörter
+# kamen. Am 03.11. wurde aus Geräuschen "robin hallo hause zu weg ruby"
+# (-> weggehen); ein gesprochener Befehl ist genau ein Grammatik-Satz.
+SPRACHE_MAX_ZUSATZWOERTER = 0
+# Unsicher Gehörtes lässt nur Stopp durch. Beim Einstellen helfen
+# "konfidenz" und "zuletzt_verworfen" in /sprache/status.
+
+# Läuft Musik, hört das Mikrofon das Lied mit. Dann gilt ein Befehl nur mit
+# "Robi" und mit dieser höheren Konfidenz (Stopp und "Musik aus" immer).
+SPRACHE_MIN_KONFIDENZ_MUSIK = 0.85
+
+# Antwort auf ein einzelnes "Robi" (None = still). Gesagt wird sie erst nach
+# dieser Pause (s): Wer "Robi ... folge mir" mit kurzer Pause sagt, dem soll
+# das "Ja?" nicht ins Wort fallen -- während der Roboter spricht, hört er nicht.
+SPRACHE_WECK_ANTWORT = "Ja?"
+SPRACHE_WECK_ANTWORT_NACH_S = 1.0
+
+# Live-Feed vom Mikrofon für die App (Mitlesen und Mithören, beides in der
+# App schaltbar). So viele zuletzt gehörte Sätze zeigt das Mitlesen ...
+SPRACHE_LIVE_EREIGNISSE = 15
+# ... und so lange (s) nach dem letzten Abruf rechnet der Hör-Thread Pegel
+# und Zwischentext noch aus. Liest niemand mit, kostet es nichts.
+SPRACHE_LIVE_HALTEN_S = 3.0
+# Mithören: so viele Blöcke (je 0,25 s) puffern, bevor welche wegfallen.
+# Klein halten, sonst hört man mit Verzögerung.
+SPRACHE_TON_PUFFER = 8
+
 # Vosk-Modelle sind auf 16 kHz trainiert. Kann das Mikrofon das nicht,
 # wird seine eigene Rate genommen und Vosk rechnet um.
 SPRACHE_ABTASTRATE = 16000
 
 # Wartezeit (s) vor dem nächsten Versuch, wenn das Mikrofon weg ist.
 SPRACHE_NEUVERSUCH_S = 3.0
+
+# Failsafe nach USB-Aussetzern. Nach einem Absturz meldete sich die C270
+# schneller zurück als das USB-Mikrofon, und die Erkennung blieb dann auf
+# der schlechteren C270 hängen (deshalb ist sie jetzt ganz ausgeschlossen).
+# Läuft sie auf einem weniger bevorzugten Mikrofon, schaut sie so oft (s)
+# nach, ob ein besseres wieder angemeldet ist, und wechselt ...
+SPRACHE_MIKROFON_PRUEFEN_S = 5.0
+# ... war es schon beim Öffnen da und PortAudio fand es trotzdem nicht,
+# versucht sie es erst nach dieser Zeit (s) erneut (kein Dauerwechsel).
+SPRACHE_MIKROFON_ERNEUT_S = 30.0
+# Liefert das Mikrofon so lange (s) nur exakte Nullen, ist der Stream tot
+# (das Gerät ist weg, ohne dass PortAudio einen Fehler meldet): neu öffnen.
+SPRACHE_STUMM_S = 5.0
+# Kommt so lange (s) gar kein Block mehr, hängt der Stream: Nach einem
+# USB-Aussetzer blieb das Lesen ohne Fehler für immer stehen (Pegel
+# eingefroren, Zustand "hoert", keine Befehle mehr). Dann neu öffnen.
+SPRACHE_HAENGT_S = 3.0
+# So viele Blöcke (je 0,25 s) puffert der Hör-Thread, wenn die Auswertung
+# kurz nicht hinterherkommt (Piper rechnet); ältere fallen weg.
+SPRACHE_BLOCK_PUFFER = 20
+# So lange (s) darf das Schließen eines toten Streams dauern. Hängt auch
+# das, wird er liegen gelassen, damit der Neuversuch nicht mit hängt.
+SPRACHE_SCHLIESSEN_S = 2.0
+# Kommt der Hör-Thread selbst so lange (s) nicht voran (z. B. hängt schon das
+# Öffnen des Mikrofons in PortAudio), startet die Wache einen neuen. Muss
+# länger sein als ein ganzer Neuversuch (Frist + Schließen + Warten).
+SPRACHE_THREAD_HAENGT_S = 15.0
+# Höchstens so oft hintereinander; danach Zustand "fehler" mit dem Hinweis,
+# den Server neu zu starten (jeder hängende Thread bleibt liegen).
+SPRACHE_THREAD_MAX_NEU = 3

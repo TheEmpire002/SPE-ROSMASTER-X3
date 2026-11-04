@@ -292,23 +292,39 @@ Einrichtung am Pi (einmalig):
 sudo apt install alsa-utils espeak-ng      # aplay/amixer, Ersatzstimme
 aplay -L | grep UACDemo                    # Lautsprecher da?
 
-# Piper: Programm von github.com/rhasspy/piper (Release für aarch64)
-# entpacken und `piper` in den PATH legen (z. B. ~/.local/bin).
-# Stimme: beide Dateien nach ~/piper/
-#   de_DE-thorsten-medium.onnx  und  de_DE-thorsten-medium.onnx.json
-# (huggingface.co/rhasspy/piper-voices, de/de_DE/thorsten/medium)
+# Piper: Release für aarch64 nach ~/piper/piper/ entpacken (der Server
+# sucht dort zuerst, siehe STIMME_PIPER), dazu die weibliche Stimme Kerstin.
+mkdir -p ~/piper && cd ~/piper
+curl -fsSL https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_aarch64.tar.gz | tar xz
+B=https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/de/de_DE/kerstin/low
+curl -fsSLO $B/de_DE-kerstin-low.onnx && curl -fsSLO $B/de_DE-kerstin-low.onnx.json
 
-# Test ohne Server:
-echo "Hallo, ich bin der Rosmaster." \
-  | piper --model ~/piper/de_DE-thorsten-medium.onnx --output-raw \
-  | aplay -D plughw:CARD=UACDemoV10,DEV=0 -r 22050 -f S16_LE -c 1 -t raw
+# Test ohne Server (Kerstin hat 16 kHz, steht in der .onnx.json):
+echo "Hallo, ich bin Robi." \
+  | taskset -c 3 ~/piper/piper/piper --model ~/piper/de_DE-kerstin-low.onnx --output-raw \
+  | aplay -D plughw:CARD=UACDemoV10,DEV=0 -r 16000 -f S16_LE -c 1 -t raw
 ```
 
+- Am Pi eingerichtet am 03.11., dort liegt auch noch Thorsten (männlich,
+  `de_DE-thorsten-medium`). Umschalten über `STIMME_MODELL`. Gemessen für
+  3,5 s Sprache: Kerstin 1,3 s, Thorsten medium 1,1 s, Thorsten high 5,7 s
+  (langsamer als Echtzeit, deshalb nicht genommen).
+- **Piper rechnet nur auf einem Kern** (`STIMME_KERNE`, per `taskset`). Auf
+  allen vier Kernen fielen am 03.11. genau beim Sprechen alle USB-Geräte ab
+  (Over-Current, `aplay: No such device`). Mit einem Kern ist Piper kaum
+  langsamer, und ein Testsatz bei 70 % lief ohne neue Over-Current-Meldung.
+- **Nicht mit `sudo` starten.** Unter sudo ist `~` gleich `/root`, dann fehlen
+  Piper, Vosk-Modell und `~/.rosmaster` (der Roboter sprach so wieder mit
+  espeak). `main.py` biegt das inzwischen selbst auf den eigentlichen
+  Benutzer um, nötig ist sudo aber nicht.
 - Piper ist ein Systemprogramm, keine pip-Abhängigkeit. Fehlt es (oder das
   Modell), weicht der Server auf espeak-ng aus und meldet das im Log. Fehlt
   auch das, spricht er nicht, läuft aber normal weiter.
-- Beim Start stellt der Server die Lautstärke per `amixer` auf
-  `STIMME_LAUTSTAERKE` (80 %) und sagt „Ich bin bereit.“. Hört man das,
+- Der Server stellt den Mixer per `amixer` fest auf `TON_MIXER` (100 %),
+  vor jeder Satzfolge neu, weil der Lautsprecher nach einem USB-Aussetzer
+  mit seinem Standardwert zurückkommt. Leiser wird in Software
+  (`LAUTSTAERKE`, Einstellungsseite): Piper-Töne rechnet der Server selbst
+  herunter, espeak bekommt `-a`, mpv `--volume`. Beim Start sagt er „Ich bin bereit.“. Hört man das,
   funktioniert die ganze Kette.
 - Diagnose: `curl localhost:8000/stimme/status`. `ausgabe` zeigt, welche
   Stimme benutzt wird, und `fehler` die letzte Meldung von aplay (z. B.
@@ -318,9 +334,11 @@ echo "Hallo, ich bin der Rosmaster." \
 
 ## Mikrofon und Sprachbefehle
 
-Gehört wird über das USB-Mikrofon (C-Media `0d8c:0016`). Der Server sucht
-es über den Namen (`SPRACHE_MIKROFON_NAMEN`: „USB PnP“, „C-Media“,
-„Microphone“, „C270“ – in dieser Reihenfolge), nicht über die Nummer.
+Gehört wird über das USB-Mikrofon (FongLun bzw. C-Media `0d8c:0016`). Der Server sucht
+es über den Namen (`SPRACHE_MIKROFON_NAMEN`: „USB Microphone“, „USB PnP“,
+„C-Media“, „Microphone“ – in dieser Reihenfolge), nicht über die Nummer.
+Die Mikrofone in C270 und Orbbec nimmt er nie (`SPRACHE_MIKROFON_NIE`):
+Das der C270 klingt so schlecht, dass Vosk kaum etwas versteht.
 Erkannt wird mit Vosk und dem kleinen deutschen Modell (ca. 45 MB, läuft
 auf der CPU).
 
@@ -520,6 +538,45 @@ Lauf mit Boot-ID (`laeufe.json`), das Log als Datei (`server.log`),
 Segfaults (`absturz.txt`) und Hänger der Ereignisschleife
 (`blockiert.txt`). Die Seite `/diagnose` ordnet beim nächsten Start ein, ob
 der Pi neu gestartet ist, der Server hart beendet wurde oder abgestürzt ist.
+
+**Befund vom 03.11. (im Stand, Orbbec wieder angesteckt).** Über 400
+Over-Current-Meldungen in 15 min, immer alle Root-Ports gleichzeitig.
+Unterspannung lag keine vor (`throttled=0x0`, EXT5V 5,09 V), und
+`usb_max_current_enable=1` und `PSU_MAX_CURRENT=5000` waren schon gesetzt.
+Schon beim Booten kamen 24 Meldungen. Der erste Zusammenbruch im Serverlauf
+kam beim Start, wo Hailo, Lidar-Motor, Kameras und die erste Ansage in
+derselben Sekunde anlaufen. Danach lief eine Dauerschleife. Fazit: wie
+oben, Punkt 4 ist nötig, bis dahin die Orbbec abziehen. Beim Lesen der Logs
+beachten: Der Pi hat keine Echtzeituhr, bis zur Netzwerkzeit stehen alte
+Uhrzeiten im Log.
+
+**Der Hub.** Der USB-Hub am X3 ist ein VIA VL817 (`2109:2817` USB 2,
+`2109:0817` USB 3, Firmware 0.50). Laut Deskriptor ist er *self powered*
+(0 mA vom Pi), versorgt also über das Expansion-Board. Uns wurde gesagt, es
+sei die alte Version V1 mit bekannten Stromproblemen. Das passt zum Muster
+oben: Ein selbstversorgter Hub, dessen Schiene einbricht oder zurückspeist,
+lässt den gemeinsamen Schalter des Pi auf allen Ports auslösen, auch auf
+leeren und an der C270, die nicht am Hub hängt. Der Genesys-Hub
+(`05e3:0608`) dahinter ist der interne Hub der Orbbec, kein zweiter Hub.
+Gegenprobe: Hub ab, Board und Lidar direkt an den Pi (Orbbec ab). Verschwinden
+die Meldungen, ist der Hub die Ursache.
+
+**Das Treiberboard (Expansion-Board).** Uns wurde gesagt, es sei die
+Version V1. Laut Yahboom kann erst V3.0 das Stromprotokoll des Pi 5
+(5,1 V/5 A über Type-C), V1.0 liefert nur „5 V“ ohne Angabe des Stroms. Am
+Pi bestätigt (03.11.): `/proc/device-tree/chosen/power/usbpd_power_data_objects`
+ist komplett 0, es wurde nichts ausgehandelt. Die 5 A „kennt“ der Pi nur,
+weil `PSU_MAX_CURRENT=5000` von Hand im EEPROM steht. Damit gibt er 1,6 A
+für USB frei, die das V1-Board unter Last nicht sicher liefert, und bei jedem
+Lastsprung löst der Schalter aus. Board-Firmware: 2.4 (`get_version()`).
+
+Ein **Firmware-Update hilft dagegen nicht.** Die Firmware läuft auf dem STM32
+(Motoren, IMU, Servos), die 5-V-Versorgung und das Pi-5-Protokoll sind
+Hardware (Spannungswandler bzw. Protokoll-Chip von V3.0). Yahboom rät ohne
+Not vom Flashen ab (Windows-Werkzeug mcuisp/FlyMcu, BOOT0 + RESET von Hand),
+und eine neue Firmware kann das Protokoll zu `Rosmaster_Lib` und unserem
+Treiber ändern. Abhilfe: Board V3.0, oder den Pi aus einem eigenen
+5-V/5-A-Wandler mit Pi-5-Protokoll (USB-PD) aus dem Akku versorgen.
 
 ### Was am Roboter tun (Hardware)
 

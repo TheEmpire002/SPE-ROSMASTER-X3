@@ -102,7 +102,9 @@ die Grundlage dafür.
 
 **Stand 28.10.:** Gewählt wurde der zweite Weg. Der Erkunder
 (`navigation/explorer.py`) fährt direkt im Server auf den Lidar-Daten,
-mit demselben Watchdog wie die Handsteuerung. Das ältere ROS2-Projekt liegt
+mit demselben Watchdog wie die Handsteuerung. Ebenso die genauen
+Fahrbefehle („2 Meter vor“, „90 Grad drehen“, `navigation/manoever.py`):
+Sie messen Strecke und Winkel mit dem Lidar statt nach Zeit. Das ältere ROS2-Projekt liegt
 zum Vergleich unter `Marlon/autonomes_fahren/`.
 
 **Stand 03.11.:** Der Erkunder dreht nach dem gemessenen Winkel (Drehrate

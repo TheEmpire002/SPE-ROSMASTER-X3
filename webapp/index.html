@@ -165,6 +165,35 @@
     </p>
   </section>
 
+  <!-- Genaue Fahrbefehle (genau.js): {"type": "move"} / {"type": "turn"}, das Lidar misst. -->
+  <section class="panel">
+    <h2>Genau fahren</h2>
+
+    <div class="genau-zeile">
+      <label>Strecke
+        <input type="number" id="genau-meter" min="0.05" max="5" step="0.05" value="1"> m
+      </label>
+      <div class="genau-knoepfe">
+        <button type="button" class="btn" data-richtung="vor" title="vorwärts">↑ vor</button>
+        <button type="button" class="btn" data-richtung="zurueck" title="rückwärts">↓ zurück</button>
+        <button type="button" class="btn" data-richtung="links" title="seitwärts links">← links</button>
+        <button type="button" class="btn" data-richtung="rechts" title="seitwärts rechts">→ rechts</button>
+      </div>
+    </div>
+
+    <div class="genau-zeile">
+      <label>Winkel
+        <input type="number" id="genau-grad" min="1" max="720" step="5" value="90"> °
+      </label>
+      <div class="genau-knoepfe">
+        <button type="button" class="btn" data-drehen="1" title="gegen den Uhrzeigersinn">⟲ links</button>
+        <button type="button" class="btn" data-drehen="-1" title="im Uhrzeigersinn">⟳ rechts</button>
+      </div>
+    </div>
+
+    <p class="hint" id="genau-text">Das Lidar misst, wie weit er wirklich gefahren ist und hält ihn gerade. Abbrechen: Stopp.</p>
+  </section>
+
   <section class="panel">
     <h2>Autonomes Fahren</h2>
 
@@ -211,6 +240,30 @@
       <dt>Stimme</dt>   <dd id="val-stimme">—</dd>
       <dt>Ohr</dt>      <dd id="val-sprache">—</dd>
     </dl>
+
+    <!-- Live-Feed vom Mikrofon (GET /sprache/live, WebSocket /sprache/ton). -->
+    <label class="switch">
+      <input type="checkbox" id="mikro-lesen">
+      <span>Mikrofon mitlesen</span>
+      <output id="mikro-lesen-state" class="switch-state">aus</output>
+    </label>
+    <label class="switch">
+      <input type="checkbox" id="mikro-hoeren">
+      <span>Mikrofon mithören</span>
+      <output id="mikro-hoeren-state" class="switch-state">aus</output>
+    </label>
+    <!-- Durchsage: eigenes Mikrofon -> Lautsprecher des Roboters (WebSocket /sprache/durchsage). -->
+    <label class="switch">
+      <input type="checkbox" id="mikro-sprechen">
+      <span>Über den Roboter sprechen</span>
+      <output id="mikro-sprechen-state" class="switch-state">aus</output>
+    </label>
+    <p id="mikro-sprechen-hinweis" class="mikro-hinweis" hidden></p>
+    <div id="mikro-live" class="mikro-live" hidden>
+      <div class="mikro-pegel" title="Lautstärke am Mikrofon"><div id="mikro-pegel-balken"></div></div>
+      <p id="mikro-teil" class="mikro-teil">—</p>
+      <ul id="mikro-ereignisse" class="mikro-ereignisse"></ul>
+    </div>
 
     <div class="home-buttons">
       <button type="button" id="btn-interaktion" class="btn btn-primary">
@@ -320,5 +373,7 @@
 <script src="/static/einstellungen.js"></script>
 <script src="/static/app.js"></script>
 <script src="/static/mukke.js"></script>
+<script src="/static/mikro.js"></script>
+<script src="/static/genau.js"></script>
 </body>
 </html>

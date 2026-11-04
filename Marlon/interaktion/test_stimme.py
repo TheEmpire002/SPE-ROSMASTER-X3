@@ -62,11 +62,41 @@ time.sleep(0.2)
 pruefe("spricht während des Satzes", s.spricht)
 time.sleep(0.6 + config.STIMME_NACHLAUF_S)
 pruefe("danach still", not s.spricht and s.status()["gesagt"] == 1, s.status())
+
+# Durchsage aus der App: hält "spricht" (Spracherkennung hört weg), endet mit ende()
+d = s.durchsage(16000)
+pruefe("Durchsage in der Status-Schlange lesbar", all(isinstance(t, str) for t in s.status()["warteschlange"]))
+for _ in range(4):
+    d.rein(b"\x00\x01" * 4000)
+    time.sleep(0.1)
+pruefe("Durchsage: spricht", s.spricht and not d.vorbei)
+d.ende()
+time.sleep(0.3 + config.STIMME_NACHLAUF_S)
+pruefe("Durchsage: nach ende() vorbei und still", d.vorbei and not s.spricht, (d.vorbei, s.spricht))
+
+# Stopp (Vorrang) bricht eine laufende Durchsage ab
+d = s.durchsage(16000)
+d.rein(b"\x00\x01" * 4000)
+time.sleep(0.2)
+s.sagen("Halt.", vorrang=True)
+time.sleep(0.3)
+pruefe("Durchsage: Vorrang bricht ab", d.vorbei, d.vorbei)
+
+# Kommt nichts mehr (App weg), endet sie nach DURCHSAGE_PAUSE_S von selbst
+alt_pause = config.DURCHSAGE_PAUSE_S
+config.DURCHSAGE_PAUSE_S = 0.3
+time.sleep(1.5)  # "Halt." ausreden lassen
+d = s.durchsage(16000)
+d.rein(b"\x00\x01" * 4000)
+time.sleep(1.0)
+pruefe("Durchsage: endet nach Pause von selbst", d.vorbei, d.vorbei)
+config.DURCHSAGE_PAUSE_S = alt_pause
 s.stop()
 
 # --- Ohne Sprachprogramme: nur Text --------------------------------------------------
 alt = (config.STIMME_PIPER, config.STIMME_ESPEAK)
-config.STIMME_PIPER = config.STIMME_ESPEAK = "gibt-es-nicht-xyz"
+config.STIMME_PIPER = ("gibt-es-nicht-xyz",)
+config.STIMME_ESPEAK = "gibt-es-nicht-xyz"
 s = st.Stimme(mock=False)
 s.start()
 s.sagen("Niemand hört mich.")
