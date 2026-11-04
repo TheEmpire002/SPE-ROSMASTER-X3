@@ -87,6 +87,7 @@ Menschen aus. Es bewertet keinen Gesundheitszustand.
 | `sensors/`     | Lidar, Kamera, Tiefenkamera (`tiefe.py`, OpenNI2; Anzeige `tiefe_anzeige.py`), Personenerkennung, Körperpose (Hailo) |
 | `navigation/`  | Odometrie, Lidar-Ortung, Heimfahrt, Erkunder, Ausweichen (`ausweichen.py`), Hindernis-Benennung, Hindernisgedächtnis für Tiefenpunkte (`hindernisgedaechtnis.py`), Fortschrittswache gegen Festhängen (`fortschritt.py`) |
 | `interaktion/` | Gesten, Verhalten (Folgen, Herkommen, Weggehen), Stimme (Sprachausgabe) und Sprachbefehle mit dem Weckwort „Robi“; geplant: Geist — siehe [`interaktion.md`](interaktion.md) |
+| `zustandserkennung/` | Healthbot: zu einer Person fahren, Zustand beurteilen (liegend, regungslos, keine Antwort, am Boden), ansprechen, anstupsen, Hilfe holen (`ablauf.py`, `bewertung.py`, Mock-Person `simulation.py`) |
 | `diagnose.py`  | Sammelt Ausfälle (Akku, USB, Unterspannung, Temperatur, Geräte, Log) und macht daraus verständliche Probleme für die Seite `/diagnose` |
 | `aufzeichnung.py` | Fahrtenschreiber: letzte Minute (Scans, Befehle, Odometrie, Zustände) im Speicher, auf Knopfdruck als Datei; dazu Laden und Nachspielen für `scripts/abspielen.py` |
 | `box/`         | Motor/Servo der Transportbox *(noch leer)*                  |
@@ -191,3 +192,23 @@ dem Verhalten mit, das dann seine Moduswechsel ansagt. Fahren kann die
 Stimme nicht, sie bekommt keinen Watchdog. Sie blockiert weder den
 Event-Loop noch die Fahrschleife: `sagen()` stellt den Satz nur in eine
 Warteschlange.
+
+## Zustandserkennung (Healthbot)
+
+`zustandserkennung/` ist ein eigener Modus neben Erkunder, Heimfahrt und
+Interaktion. `ablauf.py` ist der Zustandsautomat (anfahrt → gesamtbild →
+ansprechen → anstupsen/nachfrage → hilfe, ansprechbar oder unauffaellig),
+`bewertung.py` die reine Logik der vier Zeichen und des Urteils, ohne
+Hardware testbar (`Marlon/zustandserkennung/test_zustand.py`).
+`simulation.py` legt im Mock eine liegende Person in den gedachten Raum,
+für Pose und Lidar zugleich.
+
+Er nutzt nur Vorhandenes: Pose (Hailo) für Haltung und Bewegung, Lidar für
+Abstand und die Lage am Boden, Odometrie und eine eigene `Homing`-Instanz
+für Anfahrt und Heimweg, Stimme und Mikrofon für Ansprechen und Nachfrage,
+`audio/mukke.py` für die Musik. Gefahren wird nur über den Watchdog
+(`quelle="autonom"`). Die Verdrahtung in `api/server.py` folgt dem
+Erkunder: bauen in `create_app`, Abbruch bei Not-Stopp, Handsteuerung,
+Verbindungsverlust, den anderen Modi und Antriebsausfall, Kurzstatus in `state.healthbot`.
+Die Seite `/healthbot` zeigt Ablauf, Zeichen, Urteil und Zeitleiste.
+Begründung in E12 in [`entscheidungen.md`](entscheidungen.md).

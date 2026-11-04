@@ -729,6 +729,13 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Probleme:** Die verkürzte Frist am Bildrand hätte direkt nach einem Moduswechsel mit noch veraltetem Winkel gegriffen; deshalb gilt sie nur im Zustand „kurz weg“ (`KURZ_WEG`), nicht gleich beim Start der Suche.
 - **Offen:** Bodentest: gleiche Person nach Loslassen erneut per „Folgen“ ohne Antippen auswählen lassen; Lidar-Hinweis bei echtem Beinpaar hinter dem Roboter prüfen.
 
+### 04.11.2026 – Zustandserkennung: neuer Modus „Healthbot“ (Marlon, mit Claude)
+- **Was:** Neues Paket `robot/src/rosmaster_assist/zustandserkennung/` mit `ablauf.py` (Zustandsautomat), `bewertung.py` (vier Zeichen und Urteil) und `simulation.py` (liegende Mock-Person). Der Ablauf: Ort wird per Karte/Koordinaten gemeldet oder die Wache erkennt selbst eine liegende Person; Roboter fährt hin, bildet ein Gesamtbild aus liegend, regungslos, keine Antwort und Lage am Boden; spricht die Person an („Hallo, hören Sie mich?“); bleibt die Antwort aus, stupst er vorsichtig zweimal an (0,05 m/s, Rumpf/Bein, über `HEALTH_STUPSEN_AKTIV` abschaltbar); bleibt auch das ohne Reaktion, löst er Alarm in der Web-App und eine Sprachansage aus, fährt heim und spielt „Beatbox Jungs“; reagiert die Person, fragt er nach („Brauchst du Hilfe?“) und hilft oder fährt heim, je nach Antwort. Neue Befehle `health_check`, `health_stop`, `health_wache`, neues Feld `state.healthbot`, neue Endpunkte `/healthbot/status` und `/healthbot/simulation` (Mock), eigene Seite `/healthbot` (Karte, Kamerabild mit Skelett, vier Zeichen als Ampel, Urteil, Stupser, Zeitleiste) sowie ein roter Herz-Knopf auf der Startseite. Neue Einstellungen `HEALTH_*` in `config.py`.
+- **Warum:** Der Hilfsroboter soll bei Stürzen helfen können. Die Entscheidung muss nachvollziehbar bleiben (Ampel-Anzeige plus Zeitleiste), und im Zweifel soll er lieber Hilfe holen als abzuwarten.
+- **Ergebnis:** Mock-Durchlauf komplett (anfahrt → … → hilfe mit Alarm, Heimfahrt, Musik). Smoke-Test 19/19 auf Port 8037 bestanden. Neues Testskript `Marlon/zustandserkennung/test_zustand.py`, Regel-Prüfung ohne Verstöße. Am Roboter noch nicht getestet.
+- **Probleme:** Kontakt nur indirekt, da die Räder beim Anstupsen stehen bleiben; die Schwellen für die vier Zeichen stammen bisher aus der Simulation; ohne Pose-Erkennung kann der Ablauf nicht starten. Der Rand des Fahrschutzes wurde beim Stupsen auf `HEALTH_STUPSEN_RAND_M` gesenkt, sonst käme es nie zur Berührung.
+- **Offen:** Feldtest am Roboter steht aus.
+
 ---
 
 ## 3. Ergebnisse und Messwerte

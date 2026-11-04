@@ -513,3 +513,47 @@ und die Karte wuchs nicht.
 **Neu bewerten, wenn:** sich die Wache im Betrieb oft irrt (dann
 `FORTSCHRITT_ANTEIL`/`_FENSTER_S` anpassen) oder ein Sensor für den
 Nahbereich (Ultraschall, Bumper) dazukommt.
+
+## E12 — Healthbot: nachvollziehbare Zeichen, echte Berührung, im Zweifel Hilfe
+
+**Datum:** 2026-11-04
+**Status:** umgesetzt (`zustandserkennung/`), nur im Mock getestet
+
+**Kontext.** Der Roboter soll zu einer Person fahren, bei der vermutet
+wird, dass es ihr nicht gut geht (z. B. gestürzt), sich ein Bild machen
+und bei Bedarf Hilfe holen. Es gibt keinen eigenen Sensor dafür; nur Pose,
+Lidar, Mikrofon, Lautsprecher und den Antrieb.
+
+**Entscheidung.**
+1. **Vier einfache Zeichen statt eines Gesamtmodells:** liegend
+   (Rumpfwinkel aus der Pose), regungslos (Skelett bewegt sich kaum), keine
+   Antwort (Mikrofon) und Lage am Boden (Person unten im Bild, Lidar sieht
+   dort etwas Breites). Jedes Zeichen hat einen Text; die Web-App zeigt sie
+   als Ampel mit Zeitleiste. So sieht man, *warum* er Alarm schlägt.
+2. **Ansprechen vor Anstupsen.** Erst fragen, nur ohne Antwort berühren.
+3. **Echte Berührung, aber begrenzt:** 0,05 m/s, höchstens
+   `HEALTH_STUPSEN_TIEFE_M` weiter, als der Lidar Luft sieht, Kontakt =
+   Räder stehen trotz Befehl; danach sofort zurück. Abschaltbar mit
+   `HEALTH_STUPSEN_AKTIV`.
+4. **Fahrschutz-Rand beim Stupsen gesenkt** (`HEALTH_STUPSEN_RAND_M`),
+   statt den Fahrschutz zu umgehen. Sonst hielte er immer einige
+   Zentimeter vor der Person. Der Rand gilt nur für diese Befehle.
+5. **Reihenfolge der Hilfe:** Alarm in der App (erreicht am schnellsten
+   einen Menschen), Ansage vor Ort, Heimfahrt, Musik. Die Musik läuft auch,
+   wenn die Heimfahrt scheitert: Sie soll Menschen herbeirufen.
+6. **Im Zweifel Hilfe:** Unklare Antwort auf „Brauchst du Hilfe?“ zählt
+   wie „ja“. Ein Fehlalarm kostet einen Blick, ein verpasster Notfall mehr.
+7. **Eigene `Homing`-Instanz**, damit die Anzeige der normalen Heimfahrt
+   nicht von Healthbot-Fahrten überschrieben wird.
+
+**Konsequenzen.**
+- *Gut:* Alles ist erklärbar und ohne Hardware testbar (Simulation).
+- *Schlecht:* Ohne Pose-Erkennung (Hailo, Kamera) startet er nicht.
+- *Schlecht:* Kontakt wird nur indirekt erkannt (Räder stehen). Auf
+  glattem Boden oder bei weicher Kleidung kann er erst an der Weggrenze
+  halten.
+- *Schlecht:* Schwellen (`HEALTH_LIEGEND_GRAD`, `HEALTH_REGUNGSLOS_PX`)
+  stammen aus der Simulation, nicht aus Messungen am Roboter.
+
+**Neu bewerten, wenn:** Feldtests viele Fehlalarme zeigen oder ein
+Berührungssensor (Bumper) dazukommt.

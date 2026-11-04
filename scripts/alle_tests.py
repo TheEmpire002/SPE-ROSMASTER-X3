@@ -28,6 +28,7 @@ MUSTER = [
     "Marlon/autonomes_fahren/test_*.py",
     "Marlon/diagnose/test_*.py",
     "Marlon/interaktion/test_*.py",
+    "Marlon/zustandserkennung/test_*.py",
 ]
 # Ein hängender Test soll den Lauf nicht ewig blockieren.
 ZEITLIMIT_S = 900

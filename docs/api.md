@@ -184,6 +184,9 @@ Reihenfolge:
 | `vitals` | `bpm` (Zahl/null), `motion` (bool/null) | Messwerte vom ESP32, werden an alle weitergereicht. | `vitals` an alle |
 | `box` | `action`: `"open"` / `"close"` | Noch nicht gebaut. | `alert` „Box ist noch nicht angebaut“ |
 | `ping` | – | Verbindung prüfen. | `pong` |
+| `health_check` | `x`, `y` (m, Kartenrahmen, optional, nur beide zusammen) | Healthbot (neu 04.11.): zur Stelle fahren, die Person beurteilen, ansprechen, bei Bedarf anstupsen, im Notfall Hilfe holen (siehe „Healthbot“ unter HTTP). Ohne `x`/`y` prüft er die Person in seiner Nähe. **Fährt und berührt die Person.** Bricht Heimfahrt, autonomes Fahren, Interaktion und Fahrbefehle ab; jede Fahreingabe ≠ 0 und `stop` brechen ihn ab. | `alert` „Healthbot: prüft …“ an alle; läuft schon, abgeschaltet oder ohne Posenerkennung `alert` (warning); x/y ungültig `error` |
+| `health_stop` | – | Healthbot-Prüfung abbrechen und anhalten. | keine |
+| `health_wache` | `an` (bool) | Wache ein/aus: Der Roboter achtet selbst auf eine liegende Person und startet dann `health_check` an ihrer Stelle. Braucht die Posenerkennung. | ohne Posenerkennung `alert` (warning) |
 
 Ein unbekannter `type` liefert `{"type": "error", "text": "Unbekannter Nachrichtentyp: …"}`.
 
@@ -233,6 +236,7 @@ er nur noch.
 | `interaktion` | Interaktionsmodus (Handzeichen, Folgen), siehe „Interaktion im Detail“. Fehlt bei älteren Servern. |
 | `stimme` | Sprachausgabe: `verfuegbar` (es kommt Ton heraus), `spricht` (gerade ein Satz), `text` (zuletzt gesagter Satz oder `null`). Siehe „Stimme im Detail“. Fehlt bei älteren Servern. |
 | `sprache` | Sprachbefehle: `verfuegbar` (Mikrofon und Modell bereit), `geweckt` („Robi“ wurde gerade allein gesagt, der nächste Satz braucht keinen Namen), `gehoert` (zuletzt verstandener Satz oder `null`), `befehl` (erkannter Befehl, wenige Sekunden lang, sonst `null`). Siehe „Sprachbefehle im Detail“. Fehlt bei älteren Servern. |
+| `healthbot` | Healthbot (neu 04.11.): `aktiv`, `zustand`, `schritt` (Text für die Anzeige), `alarm` (Hilfe wurde gerufen), `wache`. Alles Weitere unter `GET /healthbot/status`. Fehlt bei älteren Servern. |
 
 **`collision`**: beim Verbinden und nach jeder Änderung, Felder wie
 `state.collision`.
@@ -775,6 +779,55 @@ erlaubt fremden Seiten nur `GET`.
 |---|---|
 | `GET /interaktion/status` | dasselbe wie `state.interaktion`, dazu `pose`: `verfuegbar`, `simuliert`, `aktiv`, `fehler`, `fps`, `bilder`, `letzte_erkennung_vor_s`, `kamera` (auf welchem Kamerabild die Punkte liegen, Name wie in `/cameras`) |
 | `GET /interaktion/pose` | `personen`: erkannte Menschen, größter zuerst, je `box` [x1, y1, x2, y2] und `kp` (17 × [x, y, Sicherheit], COCO-Reihenfolge), relativ zur Bildgröße (0..1), dazu `score`, `winkel`, `id` (Track-ID für `follow {ziel_id}`, `null` solange der Tracker die Person noch nicht kennt) und `ziel` (`true` beim gesperrten Ziel); `skelett`: Punktpaare zum Verbinden. Leer, solange der Modus aus ist. |
+
+### Healthbot
+
+Der Healthbot fährt zu einer Person, bei der vermutet wird, dass es ihr
+nicht gut geht, und prüft ihren Zustand. Bedienung über die Seite
+`/healthbot` (Herz-Knopf auf der Startseite) oder die Befehle
+`health_check`, `health_stop`, `health_wache`. Ablauf:
+
+1. **Anfahrt**: zum gemeldeten Ort (`x`, `y` im Kartenrahmen wie `pose`),
+   Halt in `HEALTH_ZIEL_TOLERANZ_M`; dann drehen, bis die Person mittig im
+   Bild ist.
+2. **Gesamtbild**: `HEALTH_BEOBACHTEN_S` lang beobachten und die vier
+   Zeichen bewerten.
+3. **Ansprechen**: „Hallo, hören Sie mich? …“ und `HEALTH_ANTWORT_S` auf
+   eine Antwort hören (Mikrofon oder `speech`).
+4. **Anstupsen**, wenn keine Antwort kam: mit `HEALTH_STUPSEN_SPEED`
+   (0,05 m/s) an Rumpf oder Bein heranfahren, bis er steht (Kontakt),
+   kurz zurück, auf Bewegung oder Worte achten; `HEALTH_STUPSEN_ANZAHL`
+   mal. Abschaltbar mit `HEALTH_STUPSEN_AKTIV`.
+5. **Ergebnis**:
+   - keine Reaktion → `hilfe`: `alert` (emergency) an alle, Ansage, dann
+     Heimfahrt und Musik („Beatbox Jungs“);
+   - Reaktion → Nachfrage „Brauchst du Hilfe?“: „ja“/„Hilfe“ → `hilfe`,
+     „nein“ → `ansprechbar`, Heimfahrt;
+   - Person antwortet gleich und wirkt unauffällig → `unauffaellig`.
+
+Gefahren wird nur über den Watchdog (`quelle="autonom"`). Beim Anstupsen
+senkt er den Rand des Fahrschutzes auf `HEALTH_STUPSEN_RAND_M`, sonst
+käme er nie bis zur Person. Alle Einstellungen beginnen mit `HEALTH_` in
+`config.py`.
+
+| Endpunkt | Liefert |
+|---|---|
+| `GET /healthbot` | die Bedienseite: Ablauf, Karte (antippen setzt das Ziel), Kamerabild mit Skelett, die vier Zeichen als Ampel, Urteil, Stupser, Zeitleiste |
+| `GET /healthbot/status` | `aktiv`, `zustand`, `schritt`, `alarm`, `wache`, `stupsen_aktiv`, `ziel` (`{x, y, quelle}` mit `quelle` `eingabe` oder `selbst erkannt` (von der Wache), sonst `null`), `checks`, `urteil`, `stupser`, `timeline`, `person` (`box`, `kp`, `winkel` der beurteilten Person wie in `/interaktion/pose`, sonst `null`), `simulation` und `szenen` (nur mit `--mock`, sonst `null` bzw. `[]`) |
+| `POST /healthbot/simulation` | nur mit `--mock`: Body `{"szene": "liegend_regungslos" \| "liegend_bewegt" \| null, "x": 1.5, "y": 0}` legt eine gedachte Person in den simulierten Raum (`null` räumt sie weg). Ohne Mock `404`, ungültig `400` mit `{"fehler": "…"}`. |
+
+`zustand`: `bereit`, `anfahrt`, `gesamtbild`, `ansprechen`, `anstupsen`,
+`nachfrage`, `hilfe`, `ansprechbar`, `unauffaellig`, `keine_person`,
+`abgebrochen`.
+
+`checks`: die vier Zeichen `liegend` (Rumpf flach), `regungslos`
+(Skelett bewegt sich kaum), `antwort` (keine Antwort) und `boden`
+(Person unten im Bild, Lidar sieht dort etwas Breites), je
+`{"name", "titel", "zustand": "auffaellig" | "ok" | "unbekannt", "wert", "text"}`.
+`urteil`: `{"stufe": "notfall" | "auffaellig" | "ansprechbar" |
+"unauffaellig", "punkte" (auffällige Zeichen), "text"}` oder `null`.
+`stupser`: je `nr`, `grund`, `weg_m`, `zeit`, `reaktion`, `bewegung`,
+`gehoert`. `timeline`: je `zeit` (Unix-Zeit), `zustand`, `text`.
 
 ### Fahrtenschreiber
 
