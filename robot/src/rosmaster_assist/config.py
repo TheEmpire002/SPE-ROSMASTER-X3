@@ -843,6 +843,13 @@ POSE_MIN_SCORE = 0.5
 # verdeckte Hände sollen keine Geste auslösen.
 POSE_KP_MIN_CONF = 0.4
 
+# Ältere Kamerabilder werden nicht ausgewertet (Sekunden seit Aufnahme).
+# Hängt die Kamera, lieferte die Pose sonst das alte Bild immer wieder als
+# frische Erkennung -- im Testprotokoll vom 04.11.2026 sah der Roboter
+# Personen, die längst woanders waren, und die Wache konnte daraus einen
+# Healthbot-Check mit falscher Richtung starten.
+POSE_MAX_BILDALTER_S = 0.5
+
 # Hailo beim Serverstart öffnen und offen lassen, statt ihn erst beim
 # Start der Gestensteuerung zu öffnen und danach wieder freizugeben. Das
 # Öffnen ist eine Lastspitze, die am X3 den USB-Hub zurücksetzen kann --

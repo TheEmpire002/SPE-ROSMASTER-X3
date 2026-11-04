@@ -752,6 +752,13 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Ergebnis:** `test_zustand.py` alle Fälle bestehen; `scripts/alle_tests.py` 16/16 bestanden. Regelprüfung ohne Verstoß; ihr Hinweis wurde übernommen: Hält der Fahrschutz, weil der Lidar ausfiel, heißt der Endgrund „keine frischen Lidar-Daten“ statt „Fahrschutz hält“.
 - **Offen:** Am Roboter prüfen, ob der Fahrschutz tatsächlich ~0–3 cm vor der Person hält und ob der Stups damit spürbar ist; „Lage am Boden“ wertet bei unsichtbarer Person die Wand als breites Stück (fälschlich auffällig).
 
+### 04.11.2026 – Testprotokoll: Kamera ruckelt, falsche Personen (Marlon, mit Claude)
+- **Was:** Eine Kamera ruckelte stark, und der Roboter erkannte Personen, die nicht (mehr) da waren. Frage: Ist das Ruckeln die Ursache?
+- **Ursache (im Code gefunden, im Test nachgestellt):** Teilweise ja. Die Posenerkennung holte sich in jeder Runde das neueste Kamerabild, prüfte aber nicht, ob es neu ist. Hängt oder ruckelt die Kamera, rechnete sie dasselbe alte Bild immer wieder und meldete es jedes Mal als frische Erkennung. Eine Person, die längst weg war, blieb so „sichtbar“; die Wache konnte damit eine Prüfung an einer falschen Stelle starten.
+- **Änderung (`sensors/pose.py`, `config.py`):** Jedes Kamerabild wird nur einmal ausgewertet (Aufnahmezeit aus `latest_mit_zeit()`). Ist es älter als `POSE_MAX_BILDALTER_S` (0,5 s), gilt es als „niemand gesehen“ und wird gezählt. Kommen keine neuen Bilder, verschwinden gemerkte Personen nach etwa 1 s. `/interaktion/status` zeigt unter `pose` neu `bild_alter_s` und `veraltete_bilder` (Doku in `docs/api.md`).
+- **Ergebnis:** Neuer Test `Marlon/interaktion/test_pose_bildalter.py` (Kamera-Attrappe): ohne die Änderung rot, mit ihr grün. `scripts/alle_tests.py` grün. Smoke-Test 18–19/19: „Position wird mitgeführt“ (Diagonalfahrt der Mock-Odometrie) schlägt zufällig fehl, ohne die Änderung genauso (je 4 Läufe: ohne 3× rot, mit 1× rot); der Mock nutzt die Posenerkennung gar nicht.
+- **Offen:** Am Roboter `/interaktion/status` (`pose.bild_alter_s`, `veraltete_bilder`) und `/camera/status` (`fps_ist`) beim Ruckeln beobachten. Fehlerkennungen, die nicht vom Ruckeln kommen (Schwelle 0,5 für Personen), sind damit nicht behoben; erst nach dem Feldtest entscheiden, ob die Schwelle steigen soll.
+
 ---
 
 ## 3. Ergebnisse und Messwerte

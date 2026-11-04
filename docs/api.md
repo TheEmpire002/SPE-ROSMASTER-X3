@@ -777,7 +777,7 @@ erlaubt fremden Seiten nur `GET`.
 
 | Endpunkt | Liefert |
 |---|---|
-| `GET /interaktion/status` | dasselbe wie `state.interaktion`, dazu `pose`: `verfuegbar`, `simuliert`, `aktiv`, `fehler`, `fps`, `bilder`, `letzte_erkennung_vor_s`, `kamera` (auf welchem Kamerabild die Punkte liegen, Name wie in `/cameras`) |
+| `GET /interaktion/status` | dasselbe wie `state.interaktion`, dazu `pose`: `verfuegbar`, `simuliert`, `aktiv`, `fehler`, `fps`, `bilder`, `letzte_erkennung_vor_s`, `kamera` (auf welchem Kamerabild die Punkte liegen, Name wie in `/cameras`), `bild_alter_s` (Alter des zuletzt geholten Kamerabilds, neu 04.11.) und `veraltete_bilder` (verworfen, weil älter als `POSE_MAX_BILDALTER_S`; steigt die Zahl, ruckelt oder hängt die Kamera). Ein Bild wird nur einmal ausgewertet; kommt kein neues, verschwinden die Personen nach etwa 1 s. |
 | `GET /interaktion/pose` | `personen`: erkannte Menschen, größter zuerst, je `box` [x1, y1, x2, y2] und `kp` (17 × [x, y, Sicherheit], COCO-Reihenfolge), relativ zur Bildgröße (0..1), dazu `score`, `winkel`, `id` (Track-ID für `follow {ziel_id}`, `null` solange der Tracker die Person noch nicht kennt) und `ziel` (`true` beim gesperrten Ziel); `skelett`: Punktpaare zum Verbinden. Leer, solange der Modus aus ist. |
 
 ### Healthbot

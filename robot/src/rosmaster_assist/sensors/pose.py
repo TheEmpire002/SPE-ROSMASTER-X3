@@ -77,6 +77,11 @@ class Posenerkennung:
         self._zeit = 0.0
         self._fehler: str | None = None
         self._bilder = 0
+        # Hängende Kamera erkennen: dasselbe Bild nicht zweimal rechnen,
+        # alte Bilder gar nicht (config.POSE_MAX_BILDALTER_S).
+        self._letzte_aufnahme = 0.0
+        self._bild_alter: float | None = None
+        self._veraltet = 0
         self._fps = 0.0
         self._neu_geoeffnet = 0
         self._np = None
@@ -211,6 +216,10 @@ class Posenerkennung:
                 # blendet das Skelett nur dort ein.
                 "kamera": self._camera.name if self._camera is not None else None,
                 "letzte_erkennung_vor_s": round(time.monotonic() - self._zeit, 1) if self._zeit else None,
+                # Wie alt das zuletzt geholte Kamerabild war und wie oft ein
+                # Bild zu alt war -- zeigt am Roboter, ob die Kamera hängt.
+                "bild_alter_s": round(self._bild_alter, 2) if self._bild_alter is not None else None,
+                "veraltete_bilder": self._veraltet,
             }
 
     # --- Rechenschleife -------------------------------------------------------------
@@ -326,6 +335,22 @@ class Posenerkennung:
             frame, aufnahme = self._camera.latest(), 0.0
         if frame is None:
             return None
+        if aufnahme:
+            if aufnahme == self._letzte_aufnahme:
+                # Kein neues Bild seit dem letzten Durchlauf. Nicht noch
+                # einmal rechnen: Das Ergebnis gälte sonst als frisch, und
+                # eine hängende Kamera hielte alte Personen am Leben.
+                return None
+            self._letzte_aufnahme = aufnahme
+            alter = time.monotonic() - aufnahme
+            with self._lock:
+                self._bild_alter = alter
+                if alter > config.POSE_MAX_BILDALTER_S:
+                    self._veraltet += 1
+            if alter > config.POSE_MAX_BILDALTER_S:
+                # Zu alt: lieber "niemand gesehen" als ein Winkel, der
+                # nicht mehr stimmt.
+                return []
         cv2, np = self._cv2, self._np
         bild = cv2.imdecode(np.frombuffer(frame[0], dtype=np.uint8), cv2.IMREAD_COLOR)
         if bild is None:
