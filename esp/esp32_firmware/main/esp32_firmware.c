@@ -20,6 +20,9 @@
 #include "lwip/inet.h"
 #include <inttypes.h>
 #include "freertos/queue.h"
+
+#include "driver/uart.h"
+
 // WLAN-Zugangsdaten
 #define WIFI_SSID "ESP32-CSI-NET"
 #define WIFI_PASS "CSI-Roboter2026"
@@ -30,7 +33,7 @@
 #define WIFI_CONNECTED_BIT BIT0
 
 #define CSI_MAX_BYTES 768
-#define CSI_QUEUE_LENGTH 8
+#define CSI_QUEUE_LENGTH 16
 
 typedef struct {
     int8_t rssi;
@@ -184,12 +187,16 @@ static void csi_callback(void *ctx, wifi_csi_info_t *data)
     }
 }
 
-static void csi_json_task(void *arg)
+
+
+static void csi_binary_task(void *arg)
 {
     csi_packet_t packet;
 
-    while (true) {
+    // Maximal 9 Header-Bytes + 768 CSI-Bytes
+    uint8_t tx_buffer[9 + CSI_MAX_BYTES];
 
+    while (true) {
         if (xQueueReceive(
                 csi_queue,
                 &packet,
@@ -197,63 +204,38 @@ static void csi_json_task(void *arg)
             continue;
                 }
 
-        // JSON-Objekt beginnen
-        printf("{");
+        tx_buffer[0] = 'C';
+        tx_buffer[1] = 'S';
 
-        printf("\"timestamp_us\":%" PRIu32 ",",
-               packet.timestamp_us);
+        tx_buffer[2] = (uint8_t)(packet.length);
+        tx_buffer[3] = (uint8_t)(packet.length >> 8);
 
-        printf("\"rssi\":%d,",
-               packet.rssi);
+        tx_buffer[4] = (uint8_t)(packet.timestamp_us);
+        tx_buffer[5] = (uint8_t)(packet.timestamp_us >> 8);
+        tx_buffer[6] = (uint8_t)(packet.timestamp_us >> 16);
+        tx_buffer[7] = (uint8_t)(packet.timestamp_us >> 24);
 
-        printf("\"channel\":%u,",
-               packet.channel);
+        tx_buffer[8] = (uint8_t)packet.rssi;
 
-        printf("\"source_mac\":"
-               "\"%02x:%02x:%02x:%02x:%02x:%02x\",",
-               packet.mac[0], packet.mac[1],
-               packet.mac[2], packet.mac[3],
-               packet.mac[4], packet.mac[5]);
+        memcpy(
+            &tx_buffer[9],
+            packet.data,
+            packet.length
+        );
 
-        printf("\"sig_mode\":%u,",
-               packet.sig_mode);
+        int total_length = 9 + packet.length;
 
-        printf("\"cwb\":%u,",
-               packet.cwb);
+        int written = uart_write_bytes(
+            UART_NUM_0,
+            (const char *)tx_buffer,
+            total_length
+        );
 
-        printf("\"stbc\":%u,",
-               packet.stbc);
-
-        printf("\"secondary_channel\":%u,",
-               packet.secondary_channel);
-
-        printf("\"length\":%u,",
-               packet.length);
-
-        printf("\"first_word_invalid\":%s,",
-               packet.first_word_invalid
-                   ? "true" : "false");
-
-        printf("\"csi_data\":[");
-
-        // Alle CSI-Rohwerte ausgeben
-        for (int i = 0; i < packet.length; i++) {
-
-            if (i > 0) {
-                printf(",");
-            }
-
-            printf("%d", packet.data[i]);
+        if (written != total_length) {
+            // Fehlerzähler könnte hier ergänzt werden
         }
-
-        printf("]}\n");
-
-        fflush(stdout);
     }
 }
-
-
-
 
 // ========================================
 // WLAN INITIALISIEREN
@@ -347,6 +329,8 @@ static void csi_init(void)
 }
 
 
+
+
 static void udp_client_task(void *arg)
 {
     int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
@@ -362,15 +346,17 @@ static void udp_client_task(void *arg)
         .sin_port = htons(5001)
     };
 
-    inet_pton(
-        AF_INET,
-        "192.168.4.1",
-        &server_addr.sin_addr
+    ESP_ERROR_CHECK(
+        inet_pton(
+            AF_INET,
+            "192.168.4.1",
+            &server_addr.sin_addr
+        ) == 1 ? ESP_OK : ESP_FAIL
     );
 
     struct timeval timeout = {
         .tv_sec = 0,
-        .tv_usec = 50000
+        .tv_usec = 5000
     };
 
     setsockopt(
@@ -382,12 +368,14 @@ static void udp_client_task(void *arg)
     );
 
     char response[64];
+    const char message[] = "CSI_REQUEST";
 
     while (true) {
-        const char message[] = "CSI_REQUEST";
-
         sendto(
-            sock, message, sizeof(message) - 1, 0,
+            sock,
+            message,
+            sizeof(message) - 1,
+            0,
             (struct sockaddr *)&server_addr,
             sizeof(server_addr)
         );
@@ -401,36 +389,67 @@ static void udp_client_task(void *arg)
             NULL
         );
 
-        // Etwa zehn Anfragen pro Sekunde
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
+
+
 
 // ========================================
 // HAUPTPROGRAMM
 // ========================================
 
+
 void app_main(void)
 {
-    // Zuerst LED initialisieren
+    // LED initialisieren
     init_led(WIFI_LED_PIN);
 
-    // Flash-Speicher initialisieren
+    // NVS initialisieren
     esp_err_t ret = nvs_flash_init();
 
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
         ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
-    }
+        }
 
     ESP_ERROR_CHECK(ret);
 
+    // UART0 für Binärübertragung initialisieren
+    ESP_ERROR_CHECK(
+        uart_driver_install(
+            UART_NUM_0,
+            1024,
+            4096,
+            0,
+            NULL,
+            0
+        )
+    );
 
+    ESP_ERROR_CHECK(
+        uart_set_baudrate(UART_NUM_0, 2000000)
+    );
+
+    // WLAN verbinden
     wifi_init();
 
-    // Queue für CSI-Pakete erstellen
+    // Alle bisherigen Textausgaben abschließen
+    fflush(stdout);
+    fflush(stderr);
+
+    ESP_ERROR_CHECK(
+        uart_wait_tx_done(
+            UART_NUM_0,
+            pdMS_TO_TICKS(1000)
+        )
+    );
+
+    // Weitere ESP-IDF-Logs unterdrücken
+    esp_log_level_set("*", ESP_LOG_NONE);
+
+    // CSI-Queue erstellen
     csi_queue = xQueueCreate(
         CSI_QUEUE_LENGTH,
         sizeof(csi_packet_t)
@@ -438,10 +457,10 @@ void app_main(void)
 
     configASSERT(csi_queue != NULL);
 
-    // Task zur JSON-Ausgabe starten
+    // Binären CSI-Task starten
     BaseType_t result = xTaskCreate(
-        csi_json_task,
-        "csi_json_task",
+        csi_binary_task,
+        "csi_binary_task",
         4096,
         NULL,
         5,
@@ -450,20 +469,22 @@ void app_main(void)
 
     configASSERT(result == pdPASS);
 
-    // CSI erst danach aktivieren
+    // CSI aktivieren
     csi_init();
 
-    xTaskCreate(
-    udp_client_task,
-    "udp_client",
-    4096,
-    NULL,
-    5,
-    NULL
+    // UDP-Paketgenerierung starten
+    result = xTaskCreate(
+        udp_client_task,
+        "udp_client",
+        4096,
+        NULL,
+        5,
+        NULL
     );
 
+    configASSERT(result == pdPASS);
+
     while (true) {
-        //ESP_LOGI(TAG, "ESP32 läuft, WLAN verbunden!");
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }

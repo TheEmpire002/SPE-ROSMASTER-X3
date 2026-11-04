@@ -158,8 +158,8 @@ def cli_args(argv=None):
     parser.add_argument("--out-dir", type=Path, default=Path.home() / "Documents/SPE/SPE-ROSMASTER-X3/esp/data",
                         help="Zielordner (Standard: ~/Documents/SPE/SPE-ROSMASTER-X3/esp/data)")
     parser.add_argument("--port", help="Seriellen Port manuell setzen, falls Auto-Erkennung scheitert")
-    parser.add_argument("--baud", type=int, default=115200,
-                        help="Baudrate des ESP32 (Standard: 115200)")
+    parser.add_argument("--baud", type=int, default=460800,
+                        help="Baudrate des ESP32 (Standard: 460800)")
     parser.add_argument("--list-ports", action="store_true", help="Ports anzeigen und beenden")
     args = parser.parse_args(argv)
     if args.list_ports:
