@@ -1,21 +1,19 @@
-"""Prüft den Ziel-Lock beim Folgen (Tracker, ZielSperre, Verhalten) -- ohne Roboter.
+"""Prüft, wem er beim Folgen folgt (Tracker, ZielWahl, Verhalten) -- ohne Roboter.
 
     python Marlon/interaktion/test_ziel.py
 
 Synthetische Szenen mit mehreren Personen:
 
 * Kreuzen zweier Personen (mit kurzer Verdeckung am Kreuzungspunkt);
-* Eigendrehung des Roboters: die Personen wandern durchs Bild, IDs bleiben;
+* Eigendrehung des Roboters: die Personen wandern durchs Bild, Tracks bleiben;
 * kurze Verdeckung des Ziels, während eine andere Person sichtbar ist;
-* zweite Person tritt während der Suche ein -> sicher anhalten, nicht folgen;
-* zwei gleich gekleidete Personen nach Verlust -> sicher anhalten;
-* Folgen-Start ohne Auswahl bei zwei Personen -> abgelehnt;
+* das Ziel geht aus dem Bild und kommt zurück -> er folgt weiter
+  (der Grund, warum Personen seit 04.11. nicht mehr unterschieden werden);
+* Folgen-Start bei zwei Personen -> die größere;
 * die Folgen-Geste macht den Gestikulierenden zum Ziel, nicht den Größten;
 * ein Passant kann das Folgen nicht umlenken, aber per Geste anhalten;
-* er merkt sich, wem er folgt: Nach Stopp oder sicherem Anhalten nimmt
-  „Folgen“ bei zwei Personen wieder dieselbe; Loslassen und Ablauf löschen das;
-* schnelleres Wiederfinden: früher suchen, wenn die Person am Bildrand
-  verschwand, zu einer Lidar-Person drehen, stillhalten beim Bestätigen.
+* schneller wiederfinden (F4): früher suchen, wenn die Person am Bildrand
+  verschwand, und zu einer Person drehen, die der Lidar sieht.
 
 Braucht nur numpy (über die Paketimporte).
 """
@@ -147,10 +145,10 @@ pruefe("Eigendrehung: ohne Drehrate falsche Personengeschwindigkeit (Gegenprobe)
        all(x.v < -20 for x in tr.tracks), [round(x.v) for x in tr.tracks])
 
 
-# --- ZielSperre: Verdeckung ------------------------------------------------------
+# --- ZielWahl ------------------------------------------------------------------
 
 
-def lauf(tr, sp, szenen, start=0.0, hz=10.0):
+def lauf(tr, zw, szenen, start=0.0, hz=10.0):
     """szenen: Liste von Personenlisten je Bild. Gibt die zugeordneten Tracks zurück."""
     ergebnis = []
     for i, liste in enumerate(szenen):
@@ -158,52 +156,61 @@ def lauf(tr, sp, szenen, start=0.0, hz=10.0):
         for p in liste:
             p["zeit"] = t
         tr.aktualisieren(liste, t)
-        ergebnis.append(sp.zuordnen(tr.tracks, t, t))
+        ergebnis.append(zw.zuordnen(tr.tracks, t, t))
     return ergebnis
 
 
-tr, sp = zl.PersonenTracker(), zl.ZielSperre()
-sp.erfassen(None, 0.0)
-lauf(tr, sp, [[person(0, ROT)] for _ in range(15)])
-pruefe("Erfassen: eine Person -> folgt", sp.zustand == zl.FOLGT, sp.als_dict())
-ziel_id = sp.id
-# B kommt dazu (rechts), dann ist A 1 s verdeckt, B bleibt sichtbar.
-lauf(tr, sp, [[person(0, ROT), person(-25, BLAU)] for _ in range(5)], start=1.5)
-weg = lauf(tr, sp, [[person(-25, BLAU)] for _ in range(10)], start=2.0)
-pruefe("Verdeckung: B wird nie Ziel", all(x is None for x in weg), [x and x.id for x in weg])
-pruefe("Verdeckung: Zustand kurz weg", sp.zustand == zl.KURZ_WEG, sp.zustand)
-zurueck = lauf(tr, sp, [[person(3, ROT), person(-25, BLAU)] for _ in range(3)], start=3.0)
-pruefe("Verdeckung kurz: derselbe Track, sofort wieder Ziel",
-       zurueck[0] is not None and sp.id == ziel_id and sp.zustand == zl.FOLGT, sp.als_dict())
+tr, zw = zl.PersonenTracker(), zl.ZielWahl()
+zw.erfassen(None, 0.0)
+lauf(tr, zw, [[person(0, ROT)] for _ in range(5)])
+pruefe("Start: eine Person -> folgt", zw.zustand == zl.FOLGT, zw.als_dict())
+# B kommt dazu (rechts), dann ist A kurz (0,5 s) verdeckt, B bleibt sichtbar.
+lauf(tr, zw, [[person(0, ROT), person(-25, BLAU)] for _ in range(5)], start=0.5)
+weg = lauf(tr, zw, [[person(-25, BLAU)] for _ in range(5)], start=1.0)
+pruefe("Kurz verdeckt: B wird nicht Ziel", all(x is None for x in weg), [x and x.id for x in weg])
+pruefe("Kurz verdeckt: Zustand kurz weg", zw.zustand == zl.KURZ_WEG, zw.zustand)
+zurueck = lauf(tr, zw, [[person(3, ROT), person(-25, BLAU)] for _ in range(3)], start=1.5)
+pruefe("Kurz verdeckt: wieder Rot", zurueck[0] is not None and zurueck[0].person["merkmal"] is ROT
+       and zw.zustand == zl.FOLGT, zw.als_dict())
 
-# Lange Verdeckung (2 s): Der Track ist verworfen, Rot kommt als neuer Track
-# zurück und muss sich erst über mehrere Bilder bestätigen.
-lauf(tr, sp, [[person(-25, BLAU)] for _ in range(20)], start=3.3)
-pruefe("Verdeckung lang: alter Track verworfen", tr.track(ziel_id) is None)
-zurueck = lauf(tr, sp, [[person(5, ROT), person(-25, BLAU)] for _ in range(8)], start=5.3)
-gefunden = [x for x in zurueck if x is not None]
-pruefe("Verdeckung lang: Rot wird wiedererkannt", gefunden and gefunden[-1].person["merkmal"] is ROT
-       and sp.zustand == zl.FOLGT and sp.id != ziel_id, sp.als_dict())
-# Rot passt klar (andere Farbe als Blau) -> die kurze Bestätigung reicht.
-pruefe("Verdeckung lang: erst nach Bestätigung",
-       all(x is None for x in zurueck[:config.ZIEL_BESTAETIGEN_SCHNELL_BILDER - 1]), [x and x.id for x in zurueck])
-pruefe("Verdeckung lang: klarer Treffer schnell bestätigt",
-       zurueck[config.ZIEL_BESTAETIGEN_SCHNELL_BILDER - 1] is not None, [x and x.id for x in zurueck])
+# Der eigentliche Fall: Rot geht aus dem Bild (Track verfällt) und kommt
+# wieder -- mit neuer Track-Nummer, aber er folgt ihr sofort weiter.
+tr, zw = zl.PersonenTracker(), zl.ZielWahl()
+zw.erfassen(None, 0.0)
+lauf(tr, zw, [[person(10, ROT)] for _ in range(5)])
+alte_id = zw.id
+lauf(tr, zw, [[] for _ in range(30)], start=0.5)
+pruefe("Weg und zurück: alter Track verfallen", tr.track(alte_id) is None)
+zurueck = lauf(tr, zw, [[person(-5, ROT)]], start=3.5)
+pruefe("Weg und zurück: sofort wieder Ziel", zurueck[0] is not None and zw.zustand == zl.FOLGT,
+       zw.als_dict())
+pruefe("Weg und zurück: neue Track-Nummer, egal", zw.id != alte_id, (alte_id, zw.id))
 
-# Kreuzen mit Sperre: dem richtigen bleiben
-tr, sp = zl.PersonenTracker(), zl.ZielSperre()
-sp.erfassen(None, 0.0)
-lauf(tr, sp, [[person(20, ROT)] for _ in range(15)])
+# Lange weg, eine andere Person im Bild: nach ZIEL_WECHSEL_S folgt er ihr.
+tr, zw = zl.PersonenTracker(), zl.ZielWahl()
+zw.erfassen(None, 0.0)
+lauf(tr, zw, [[person(0, ROT, groesse=1.3), person(-25, BLAU)] for _ in range(5)])
+pruefe("Start bei zwei: die größere (Rot)", tr.track(zw.id).person["merkmal"] is ROT, zw.als_dict())
+res = lauf(tr, zw, [[person(-25, BLAU)] for _ in range(20)], start=0.5)
+n = int(round(config.ZIEL_WECHSEL_S * 10))
+pruefe("Lange weg: erst nach ZIEL_WECHSEL_S die andere Person",
+       all(x is None for x in res[:n - 1]) and res[-1] is not None and res[-1].person["merkmal"] is BLAU,
+       [x and x.id for x in res])
+
+# Kreuzen: Am Kreuzungspunkt ist Rot kurz verdeckt -- er bleibt bei Rot.
+tr, zw = zl.PersonenTracker(), zl.ZielWahl()
+zw.erfassen(None, 0.0)
+lauf(tr, zw, [[person(20, ROT)] for _ in range(5)])
 szenen = []
 for i in range(21):
     t = i * 0.1
     wa, wb = 20.0 - 20.0 * t, -20.0 + 20.0 * t
     szenen.append([person(wb, BLAU)] if abs(wa - wb) < 5 else [person(wa, ROT), person(wb, BLAU)])
-res = lauf(tr, sp, szenen, start=1.5)
+res = lauf(tr, zw, szenen, start=0.5)
 pruefe("Kreuzen: Ziel ist nie die blaue Person",
        all(x is None or x.person["merkmal"] is ROT for x in res))
 pruefe("Kreuzen: am Ende folgt er wieder Rot", res[-1] is not None and res[-1].person["merkmal"] is ROT,
-       sp.als_dict())
+       zw.als_dict())
 
 
 # --- Verhalten mit Attrappen ---------------------------------------------------
@@ -282,71 +289,49 @@ def folgt_rot(ia, po):
     spielen(ia, po, lambda t: [person(0, ROT)], 0.0, 1.5)
 
 
-# App-Start (Knopf, ohne Antippen) bei zwei Personen -> abgelehnt
+# App-Start (Knopf) bei zwei Personen -> folgt der größeren
 ia, wd, po = interaktion()
-po.liste = [person(10, ROT), person(-15, BLAU)]
+zwei_gross = lambda t: [person(10, ROT), person(-15, BLAU, groesse=1.3)]
 ia._wechseln(vh.FOLGEN, "Test", 0.0)
-v = spielen(ia, po, lambda t: [person(10, ROT), person(-15, BLAU)], 0.0, 0.5)
-pruefe("App-Start bei zwei Personen: zurück auf bereit", ia._modus == vh.BEREIT, ia._modus)
-pruefe("App-Start bei zwei Personen: fährt nicht",
-       all(b is None or (b.vx == 0 and b.omega == 0) for _, _, b in v), [b for _, _, b in v][:3])
-pruefe("App-Start bei zwei Personen: Grund für die App",
-       "antippen" in ia.zustand()["ziel"]["grund"], ia.zustand()["ziel"])
-pruefe("App-Start bei zwei Personen: Meldung",
-       any("antippen" in m for m in ia.meldungen_abholen()))
+v = spielen(ia, po, zwei_gross, 0.0, 1.5)
+ziel = ia._ziel_waehlen(1.5)
+pruefe("App-Start bei zwei Personen: folgt", ia._modus == vh.FOLGEN, ia._modus)
+pruefe("App-Start bei zwei Personen: der größeren (Blau)", ziel is not None and ziel["merkmal"] is BLAU,
+       ziel and ziel["winkel"])
+pruefe("App-Start bei zwei Personen: dreht zu ihr (rechts)", v[-1][2].omega < 0, v[-1][2])
 
-# App-Start mit Auswahl (ID) bei zwei Personen -> folgt genau dieser
-ia, wd, po = interaktion()
-spielen(ia, po, lambda t: [person(10, ROT), person(-15, BLAU)], 0.0, 0.3)
-blau_id = next(t.id for t in ia._tracker.tracks if t.person["merkmal"] is BLAU)
-ia._auswahl_id = blau_id
-ia._wechseln(vh.FOLGEN, "Test", 0.3)
-v = spielen(ia, po, lambda t: [person(10, ROT), person(-15, BLAU)], 0.3, 1.8)
-pruefe("App-Start mit Auswahl: folgt", ia._modus == vh.FOLGEN and ia._sperre.id == blau_id,
-       ia.zustand()["ziel"])
-pruefe("App-Start mit Auswahl: dreht zur gewählten Person (rechts)", v[-1][2].omega < 0, v[-1][2])
-
-# Zweite Person tritt während der Suche ein -> sicher anhalten, nicht folgen.
-# Standard ist Suchen ohne Zeitgrenze; das sichere Anhalten am Ende gibt es
-# nur mit Grenze, also hier eine setzen.
-suchen_alt, config.FOLGEN_SUCHEN_S = config.FOLGEN_SUCHEN_S, 6.0
+# Der eigentliche Fall: Rot geht aus dem Bild, er sucht, Rot kommt zurück
 ia, wd, po = interaktion()
 folgt_rot(ia, po)
-pruefe("Suche: vorher folgt er Rot", ia._sperre.zustand == zl.FOLGT, ia.zustand()["ziel"])
 ende = 1.5 + config.FOLGEN_VERLOREN_S + 0.5
 spielen(ia, po, lambda t: [], 1.5, ende)
 pruefe("Suche: Rot weg -> sucht", ia._modus == vh.SUCHEN, ia._modus)
-v = spielen(ia, po, lambda t: [person(-10, BLAU)], ende, ende + config.FOLGEN_SUCHEN_S + 0.5)
-pruefe("Suche: folgt Blau nie", all(m in (vh.SUCHEN, vh.BEREIT) for _, m, _ in v),
-       sorted({m for _, m, _ in v}))
+ia.meldungen_abholen()
+spielen(ia, po, lambda t: [person(15, ROT)], ende, ende + 0.5)
+pruefe("Suche: Rot zurück -> folgt wieder", ia._modus == vh.FOLGEN, ia._modus)
+pruefe("Suche: meldet 'wiedergefunden'", any("wiedergefunden" in m for m in ia.meldungen_abholen()))
+
+# Während der Suche taucht jemand auf -- unterschieden wird nicht, er folgt.
+ia, wd, po = interaktion()
+folgt_rot(ia, po)
+spielen(ia, po, lambda t: [], 1.5, ende)
+spielen(ia, po, lambda t: [person(-10, BLAU)], ende, ende + 0.5)
+pruefe("Suche: wer auftaucht, dem folgt er", ia._modus == vh.FOLGEN, ia._modus)
+
+# Niemand kommt zurück: Mit Zeitgrenze (Standard 0 = endlos suchen) hält er
+# danach an, der Grund steht in der App.
+suchen_s, config.FOLGEN_SUCHEN_S = config.FOLGEN_SUCHEN_S, 3.0
+ia, wd, po = interaktion()
+folgt_rot(ia, po)
+spielen(ia, po, lambda t: [], 1.5, ende)
+v = spielen(ia, po, lambda t: [], ende, ende + config.FOLGEN_SUCHEN_S + 0.5)
 pruefe("Suche: fährt dabei nie vorwärts", all(b is None or b.vx <= 0 for _, _, b in v))
-pruefe("Suche: am Ende sicher angehalten",
-       ia._modus == vh.BEREIT and ia._sperre.zustand == zl.SICHER_HALT and wd.stopps >= 1,
+pruefe("Suche: am Ende angehalten, kein Ziel",
+       ia._modus == vh.BEREIT and ia._zielwahl.zustand == zl.IDLE and wd.stopps >= 1,
        ia.zustand()["ziel"])
-config.FOLGEN_SUCHEN_S = suchen_alt
-
-# Rot kommt während der Suche zurück, Blau steht daneben -> folgt Rot
-ia, wd, po = interaktion()
-folgt_rot(ia, po)
-ende = 1.5 + config.FOLGEN_VERLOREN_S + 0.5
-spielen(ia, po, lambda t: [], 1.5, ende)
-spielen(ia, po, lambda t: [person(-12, BLAU), person(15, ROT)], ende, ende + 1.0)
-ziel = ia._ziel_waehlen(ende + 1.0)
-pruefe("Suche: Rot zurück -> folgt wieder Rot",
-       ia._modus == vh.FOLGEN and ziel is not None and ziel["merkmal"] is ROT, (ia._modus, ziel and ziel["winkel"]))
-
-# Zwei gleich gekleidete Personen nach Verlust -> nicht raten
-ia, wd, po = interaktion()
-folgt_rot(ia, po)
-ende = 1.5 + config.FOLGEN_VERLOREN_S + 0.5
-spielen(ia, po, lambda t: [], 1.5, ende)
-v = spielen(ia, po, lambda t: [person(-15, ROT), person(15, ROT)], ende, ende + 1.5)
-pruefe("Gleiche Kleidung: folgt keinem", all(m != vh.FOLGEN for _, m, _ in v[1:]),
-       sorted({m for _, m, _ in v}))
-pruefe("Gleiche Kleidung: sicher angehalten",
-       ia._modus == vh.BEREIT and ia._sperre.zustand == zl.SICHER_HALT, ia.zustand()["ziel"])
-pruefe("Gleiche Kleidung: Grund 'nicht eindeutig'", "eindeutig" in ia.zustand()["ziel"]["grund"],
+pruefe("Suche: Grund 'nicht wiedergefunden'", "wiedergefunden" in ia.zustand()["ziel"]["grund"],
        ia.zustand()["ziel"])
+config.FOLGEN_SUCHEN_S = suchen_s
 
 # Folgen-Geste: der Gestikulierende wird Ziel, nicht die größere Person
 ia, wd, po = interaktion()
@@ -366,20 +351,19 @@ pruefe("Passant: Geste ändert das Ziel nicht",
 spielen(ia, po, lambda t: [person(0, ROT), person(-20, BLAU, arm="stopp")], 3.0, 4.5)
 pruefe("Passant: Stopp-Geste hält an", ia._modus == vh.BEREIT and wd.stopps >= 1, ia._modus)
 
-# Ausschalten löscht alles Gelernte
+# Ausschalten löscht alles
 ia, wd, po = interaktion()
 folgt_rot(ia, po)
 ia._ziel_vergessen()
-pruefe("Vergessen: kein Ziel, kein Merkmal, keine Tracks",
-       ia._sperre.zustand == zl.IDLE and ia._sperre.referenz is None and not ia._tracker.tracks)
+pruefe("Vergessen: kein Ziel, keine Tracks", ia._zielwahl.zustand == zl.IDLE and not ia._tracker.tracks)
 
-# /interaktion/pose: Zustand enthält das Ziel-Feld
+# /interaktion/pose: Zustand enthält das Ziel-Feld (Schnittstelle unverändert)
 z = ia.zustand()
 pruefe("Zustand: Feld ziel mit zustand/id/sicherheit/grund",
        set(z["ziel"]) == {"zustand", "id", "sicherheit", "grund"}, z["ziel"])
 
 
-# --- Bedienung aus der App (Schritt C) -----------------------------------------
+# --- Bedienung aus der App -----------------------------------------------------
 
 
 class LaeuftNoch:
@@ -395,53 +379,45 @@ def track_id(ia, farbe):
 
 zwei = lambda t: [person(10, ROT), person(-15, BLAU)]
 
-# Antippen: follow mit ziel_id wählt genau diese Person
+# Knopf "Folge mir": ohne Nummer im Text
 ia, wd, po = interaktion()
 ia._task = LaeuftNoch()
 spielen(ia, po, zwei, 0.0, 0.3)
+pruefe("Knopf: angenommen", ia.folgen() is True)
+pruefe("Knopf: Text ohne Personennummer", ia.zustand()["text"] == "folgt (per App)", ia.zustand()["text"])
+
+# Ältere Clients schicken noch ziel_id: Die Person gilt dann als Start-Ziel.
+ia._wechseln(vh.BEREIT, "Test", 0.3)
 blau_id = track_id(ia, BLAU)
-pruefe("Antippen: angenommen", ia.folgen(blau_id) is True)
-pruefe("Antippen: Text nennt die Person", f"Person {blau_id}" in ia.zustand()["text"], ia.zustand()["text"])
+pruefe("ziel_id (alt): angenommen", ia.folgen(blau_id) is True)
 v = spielen(ia, po, zwei, 0.3, 1.8)
-pruefe("Antippen: folgt Blau", ia._modus == vh.FOLGEN and ia._sperre.id == blau_id, ia.zustand()["ziel"])
-pruefe("Antippen: dreht zu Blau (rechts)", v[-1][2].omega < 0, v[-1][2])
+pruefe("ziel_id (alt): folgt Blau", ia._modus == vh.FOLGEN and ia._zielwahl.id == blau_id, ia.zustand()["ziel"])
+pruefe("ziel_id (alt): dreht zu Blau (rechts)", v[-1][2].omega < 0, v[-1][2])
+pruefe("ziel_id unbekannt: trotzdem angenommen", ia.folgen(999) is True)
 
-# Umwählen während des Folgens: Rot antippen ersetzt Blau
-rot_id = track_id(ia, ROT)
-pruefe("Umwählen: angenommen", ia.folgen(rot_id) is True)
-v = spielen(ia, po, zwei, 1.8, 3.3)
-pruefe("Umwählen: folgt jetzt Rot", ia._modus == vh.FOLGEN and ia._sperre.id == rot_id, ia.zustand()["ziel"])
-pruefe("Umwählen: dreht zu Rot (links)", v[-1][2].omega > 0, v[-1][2])
-
-# Unbekannte ID: abgelehnt, Ziel bleibt
-ia.meldungen_abholen()
-pruefe("Unbekannte ID: abgelehnt", ia.folgen(999) is False)
-pruefe("Unbekannte ID: Ziel bleibt Rot", ia._sperre.id == rot_id, ia.zustand()["ziel"])
-pruefe("Unbekannte ID: Meldung", any("nicht mehr im Bild" in m for m in ia.meldungen_abholen()))
-
-# Pause: steht, Ziel bleibt gesperrt und verfolgt
+# Pause: steht, Ziel bleibt gemerkt und verfolgt
 pruefe("Pause: angenommen", ia.pausieren() is True)
 pruefe("Pause: Zustand meldet pausiert", ia.zustand()["pausiert"] is True)
 # Länger als Verloren + Suchen: Ohne Pause wäre er längst in der Suche.
-t0 = 3.3 + config.FOLGEN_VERLOREN_S + config.FOLGEN_SUCHEN_S + 1.0
-v = spielen(ia, po, zwei, 3.3, t0)
+t0 = 1.8 + config.FOLGEN_VERLOREN_S + config.FOLGEN_SUCHEN_S + 1.0
+v = spielen(ia, po, zwei, 1.8, t0)
 pruefe("Pause: fährt nicht", all(b is None or (b.vx == 0 and b.vy == 0 and b.omega == 0) for _, _, b in v),
        [b for _, _, b in v if b is not None][:2])
-pruefe("Pause: Modus und Ziel bleiben", ia._modus == vh.FOLGEN and ia._sperre.id == rot_id,
+pruefe("Pause: Modus und Ziel bleiben", ia._modus == vh.FOLGEN and ia._zielwahl.id == blau_id,
        (ia._modus, ia.zustand()["ziel"]))
 pruefe("Pause: doppelt pausieren geht nicht", ia.pausieren() is False)
 
 # Weiter: fährt wieder zum selben Ziel
 pruefe("Weiter: angenommen", ia.fortsetzen() is True)
 v = spielen(ia, po, zwei, t0, t0 + 1.0)
-pruefe("Weiter: folgt wieder Rot", ia._modus == vh.FOLGEN and ia._sperre.id == rot_id
+pruefe("Weiter: folgt wieder Blau", ia._modus == vh.FOLGEN and ia._zielwahl.id == blau_id
        and not ia.zustand()["pausiert"], ia.zustand()["ziel"])
-pruefe("Weiter: dreht wieder zu Rot", v[-1][2].omega > 0, v[-1][2])
+pruefe("Weiter: dreht wieder zu Blau", v[-1][2].omega < 0, v[-1][2])
 pruefe("Weiter: ohne Pause abgelehnt", ia.fortsetzen() is False)
 
 # Pause, dann Stopp-Geste: Pause endet mit dem Modus
 ia.pausieren()
-spielen(ia, po, lambda t: [person(10, ROT, arm="stopp"), person(-15, BLAU)], t0 + 1.0, t0 + 2.5)
+spielen(ia, po, lambda t: [person(10, ROT), person(-15, BLAU, arm="stopp")], t0 + 1.0, t0 + 2.5)
 pruefe("Pause + Stopp: bereit, nicht mehr pausiert",
        ia._modus == vh.BEREIT and not ia.zustand()["pausiert"], (ia._modus, ia.zustand()["pausiert"]))
 pruefe("Pause im Stand: abgelehnt", ia.pausieren() is False)
@@ -463,101 +439,12 @@ pruefe("Pose-IDs: Reihenfolge unverändert", [p["winkel"] for p in liste] == [10
 fremd = ia.personen_mit_id([person(0, ROT)])
 pruefe("Pose-IDs: neues Bild vor dem Tracker -> id None", fremd[0]["id"] is None and not fremd[0]["ziel"])
 
-# Loslassen quittiert ein sicheres Anhalten
-ia._sperre.sicher_anhalten("Test", 1.0)
-ia._modus = vh.BEREIT
+# Loslassen löscht auch den Grund der letzten Suche
+ia._wechseln(vh.BEREIT, "Test", 1.0)
+ia._zielwahl.freigeben("Person nicht wiedergefunden")
 ia.folgen_stop()
-pruefe("Loslassen: aus safe_stop wird idle", ia._sperre.zustand == zl.IDLE, ia.zustand()["ziel"])
-
-# --- Gemerkte Person (F4) -------------------------------------------------------
-
-
-def rot_folgen(start=0.0):
-    tr, sp = zl.PersonenTracker(), zl.ZielSperre()
-    sp.erfassen(None, start)
-    lauf(tr, sp, [[person(0, ROT)] for _ in range(15)], start=start)
-    return tr, sp
-
-
-def wieder_starten(tr, sp, start, szene=lambda: [person(10, ROT), person(-15, BLAU)], bilder=10):
-    """"Folgen" ohne Antippen bei mehreren Personen; meldet, ob es mehrdeutig wurde."""
-    sp.erfassen(None, start)
-    mehrdeutig = False
-    for i in range(bilder):
-        t = start + i / 10.0
-        liste = [dict(p, zeit=t) for p in szene()]
-        tr.aktualisieren(liste, t)
-        sp.zuordnen(tr.tracks, t, t)
-        mehrdeutig |= sp.mehrdeutig
-    return mehrdeutig
-
-
-tr, sp = rot_folgen()
-pruefe("Merken: nach dem Folgen gemerkt", sp.gemerkt is not None)
-sp.freigeben()
-mehrdeutig = wieder_starten(tr, sp, 2.0)
-ziel = tr.track(sp.id) if sp.id is not None else None
-pruefe("Merken: nach Freigabe nimmt er bei zwei Personen wieder Rot",
-       not mehrdeutig and ziel is not None and ziel.person["merkmal"] is ROT, sp.als_dict())
-
-tr, sp = rot_folgen()
-sp.sicher_anhalten("Test", 1.5)
-mehrdeutig = wieder_starten(tr, sp, 2.0)
-ziel = tr.track(sp.id) if sp.id is not None else None
-pruefe("Merken: auch nach sicherem Anhalten",
-       not mehrdeutig and ziel is not None and ziel.person["merkmal"] is ROT, sp.als_dict())
-
-tr, sp = rot_folgen()
-sp.vergessen()
-pruefe("Merken: vergessen() löscht", sp.gemerkt is None)
-pruefe("Merken: danach bei zwei Personen wieder mehrdeutig", wieder_starten(tr, sp, 2.0))
-
-tr, sp = rot_folgen()
-sp.freigeben()
-pruefe("Merken: nach ZIEL_MERKEN_S abgelaufen -> mehrdeutig",
-       wieder_starten(tr, sp, 1.5 + config.ZIEL_MERKEN_S + 1.0))
-
-tr, sp = rot_folgen()
-sp.freigeben()
-mehrdeutig = wieder_starten(tr, sp, 2.0, szene=lambda: [person(10, GRUEN), person(-15, BLAU)])
-pruefe("Merken: gemerkte Person nicht da -> wie bisher mehrdeutig", mehrdeutig and sp.id is None,
-       sp.als_dict())
-
-# Antippen merkt das Aussehen sofort: Verliert der Tracker die Person, bevor
-# auch nur ein Bild gelernt ist, findet er genau sie wieder.
-tr, sp = zl.PersonenTracker(), zl.ZielSperre()
-lauf(tr, sp, [[person(10, ROT), person(-15, BLAU)] for _ in range(3)])
-rot_id = next(t.id for t in tr.tracks if t.person["merkmal"] is ROT)
-sp.erfassen(rot_id, 0.3, merkmal=ROT)
-lauf(tr, sp, [[person(-15, BLAU)] for _ in range(25)], start=0.3)
-pruefe("Antippen merkt: alter Track verworfen", tr.track(rot_id) is None)
-zurueck = lauf(tr, sp, [[person(12, ROT), person(-15, BLAU)] for _ in range(8)], start=2.8)
-gefunden = [x for x in zurueck if x is not None]
-pruefe("Antippen merkt: findet Rot wieder, nie Blau",
-       gefunden and all(x.person["merkmal"] is ROT for x in gefunden), sp.als_dict())
-
-# Verhalten: Stopp-Geste/Modus bereit behält die Person, Loslassen nicht
-ia, wd, po = interaktion()
-ia._task = LaeuftNoch()
-folgt_rot(ia, po)
-ia._wechseln(vh.BEREIT, "Test", 1.5)
-ia._wechseln(vh.FOLGEN, "Test", 1.6)
-spielen(ia, po, zwei, 1.6, 3.0)
-ziel = ia._ziel_waehlen(3.0)
-pruefe("Merken (Verhalten): Folgen bei zwei Personen nimmt wieder Rot",
-       ia._modus == vh.FOLGEN and ziel is not None and ziel["merkmal"] is ROT,
-       (ia._modus, ia.zustand()["ziel"]))
-ia.folgen_stop()
-pruefe("Merken (Verhalten): Loslassen vergisst", ia._sperre.gemerkt is None and ia._modus == vh.BEREIT)
-ia._wechseln(vh.FOLGEN, "Test", 3.1)
-spielen(ia, po, zwei, 3.1, 3.6)
-pruefe("Merken (Verhalten): danach wieder ablehnen", ia._modus == vh.BEREIT
-       and "antippen" in ia.zustand()["ziel"]["grund"], ia.zustand()["ziel"])
-
-ia, wd, po = interaktion()
-folgt_rot(ia, po)
-ia._ziel_vergessen()
-pruefe("Merken (Verhalten): Interaktion aus vergisst", ia._sperre.gemerkt is None)
+pruefe("Loslassen: kein Grund mehr", ia._zielwahl.zustand == zl.IDLE and not ia._zielwahl.grund,
+       ia.zustand()["ziel"])
 
 # --- Schneller wiederfinden (F4) ------------------------------------------------
 
@@ -570,7 +457,7 @@ for name, winkel, erwartet in (("Rand", rand, vh.SUCHEN), ("Mitte", 0, vh.FOLGEN
     weg = 1.5 + config.FOLGEN_VERLOREN_RAND_S + 0.3
     spielen(ia, po, lambda t: [], 1.5, weg)
     pruefe(f"Bildrand: zuletzt {name} -> nach {weg - 1.5:.1f} s {erwartet}", ia._modus == erwartet,
-           (ia._modus, ia._sperre.zustand))
+           (ia._modus, ia._zielwahl.zustand))
 
 
 def om(b):
@@ -613,17 +500,6 @@ ende = in_suche(ia, po)
 ia._hinderniserkennung.aktuell = lambda scan, *a: []
 v = spielen(ia, po, lambda t: [], ende, ende + 0.5)
 pruefe("Ohne Lidar-Hinweis: dreht zur letzten Seite (links)", om(v[0][2]) > 0, v[0][2])
-
-# Während ein Kandidat bestätigt wird, stillhalten statt weiterdrehen
-ia, wd, po = interaktion()
-ende = in_suche(ia, po)
-v = spielen(ia, po, lambda t: [person(20, ROT), person(-15, BLAU)], ende, ende + 1.0)
-pruefend = [b for _, m, b in v if m == vh.SUCHEN]
-pruefe("Kandidat prüfen: Bestätigung dauert mehrere Bilder", len(pruefend) >= 1, len(pruefend))
-pruefe("Kandidat prüfen: dreht dabei nicht", all(om(b) == 0 and (b is None or b.vx == 0) for b in pruefend),
-       [om(b) for b in pruefend])
-pruefe("Kandidat prüfen: danach folgt er Rot", ia._modus == vh.FOLGEN
-       and ia._ziel_waehlen(ende + 1.0)["merkmal"] is ROT, ia.zustand()["ziel"])
 
 print()
 print("alles bestanden" if not fehler else f"{fehler} Fehler")

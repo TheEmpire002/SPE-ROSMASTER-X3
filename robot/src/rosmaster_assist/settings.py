@@ -230,8 +230,8 @@ EINSTELLUNGEN: list[Einstellung] = [
                       "100 %, leiser wird in Software. Der Musik-Regler in der App ist ein Anteil "
                       "davon. Leiser zieht auch weniger Strom am USB."),
 
-    Einstellung("ZIEL_MERKMAL_SCHWELLE", "folgen", "Ziel: Aussehen-Schwelle", "", 0.1, 0.9, 0.05,
-                hilfe="Kleiner = strenger. Verwechselt er Personen, verkleinern; verliert er dich ständig, vergrößern."),
+    Einstellung("ZIEL_WECHSEL_S", "folgen", "Ziel: Wechsel nach", "s", 0.3, 5.0, 0.1,
+                hilfe="So lange wartet er auf die verfolgte Person, bevor er einer anderen im Bild folgt."),
     Einstellung("ZIEL_GATE_GRAD", "folgen", "Ziel: Suchfenster", "°", 5, 40, 1,
                 hilfe="So weit darf das Ziel von Bild zu Bild springen."),
 
