@@ -85,12 +85,13 @@ Menschen aus. Es bewertet keinen Gesundheitszustand.
 | `drive/`       | Fahren. `base.py` = Schnittstelle, dazu echter Treiber + Mock |
 | `safety/`      | Watchdog, Not-Aus, Geschwindigkeitsbegrenzung, Fahrschutz über die Grundfläche (`fahrschutz.py`) |
 | `sensors/`     | Lidar, Kamera, Tiefenkamera (`tiefe.py`, OpenNI2; Anzeige `tiefe_anzeige.py`), Personenerkennung, Körperpose (Hailo) |
-| `navigation/`  | Odometrie, Lidar-Ortung, Heimfahrt, Erkunder, Ausweichen (`ausweichen.py`), Hindernis-Benennung, Hindernisgedächtnis für Tiefenpunkte (`hindernisgedaechtnis.py`), Fortschrittswache gegen Festhängen (`fortschritt.py`) |
+| `navigation/`  | Odometrie, Lidar-Ortung, Heimfahrt (mit Karte auch Fahrt zum Ziel), Erkunder, Kartierfahrt, Ausweichen (`ausweichen.py`), Hindernis-Benennung, Hindernisgedächtnis für Tiefenpunkte (`hindernisgedaechtnis.py`), Fortschrittswache gegen Festhängen (`fortschritt.py`), Lage in der Karte (`kartenortung.py`), Wege und Lücken (`pfadplanung.py`), Weg abfahren (`pfadfolger.py`) |
+| `mapping/`     | Kartierung: slam_toolbox im Container samt Einspeisung, Karte speichern/laden (`karte.py`), Karte in der Simulation (`simulation.py`), Seite `/map` (`web.py`) |
 | `interaktion/` | Gesten, Verhalten (Folgen, Herkommen, Weggehen), Stimme (Sprachausgabe) und Sprachbefehle mit dem Weckwort „Robi“; geplant: Geist — siehe [`interaktion.md`](interaktion.md) |
 | `diagnose.py`  | Sammelt Ausfälle (Akku, USB, Unterspannung, Temperatur, Geräte, Log) und macht daraus verständliche Probleme für die Seite `/diagnose` |
 | `aufzeichnung.py` | Fahrtenschreiber: letzte Minute (Scans, Befehle, Odometrie, Zustände) im Speicher, auf Knopfdruck als Datei; dazu Laden und Nachspielen für `scripts/abspielen.py` |
 | `box/`         | Motor/Servo der Transportbox *(noch leer)*                  |
-| `api/`         | WebSocket-Server, liefert auch die Web-App aus              |
+| `api/`         | WebSocket-Server, liefert auch die Web-App aus; `kartensteuerung.py` hält Kartierfahrt, Ortung und Fahrt zum Ziel für `/map` und App zusammen |
 | `main.py`      | Startpunkt, baut alles zusammen                             |
 
 ## Autonomes Fahren — bewusst später
@@ -170,6 +171,28 @@ und Rückmeldung über die Seite `/map`. Die Blickrichtung kommt dabei aus
 dem Lidar (`navigation/scan_odometrie.py`), und die Kartierfahrt
 (`navigation/kartierfahrt.py`) fährt den Raum als Modus des Erkunders ab:
 erst an der Wand rundherum, dann in Bahnen (E9).
+
+**Stand 04.11.: Die Karte wird genutzt (E12).** Der Weg der Daten:
+
+```
+slam_toolbox ──/map──► ros_bridge ──► MappingManager.kartierte_karte()
+   (oder in --mock: mapping/simulation.py)            │
+                                                      ▼
+                              Kartensteuerung.takt_schleife (4 Hz, Thread)
+                                   │  Karte.aus_payload + Abstandsfeld
+                                   ▼
+Lidar-Odometrie ──Pose──► Kartenortung ──Lage in der Karte──► Homing (Ziel/Heim)
+                          (Abgleich auf        │                Kartierfahrt (Lücken)
+                           das Abstandsfeld)   │                state.karte, /map
+                                               ▼
+                                   pfadplanung (A*, Lücken) ──► pfadfolger
+```
+
+Die Kartierfahrt hört nach dem Zimmer nicht auf, sondern fährt zur nächsten
+Lücke ins Unbekannte, bis die Karte vollständig ist. Ist die Karte fertig
+(oder geladen), fährt `Homing` auf geplantem Weg zu jedem Punkt der Karte;
+die Seite `/map` zeigt Lage, Spur, Weg und Lücken. Test:
+`Marlon/autonomes_fahren/test_karte.py`.
 
 ## Interaktion
 

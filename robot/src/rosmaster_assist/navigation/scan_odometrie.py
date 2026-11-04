@@ -21,8 +21,12 @@ Wie jede Odometrie driftet auch diese -- aber viel weniger als die Räder,
 und vor allem nicht bei jeder Drehung um ein Viertel. Den Rest gleicht
 slam_toolbox mit seiner Karte aus.
 
-Läuft nur während der Kartierung: Der Abgleich kostet CPU, und
-Lastsprünge sind am X3 heikel (docs/hardware.md).
+Läuft nur, solange jemand sie braucht: die Kartierung und, solange eine
+Karte geladen ist, die Ortung in der Karte (``kartenortung.py``). Der
+Abgleich kostet CPU, und Lastsprünge sind am X3 heikel (docs/hardware.md).
+Deshalb meldet sich jeder Nutzer mit Namen an und ab; erst wenn keiner
+mehr da ist, endet sie. Ein Neustart beginnt wieder bei (0, 0, 0) -- wer
+sich auf den Rahmen verlässt, erkennt das an ``lauf``.
 """
 
 from __future__ import annotations
@@ -67,6 +71,9 @@ class ScanOdometrie:
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._nutzer: set[str] = set()
+        #: Zählt jeden echten Start. Ändert er sich, begann der Rahmen neu.
+        self.lauf = 0
         self._zuruecksetzen()
 
     def _zuruecksetzen(self) -> None:
@@ -88,18 +95,31 @@ class ScanOdometrie:
     def laeuft(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
-    def start(self) -> None:
-        """Beginnt bei (0, 0, 0) -- das ist der Ursprung der Karte."""
-        if self.laeuft or self._lidar is None:
+    def start(self, nutzer: str = "kartierung") -> None:
+        """Beginnt bei (0, 0, 0) -- das ist der Ursprung der Karte.
+
+        Läuft sie schon (für einen anderen Nutzer), bleibt der Rahmen, wie
+        er ist: Die Ortung soll ihre Lage nicht verlieren, nur weil eine
+        neue Kartierung beginnt, und umgekehrt.
+        """
+        if self._lidar is None:
+            return
+        self._nutzer.add(nutzer)
+        if self.laeuft:
             return
         with self._lock:
             self._zuruecksetzen()
+        self.lauf += 1
         self._stop.clear()
         self._thread = threading.Thread(target=self._schleife, name="scan-odometrie", daemon=True)
         self._thread.start()
-        log.info("Lidar-Odometrie gestartet")
+        log.info("Lidar-Odometrie gestartet (für %s)", nutzer)
 
-    def stop(self) -> None:
+    def stop(self, nutzer: str = "kartierung") -> None:
+        """Abmelden; beendet sie erst, wenn niemand sie mehr braucht."""
+        self._nutzer.discard(nutzer)
+        if self._nutzer:
+            return
         self._stop.set()
         if self._thread is not None:
             self._thread.join(timeout=2.0)
@@ -139,6 +159,7 @@ class ScanOdometrie:
             pose = self._pose
             return {
                 "laeuft": self.laeuft,
+                "nutzer": sorted(self._nutzer),
                 "pose": [round(pose[0], 3), round(pose[1], 3), round(math.degrees(pose[2]), 1)],
                 "abgleiche": self._abgleiche,
                 "verworfen": self._verworfen,

@@ -513,3 +513,94 @@ und die Karte wuchs nicht.
 **Neu bewerten, wenn:** sich die Wache im Betrieb oft irrt (dann
 `FORTSCHRITT_ANTEIL`/`_FENSTER_S` anpassen) oder ein Sensor für den
 Nahbereich (Ultraschall, Bumper) dazukommt.
+
+---
+
+## E12 — Karte nutzen: eigene Ortung in der Karte, Pfadplanung, Kartierfahrt Raum für Raum
+
+**Datum:** 2026-11-04
+**Status:** umgesetzt (`mapping/karte.py`, `navigation/kartenortung.py`,
+`navigation/pfadplanung.py`, `navigation/pfadfolger.py`,
+`api/kartensteuerung.py`), in Tests und Simulation geprüft, am Roboter noch nicht
+
+**Kontext.** Seit E8/E9 entsteht eine Karte, aber niemand nutzte sie: Der
+Roboter wusste nicht, wo er in ihr steht, und konnte nirgendwohin fahren.
+Die Kartierfahrt hörte nach dem ersten Zimmer auf, und auch vorher an jeder
+Stelle, an der sie nicht weiterkam ("keine Wand in Sicht", festgefahren,
+Ecke). Außerdem endete sie, sobald die Seite `/map` kurz zuging (Handy-
+Bildschirm aus) oder der Antrieb per USB-Reset kurz weg war. E8 hatte als
+Grund zum Neubewerten genannt: "wenn die Karte zur Navigation genutzt
+werden soll".
+
+**Entscheidung.**
+1. **Ortung in der Karte in Python, nicht slam_toolbox im
+   Lokalisierungsmodus.** Die Lidar-Aufnahme wird mehrmals pro Sekunde auf
+   ein vorausgerechnetes Abstandsfeld der Karte gelegt (Gauß-Newton, Punkte
+   ziehen zur nächsten Wand). Gehalten wird nur eine Korrektur zwischen
+   Lidar-Odometrie und Karte. Nach dem Laden einer Karte wird die Lage am
+   Ausgangspunkt der Karte gesucht (Raster-Suche, dann verfeinert); findet
+   er sich nicht, zeigt man es ihm auf der Karte.
+2. **Pfadplanung mit A\*** auf einem 10-cm-Raster: befahrbar ist nur
+   bekanntes Freies mit 0,25 m Abstand zur Wand, Wandnähe kostet extra
+   (Wege durch die Türmitte).
+3. **Fahrt zum Ziel als Teil der Heimfahrt** (`Homing.start(ziel=...)`).
+   Mit Karte fährt auch `home` den geplanten Weg.
+4. **Kartierfahrt Raum für Raum:** Nach dem Zimmer (oder wenn es dort nicht
+   weitergeht) fährt sie zur nächsten "Lücke" (freie Stelle am Rand des
+   Unbekannten), bis keine erreichbare mehr übrig ist, dann zurück.
+5. **Durchhalten:** Ohne Zuschauer erst nach 20 s anhalten; nach einem
+   Antriebsausfall binnen 60 s weiterfahren; 30 s auf den Lidar warten.
+6. **Karte in der Simulation in Python** (`mapping/simulation.py`), damit
+   all das ohne Docker am Schreibtisch läuft.
+
+Andere Wege wurden nicht genommen:
+- *slam_toolbox lokalisieren lassen und `map → odom` aus dem Container
+  holen:* zweite Brücke in die andere Richtung, und jede Fahrt mit Karte
+  hinge an Docker und ROS2 Foxy (EOL). So braucht nur das Kartieren den
+  Container.
+- *Nav2:* bräuchte zusätzlich Odometrie und Antrieb in ROS, also genau die
+  Doppelung, die E1/E4 vermeiden.
+- *Ortung mit Partikelfilter (AMCL):* robuster bei Mehrdeutigkeit, aber
+  deutlich mehr Rechenzeit am Pi. Weil die Lidar-Odometrie schon gut ist
+  (E9), reicht hier ein einzelner Abgleich je Aufnahme.
+- *Fahrt zum Ziel als eigene Klasse:* Jeder bestehende Abbruch (Not-Stopp,
+  Hand, Verbindung weg, eine andere Fahrt startet) hätte einzeln nachgezogen
+  werden müssen. Als Heimfahrt mit Ziel gelten sie alle von selbst.
+- *Kartierfahrt nur mit Lücken, ohne Randfahrt und Bahnen:* Die Randfahrt
+  ist getestet und bringt die Raumgrenzen früh und vollständig in die
+  Karte; die Lücken übernehmen nur das, was danach fehlt.
+
+**Einzelheiten, die zählen.**
+- Die Karte von slam_toolbox beginnt dort, wo die Kartierung beginnt, mit
+  derselben Lage wie die Lidar-Odometrie. Deshalb leert der MappingManager
+  vor jeder Kartierung die Ortung, und die Lidar-Odometrie beginnt neu.
+  Sie läuft jetzt, solange kartiert wird **oder** eine Karte geladen ist
+  (Nutzer melden sich an und ab).
+- Punkte im unbekannten Teil der Karte zählen beim Abgleich nicht mit --
+  beim Kartieren ist das der Raum, den er gerade erst sieht.
+- Die Suche nimmt nur einen klaren Treffer (80 % der Punkte auf Wänden) und
+  lehnt ab, wenn eine deutlich andere Lage fast genauso gut passt. Ein
+  leeres rechteckiges Zimmer passt um 180° gedreht ebenso; ohne Möbel
+  findet sich der Roboter dann nur mit Hinweis (Blickrichtung oder "hier
+  stehe ich"). Gezeigt am Testaufbau: Zwei gleiche leere Zimmer waren
+  ununterscheidbar, mit Schrank und Sofa eindeutig.
+- Beim Kartieren ist die Weiterfahrt eine eigene Phase der Kartierfahrt;
+  geplant wird in einem Thread, die Fahrschleife (20 Hz) hält solange an.
+
+**Konsequenzen.**
+- *Gut:* Die Karte ist sofort nach dem Kartieren nutzbar: Lage anzeigen,
+  hinfahren, nach Hause über die Karte -- auch in andere Räume, was die
+  Heimfahrt ohne Karte nie konnte (E4).
+- *Gut:* Die Kartierfahrt endet mit "Karte vollständig" statt nach dem
+  ersten Hindernis.
+- *Schlecht:* Die Lidar-Odometrie läuft mit geladener Karte dauerhaft und
+  kostet CPU (E9 hatte genau das als Bedingung zum Neubewerten genannt).
+- *Schlecht:* Ein einzelner Abgleich je Aufnahme kann sich in langen,
+  gleichförmigen Fluren verschätzen; dann wird die Lage "unsicher", und
+  Fahrten zum Ziel halten an.
+- *Offen:* Alles am Roboter prüfen: Ortung mit echter A1-Karte, Planung
+  durch echte Türen, Weiterfahrt in einer Wohnung.
+
+**Neu bewerten, wenn:** die Ortung am Roboter oft "unsicher" wird (dann
+Partikelfilter oder `map → odom` von slam_toolbox), oder die CPU-Last mit
+geladener Karte zu Aussetzern führt.

@@ -31,7 +31,7 @@ class Scan:
     damit man nicht ständig umrechnen muss.
     """
 
-    __slots__ = ("winkel", "entfernungen", "zeit", "dauer")
+    __slots__ = ("winkel", "entfernungen", "zeit", "dauer", "wahre_pose")
 
     #: Angenommene Dauer einer Umdrehung, bis eine gemessene vorliegt
     #: (RPLIDAR A1 am X3: 7,5 Umdrehungen/s gemessen).
@@ -44,6 +44,10 @@ class Scan:
         # dann schon eine ganze Umdrehung alt.
         self.zeit = time.monotonic()
         self.dauer = self.DAUER_STANDARD_S
+        # Nur in der Simulation: wo der Roboter bei dieser Runde wirklich
+        # stand. Damit baut die simulierte Kartierung eine Karte ohne Drift,
+        # wie es slam_toolbox mit Schleifenschluss am Roboter tut.
+        self.wahre_pose: tuple[float, float, float] | None = None
 
     @property
     def zeit_mitte(self) -> float:
@@ -250,6 +254,18 @@ class MockLidar(LidarBase):
     #: Ein Möbelstück, damit der Raum nicht symmetrisch ist -- sonst wäre
     #: die Ausrichtung mehrdeutig und der Abgleich könnte jede Drehung finden.
     SAEULE = (2.0, 1.2, 0.35)  # x, y, Radius
+    #: Nur mit MOCK_ZWISCHENWAND: Zwischenwand mit Tür (y 1,4 bis 2,3 m),
+    #: also zwei Zimmer statt einem, für die Weiterfahrt der Kartierfahrt --
+    #: dazu ein Schrank links und ein Sofa rechts. Ohne Möbel wären zwei
+    #: leere Rechtecke für jede Ortung gleich (um 180° gedreht oder um 4 m
+    #: verschoben); echte Zimmer sind das nie.
+    ZWISCHENWAND = (
+        (1.0, -3.0, 1.0, 1.4), (1.0, 2.3, 1.0, 3.0),
+        # Schrank in der Ecke links oben
+        (-3.0, 2.0, -2.4, 2.0), (-2.4, 2.0, -2.4, 3.0),
+        # Sofa an der Wand rechts unten
+        (3.0, -3.0, 3.0, -2.2), (3.0, -2.2, 4.6, -2.2), (4.6, -2.2, 4.6, -3.0),
+    )
     SCHRITT_GRAD = 1.0
 
     def __init__(self, pose_quelle=None) -> None:
@@ -280,7 +296,9 @@ class MockLidar(LidarBase):
             if config.LIDAR_MIN_M <= r <= config.LIDAR_MAX_M:
                 winkel.append(a_robot)
                 entfernungen.append(r)
-        return Scan(winkel, entfernungen)
+        scan = Scan(winkel, entfernungen)
+        scan.wahre_pose = (x, y, theta)
+        return scan
 
     def _strahl(self, x: float, y: float, richtung: float) -> float:
         """Entfernung bis zur nächsten Wand oder zur Säule."""
@@ -303,6 +321,11 @@ class MockLidar(LidarBase):
         t_saeule = self._saeule_treffen(x, y, dx, dy)
         if t_saeule is not None:
             treffer = min(treffer, t_saeule)
+        if config.MOCK_ZWISCHENWAND:
+            for wand in self.ZWISCHENWAND:
+                t_wand = _strecke_treffen(x, y, dx, dy, wand)
+                if t_wand is not None:
+                    treffer = min(treffer, t_wand)
         return treffer
 
     def _saeule_treffen(self, x, y, dx, dy) -> float | None:
@@ -318,6 +341,18 @@ class MockLidar(LidarBase):
             if t > 0:
                 return t
         return None
+
+
+def _strecke_treffen(x, y, dx, dy, strecke) -> float | None:
+    """Entfernung entlang des Strahls bis zur Strecke (x1, y1, x2, y2), sonst None."""
+    x1, y1, x2, y2 = strecke
+    ex, ey = x2 - x1, y2 - y1
+    nenner = dx * ey - dy * ex
+    if abs(nenner) < 1e-12:
+        return None
+    t = ((x1 - x) * ey - (y1 - y) * ex) / nenner
+    u = ((x1 - x) * dy - (y1 - y) * dx) / nenner
+    return t if t > 0 and 0.0 <= u <= 1.0 else None
 
 
 # --- Auswahl und Hintergrundbetrieb -----------------------------------------------------

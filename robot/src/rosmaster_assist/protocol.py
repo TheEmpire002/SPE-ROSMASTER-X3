@@ -39,6 +39,14 @@ Von der App / vom ESP an den Roboter
                                                           den Uhrzeigersinn), - = rechts
 {"type": "speech", "text": "robi folgen"}                 Text behandeln, als wäre er ins
                                                           Mikrofon gesprochen (Test, --mock)
+{"type": "goto", "x": 2.5, "y": -1.0, "winkel": 90}       zu einem Punkt auf der Karte fahren
+                                                          (m im Kartenrahmen; winkel optional,
+                                                          Grad, Blickrichtung am Ziel)
+{"type": "goto_cancel"}                                   Fahrt zum Ziel abbrechen
+{"type": "map_pose", "x": 1.0, "y": 0.5, "winkel": 0}     "hier stehe ich": Lage in der Karte
+                                                          dort suchen (winkel optional)
+{"type": "map_load", "name": "wohnung"}                   gespeicherte Karte laden, um darin
+                                                          zu fahren
 {"type": "ping"}                                          Verbindung am Leben halten
 
 Vom Roboter an die App
@@ -52,7 +60,10 @@ Vom Roboter an die App
                     mit Stimme zusätzlich "stimme": {"verfuegbar":…,
                     "spricht":…, "text":…};
                     mit Mikrofon zusätzlich "sprache": {"verfuegbar":…,
-                    "geweckt":…, "gehoert":…, "befehl":…})
+                    "geweckt":…, "gehoert":…, "befehl":…};
+                    mit geladener Karte zusätzlich "karte": {"name":…,
+                    "live":…, "pose": {"x","y","winkel"}|null, "sicher":…,
+                    "text":…, "fahrt": {"aktiv","art","ziel","rest_m","grund"}})
 {"type": "vitals", "bpm":…, "motion":…}                   weitergereichte ESP-Daten
 {"type": "alert",  "level": "info"|"warning"|"emergency", "text": "…"}
 {"type": "error",  "text": "…"}                           ungültige Nachricht o.Ä.
@@ -131,6 +142,7 @@ def state_message(
     interaktion: dict[str, Any] | None = None,
     stimme: dict[str, Any] | None = None,
     sprache: dict[str, Any] | None = None,
+    karte: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     msg: dict[str, Any] = {
         "type": "state",
@@ -149,6 +161,8 @@ def state_message(
         msg["stimme"] = stimme
     if sprache is not None:
         msg["sprache"] = sprache
+    if karte is not None:
+        msg["karte"] = karte
     if pose is not None:
         x, y, winkel = pose
         msg["pose"] = {

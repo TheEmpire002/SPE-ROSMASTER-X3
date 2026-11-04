@@ -102,6 +102,7 @@ LAEDT = "laedt"
 HOERT = "hoert"
 FEHLER = "fehler"
 SIMULIERT = "simuliert"
+PAUSIERT = "pausiert"  # Mikrofon bewusst zu, z. B. beim Mapping (pause_setzen())
 
 
 def normalisieren(text: str) -> list[str]:
@@ -412,11 +413,24 @@ class Spracherkennung:
         self._modell = None  # (Modell, Grammatik), damit ein Nachfolger nicht neu lädt
         self._wache: threading.Thread | None = None
 
+        # Fragt der Hör-Thread laufend; liefert einen Grund, solange das
+        # Mikrofon zu bleiben soll (siehe pause_setzen()).
+        self._pause_grund = lambda: None
+        self._pause: str | None = None  # zuletzt gemeldeter Grund, nur fürs Log
+
     # --- Bedienung -------------------------------------------------------------
 
     @property
     def verfuegbar(self) -> bool:
-        return self._zustand in (HOERT, SIMULIERT)
+        return self._zustand in (HOERT, SIMULIERT) and self._pause_grund() is None
+
+    def pause_setzen(self, grund) -> None:
+        """``grund()`` gibt einen Text zurück, solange das Mikrofon zu sein soll.
+
+        Abgefragt statt an- und abgemeldet: So endet die Pause von selbst, egal
+        auf welchem Weg der Anlass vorbei ist (Seite, App, Absturz, Beenden).
+        """
+        self._pause_grund = grund
 
     @property
     def geweckt(self) -> bool:
@@ -605,6 +619,8 @@ class Spracherkennung:
             "gehoert": self._gehoert,
             # Nur kurz anzeigen; ein Befehl von vor einer Minute verwirrt.
             "befehl": self._befehl if time.monotonic() - self._befehl_zeit < 5.0 else None,
+            # Warum das Mikrofon gerade bewusst aus ist (sonst None).
+            "pause": self._pause_grund(),
         }
 
     def status(self) -> dict:
@@ -627,6 +643,7 @@ class Spracherkennung:
                 "zuletzt_verworfen": self._zuletzt_verworfen,
                 "befehle": {b: list(w) for b, w in BEFEHLE.items()},
                 "fehler": self._fehler,
+                "pause": self._pause_grund(),
             }
 
     # --- Hör-Thread -------------------------------------------------------------------
@@ -641,6 +658,9 @@ class Spracherkennung:
 
         while not self._stop.is_set() and not abgeloest():
             self._lebt = time.monotonic()
+            if self._pause_pruefen():
+                self._stop.wait(config.SPRACHE_PAUSE_PRUEFEN_S)
+                continue
             warten = config.SPRACHE_NEUVERSUCH_S
             try:
                 self._hoeren_bis_fehler(sd, vosk, modell, grammatik, abgeloest)
@@ -657,6 +677,8 @@ class Spracherkennung:
                 self._fehler = meldung
                 self._zustand = FEHLER
             self._lebt = time.monotonic()
+            if self._pause_pruefen():
+                continue  # bewusst zugemacht, kein Fehler: nicht neu starten
             self._stop.wait(warten)
             # PortAudio merkt sich die Geräteliste vom Start; ein neu
             # angemeldetes Mikrofon sieht es erst nach einem Neustart.
@@ -747,6 +769,8 @@ class Spracherkennung:
                         f"{name} liefert seit {config.SPRACHE_HAENGT_S:.0f} s keinen Ton (Stream hängt)"
                     ) from None
                 jetzt = self._lebt = time.monotonic()
+                if self._pause_pruefen():
+                    return  # schließt den Stream (finally)
                 # Ein echtes Mikrofon rauscht immer ein wenig; lauter exakte
                 # Nullen heißen: Der Stream lebt noch, das Gerät nicht mehr.
                 if roh.strip(b"\x00"):
@@ -850,6 +874,28 @@ class Spracherkennung:
             self.hoeren(text, erlaubt=(STOPP, MUSIK_AUS), grund=f"{grund}, Musik läuft")
         else:
             self.hoeren(text, erlaubt=(STOPP,), grund=grund)
+
+    def _pause_pruefen(self) -> bool:
+        """True, solange das Mikrofon zu bleiben soll; setzt dann den Zustand.
+
+        Zu statt nur taub: Ein offener Stream hält den USB-Bus und Vosk die
+        CPU beschäftigt, und beides braucht das Mapping (Lidar am selben USB,
+        SLAM im Container).
+        """
+        grund = self._pause_grund()
+        if grund != self._pause:
+            if grund:
+                log.info("Spracherkennung pausiert: %s", grund)
+            else:
+                log.info("Spracherkennung: Pause vorbei, öffne das Mikrofon wieder")
+            self._pause = grund
+        if not grund:
+            return False
+        self._zustand = PAUSIERT
+        self._weck_bis = 0.0  # ein "Robi" von vorher gilt nicht weiter
+        self._teil = ""
+        self._pegel = 0.0
+        return True
 
     def _aus(self, grund: str) -> None:
         self._fehler = grund

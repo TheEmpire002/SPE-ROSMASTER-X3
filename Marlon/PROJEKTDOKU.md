@@ -739,6 +739,37 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Kehrseite:** Sind mehrere Personen da und die verfolgte geht weg, folgt er nach einer Sekunde der anderen.
 - **Zusammengeführt mit F4 (Marlon, gleicher Tag):** F4 hatte die Wiedererkennung am Aussehen ausgebaut (gemerkte Person, schnellere Bestätigung). Das entfällt mit der Zielwahl. Übernommen sind die beiden Teile, die nicht vom Aussehen abhängen: früher suchen, wenn die Person am Bildrand verschwand, und beim Suchen zu einer Person drehen, die der Lidar sieht. Abgesprochen mit dem Nutzer; Marlon bitte Bescheid geben.
 
+### 04.11.2026 – Kartierung hört nicht mehr auf, Karte wird genutzt: Lage, Fahrt zum Ziel (mit Claude)
+- **Was:** Zwei Wünsche: „Das Mapping soll nicht stoppen“ und „wenn die Karte fertig ist, soll man darauf sehen, wo er ist, und ihn zu einem Punkt schicken können“.
+  - **Kartierfahrt Raum für Raum:** Nach dem Zimmer (oder wenn es dort nicht weitergeht) fährt sie zur nächsten Stelle, an der die Karte ins Unbekannte übergeht („Lücke“: offene Tür, Flur, Schatten hinter Möbeln), bis keine erreichbare mehr übrig ist. Danach fährt sie zum Ausgangspunkt zurück und meldet „Karte vollständig“.
+  - **Durchhalten:** Festgefahren oder vom Fahrschutz blockiert heißt jetzt „diese Lücke aufgeben, nächste nehmen“ statt Ende. Ohne Zuschauer (keine `/map`-Seite, keine App) hält sie erst nach 20 s an, nicht beim ersten Verbindungsabbruch. Nach einem USB-Reset des Antriebs fährt sie binnen 60 s von selbst weiter. Auf den Lidar wartet sie 30 statt 3 s.
+  - **Lage in der Karte** (`navigation/kartenortung.py`): Die Lidar-Aufnahme wird 4-mal pro Sekunde auf ein vorausgerechnetes Abstandsfeld der Karte gelegt (`mapping/karte.py`); das gleicht die Drift der Lidar-Odometrie aus. Nach dem Laden einer gespeicherten Karte sucht er sich am Ausgangspunkt; findet er sich nicht, zeigt man es ihm auf der Karte („Hier stehe ich“).
+  - **Fahrt zum Ziel** (`navigation/pfadplanung.py` mit A*, `navigation/pfadfolger.py`): Ein Punkt auf der Karte, und er fährt einen geplanten Weg dorthin, mittig durch Türen, um Unerwartetes herum (versperrte Stellen gelten 60 s als Wand, dann neu planen). Läuft als Heimfahrt mit Ziel, damit Not-Stopp, Handsteuerung und Verbindungsverlust sie ohne Extrawege beenden. Mit Karte fährt auch „Nach Hause“ diesen Weg.
+  - **Seite `/map`:** Roboter, gefahrene Spur, geplanter Weg, Ziel und offene Lücken auf der Karte; Knöpfe „Hierhin fahren“, „Hier stehe ich“ (ziehen = Blickrichtung), „Zum Ausgangspunkt“, „Fahrt abbrechen“; gespeicherte Karten mit „Laden“.
+  - **Protokoll:** neue Befehle `goto`, `goto_cancel`, `map_pose`, `map_load`, neues Feld `state.karte`, neue Endpunkte unter `/api/mapping/` (`docs/api.md`). Begründung: E12.
+  - **Simulation:** Die Karte entsteht in `--mock` in Python (`mapping/simulation.py`), ohne Docker. Mit `ROSMASTER_MOCK_WOHNUNG=1` simuliert der Lidar zwei Zimmer mit Tür, Schrank und Sofa.
+- **Warum:** Die Karte entstand bisher, aber niemand nutzte sie. Die Kartierfahrt endete nach dem ersten Zimmer oder beim ersten Hindernis. Außerdem endete sie, wenn der Handy-Bildschirm ausging oder das Board kurz vom USB fiel; am X3 passiert das oft (Spannungseinbrüche).
+- **Ergebnis:**
+  - `Marlon/autonomes_fahren/test_karte.py`: 29 Prüfungen bestanden. Sie decken Abstandsfeld, Speichern/Laden, Ortung (Rückziehen, Suche, Mehrdeutigkeit), Drift-Ausgleich, Planung durch die Tür, Lücken, Pfadfolger und die Weiterfahrt der Kartierfahrt ab.
+  - Ende-zu-Ende in der Simulation (Wohnung, echte Zeit, über die HTTP-API wie die Seite `/map`):
+    - Zimmer abgefahren, 3 Lücken angefahren, ins Nachbarzimmer gefahren, „Karte vollständig“, zurück am Ausgangspunkt. Das dauerte 7 Minuten.
+    - Die Lage in der Karte lag die ganze Zeit 1–6 cm und unter 1,5° neben der Wahrheit.
+    - Die Karte deckt sich mit den wahren Wänden.
+    - Fahrt zu einem Punkt im Nachbarzimmer: angekommen, 5 cm neben der Wahrheit.
+    - Gespeicherte Karte geladen: Dort, wo er nicht am Ausgangspunkt stand, fand er sich nicht von selbst (richtig so). Nach „Hier stehe ich“ war die Lage in 1 s da, und die Rückfahrt ins erste Zimmer klappte.
+- **Probleme:**
+  - Im ersten Ende-zu-Ende-Lauf war die simulierte Karte um rund 30° verdreht und verschmiert. Sie war mit der Lage der Lidar-Odometrie eingetragen worden, und deren kleine Drehfehler summieren sich bei jeder Bezugserneuerung. Am Roboter gleicht slam_toolbox das mit Schleifenschluss aus. Die Simulation trägt deshalb jetzt mit der wahren Lage ein, wie ein gutes SLAM, und die Ortung muss die Drift der Odometrie ausgleichen. Das ist genau die Lage am Roboter.
+  - Zwei leere, gleich große Zimmer sind für die Ortung nicht zu unterscheiden (um 180° gedreht oder um 4 m verschoben passt eine Aufnahme zu 91 %). Die Suche verlangt deshalb 80 % Treffer und lehnt ab, wenn eine deutlich andere Lage fast genauso gut passt. In der Test-Wohnung stehen deshalb Möbel; echte Zimmer sind nie leer.
+  - Der Planer endete in der Mitte einer 10-cm-Zelle statt genau am Ziel (19 cm daneben); jetzt endet er genau am verlangten Punkt.
+- **Offen:** Am Roboter prüfen (siehe Offene Punkte). Der vorhandene Fehler „`dauer_s` direkt nach dem Start = Zeit seit Serverstart“ ist nebenbei behoben.
+
+### 04.11.2026 – Mikrofon beim Mapping aus (Marlon, mit Claude)
+- **Was:** Solange das Mapping läuft, schließt die Spracherkennung das Mikrofon und nimmt keine Sprachbefehle an. Danach öffnet sie es von selbst wieder (`Spracherkennung.pause_setzen()`, Einstellung `SPRACHE_AUS_BEIM_MAPPEN`). `/sprache/status` und `state.sprache` haben dafür das neue Feld `pause`, die App zeigt „Mikrofon aus: Mapping läuft“.
+- **Warum:** Der Mikrofon-Stream belastet den USB-Bus, an dem auch der Lidar hängt, und Vosk braucht CPU, die SLAM fehlt. Ein falsch gehörter Befehl („folgen“) bräche außerdem die Kartierfahrt ab.
+- **Wie:** Der Hör-Thread fragt laufend, ob das Mapping aktiv ist, statt an jedem Start und Stopp benachrichtigt zu werden. So endet die Pause auf jedem Weg (Seite, App, Absturz, Beenden).
+- **Kehrseite:** Auch „Stopp“ per Sprache geht beim Mapping nicht. Anhalten über App, `/map` oder von Hand.
+- **Offen:** Am Pi prüfen: Mapping starten, im Log „Spracherkennung pausiert“, nach dem Stopp „hört auf …“.
+
 ---
 
 ## 3. Ergebnisse und Messwerte
@@ -759,6 +790,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 | Sprachausgabe | Warteschlange, Vorrang/Verstummen, Ausweichen ohne Piper, Ansagen des Verhaltens: 17 Prüfungen bestanden; am Lautsprecher noch nicht gehört | `Marlon/interaktion/test_stimme.py` |
 | Sanftes Fahren und entprellte Gesten | Rampe, Ausrollen, Glättung, Laufen/Vorbeigehen ohne Fehlauslösung: 69 Prüfungen bestanden (29.10.) | `Marlon/interaktion/test_gesten.py` |
 | Sprachbefehle „Robi“ | Weckwort, Weckfenster, Rangfolge, Grammatik, Ausfallsicherheit: 41 Prüfungen; Gesten inkl. Antriebsverlust: 76 Prüfungen (29.10.); am Mikrofon noch nicht getestet | `Marlon/interaktion/test_sprache.py` |
+| Karte nutzen (Simulation, Wohnung mit 2 Zimmern) | Kartierfahrt bis „Karte vollständig“ in 7 min; Lage in der Karte 1–6 cm / unter 1,5° neben der Wahrheit; Fahrt ins Nachbarzimmer 5 cm neben dem Ziel; 29 Prüfungen bestanden (04.11.) | `Marlon/autonomes_fahren/test_karte.py` |
 
 ---
 
@@ -803,6 +835,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **USB-Überlast im Leerlauf eingrenzen** (29.10.): alle Geräte ab, einzeln wieder an (Lidar zuletzt), Lidar-Kabel tauschen, Board-USB abziehen; Wert „USB-Überlast pro Minute“ auf `/diagnose`. Journal am Pi dauerhaft machen.
 - Bodentest des Erkunders mit Hindernissen.
 - Mapping am Pi: slam_toolbox im Container `x3` vorhanden? Dann auf `/map` starten, Kartierfahrt am Boden beobachten, Karte speichern (E8, E9).
+- Karte nutzen am Roboter (E12): Kartierfahrt über zwei Räume bis „Karte vollständig“; danach auf `/map` prüfen, ob die angezeigte Lage stimmt (Roboter an bekannte Stellen schieben). „Hierhin fahren“ durch eine echte Tür, Karte speichern, Server neu starten, Karte laden, findet er sich am Ausgangspunkt? CPU-Last mit geladener Karte auf `/diagnose` beobachten (Lidar-Odometrie läuft dann dauerhaft).
 - **Stresstest am Boden** (Räder mit Last): erst am Netzteil, dann am Akku. Auf dem Podest gibt es mit beiden 0 Resets (29.10.), deshalb ist offen, ob das Netzteil unter Last hilft. Bleiben am Boden Resets, braucht es die getrennte 5-V-Versorgung für Pi bzw. Hub (siehe `docs/hardware.md`, „Was am Roboter tun“).
 - Stresstest mit eingeschalteter Interaktion (Hailo-Pose und Gesten unter Fahrlast) wiederholen.
 - Interaktion: Hailo-Pose am Pi prüfen, Fahrtest Folgen/Herkommen am Boden; danach Stufen 4–5 (Sprache, Geist).

@@ -71,7 +71,15 @@
     details.log pre { margin: 8px 0 0; padding: 9px; max-height: 220px; overflow: auto; border-radius: 8px; background: #0b1016; color: #c3ccd6; font-size: 11px; line-height: 1.35; white-space: pre-wrap; overflow-wrap: anywhere; }
     .help { color: var(--muted); font-size: 12px; }
     .saved-list { display: grid; gap: 7px; max-height: 190px; overflow: auto; }
-    .saved-item { padding: 8px 9px; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+    .saved-item { padding: 8px 9px; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .saved-item button { padding: 5px 9px; font-size: 12px; }
+    .ortung { padding: 9px 10px; border-radius: 8px; border: 1px solid #23845c; background: #11291f; color: #c9f2dd; font-size: 12px; overflow-wrap: anywhere; }
+    .ortung.unsicher { border-color: #9a6a1f; background: #2b2213; color: #f5d9a8; }
+    .ortung.idle { border-color: var(--border); background: #111923; color: var(--muted); }
+    button.aktiv { outline: 2px solid var(--blue); outline-offset: 1px; }
+    canvas.zielen { cursor: crosshair; }
+    .legende { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--muted); font-size: 11px; }
+    .legende i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
     @media (max-width: 900px) {
       .layout { grid-template-columns: 1fr; }
       .canvas-wrap { min-height: 420px; height: 58vh; }
@@ -120,12 +128,26 @@
               <button id="startButton" class="primary" type="button">▶ Starten</button>
               <button id="stopButton" class="stop" type="button" disabled>■ Stoppen</button>
             </div>
-            <label class="check"><input type="checkbox" id="autoFahrt" checked> nach dem Start den Raum automatisch abfahren</label>
+            <label class="check"><input type="checkbox" id="autoFahrt" checked> nach dem Start automatisch abfahren, Raum für Raum</label>
           </div>
 
           <div class="full">
             <button id="fahrtButton" class="secondary" type="button" disabled>Kartierfahrt starten</button>
             <div class="fahrt idle" id="fahrtText">Kartierfahrt aus. Der Roboter fährt erst, wenn sie gestartet wird.</div>
+          </div>
+
+          <div class="full">
+            <label>Karte nutzen</label>
+            <div class="ortung idle" id="ortungText">Keine Karte. Kartieren oder unten eine gespeicherte Karte laden.</div>
+            <div class="button-row" style="margin-top:9px">
+              <button id="zielModus" type="button" disabled>➜ Hierhin fahren</button>
+              <button id="poseModus" type="button" disabled>⌖ Hier stehe ich</button>
+            </div>
+            <div class="button-row" style="margin-top:9px">
+              <button id="heimButton" type="button" disabled>⌂ Zum Ausgangspunkt</button>
+              <button id="zielStop" class="stop" type="button" disabled>■ Fahrt abbrechen</button>
+            </div>
+            <div class="help" id="modusHilfe" style="margin-top:7px"></div>
           </div>
 
           <div class="hinweis idle full" id="hinweis">Mapping ist gestoppt.</div>
@@ -156,7 +178,14 @@
             <summary>SLAM-Protokoll (letzte Zeilen)</summary>
             <pre id="slamLog"></pre>
           </details>
-          <div class="help full">Mausrad: Zoom · Ziehen: Karte verschieben · Doppelklick: Ansicht einpassen</div>
+          <div class="legende full">
+            <span><i style="background:#25b879"></i>Roboter</span>
+            <span><i style="background:#4fa3ff"></i>gefahrene Spur</span>
+            <span><i style="background:#9be15d"></i>geplanter Weg / Ziel</span>
+            <span><i style="background:#f0a020"></i>unbekannte Stelle</span>
+            <span><i style="background:#c792ea"></i>Ausgangspunkt</span>
+          </div>
+          <div class="help full">Mausrad: Zoom · Ziehen: Karte verschieben · Doppelklick: Ansicht einpassen · Mit „Hierhin fahren“ oder „Hier stehe ich“ auf die Karte tippen (beim Zeigen ziehen = Blickrichtung)</div>
         </div>
       </aside>
     </div>
@@ -178,6 +207,10 @@
       let problemGezeigt = false;
       let mappingAktiv = false;
       let fahrtAktiv = false;
+      // Lage in der Karte, laufende Fahrt, Spur, Lücken (Paket "ortung").
+      let ortung = null;
+      // Was ein Tippen auf die Karte bedeutet: null, 'ziel' oder 'pose'.
+      let modus = null;
 
       function setFahrt(f) {
         fahrtAktiv = !!f.aktiv;
@@ -187,7 +220,10 @@
         knopf.disabled = !fahrtAktiv && !mappingAktiv;
         let text;
         if (fahrtAktiv) {
-          text = (f.text || 'fährt') + (f.dauer_s != null ? ` · ${f.dauer_s} s` : '');
+          text = (f.text || 'fährt') + (f.dauer_s != null ? ` · ${f.dauer_s} s` : '')
+            + (f.luecken ? ` · ${f.luecken} unbekannte Stellen angefahren` : '');
+        } else if (f.unterbrochen) {
+          text = 'Antrieb kurz weg (USB) -- fährt nach dem Neuverbinden weiter …';
         } else if (f.grund) {
           text = `Letzte Kartierfahrt: ${f.grund}`;
         } else {
@@ -200,8 +236,9 @@
       async function fahrtStarten() {
         try {
           setFahrt(await api('/api/mapping/fahrt/start', { method: 'POST' }));
-          // Die Seite ist die Totmannschaltung: schließt sie, hält er an.
-          message('Kartierfahrt läuft. Diese Seite offen lassen, sonst hält er an. Stopp in der App hält ihn sofort an.');
+          // Die Seite ist die Totmannschaltung: Schließen sie und die App,
+          // hält er nach einer kurzen Frist an.
+          message('Kartierfahrt läuft, Raum für Raum, bis die Karte vollständig ist. Diese Seite (oder die App) offen lassen -- ohne Zuschauer hält er nach 20 s an. Stopp in der App hält ihn sofort an.');
         } catch (error) { message(error.message, true); }
       }
 
@@ -331,6 +368,89 @@
         draw();
       }
 
+      // Karte (m) <-> Canvas (Pixel). Das Bild steht auf dem Kopf zur
+      // Karte: Bildzeile 0 ist der größte y-Wert.
+      function weltZuCanvas(x, y) {
+        const info = mapPayload.info;
+        const res = Number(info.resolution);
+        const px = (x - Number(info.origin.position.x)) / res;
+        const py = offscreen.height - (y - Number(info.origin.position.y)) / res;
+        return [view.x + px * view.scale, view.y + py * view.scale];
+      }
+      function canvasZuWelt(cx, cy) {
+        const info = mapPayload.info;
+        const res = Number(info.resolution);
+        const px = (cx - view.x) / view.scale;
+        const py = (cy - view.y) / view.scale;
+        return [Number(info.origin.position.x) + px * res,
+                Number(info.origin.position.y) + (offscreen.height - py) * res];
+      }
+      function meterInPixel(m) { return m / Number(mapPayload.info.resolution) * view.scale; }
+
+      function linie(punkte, farbe, breite, strich) {
+        if (!punkte || punkte.length < 2) return;
+        ctx.save();
+        ctx.strokeStyle = farbe;
+        ctx.lineWidth = breite * dpr;
+        ctx.lineJoin = 'round';
+        if (strich) ctx.setLineDash(strich.map((v) => v * dpr));
+        ctx.beginPath();
+        punkte.forEach(([x, y], i) => {
+          const [cx, cy] = weltZuCanvas(x, y);
+          if (i === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
+        });
+        ctx.stroke();
+        ctx.restore();
+      }
+      function punkt(x, y, farbe, radius) {
+        const [cx, cy] = weltZuCanvas(x, y);
+        ctx.fillStyle = farbe;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius * dpr, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      function zeichneOrtung() {
+        if (!ortung || !mapPayload) return;
+        const o = ortung.ortung || {};
+        for (const [x, y] of ortung.luecken || []) punkt(x, y, '#f0a020', 4);
+        linie(ortung.spur, '#4fa3ff', 2);
+        // Ausgangspunkt der Karte ("zu Hause").
+        if (o.start) {
+          const [sx, sy] = weltZuCanvas(o.start[0], o.start[1]);
+          ctx.strokeStyle = '#c792ea';
+          ctx.lineWidth = 2 * dpr;
+          ctx.strokeRect(sx - 6 * dpr, sy - 6 * dpr, 12 * dpr, 12 * dpr);
+        }
+        const fahrt = ortung.fahrt || {};
+        const kf = ortung.kartierfahrt || {};
+        const weg = fahrt.aktiv ? fahrt.weg : kf.weg;
+        const ziel = fahrt.aktiv ? fahrt.ziel : kf.ziel;
+        if (o.pose && weg && weg.length) linie([[o.pose.x, o.pose.y], ...weg], '#9be15d', 2.5, [7, 5]);
+        if (ziel) {
+          punkt(ziel[0], ziel[1], '#9be15d', 6);
+          punkt(ziel[0], ziel[1], '#101720', 2.5);
+        }
+        if (o.pose) {
+          // Roboter maßstäblich (Radius ~0,17 m), mindestens gut sichtbar.
+          const [cx, cy] = weltZuCanvas(o.pose.x, o.pose.y);
+          const r = Math.max(7 * dpr, meterInPixel(0.17));
+          const w = o.pose.winkel * Math.PI / 180;
+          const farbe = o.sicher ? '#25b879' : '#f0a020';
+          ctx.fillStyle = farbe + '55';
+          ctx.strokeStyle = farbe;
+          ctx.lineWidth = 2 * dpr;
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(cx + Math.cos(w) * r * 1.6, cy - Math.sin(w) * r * 1.6);
+          ctx.stroke();
+        }
+      }
+
       function draw() {
         if (!canvas.width || !canvas.height) return;
         ctx.fillStyle = '#101720';
@@ -338,20 +458,98 @@
         if (!mapPayload) return;
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(offscreen, view.x, view.y, offscreen.width * view.scale, offscreen.height * view.scale);
+        zeichneOrtung();
+      }
+
+      function setOrtung(d) {
+        ortung = d;
+        const o = d.ortung || {};
+        const fahrt = d.fahrt || {};
+        const feld = $('ortungText');
+        let text = o.text || '';
+        if (o.pose) text += ` · x ${o.pose.x.toFixed(2)} m, y ${o.pose.y.toFixed(2)} m, ${Math.round(o.pose.winkel)}°`;
+        if (o.anteil != null && o.karte) text += ` · ${Math.round(o.anteil * 100)} % Treffer`;
+        if (o.name) text = `Karte „${o.name}“: ` + text;
+        else if (o.live) text = 'Live-Karte: ' + text;
+        if (fahrt.aktiv) {
+          text += ` · ${fahrt.art === 'heim' ? 'fährt zum Ausgangspunkt' : 'fährt zum Ziel'}`
+            + (fahrt.rest_m != null ? `, noch ${fahrt.rest_m.toFixed(1)} m` : '');
+        } else if (fahrt.grund) {
+          text += ` · letzte Fahrt: ${fahrt.grund}`;
+        }
+        feld.textContent = text;
+        feld.classList.toggle('idle', !o.karte);
+        feld.classList.toggle('unsicher', !!o.karte && !o.sicher);
+        // Fahren nur mit sicherer Lage; "Hier stehe ich" geht mit jeder Karte.
+        const fahrbar = !!o.karte && !!o.sicher && !fahrtAktiv;
+        $('zielModus').disabled = !fahrbar;
+        $('heimButton').disabled = !fahrbar;
+        $('poseModus').disabled = !o.karte;
+        $('zielStop').disabled = !fahrt.aktiv;
+        if (modus === 'ziel' && !fahrbar) modusSetzen(null);
+        if (modus === 'pose' && !o.karte) modusSetzen(null);
+        draw();
+      }
+
+      function modusSetzen(neu) {
+        modus = modus === neu ? null : neu;
+        $('zielModus').classList.toggle('aktiv', modus === 'ziel');
+        $('poseModus').classList.toggle('aktiv', modus === 'pose');
+        canvas.classList.toggle('zielen', !!modus);
+        $('modusHilfe').textContent = modus === 'ziel'
+          ? 'Auf die Karte tippen: Dorthin fährt er, auf einem Weg um Wände herum.'
+          : modus === 'pose'
+            ? 'Auf die Karte tippen, wo er steht -- mit Ziehen auch, wohin er schaut.'
+            : '';
+      }
+
+      async function karteAngetippt(start, ende) {
+        const [x, y] = canvasZuWelt(start.x, start.y);
+        const dx = ende.x - start.x;
+        const dy = ende.y - start.y;
+        // Gezogen: Richtung vom Antippen zum Loslassen (Bild-y zeigt nach unten).
+        const winkel = Math.hypot(dx, dy) > 15 * dpr ? Math.atan2(-dy, dx) * 180 / Math.PI : null;
+        const daten = { x, y, winkel };
+        try {
+          if (modus === 'ziel') {
+            setOrtung(await api('/api/mapping/ziel', { method: 'POST', body: JSON.stringify(daten) }));
+            message(`Fahrt zu (${x.toFixed(2)}, ${y.toFixed(2)}) gestartet.`);
+          } else if (modus === 'pose') {
+            setOrtung(await api('/api/mapping/pose', { method: 'POST', body: JSON.stringify(daten) }));
+            message('Suche die Lage an der gezeigten Stelle …');
+          }
+        } catch (error) { message(error.message, true); }
+        modusSetzen(null);
       }
 
       canvas.addEventListener('pointerdown', (event) => {
-        pointer = { id: event.pointerId, x: event.clientX * dpr, y: event.clientY * dpr, originX: view.x, originY: view.y };
+        const rect = canvas.getBoundingClientRect();
+        pointer = {
+          id: event.pointerId, x: event.clientX * dpr, y: event.clientY * dpr,
+          originX: view.x, originY: view.y,
+          lokalX: (event.clientX - rect.left) * dpr, lokalY: (event.clientY - rect.top) * dpr,
+        };
         canvas.setPointerCapture(event.pointerId);
-        canvas.classList.add('dragging');
+        if (!modus) canvas.classList.add('dragging');
       });
       canvas.addEventListener('pointermove', (event) => {
         if (!pointer || pointer.id !== event.pointerId) return;
+        if (modus) return;  // beim Zielen nicht verschieben
         view.x = pointer.originX + event.clientX * dpr - pointer.x;
         view.y = pointer.originY + event.clientY * dpr - pointer.y;
         draw();
       });
-      function endPointer() { pointer = null; canvas.classList.remove('dragging'); }
+      function endPointer(event) {
+        if (pointer && modus && mapPayload && event && event.type === 'pointerup') {
+          const rect = canvas.getBoundingClientRect();
+          karteAngetippt(
+            { x: pointer.lokalX, y: pointer.lokalY },
+            { x: (event.clientX - rect.left) * dpr, y: (event.clientY - rect.top) * dpr },
+          );
+        }
+        pointer = null;
+        canvas.classList.remove('dragging');
+      }
       canvas.addEventListener('pointerup', endPointer);
       canvas.addEventListener('pointercancel', endPointer);
       canvas.addEventListener('wheel', (event) => {
@@ -391,7 +589,22 @@
           for (const item of maps) {
             const row = document.createElement('div');
             row.className = 'saved-item';
-            row.textContent = item.name;
+            const name = document.createElement('span');
+            name.textContent = item.name;
+            const laden = document.createElement('button');
+            laden.type = 'button';
+            laden.textContent = 'Laden';
+            laden.title = 'Diese Karte laden und darin fahren';
+            laden.disabled = mappingAktiv;
+            laden.addEventListener('click', async () => {
+              message(`Lade Karte „${item.name}“ …`);
+              try {
+                await api('/api/mapping/laden', { method: 'POST', body: JSON.stringify({ name: item.name }) });
+                view.fitted = false;
+                message(`Karte „${item.name}“ geladen. Er sucht seine Lage am Ausgangspunkt -- klappt das nicht, mit „Hier stehe ich“ zeigen.`);
+              } catch (error) { message(error.message, true); }
+            });
+            row.append(name, laden);
             container.append(row);
           }
         } catch (error) { message(`Kartenliste: ${error.message}`, true); }
@@ -407,6 +620,7 @@
           if (packet.type === 'status') setStatus(packet.data);
           else if (packet.type === 'map') updateMap(packet.data);
           else if (packet.type === 'fahrt') setFahrt(packet.data);
+          else if (packet.type === 'ortung') setOrtung(packet.data);
           else if (packet.type === 'error') message(packet.message, true);
         };
         ws.onclose = () => {
@@ -452,6 +666,23 @@
           await fahrtStarten();
         }
         $('fahrtButton').disabled = !fahrtAktiv && !mappingAktiv;
+      });
+
+      $('zielModus').addEventListener('click', () => modusSetzen('ziel'));
+      $('poseModus').addEventListener('click', () => modusSetzen('pose'));
+      $('zielStop').addEventListener('click', async () => {
+        try { setOrtung(await api('/api/mapping/ziel/stop', { method: 'POST' })); }
+        catch (error) { message(error.message, true); }
+      });
+      $('heimButton').addEventListener('click', async () => {
+        const start = ortung && ortung.ortung && ortung.ortung.start;
+        if (!start) return;
+        try {
+          setOrtung(await api('/api/mapping/ziel', {
+            method: 'POST', body: JSON.stringify({ x: start[0], y: start[1], winkel: start[2] }),
+          }));
+          message('Fährt zum Ausgangspunkt der Karte.');
+        } catch (error) { message(error.message, true); }
       });
 
       $('stopButton').addEventListener('click', async () => {

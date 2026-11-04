@@ -22,9 +22,19 @@ Zwei Abschnitte:
    SLAM verliert beim Drehen am ehesten die Orientierung. Der Lidar sieht
    rundum, rückwärts fährt er also nicht blind.
 
+3. **Weiter ins Unbekannte (04.11.2026).** Ist das Zimmer fertig -- oder
+   kommt er dort nicht weiter (keine Wand in Sicht, festgefahren, Ecke) --,
+   hört er nicht auf, sondern fährt zur nächsten Stelle, an der die Karte
+   ins Unbekannte übergeht: offene Tür, Flur, Schatten hinter dem Sofa
+   (``pfadplanung.luecke_suchen``). So wächst die Karte Raum für Raum, bis
+   keine erreichbare Lücke mehr übrig ist. Dann fährt er zum Ausgangspunkt
+   der Karte zurück und meldet "Karte vollständig". Dafür braucht er seine
+   Lage in der wachsenden Karte (``kartenortung.py``); ohne sie endet die
+   Fahrt wie früher nach dem ersten Zimmer.
+
 Gelenkt wird nur mit dem, was der Lidar gerade sieht (Wand rechts,
 Hindernis voraus) und der Lage aus der Lidar-Odometrie
-(``scan_odometrie.py``), nie nach Zeit.
+(``scan_odometrie.py``) bzw. in der Karte, nie nach Zeit.
 """
 
 from __future__ import annotations
@@ -35,6 +45,7 @@ import time
 
 from .. import config
 from ..protocol import DriveCommand
+from . import pfadfolger as pf
 from .explorer import frei_in_richtung
 
 log = logging.getLogger(__name__)
@@ -49,6 +60,10 @@ UM_DIE_ECKE = "fährt um die Ecke"
 BAHN = "fährt Bahnen"
 VERSATZ = "versetzt zur nächsten Bahn"
 LUECKE = "sucht Platz für den Versatz"
+LUECKE_SUCHEN = "sucht unbekannte Stellen"
+ZUR_LUECKE = "fährt zur nächsten unbekannten Stelle"
+ZURUECK = "fährt zum Ausgangspunkt der Karte"
+_KARTENSCHRITTE = (LUECKE_SUCHEN, ZUR_LUECKE, ZURUECK)
 
 #: Fenster rechts neben dem Roboter, in dem die Wand gesucht wird (Meter,
 #: Roboterrahmen). Vorn und hinten knapp über die Roboterlänge hinaus.
@@ -62,22 +77,47 @@ _MAX_UM_DIE_ECKE_S = 30.0
 #: So weit fährt er auf einer Bahn höchstens zurück, um eine Lücke für den
 #: Versatz zu finden (etwa Sofalänge).
 _MAX_LUECKE_M = 2.5
+#: So lange (s) auf eine sichere Lage in der Karte warten, bevor die
+#: Weiterfahrt aufgibt (die erste Karte kommt erst nach einigen Sekunden).
+_LAGE_WARTEN_S = 30.0
+#: So oft (s) beim Hinfahren prüfen, ob die Lücke inzwischen bekannt ist.
+_LUECKE_PRUEFEN_S = 3.0
 
 
 class Kartierfahrt:
     """Entscheidet Takt für Takt den nächsten Fahrbefehl."""
 
-    def __init__(self, scan_odometrie) -> None:
+    def __init__(self, scan_odometrie, ortung=None, planer=None) -> None:
         self._odo = scan_odometrie
+        # Für die Weiterfahrt ins Unbekannte: Lage in der Karte und Planer.
+        self._ortung = ortung
+        self._planer = planer
+        self._folger = pf.Pfadfolger(tempo=config.MAP_FAHRT_TEMPO * 1.3,
+                                     toleranz=config.KARTE_ZIEL_TOLERANZ_M * 2)
+        self._erledigt: list[tuple[float, float]] = []
+        self._luecken_angefahren = 0
         self.beginnen(time.monotonic())
 
     # --- Ablauf ------------------------------------------------------------------
 
-    def beginnen(self, jetzt: float) -> None:
+    def beginnen(self, jetzt: float, fortsetzen: bool = False) -> None:
+        """Neue Kartierfahrt -- oder, mit ``fortsetzen``, gleich weiter ins
+        Unbekannte (nach einer Unterbrechung, etwa einem USB-Reset). Die
+        schon angefahrenen Lücken bleiben dann gemerkt."""
         self._schritt_name = ANFAHREN
         self._text = "sucht die nächste Wand"
         self.grund: str | None = None
         self._schritt_seit = jetzt
+        # Weiterfahrt ins Unbekannte
+        self._auftrag = None
+        self._ziel_luecke: tuple[float, float] | None = None
+        self._lage_fehlt_seit: float | None = None
+        self._blockiert_seit: float | None = None
+        self._luecke_geprueft = jetzt
+        self._fehler_in_folge = 0
+        if not fortsetzen:
+            self._erledigt = []
+            self._luecken_angefahren = 0
         self._rand_beginn = jetzt
         self._rand_start: tuple[float, float] | None = None
         self._rand_weg = 0.0
@@ -96,6 +136,8 @@ class Kartierfahrt:
         self._bahnen_fertig = 0
         self._leere_bahnen = 0
         self._bahn_start_s = 0.0
+        if fortsetzen and self._luecken_moeglich():
+            self._wechseln(LUECKE_SUCHEN, "setzt die Kartierung fort", jetzt)
 
     def anzeige(self) -> str:
         return f"{self._schritt_name}: {self._text}" if self._text else self._schritt_name
@@ -106,6 +148,16 @@ class Kartierfahrt:
             "text": self._text,
             "randweg_m": round(self._rand_weg, 1),
             "bahnen": self._bahnen_fertig,
+            "luecken": self._luecken_angefahren,
+            "ziel": (
+                [round(self._ziel_luecke[0], 2), round(self._ziel_luecke[1], 2)]
+                if self._ziel_luecke is not None and self._schritt_name in _KARTENSCHRITTE
+                else None
+            ),
+            "weg": (
+                [[round(p[0], 2), round(p[1], 2)] for p in self._folger.punkte]
+                if self._schritt_name in (ZUR_LUECKE, ZURUECK) else []
+            ),
         }
 
     def schritt(self, jetzt: float, scan, punkte) -> DriveCommand | None:
@@ -133,6 +185,8 @@ class Kartierfahrt:
             return self._randfahrt(jetzt, punkte, pose)
         if name in (BAHN, VERSATZ, LUECKE):
             return self._bahnen(jetzt, punkte, pose)
+        if name in _KARTENSCHRITTE:
+            return self._ins_unbekannte(jetzt, punkte)
         return halt
 
     def _wechseln(self, name: str, text: str, jetzt: float) -> None:
@@ -146,12 +200,155 @@ class Kartierfahrt:
         self.grund = grund
         log.info("Kartierfahrt fertig: %s", grund)
 
+    def _raum_fertig(self, jetzt: float, grund: str) -> None:
+        """Das Zimmer ist fertig (oder es geht dort nicht weiter): ab ins Unbekannte."""
+        if not self._luecken_moeglich():
+            self._fertig(grund)
+            return
+        log.info("Kartierfahrt: Zimmer beendet (%s) -- weiter zur nächsten Lücke", grund)
+        self._wechseln(LUECKE_SUCHEN, f"Zimmer fertig ({grund})", jetzt)
+
+    def _luecken_moeglich(self) -> bool:
+        return (
+            config.MAP_LUECKE_AKTIV
+            and self._ortung is not None
+            and self._planer is not None
+            and self._ortung.karte is not None
+        )
+
+    def hindernis_melden(self, grund: str) -> bool:
+        """Der Erkunder kommt nicht weiter (Fahrschutz, festgefahren).
+
+        True: Die Kartierfahrt versucht es woanders, der Erkunder soll
+        weiterfahren. False: Sie kann nichts tun, die Fahrt endet.
+        """
+        if not self._luecken_moeglich() or self.grund is not None:
+            return False
+        jetzt = time.monotonic()
+        if self._schritt_name in _KARTENSCHRITTE:
+            self._ziel_aufgeben(jetzt, grund)
+        else:
+            self._raum_fertig(jetzt, f"kommt nicht weiter: {grund}")
+        return True
+
+    # --- 3. Weiter ins Unbekannte ------------------------------------------------------
+
+    def _ins_unbekannte(self, jetzt: float, punkte) -> DriveCommand:
+        halt = DriveCommand(0.0, 0.0, 0.0)
+        ortung = self._ortung
+        pose = ortung.pose() if ortung is not None else None
+        if pose is None or not ortung.sicher or ortung.karte is None:
+            self._lage_fehlt_seit = self._lage_fehlt_seit or jetzt
+            if jetzt - self._lage_fehlt_seit > _LAGE_WARTEN_S:
+                self._fertig("Lage in der Karte unbekannt, Weiterfahrt nicht möglich")
+                return halt
+            self._text = "wartet auf die Lage in der Karte"
+            return halt
+        self._lage_fehlt_seit = None
+
+        # Ein Weg wird gerade geplant: abwarten.
+        if self._auftrag is not None:
+            if not self._auftrag.done():
+                self._text = "plant den Weg"
+                return halt
+            weg = self._auftrag.result()
+            self._auftrag = None
+            return self._weg_erhalten(jetzt, pose, weg)
+
+        if self._schritt_name == LUECKE_SUCHEN:
+            self._auftrag = self._planer.luecke(ortung.karte, (pose[0], pose[1]), self._erledigt)
+            self._text = "sucht die nächste unbekannte Stelle"
+            return halt
+
+        # Unterwegs: Ist die Lücke inzwischen bekannt (der Lidar sieht weit),
+        # muss er nicht bis hin.
+        if self._schritt_name == ZUR_LUECKE and jetzt - self._luecke_geprueft >= _LUECKE_PRUEFEN_S:
+            self._luecke_geprueft = jetzt
+            if self._ziel_luecke is not None and not _noch_unbekannt(ortung.karte, self._ziel_luecke):
+                self._luecke_erledigt(jetzt, "schon von unterwegs gesehen")
+                return halt
+
+        befehl, zustand = self._folger.schritt(pose, punkte)
+        if zustand == pf.ANGEKOMMEN:
+            if self._schritt_name == ZURUECK:
+                self._fertig(
+                    f"Karte vollständig ({self._luecken_angefahren} Lücken angefahren), "
+                    "zurück am Ausgangspunkt"
+                )
+                return halt
+            self._luecke_erledigt(jetzt, "angekommen")
+            return halt
+        if zustand in (pf.BLOCKIERT, pf.ABGEKOMMEN):
+            self._blockiert_seit = self._blockiert_seit or jetzt
+            if zustand == pf.ABGEKOMMEN or jetzt - self._blockiert_seit > config.KARTE_BLOCKIERT_S:
+                self._ziel_aufgeben(
+                    jetzt, "Weg versperrt" if zustand == pf.BLOCKIERT else "vom Weg abgekommen"
+                )
+            return halt
+        self._blockiert_seit = None
+        self._text = f"noch {self._folger.rest_m:.1f} m, {self._luecken_angefahren} Lücken angefahren"
+        return befehl
+
+    def _weg_erhalten(self, jetzt: float, pose, weg) -> DriveCommand:
+        halt = DriveCommand(0.0, 0.0, 0.0)
+        if self._schritt_name == ZURUECK:
+            if weg is None:
+                self._fertig("Karte vollständig, aber kein Weg zurück zum Ausgangspunkt")
+                return halt
+            self._folger.setzen(weg.punkte, von=pose, ziel_winkel=self._ortung.start[2])
+            self._text = f"Rückweg {weg.laenge:.1f} m"
+            return halt
+        if weg is None:
+            # Keine erreichbare Lücke mehr: Die Karte ist fertig.
+            start = self._ortung.start
+            weit = math.hypot(start[0] - pose[0], start[1] - pose[1]) > config.MAP_LUECKE_NAH_M
+            if config.MAP_FAHRT_ZURUECK and weit:
+                self._wechseln(ZURUECK, "keine unbekannte Stelle mehr", jetzt)
+                self._ziel_luecke = None
+                self._folger.setzen([])
+                self._auftrag = self._planer.weg(
+                    self._ortung.karte, (pose[0], pose[1]), (start[0], start[1])
+                )
+                return halt
+            self._fertig(f"Karte vollständig ({self._luecken_angefahren} Lücken angefahren)")
+            return halt
+        self._ziel_luecke = weg.luecke
+        self._folger.setzen(weg.punkte, von=pose)
+        self._blockiert_seit = None
+        self._luecke_geprueft = jetzt
+        self._wechseln(ZUR_LUECKE, f"Lücke in {weg.laenge:.1f} m Weg", jetzt)
+        return halt
+
+    def _luecke_erledigt(self, jetzt: float, wie: str) -> None:
+        if self._ziel_luecke is not None:
+            self._erledigt.append(self._ziel_luecke)
+        self._luecken_angefahren += 1
+        self._fehler_in_folge = 0
+        self._wechseln(LUECKE_SUCHEN, f"Lücke {self._luecken_angefahren}: {wie}", jetzt)
+
+    def _ziel_aufgeben(self, jetzt: float, grund: str) -> None:
+        """Diese Lücke ist nicht erreichbar: merken und die nächste nehmen."""
+        self._auftrag = None
+        if self._schritt_name == ZURUECK:
+            self._fertig(f"Karte vollständig, Rückweg zum Ausgangspunkt versperrt ({grund})")
+            return
+        if self._ziel_luecke is not None:
+            self._erledigt.append(self._ziel_luecke)
+        self._fehler_in_folge += 1
+        if self._fehler_in_folge > config.MAP_LUECKE_MAX_FEHLER:
+            self._fertig(
+                f"{self._fehler_in_folge} unbekannte Stellen in Folge nicht erreicht ({grund})"
+            )
+            return
+        log.info("Kartierfahrt: Lücke aufgegeben (%s)", grund)
+        self._wechseln(LUECKE_SUCHEN, f"Lücke aufgegeben: {grund}", jetzt)
+
     # --- 1. Zur Wand ---------------------------------------------------------------
 
     def _anfahren(self, jetzt: float, scan, punkte) -> DriveCommand:
         richtung, abstand = _naechste_wand(scan)
         if richtung is None:
-            self._fertig("keine Wand in Sicht")
+            self._raum_fertig(jetzt, "keine Wand in Sicht")
             return DriveCommand(0.0, 0.0, 0.0)
 
         vorn = frei_in_richtung(punkte, 0.0, config.EXPLORE_HALF_WIDTH_M)
@@ -163,7 +360,7 @@ class Kartierfahrt:
         # wird, bis der Lidar sie vorn sieht -- nicht nach Zeit.
         if abs(richtung) > 10.0:
             if jetzt - self._schritt_seit > _MAX_DREHEN_S:
-                self._fertig("konnte sich nicht zur Wand drehen")
+                self._raum_fertig(jetzt, "konnte sich nicht zur Wand drehen")
                 return DriveCommand(0.0, 0.0, 0.0)
             self._text = f"nächste Wand {abstand:.1f} m bei {richtung:+.0f}°"
             return DriveCommand(0.0, 0.0, math.copysign(config.MAP_FAHRT_DREH_TEMPO, richtung))
@@ -181,7 +378,7 @@ class Kartierfahrt:
         richtung, _ = _naechste_wand(scan)
         if not self._insel_geradeaus and richtung is not None and abs(richtung) < 150.0:
             if jetzt - self._schritt_seit > _MAX_DREHEN_S:
-                self._fertig("kam von einem Hindernis nicht los")
+                self._raum_fertig(jetzt, "kam von einem Hindernis nicht los")
                 return DriveCommand(0.0, 0.0, 0.0)
             # Die Insel nach hinten drehen, auf kürzestem Weg.
             return DriveCommand(0.0, 0.0, -math.copysign(config.MAP_FAHRT_DREH_TEMPO, richtung))
@@ -206,7 +403,7 @@ class Kartierfahrt:
             self._rand_weit_weg = False
             return DriveCommand(0.0, 0.0, 0.0)
         if jetzt - self._schritt_seit > _MAX_DREHEN_S:
-            self._fertig("konnte sich nicht an der Wand ausrichten")
+            self._raum_fertig(jetzt, "konnte sich nicht an der Wand ausrichten")
             return DriveCommand(0.0, 0.0, 0.0)
         return DriveCommand(0.0, 0.0, config.MAP_FAHRT_DREH_TEMPO)
 
@@ -332,8 +529,8 @@ class Kartierfahrt:
                 self._wechseln(VERSATZ, f"Lücke gefunden, Bahn {self._bahn_nr + 1}", jetzt)
                 return DriveCommand(0.0, 0.0, omega)
             if frei < config.EXPLORE_STOP_M or abs(entlang - self._luecke_ab) > _MAX_LUECKE_M:
-                self._fertig(
-                    f"seitlich kein Platz mehr, {self._bahnen_fertig} Bahnen gefahren"
+                self._raum_fertig(
+                    jetzt, f"seitlich kein Platz mehr, {self._bahnen_fertig} Bahnen gefahren"
                 )
                 return DriveCommand(0.0, 0.0, 0.0)
             soll_quer = self._bahn_nr * config.MAP_FAHRT_BAHNABSTAND_M
@@ -351,8 +548,8 @@ class Kartierfahrt:
                     self._luecke_ab = entlang
                     self._wechseln(LUECKE, "links zu eng, fährt ein Stück zurück", jetzt)
                     return DriveCommand(0.0, 0.0, omega)
-                self._fertig(
-                    f"gegenüberliegende Wand erreicht, {self._bahnen_fertig} Bahnen gefahren"
+                self._raum_fertig(
+                    jetzt, f"gegenüberliegende Wand erreicht, {self._bahnen_fertig} Bahnen gefahren"
                 )
                 return DriveCommand(0.0, 0.0, 0.0)
             dauer_max = 3.0 * config.MAP_FAHRT_BAHNABSTAND_M / config.MAP_FAHRT_SEITE_TEMPO
@@ -383,7 +580,7 @@ class Kartierfahrt:
             # Lauter Bahnen ohne Länge: Er steckt zwischen Hindernissen fest.
             self._leere_bahnen = self._leere_bahnen + 1 if laenge < 0.2 else 0
             if self._leere_bahnen >= 3:
-                self._fertig("kein Platz mehr für Bahnen")
+                self._raum_fertig(jetzt, "kein Platz mehr für Bahnen")
                 return DriveCommand(0.0, 0.0, 0.0)
             self._wechseln(VERSATZ, f"Bahn {self._bahn_nr} zu Ende ({laenge:.1f} m)", jetzt)
             return DriveCommand(0.0, 0.0, omega)
@@ -441,6 +638,17 @@ def _wand_rechts(punkte) -> tuple[float, float] | None:
     # Senkrechter Abstand der Geraden zur Roboter-Mitte.
     abstand = abs(-dy * mitte[0] + dx * mitte[1])
     return winkel, abstand
+
+
+def _noch_unbekannt(karte, punkt) -> bool:
+    """Liegt in der Nähe dieser Lücke noch Unbekanntes?"""
+    import numpy as np
+
+    r = config.MAP_LUECKE_NAH_M
+    winkel = np.linspace(0.0, 2 * math.pi, 16, endpoint=False)
+    xs = np.concatenate(([punkt[0]], punkt[0] + r * np.cos(winkel)))
+    ys = np.concatenate(([punkt[1]], punkt[1] + r * np.sin(winkel)))
+    return bool(karte.unbekannt_bei(xs, ys).any())
 
 
 def _normalisieren(winkel: float) -> float:
