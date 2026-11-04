@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ROSMASTER X3 — Tests</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-start">
+    <a href="/" class="einst-knopf diag-zurueck" title="Zurück zur Steuerung">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="15 18 9 12 15 6"/>
+      </svg>
+      <span>Steuerung</span>
+    </a>
+    <h1>ROSMASTER X3 · Tests</h1>
+  </div>
+  <div id="status" class="status offline">
+    <span class="dot"></span><span id="status-text">getrennt</span>
+  </div>
+</header>
+
+<main id="tests">
+
+  <section class="panel wide-panel">
+    <h2>So geht's</h2>
+    <ol class="ts-anleitung">
+      <li>Oben eine Kategorie wählen, die Anleitung des Tests lesen und den Platz vorbereiten.</li>
+      <li><strong>Start</strong> drücken. Der Roboter sagt jede Phase an; hier steht, was zu tun ist,
+        und wie lange es noch dauert. <strong>Er fährt dabei nie.</strong></li>
+      <li>Danach unter „Ergebnisse“ eine Notiz schreiben, was auffiel (z. B. „Licht von hinten“).</li>
+      <li><strong>Hochladen</strong> legt die Läufe im Git unter <code>tests/</code> ab
+        (Branch <code id="ts-branch">testdaten</code>), benannt nach Datum und Uhrzeit.
+        Ohne Token: als ZIP herunterladen und weitergeben.</li>
+    </ol>
+    <p id="ts-sim" class="hb-hinweis" hidden>
+      Simulation (<code>--mock</code>): Die Läufe landen in einem eigenen Ordner und zeigen nur Testdaten.
+    </p>
+  </section>
+
+  <!-- Laufender Test: groß, damit man ihn aus ein paar Metern lesen kann. -->
+  <section id="ts-live" class="panel wide-panel ts-live" hidden>
+    <div class="ts-live-kopf">
+      <h2 id="ts-live-titel">–</h2>
+      <button type="button" id="ts-stop" class="btn hb-stop-knopf">Abbrechen</button>
+    </div>
+    <p class="ts-phase"><span id="ts-phase-nr" class="hb-marke">–</span> <strong id="ts-phase-titel">–</strong>
+      <span id="ts-vorlauf" class="ts-vorlauf" hidden>gleich geht's los …</span></p>
+    <p id="ts-anweisung" class="ts-anweisung">–</p>
+    <p id="ts-satz" class="ts-satz" hidden></p>
+    <p class="ts-rest"><span id="ts-rest">–</span> s</p>
+    <div id="ts-werte" class="ts-werte"></div>
+  </section>
+
+  <p id="ts-meldung" class="ts-meldung wide-panel" hidden></p>
+
+  <section class="panel wide-panel">
+    <h2>Tests</h2>
+    <div id="ts-kategorien" class="ts-tabs" role="tablist"></div>
+    <div id="ts-liste" class="ts-karten"></div>
+  </section>
+
+  <section class="panel wide-panel">
+    <div class="ts-live-kopf">
+      <h2>Ergebnisse</h2>
+      <div class="hb-zeile">
+        <button type="button" id="ts-hoch-auswahl" class="btn">Ausgewählte hochladen</button>
+        <button type="button" id="ts-hoch-neu" class="btn btn-primary">Alle neuen hochladen</button>
+      </div>
+    </div>
+    <p id="ts-hoch-text" class="hb-hinweis"></p>
+    <p id="ts-keine" class="hb-hinweis">Noch keine Läufe gespeichert.</p>
+    <div id="ts-laeufe" class="ts-laeufe"></div>
+    <p class="hb-hinweis">Gespeichert auf dem Roboter in <code id="ts-ordner">–</code>.</p>
+  </section>
+
+  <section class="panel wide-panel">
+    <details id="ts-token">
+      <summary>Hochladen einrichten (einmalig, GitHub-Token) <span id="ts-token-stand"></span></summary>
+      <ol class="ts-anleitung">
+        <li>Auf GitHub: <em>Settings → Developer settings → Personal access tokens → Fine-grained tokens →
+          Generate new token</em>.</li>
+        <li><em>Repository access</em>: <strong>Only select repositories</strong> → nur dieses Repository.</li>
+        <li><em>Permissions → Repository permissions → Contents</em>: <strong>Read and write</strong>.
+          Sonst nichts. Ablaufdatum setzen (z. B. Projektende).</li>
+        <li>Am Roboter (Tastatur und Bildschirm oder per Terminal) speichern:
+          <pre>mkdir -p ~/.rosmaster
+nano ~/.rosmaster/github_token     # Token einfügen, speichern
+chmod 600 ~/.rosmaster/github_token</pre></li>
+        <li>Seite neu laden: Oben steht dann „Token vorhanden“. Der Server muss dafür nicht neu starten.</li>
+      </ol>
+      <p class="hb-hinweis">Der Roboter schreibt nur auf den Branch <code>testdaten</code>; sein eigener
+        Code-Stand bleibt unberührt. Das Token verlässt den Roboter nur Richtung GitHub und wird nie
+        angezeigt.</p>
+    </details>
+  </section>
+
+</main>
+
+<script src="/static/tests.js"></script>
+</body>
+</html>

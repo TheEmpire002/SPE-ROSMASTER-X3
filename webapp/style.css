@@ -1072,3 +1072,57 @@ a.einst-knopf { text-decoration: none; }
 @media (prefers-reduced-motion: reduce) {
   .hb-alarm { animation: none; }
 }
+
+/* --- Tests (/tests) --- */
+.ts-anleitung { margin: 0.3rem 0 0.6rem; padding-left: 1.3rem; line-height: 1.5; }
+.ts-anleitung pre {
+  background: #15181d; border: 1px solid var(--line); border-radius: 6px;
+  padding: 0.5rem 0.7rem; overflow-x: auto; font-size: 0.85rem;
+}
+.ts-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.8rem; }
+.ts-tab {
+  background: #20242c; color: var(--muted); border: 1px solid var(--line);
+  border-radius: 999px; padding: 0.35rem 0.9rem; cursor: pointer; font: inherit;
+}
+.ts-tab[aria-selected="true"] { background: #1d3a5c; border-color: var(--accent); color: #fff; }
+.ts-karten { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 0.8rem; }
+.ts-karte, .ts-lauf {
+  border: 1px solid var(--line); border-radius: 10px; padding: 0.8rem 0.9rem;
+  background: #1a1d23;
+}
+.ts-karte h3 { margin: 0 0 0.3rem; font-size: 1.05rem; }
+.ts-karte h4 { margin: 0.7rem 0 0.2rem; font-size: 0.85rem; color: var(--muted); font-weight: 600; }
+.ts-kurz { margin: 0; color: var(--muted); }
+.ts-phasen { margin: 0; padding-left: 1.3rem; font-size: 0.9rem; line-height: 1.45; }
+.ts-satz-klein { color: var(--accent); }
+.ts-start { margin-top: 0.8rem; width: 100%; }
+.ts-start:disabled { opacity: 0.45; cursor: default; }
+
+/* Der laufende Test soll aus ein paar Metern lesbar sein (man liegt ja vielleicht am Boden). */
+.ts-live { border-color: var(--accent); }
+.ts-live-kopf { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.ts-live-kopf h2 { margin: 0; }
+.ts-phase { margin: 0.6rem 0 0.2rem; font-size: 1.1rem; }
+.ts-vorlauf { color: var(--warn); margin-left: 0.4rem; }
+.ts-anweisung { font-size: 1.6rem; line-height: 1.3; margin: 0.4rem 0; color: #fff; }
+.ts-satz { font-size: 1.8rem; color: var(--accent); margin: 0.4rem 0; font-weight: 600; }
+.ts-rest { font-size: 2.6rem; font-variant-numeric: tabular-nums; margin: 0.2rem 0 0.6rem; font-weight: 700; }
+.ts-werte { display: grid; gap: 0.35rem; }
+.ts-wert { display: flex; gap: 0.8rem; align-items: center; }
+.ts-wert-name { color: var(--muted); min-width: 9rem; }
+.ts-pegel { flex: 1; max-width: 420px; height: 14px; background: #272b34; border-radius: 7px; overflow: hidden; }
+.ts-pegel-wert { height: 100%; width: 0; background: var(--ok); transition: width 0.2s linear; }
+
+.ts-meldung { margin: 0; padding: 0.6rem 0.9rem; border: 1px solid var(--line); border-radius: 8px; background: #1a1d23; }
+.ts-meldung.ts-fehler { border-color: var(--danger); }
+
+.ts-laeufe { display: grid; gap: 0.6rem; margin-top: 0.6rem; }
+.ts-lauf-kopf { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: pointer; }
+.ts-zeit { color: var(--muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.ts-ergebnis { margin: 0.5rem 0; padding-left: 1.2rem; font-size: 0.9rem; line-height: 1.45; }
+.ts-lauf .hb-zeile input[type="text"] { flex: 1; min-width: 12rem; }
+.ts-lauf a.btn { text-decoration: none; }
+.ts-ok { color: var(--ok); }
+.ts-warn { color: var(--warn); }
+.ts-fehler { color: var(--danger); }
+#ts-token summary { cursor: pointer; font-weight: 600; }
