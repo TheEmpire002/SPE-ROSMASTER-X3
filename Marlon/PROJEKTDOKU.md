@@ -625,6 +625,80 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Ergebnis:** Alle geänderten Dateien am Pi geparst, das ganze Paket lässt sich importieren.
 - **Offen:** Am Boden prüfen: genaue Fahrbefehle, Folgen mit sanftem Start und Antippen. Der Zweig `feat-mapping` hat mit dem Fahrschutz eine eigene zentrale Prüfung. Beim nächsten Abgleich mit `main` müssen Fahrschutz und `AutonomSchutz` zu einer Schicht zusammengeführt werden.
 
+### 03.11.2026 – Mapping: SLAM bekam keine Lidar-Daten
+- **Problem:** Auf `/map` ließ sich das Mapping starten, es entstand aber nie eine Karte, und es kam keine Rückmeldung.
+- **Ursache:** Das Mapping-Modul startete im Container `x3` nur slam_toolbox. Das ist nur der Kartenbauer und braucht `/scan` und die Position als TF. Die kämen von `sllidar_node` und `yahboomcar_bringup`, die bei uns nicht laufen dürfen, weil unser Server Lidar und Board offen hat. slam_toolbox wartete also endlos. Dass niemand es merkte, lag an drei Dingen: Der Start galt als gelungen, wenn der Prozess nach 0,3 s noch lebte. Das SLAM-Protokoll lag unbeachtet im Container. Und es gab keine Zeitgrenze für die erste Karte.
+- **Was:**
+  - Neu `mapping/einspeisung.py`: Unser Server reicht Scans und Odometrie per `docker exec -i` als JSON-Zeilen an einen kleinen ROS-Knoten im Container. Der veröffentlicht `/scan`, `/odom`, `/tf` und `/tf_static` für slam_toolbox (Entscheidung E8).
+  - Der Scan geht auf ein festes Raster von 360 Strahlen, weil slam_toolbox Scans mit wechselnder Strahlzahl verwirft. Die Position zum Messzeitpunkt geht mit. Sprünge durch einen neu gesetzten Startpunkt werden ausgeblendet.
+  - Vor dem Start wird geprüft, ob slam_toolbox installiert ist. Der Status nennt den ersten Schritt, der hakt (Lidar, Weitergabe, SLAM, Karte). Die Seite zeigt das samt SLAM-Protokoll.
+  - Beim Beenden des Servers läuft das Stoppen des Mappings erst nach dem Anhalten und in einem `try`. Ein Fehler darin (Docker nicht da) übersprang vorher das Trennen der Hardware.
+- **Ergebnis:** Am Laptop mit Attrappen statt Docker und ROS getestet: Raster, Sprungausgleich, Weitergabe an das echte Knoten-Skript (gegen nachgebaute ROS-Klassen), Neustart nach abgestürztem Knoten, alle Hinweistexte. Am Roboter noch nicht.
+- **Offen:** Am Pi prüfen: `docker exec x3 bash -lc "source /opt/ros/foxy/setup.bash; ros2 pkg prefix slam_toolbox"`, dann Mapping starten, durch den Raum fahren, Karte speichern.
+
+### 03.11.2026 – Kartierfahrt wie ein Saugroboter, Drehung aus dem Lidar
+- **Problem 1:** Beim Mapping fuhr der Roboter nicht. SLAM baut die Karte nur aus dem, was der Lidar sieht; im Stand ist das ein einziger Blickwinkel mit Schatten hinter jedem Möbel.
+- **Problem 2:** Die Odometrie kennt keine Drehung. Die IMU meldet als Kurswinkel immer 0, also dreht sich die Position nicht mit, wenn der Roboter sich dreht. SLAM hätte die Karte beim ersten Abbiegen verdreht.
+- **Was:**
+  - `navigation/scan_odometrie.py`: Jede Lidar-Aufnahme wird per ICP auf eine kurz zuvor gemachte gelegt. Daraus kommen Strecke und vor allem Drehung. Die Räder liefern nur den Startwert. Die Einspeisung in ROS nutzt jetzt diese Position.
+  - `navigation/kartierfahrt.py` als zweiter Modus des Erkunders: zur nächsten Wand, mit der Wand rechts einmal rundherum, dann Bahnen im Abstand von 0,8 m bis zur gegenüberliegenden Wand. Auf den Bahnen dreht er nicht, sondern fährt vor, rutscht seitlich, fährt rückwärts (Mecanum). Die Bahnrichtung hält er an der Richtung der Wände fest, die er in jeder Aufnahme neu misst.
+  - Seite `/map`: Haken „nach dem Start automatisch abfahren“, Knopf „Kartierfahrt starten/anhalten“, Anzeige des aktuellen Schritts. Schließt die letzte `/map`-Seite, hält er an.
+  - Weil die Fahrt ein Modus des Erkunders ist, beenden sie Not-Stopp, Eingreifen von Hand, Heimfahrt, Interaktion und Antriebsverlust wie bisher.
+- **Ergebnis (Simulation, Raum 8 × 6 m mit Säule, 12 % Radschlupf):** Komplette Fahrt in 4 min: rundherum 27 m, dann 6 Bahnen, Ende an der gegenüberliegenden Wand. Abweichung am Ende: Lidar-Odometrie 0,3 m und 4,5°, Räder allein 4,1 m und 49°. Unterwegs gefunden und behoben:
+  - Die Säule war das Nächste, er fuhr um sie herum und hielt das für den Raum → Inselerkennung (Runde unter 5 m).
+  - Bahnen lagen schräg, weil sie der Drift folgten → Ausrichtung an den Wänden.
+  - Wandrichtung versagte bei 3 cm Messrauschen → längere Wandstücke, seitdem höchstens 1° Fehler.
+- **Offen:** Am Boden prüfen. Erst mit niedrigem Tempo zusehen: Randfahrt, Ecken, Versatz, Rückwärtsbahnen. Dann prüfen, ob „einmal rundherum“ erkannt wird, und wie die Karte aussieht.
+
+### 03.11.2026 – Fahrschutz über die Grundfläche, alte Karte weg
+- **Problem 1:** Die Kollisionsvermeidung lief nicht zuverlässig. Sie prüfte einen Kegel ab Lidar-Mitte (übersieht Tischbeine neben den Rädern) und sperrte hart an der Grenze (rollt bei 0,22 s Verzögerung noch weiter). Drehen war immer erlaubt, Scans durften 2 s alt sein. Selbstständige Fahrten prüften nur einzelne Richtungen.
+- **Problem 2:** Nach einem neuen Start war die alte Karte noch da. Lief SLAM aus einem früheren Lauf noch im Container, wurde er einfach weiterbenutzt, mit alter Karte und altem Ursprung. Kartenempfang und Seite behielten die letzte Karte.
+- **Was:**
+  - Neu `safety/fahrschutz.py`: Für jeden Befehl wird vorausgerechnet, wo die Grundfläche des Roboters hinfährt, auch im Bogen und beim Drehen. Er bremst stufenlos, so dass der Anhalteweg ins Freie passt. Wegfahren bleibt erlaubt.
+  - Der Schutz gilt immer für Erkunder, Kartierfahrt, Heimfahrt und Interaktion (im Watchdog) und für die Handsteuerung, wenn der Hindernisstopp an ist. Der Regler behält seine Bedeutung.
+  - Neue Werte in `config.py` (`ROBOTER_*`, `FAHRSCHUTZ_*`). Der Abstand beim selbstständigen Fahren ist auf der Einstellungsseite verstellbar, der alte Kegelwinkel entfällt.
+  - Kommt eine autonome Fahrt 10 s lang nicht am Hindernis vorbei, gibt sie auf.
+  - Jeder Mapping-Start ist eine neue Karte: alter SLAM-Prozess beenden, Kartenempfang und Seite leeren.
+  - Kartierfahrt: Ist es beim Versatz seitlich zu eng (Möbel statt Wand), fährt er bis 2,5 m auf der Bahn zurück und versetzt dort. Vorher hörte er an der Säule zu früh auf.
+- **Ergebnis (Simulation):** Vollgas auf eine Wand mit 0,22 s Befehlsverzögerung: Bei 0,2, 0,5 und 0,8 m/s steht er jedes Mal 6 cm vor der Kante. Tischbein vorn rechts wird erkannt, der alte Kegel hätte es übersehen. Drehen dicht neben einer Wand wird gesperrt, Wegfahren nicht. Die Kartierfahrt mit Schutz deckt jetzt den ganzen Raum ab (6 Bahnen, auch neben der Säule). Am Ende liegt die Lidar-Odometrie 0,19 m und 3° neben der Wirklichkeit.
+- **Offen:** `ROBOTER_HINTEN_M` am Roboter nachmessen. Am Boden prüfen: Hindernisstopp in der App einschalten und auf Wand, Stuhl und Tischbein zufahren. Niedrige Hindernisse sieht der Lidar nicht.
+
+### 03.11.2026 – Mapping-Zweig auf main gebracht, genaue Fahrbefehle mit Fahrschutz
+- **Was:** Den Zweig `feat-mapping` auf den aktuellen Stand von `main` gesetzt (Rebase). Dort waren inzwischen die genauen Fahrbefehle (`manoever.py`) dazugekommen. Konflikte gab es nur in diesem Tagebuch, in `server.py` und in `navigation/__init__.py`. In allen drei Fällen bleiben beide Seiten erhalten.
+- **Angepasst an den Fahrschutz:**
+  - Die genauen Fahrbefehle schickten ihre Befehle ohne Fahrschutz an den Watchdog. Jetzt laufen sie wie alle selbstständigen Fahrten mit `schutz=True`. Sperrt der Schutz 1,5 s am Stück (`MANOEVER_GESPERRT_S`), gibt der Befehl auf und sagt, dass etwas im Weg ist.
+  - Vor dem Drehen wurde bisher ein Kreis von 30 cm um den Lidar geprüft. Im Bodentest sperrte der oft ohne Grund, wenn Beine oder Möbel vorn standen, obwohl der Roboter vorn nur 15 cm übersteht. Jetzt prüft `Fahrschutz.drehen_frei()` die Grundfläche über den ganzen Winkel. Der alte Kreis greift nur noch, wenn es keinen Fahrschutz gibt.
+  - Startet eine Kartierfahrt, bricht sie einen laufenden genauen Fahrbefehl ab. Vorher hätten zwei Programme gleichzeitig gelenkt.
+  - `test_manoever.py` verdrahtet den Fahrschutz wie der Server.
+- **Offen:** Am Boden prüfen: „90 Grad drehen“ mit Möbeln 20–30 cm vor dem Roboter (muss jetzt gehen) und direkt neben einer Wand (muss abgelehnt werden). `test_manoever.py` am Pi laufen lassen.
+
+### 03.11.2026 – Eine Schutzschicht: Fahrschutz und AutonomSchutz zusammengeführt
+- **Problem:** Nach dem Merge von `autonom` in `main` gab es zwei zentrale Prüfungen für autonome Fahrt im Watchdog: Marlons `AutonomSchutz` (`quelle="autonom"`) und den Fahrschutz aus `feat-mapping` (`schutz=True`). Beide hätten doppelt und unterschiedlich geprüft.
+- **Vergleich:**
+  - `AutonomSchutz`: Tempo nach Bremsweg bis zum nächsten Punkt in einem Streifen in Fahrtrichtung. Drehen immer erlaubt, Bögen nicht vorausgerechnet. Gut eingebunden: Tempogrenze, Akku-Drossel, Fahrtenschreiber, abschaltbar.
+  - Fahrschutz: rechnet die Grundfläche voraus, auch im Bogen und beim Drehen. Genau dabei stößt der X3 mit den Ecken an (Erkunden, Wenden beim Kartieren, „90 Grad drehen“).
+- **Entscheidung:** Marlons Schnittstelle bleibt (`quelle="autonom"`, `AUTONOM_SCHUTZ_AKTIV`), darin prüft der Fahrschutz. `AutonomSchutz` und `schutz=True` entfallen. Übernommen aus `AutonomSchutz`: Alter des ältesten Scan-Punkts, Punkte einmal pro Runde aufbereiten, Eingriffe zählen und entprellt loggen (Entscheidung E10).
+- **Gemeinsame Grundfläche:** Bogenplaner und Fahrschutz rechneten mit verschiedenen Maßen (hinten 0,15 statt 0,17 m, seitlich 0,13 statt 0,125 m) und Rändern (5 bzw. 6 cm). Seitlich und hinten wäre der Fahrschutz strenger gewesen als der Planer und hätte dessen Bögen abgebremst. Jetzt nutzt `AUSWEICH_*` die Werte `ROBOTER_*`, und der Fahrschutz-Rand ist auf 4 cm gesenkt, unter die 5 cm des Planers.
+- **Rebase:** `feat-mapping` auf `main` gesetzt. Im Erkunder bleibt Marlons Ablauf (Lidar-Prüfung, Hochheben, Nahbereich, Befreien) der Rahmen, die Kartierfahrt hängt sich danach ein. So gelten Befreien und Hochheben auch beim Kartieren.
+- **Ergebnis:** Am Pi lässt sich das ganze Paket importieren, die Testskripte kompilieren. `test_schutz.py` prüft jetzt den Fahrschutz (dazu neu: Drehen neben der Wand, Tischbein neben dem Rad).
+- **Offen:** `test_schutz.py`, `test_erkunder.py`, `test_ausweichen.py`, `test_umfahren.py` und `test_manoever.py` am Pi laufen lassen. Am Boden: Erkunden und Folgen in engen Räumen. Der Fahrschutz sperrt jetzt auch Drehungen, bei denen eine Ecke anstößt, was `AutonomSchutz` immer durchließ. Heck-Maß `ROBOTER_HINTEN_M` nachmessen.
+
+### 04.11.2026 – Tiefenkamera und Fortschrittswache gegen Hängenbleiben
+- **Problem:** Beim Kartieren blieb der Roboter an Stuhlbeinen und ähnlichen Dingen hängen, die der Lidar auf seiner Ebene nicht oder zu spät sieht. Die Räder liefen, er bewegte sich nicht, und die Karte wuchs nicht weiter. Die Festfahr-Erkennung des Erkunders galt nur beim Zufallsfahren, nicht bei der Kartierfahrt.
+- **Was:**
+  - **Tiefenkamera** (`sensors/tiefe.py`): Der Tiefenkanal der Orbbec Astra läuft über eine eigene ctypes-Anbindung an Orbbecs OpenNI2 (aus dem Yahboom-Container, `scripts/orbbec_einrichten.sh`). Das pip-Paket `openni` läuft unter Python 3.13 nicht. Jedes Bild wird zu Hindernispunkten: alles 4–40 cm über dem Boden. Den Boden sucht er als Ebene im Bild und gleicht damit die Einbaulage aus. Die Kamera läuft nur während autonomer Fahrten, weil ihr Projektor viel Strom am USB-Hub zieht.
+  - **Hindernisgedächtnis** (`navigation/hindernisgedaechtnis.py`): Die Astra misst erst ab 0,6 m. Ein Stuhlbein verschwindet also aus dem Bild, kurz bevor es wichtig wird. Das Gedächtnis merkt sich die Punkte und rechnet sie mit der eigenen Bewegung nach, beim Kartieren mit der Lidar-Odometrie. Erkunder, Kartierfahrt und Fahrschutz sehen sie wie Lidar-Punkte.
+  - **Fortschrittswache** (`navigation/fortschritt.py`): Sie vergleicht die vom Watchdog ausgegebene Bewegung mit der vom Lidar-Abgleich (ICP) gemessenen. Kommt über 2 s weniger als 30 % an, hängt er fest. Dann setzt er ein Phantom-Hindernis an die Stelle (30 s) und schiebt sich in die Gegenrichtung frei. Gilt in beiden Modi. Damit er in langen Fluren nicht falsch urteilt, wird der Abgleich doppelt gerechnet und muss eindeutig sein.
+  - Neu: `GET /tiefe/status`, `POST /tiefe/test` (Kamera 20 s an), in `state.autonomie` die Felder `tiefe` und `festgefahren`. Entscheidung E11.
+  - **Tiefenbild ansehen:** `/tiefe/stream` zeigt die Tiefe in Farbe (rot nah, blau fern, schwarz keine Messung), Hindernisse in Magenta, dazu die Entfernung in der Bildmitte. `/tiefe/ueberlagert/stream` legt das über das Farbbild der Orbbec. Beides ist in der App im Kamera-Umschalter wählbar. So sieht man direkt, was die Kamera misst und was als Hindernis zählt.
+- **Ergebnis (am Pi, im Stand):** Die Kamera verbindet sich, liefert ~7,5 Bilder/s, schaltet sich ab, wenn niemand sie braucht, und meldet Hindernisse in 0,58–1,33 m. Der Boden wurde beim Test nicht erkannt (Roboter stand erhöht).
+- **Offen:**
+  - Am Boden `/tiefe/test` und `/tiefe/status`: Muss `boden_erkannt` true sein? Stimmt `kamera_hoehe_m`? Hand links → `naechstes` mit positivem y.
+  - Kamerahöhe und -position nachmessen (`TIEFE_KAMERA_*`).
+  - Kartierfahrt mit Stühlen im Raum.
+  - Im Log auf „Fortschrittswache“ achten, ob sie sich im freien Raum irrt.
+  - Auf USB-Resets achten, solange die Kamera läuft.
+
 ---
 
 ## 3. Ergebnisse und Messwerte
@@ -678,6 +752,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 | Roboter startet die Interaktion von selbst | Vosk mit Grammatik macht aus Musik und Gesprächen erlaubte Sätze („robbie hallo“) | Konfidenz- und `[unk]`-Prüfung; bei Musik nur Stopp und „Musik aus“ (03.11.) |
 | Drehen/Strecke nach Zeit ungenau | Fahrbefehl überschätzt 10–30 %, Mecanum rutscht, Gyro unbrauchbar | Genaue Fahrbefehle messen mit dem Lidar (`navigation/manoever.py`, 03.11.) |
 | Fährt nach dem Folgen nur langsam und stotternd | Zweite offene App schickt im Leerlauf laufend „vx=0“ zwischen die Befehle des Lenkenden | Fahrvorrang für das lenkende Gerät, `DRIVE_VORRANG_S` (03.11.) |
+| Mapping startet, aber keine Karte und keine Rückmeldung | slam_toolbox bekam weder `/scan` noch TF, weil unser Server Lidar und Board hält; Start galt nach 0,3 s als gelungen | Server speist Scans und Odometrie in den Container ein, Status nennt den hakenden Schritt (E8, 03.11.). **Offen:** am Pi prüfen |
 | Nach einem Absturz keine Sprachbefehle mehr | Mikrofon fiel kurz vom USB ab, `strom.read()` blieb ohne Fehler für immer hängen | Lesen per Callback mit Frist, Neuöffnen nach 3 s ohne Ton; Rückwechsel von der C270 zum USB-Mikrofon (03.11.) |
 
 ---
@@ -686,6 +761,7 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 
 - **USB-Überlast im Leerlauf eingrenzen** (29.10.): alle Geräte ab, einzeln wieder an (Lidar zuletzt), Lidar-Kabel tauschen, Board-USB abziehen; Wert „USB-Überlast pro Minute“ auf `/diagnose`. Journal am Pi dauerhaft machen.
 - Bodentest des Erkunders mit Hindernissen.
+- Mapping am Pi: slam_toolbox im Container `x3` vorhanden? Dann auf `/map` starten, Kartierfahrt am Boden beobachten, Karte speichern (E8, E9).
 - **Stresstest am Boden** (Räder mit Last): erst am Netzteil, dann am Akku. Auf dem Podest gibt es mit beiden 0 Resets (29.10.), deshalb ist offen, ob das Netzteil unter Last hilft. Bleiben am Boden Resets, braucht es die getrennte 5-V-Versorgung für Pi bzw. Hub (siehe `docs/hardware.md`, „Was am Roboter tun“).
 - Stresstest mit eingeschalteter Interaktion (Hailo-Pose und Gesten unter Fahrlast) wiederholen.
 - Interaktion: Hailo-Pose am Pi prüfen, Fahrtest Folgen/Herkommen am Boden; danach Stufen 4–5 (Sprache, Geist).
@@ -693,11 +769,12 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - Sprachbefehle am Pi: `libportaudio2`, `pip install -e "robot[sprache]"` und Vosk-Modell installieren, `/sprache/status` prüfen, „Robi, folgen“ am Boden testen; erkennt Vosk „Robi“ schlecht, Varianten in `SPRACHE_WECKWORT_VARIANTEN` ergänzen.
 - Lautsprecher teilen: MUKKE und Stimme blockieren sich gegenseitig (exklusives ALSA-Gerät); gemeinsamer Mixer (dmix/PipeWire) offen.
 - Prüfen, ob der Antrieb beim Einschalten der Gesten jetzt verbunden bleibt (warmer Hailo).
-- Später: lokales LLM auf dem Hailo, Gesichter wiedererkennen, Orbbec-Tiefe für niedrige Hindernisse.
+- Später: lokales LLM auf dem Hailo, Gesichter wiedererkennen.
 - Diagnoseseite am Pi prüfen (Kernel-Log-Berechtigung, echte Akku- und Überlastwerte).
 - Sanftes Fahren am Boden prüfen: Folgen ohne USB-Resets, Rampe nicht zu träge.
 - Smoke-Test „Heimfahrt startet“ schlägt im Mock zeitweise fehl (auch ohne die Änderungen vom 03.11.; am 03.11. nachmittags einmal 19/19): Die Fahrt zuvor legt nur ~0,02 m zurück, die Heimfahrt endet sofort. Ursache prüfen.
 - Drehtest 90° am Boden: Blickrichtung aus der Board-Drehrate gegen den Lidar prüfen.
+- Tiefenkamera am Boden einmessen (`/tiefe/test`, Boden erkannt? links/rechts?) und Kartierfahrt mit Stühlen testen (E11).
 - Folgen mit zwei Personen am Boden: kreuzen, kurz verdecken, gleiche Kleidung. Merkmal-Schwellen ggf. nachstellen (`ZIEL_MERKMAL_*`).
 
 ---

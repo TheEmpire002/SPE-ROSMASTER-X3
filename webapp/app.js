@@ -1041,6 +1041,8 @@ class CamKachel {
   /* Ohne Kameranamen die alten Endpunkte -- die kennt auch ein Server
      ohne /cameras. */
   basis() {
+    const tiefe = tiefenAnsichten.find((a) => a.name === this.name);
+    if (tiefe) return tiefe.basis;
     return this.name ? `/camera/${encodeURIComponent(this.name)}` : "/camera";
   }
 
@@ -1066,6 +1068,7 @@ class CamKachel {
     this.name = name;
     this.fehler.hidden = true;
     this.modus = "mjpeg";
+    this.gestartetMit = this.basis(); // ändert sich, sobald /cameras geladen ist
     this.img.src = `${this.basis()}/stream?t=${Date.now()}`;
 
     // naturalWidth > 0 heißt: mindestens ein Bild wurde dekodiert. Das
@@ -1115,6 +1118,10 @@ let camAnsicht = localStorage.getItem("camAnsicht");
 let camStandard = null;
 let camListe = [];
 let kacheln = [];
+// Ansichten der Tiefenkamera (/tiefe/stream, über dem Farbbild): wie
+// Kameras wählbar, aber nicht bei "alle" -- jede schaltet den Projektor
+// ein, und der zieht viel Strom am USB-Hub.
+let tiefenAnsichten = [];
 
 function anzuzeigen() {
   if (camAnsicht === ALLE) {
@@ -1131,7 +1138,8 @@ function waehleAnsicht(ansicht) {
 }
 
 function kameraTitel(name) {
-  const info = camListe.find((c) => c.name === name);
+  const info = camListe.find((c) => c.name === name)
+    || tiefenAnsichten.find((c) => c.name === name);
   return info ? (info.kamera || info.name) : (name || "");
 }
 
@@ -1185,9 +1193,11 @@ async function ladeKameras() {
   camListe = daten.kameras || [];
   camStandard = daten.standard;
   if (daten.personen) personenKamera = daten.personen;
+  tiefenAnsichten = daten.tiefe || [];
 
   // Nach einem Neustart des Roboters kann die gewählte Kamera fehlen.
-  if (camAnsicht && camAnsicht !== ALLE && !camListe.some((k) => k.name === camAnsicht)) {
+  if (camAnsicht && camAnsicht !== ALLE && !camListe.some((k) => k.name === camAnsicht)
+      && !tiefenAnsichten.some((k) => k.name === camAnsicht)) {
     camAnsicht = null;
     localStorage.removeItem("camAnsicht");
   }
@@ -1203,14 +1213,18 @@ async function ladeKameras() {
     knoepfe.push(wahlKnopf(ALLE, camListe.length === 2 ? "Beide" : "Alle",
       "Alle Kameras nebeneinander"));
   }
+  for (const t of tiefenAnsichten) {
+    knoepfe.push(wahlKnopf(t.name, t.kamera,
+      "Was die Tiefenkamera misst: rot nah, blau fern, magenta Hindernis"));
+  }
   ui.camWahl.replaceChildren(...knoepfe);
-  ui.camWahl.hidden = camListe.length < 2;
+  ui.camWahl.hidden = camListe.length + tiefenAnsichten.length < 2;
 
   // Nur neu aufbauen, wenn sich wirklich etwas ändert -- sonst risse
   // jedes Nachladen alle Ströme kurz ab.
   const soll = anzuzeigen().join("|");
   const ist = kacheln.map((k) => k.name).join("|");
-  if (soll !== ist) {
+  if (soll !== ist || kacheln.some((k) => k.gestartetMit !== k.basis())) {
     zeigeKameras();
     return;
   }

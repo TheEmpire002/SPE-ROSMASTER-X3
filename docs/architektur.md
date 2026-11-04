@@ -53,14 +53,22 @@ Heimfahrt und Interaktion gleichermaßen. `stop()` umgeht sie und hält
 sofort an.
 
 Seit dem 03.11. prüft der Watchdog autonome Fahrbefehle (`quelle="autonom"`:
-Erkunder, Heimfahrt, Folgen) zusätzlich mit dem **`AutonomSchutz`**
-(`safety/collision.py`): Das Tempo in Fahrtrichtung wird so begrenzt, dass
-der Roboter vor dem nächsten Lidar-Punkt im Fahrschlauch noch anhalten kann
-(`v·t + v²/(2a) ≤ frei − Rand`, mit Latenz plus Alter des Scans). Ohne
-frischen Scan bleibt nur die Drehung erlaubt. Gebremst wird über die Rampe,
-nicht mit `stop()`: ein harter Halt erzeugt genau die Stromspitzen, die den
-USB-Hub zurücksetzen. Die Module prüfen weiterhin selbst; der Schutz ist
-das Netz darunter. Werte: `AUTONOM_SCHUTZ_*` in `config.py`.
+Erkunder, Kartierfahrt, Heimfahrt, Folgen, genaue Fahrbefehle) zusätzlich
+mit dem **Fahrschutz** (`safety/fahrschutz.py`, Entscheidung E10): Er
+rechnet voraus, wo die Grundfläche des Roboters bei diesem Befehl hinfährt,
+auch im Bogen und beim Drehen, und senkt das Tempo so, dass der Anhalteweg
+(Reaktionszeit plus Alter des ältesten Scan-Punkts plus Bremsweg) ins Freie
+passt. Wegfahren bleibt erlaubt. Ohne frischen Scan fährt kein autonomer
+Modus. Gebremst wird über die Rampe, nicht mit `stop()`: ein harter Halt
+erzeugt genau die Stromspitzen, die den USB-Hub zurücksetzen. Die Module
+prüfen weiterhin selbst; der Schutz ist das Netz darunter. Werte:
+`ROBOTER_*`, `FAHRSCHUTZ_*`, abschaltbar mit `AUTONOM_SCHUTZ_AKTIV`. Bis
+zum Zusammenführen am 03.11. tat das ein `AutonomSchutz` mit einem Streifen
+in Fahrtrichtung, der Drehungen nicht prüfte.
+
+Seit dem 04.11. bekommt der Fahrschutz neben den Lidar-Punkten auch die
+des Hindernisgedächtnisses: Was die Tiefenkamera unter der Lidar-Ebene
+sah, und Phantom-Hindernisse der Fortschrittswache (Entscheidung E11).
 
 **4. Die Notfall-Logik entscheidet nicht, sie meldet.**
 Erkennt das System einen möglichen Notfall, löst es einen Alarm an einen
@@ -75,9 +83,9 @@ Menschen aus. Es bewertet keinen Gesundheitszustand.
 | `audio/`       | Ton auf dem USB-Lautsprecher: `mukke.py` spielt YouTube-Links mit mpv ab |
 | `protocol.py`  | Nachrichtenformat — die gemeinsame Sprache aller Beteiligten |
 | `drive/`       | Fahren. `base.py` = Schnittstelle, dazu echter Treiber + Mock |
-| `safety/`      | Watchdog, Not-Aus, Geschwindigkeitsbegrenzung, Bremsweg-Prüfung autonom (`AutonomSchutz`) |
-| `sensors/`     | Lidar, Kamera, Personenerkennung, Körperpose (Hailo)        |
-| `navigation/`  | Odometrie, Lidar-Ortung, Heimfahrt, Erkunder, Ausweichen (`ausweichen.py`), Hindernis-Benennung |
+| `safety/`      | Watchdog, Not-Aus, Geschwindigkeitsbegrenzung, Fahrschutz über die Grundfläche (`fahrschutz.py`) |
+| `sensors/`     | Lidar, Kamera, Tiefenkamera (`tiefe.py`, OpenNI2; Anzeige `tiefe_anzeige.py`), Personenerkennung, Körperpose (Hailo) |
+| `navigation/`  | Odometrie, Lidar-Ortung, Heimfahrt, Erkunder, Ausweichen (`ausweichen.py`), Hindernis-Benennung, Hindernisgedächtnis für Tiefenpunkte (`hindernisgedaechtnis.py`), Fortschrittswache gegen Festhängen (`fortschritt.py`) |
 | `interaktion/` | Gesten, Verhalten (Folgen, Herkommen, Weggehen), Stimme (Sprachausgabe) und Sprachbefehle mit dem Weckwort „Robi“; geplant: Geist — siehe [`interaktion.md`](interaktion.md) |
 | `diagnose.py`  | Sammelt Ausfälle (Akku, USB, Unterspannung, Temperatur, Geräte, Log) und macht daraus verständliche Probleme für die Seite `/diagnose` |
 | `aufzeichnung.py` | Fahrtenschreiber: letzte Minute (Scans, Befehle, Odometrie, Zustände) im Speicher, auf Knopfdruck als Datei; dazu Laden und Nachspielen für `scripts/abspielen.py` |
@@ -153,6 +161,15 @@ Verhalten in BEREIT, die Heimfahrt bricht ab. Werte: `UMFAHREN_*`,
 `HOME_AUSWEICH_WARTEN_S`. Test: `Marlon/autonomes_fahren/test_umfahren.py`
 (Stuhl und Tür beim Folgen, Hindernis und Sackgasse bei der Heimfahrt,
 Hochheben).
+
+**Stand 03.11.:** Für die Karte kommt doch ROS2 dazu, aber nur als
+Kartenbauer. slam_toolbox läuft im Container `x3`. Unser Server bleibt der
+einzige Leser von Lidar und Board und speist Scans und Odometrie über
+`docker exec -i` ein (`mapping/einspeisung.py`, Begründung: E8). Bedienung
+und Rückmeldung über die Seite `/map`. Die Blickrichtung kommt dabei aus
+dem Lidar (`navigation/scan_odometrie.py`), und die Kartierfahrt
+(`navigation/kartierfahrt.py`) fährt den Raum als Modus des Erkunders ab:
+erst an der Wand rundherum, dann in Bahnen (E9).
 
 ## Interaktion
 

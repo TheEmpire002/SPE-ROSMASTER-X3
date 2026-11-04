@@ -79,26 +79,11 @@ AUTONOM_MAX_OMEGA = 1.2         # rad/s
 # Faktor auf AUTONOM_MAX_SPEED, sobald der Akku unter AKKU_WARN_V liegt.
 AUTONOM_AKKU_FAKTOR = 0.5
 
-# Bremsweg-Prüfung für alle autonomen Befehle im Watchdog (AutonomSchutz in
-# safety/collision.py). Erlaubt ist nur ein Tempo, bei dem der Roboter vor
-# dem nächsten Hindernis in Fahrtrichtung noch steht:
-#   frei - RAND >= v * (LATENZ + Scan-Alter) + v² / (2 * BREMSEN)
-# Die Modi halten selbst früher an; das hier ist die letzte Bremse.
+# Letzte Bremse für alle autonomen Befehle im Watchdog: der Fahrschutz
+# (safety/fahrschutz.py, Werte FAHRSCHUTZ_* weiter unten). Die Modi halten
+# selbst früher an; das hier fängt ab, was sie übersehen. Bis 03.11. war das
+# AutonomSchutz (Streifen in Fahrtrichtung, ohne Drehung), siehe E10.
 AUTONOM_SCHUTZ_AKTIV = True
-# Abstand Lidar-Mitte -> Hindernis, bei dem v = 0 ist. Kleiner als
-# EXPLORE_BEFREIEN_STOP_M (0,30) und EXPLORE_STOP_M (0,40), sonst würde die
-# Schicht das Befreien und das normale Erkunden blockieren.
-AUTONOM_SCHUTZ_RAND_M = 0.22
-AUTONOM_SCHUTZ_HALBE_BREITE_M = 0.20  # wie EXPLORE_HALF_WIDTH_M
-# Zeit von der Messung bis die Motoren reagieren (Rechnen, Board, Rampe),
-# zusätzlich zum Alter des Scans.
-AUTONOM_SCHUTZ_LATENZ_S = 0.15
-# Angenommene Bremsverzögerung. Bewusst kleiner als RAMPE_BREMSEN_XY (2,0):
-# Mecanum-Räder rutschen auf glattem Boden, und gemessen ist der Wert nicht.
-AUTONOM_SCHUTZ_BREMSEN = 1.0      # m/s²
-# Älterer Scan = kein Fahren mehr (nur Drehen). Bei 7,5 Umdrehungen/s ist
-# ein Scan im Betrieb höchstens ~0,15 s alt; 0,5 s heißt: der Lidar hängt.
-AUTONOM_SCHUTZ_SCAN_MAX_S = 0.5
 
 # --- Sicherheit ---------------------------------------------------------------
 
@@ -201,13 +186,101 @@ MATCH_TRUST = 0.55
 # rund fünfmal pro Sekunde.
 MATCH_HZ = 4.0
 
+# --- Kartierung (SLAM im ROS-Container) -----------------------------------------
+
+# Die Karte baut slam_toolbox in ROS2 Foxy im Docker-Container. Lidar und
+# Board hält aber unser Server; er speist Scans und Position in den
+# Container ein (mapping/einspeisung.py, Begründung: E8). Die Umgebungs-
+# variablen ROSMAP_* aus mapping/manager.py überschreiben die ersten Werte.
+MAP_CONTAINER = "x3"
+MAP_ROS_SETUP = "/opt/ros/foxy/setup.bash"
+MAP_SCAN_TOPIC = "/scan"
+
+# So oft (Hz) geht die Position an ROS. slam_toolbox braucht zu jedem Scan
+# die Position zu genau diesem Zeitpunkt; dichter als die Lidar-Umdrehung
+# (5,5 Hz) muss sie deshalb sein.
+MAP_FEED_HZ = 20.0
+
+# Winkelraster des eingespeisten Scans: so viele Strahlen pro Umdrehung.
+# slam_toolbox legt die Strahlzahl beim ersten Scan fest und verwirft jeden
+# späteren mit anderer Zahl. Der A1 liefert aber jedes Mal etwas anders
+# viele Punkte -- deshalb wird auf ein festes Raster gelegt.
+MAP_SCAN_STRAHLEN = 360
+
+# Springt die Radposition zwischen zwei Lidar-Umdrehungen weiter als das,
+# war es kein Fahren, sondern ein Neusetzen des Startpunkts. SLAM bekommt
+# den Sprung nicht zu sehen -- es hielte ihn für echte Bewegung und zerrisse
+# die Karte.
+MAP_SPRUNG_M = 0.3
+
+# Lidar-Odometrie (navigation/scan_odometrie.py): Die Blickrichtung kommt
+# aus dem Abgleich aufeinanderfolgender Aufnahmen, weil die IMU am X3
+# keinen Kurswinkel liefert. Bis zu diesem mittleren Restabstand gilt ein
+# Abgleich als gelungen; zwei Aufnahmen kurz nacheinander passen meist auf
+# 2-4 cm.
+MAP_ICP_MAX_RESIDUUM_M = 0.08
+# Nach so viel Bewegung wird die Bezugsaufnahme erneuert. Größer: weniger
+# Drift, aber die Aufnahmen überlappen schlechter.
+MAP_BEZUG_M = 0.25
+MAP_BEZUG_GRAD = 10.0
+
+# --- Kartierfahrt (navigation/kartierfahrt.py) ---
+#
+# Beim Kartieren fährt er wie ein Saugroboter: einmal mit der Wand rechts
+# rundherum, dann Bahnen parallel zur Wand. Gemächlich, damit SLAM jede
+# Stelle aus mehreren Aufnahmen kennt.
+
+# Tempo auf Bahnen und an der Wand (m/s), seitwärts beim Versatz, Drehen.
+MAP_FAHRT_TEMPO = 0.15
+MAP_FAHRT_SEITE_TEMPO = 0.12
+MAP_FAHRT_DREH_TEMPO = 0.5  # rad/s; darunter laufen die Motoren nicht sicher an
+
+# Abstand von der Lidar-Mitte zur Wand bei der Randfahrt. Halbe
+# Roboterbreite (0,12 m) plus Luft für Lenkfehler.
+MAP_FAHRT_WANDABSTAND_M = 0.40
+
+# Abstand der Bahnen. Der Lidar sieht viele Meter weit, für die Karte
+# müssen die Bahnen also nicht dicht liegen wie beim Saugen -- nur so dicht,
+# dass er hinter Möbel schaut.
+MAP_FAHRT_BAHNABSTAND_M = 0.8
+
+# Halbe Roboterlänge plus Rand: so breit muss es seitlich frei sein, wenn er
+# zur nächsten Bahn rutscht.
+MAP_FAHRT_HALBE_LAENGE_M = 0.22
+
+# Randfahrt fertig, wenn er wieder so nah am Anfang ist, nachdem er
+# mindestens MAP_FAHRT_RUNDE_MIN_M gefahren ist ...
+MAP_FAHRT_RUNDE_M = 0.6
+MAP_FAHRT_RUNDE_MIN_M = 3.0
+# Ist die Runde kürzer, war es keine Wand, sondern ein Hindernis mitten im
+# Raum (Säule, Sofa, Tisch): Er verlässt es und sucht die Wand. Ein Zimmer
+# von 2 x 2 m hat schon 8 m Umfang, an der Wand entlang gefahren gut 5.
+MAP_FAHRT_INSEL_M = 5.0
+# ... spätestens aber nach so vielen Sekunden (offene Türen, verwinkelte
+# Räume: dann kommt er vielleicht nie zurück).
+MAP_FAHRT_RAND_MAX_S = 300.0
+
+# Höchstdauer der ganzen Kartierfahrt (s), danach hält er an.
+MAP_FAHRT_MAX_S = 1200.0
+
+# Kommt so lange (s) nach dem Start keine Karte, meldet die Seite das
+# zusammen mit dem SLAM-Protokoll. slam_toolbox veröffentlicht die Karte
+# alle 5 s; die erste sollte also nach wenigen Sekunden da sein.
+MAP_ERSTE_KARTE_S = 20.0
+
+# So viele letzte Zeilen des SLAM-Protokolls zeigt die Seite.
+MAP_LOG_ZEILEN = 15
+
 # --- Kollisionsvermeidung bei manueller Steuerung -------------------------------
 
 # Standardmäßig aus: wer von Hand steuert, sieht den Roboter meistens und
 # will nicht bevormundet werden. In der App zuschaltbar.
 COLLISION_ENABLED = False
 
-# Mindestabstand in Fahrtrichtung. In der App per Regler verstellbar.
+# Mindestabstand in Fahrtrichtung, gemessen ab Lidar-Mitte wie bisher. In
+# der App per Regler verstellbar. Geprüft wird über den Fahrschutz (unten):
+# Die Roboterkante hält rundum (Abstand - ROBOTER_VORN_M) Luft, vorn also
+# genau diesen Abstand ab Lidar-Mitte.
 COLLISION_DISTANCE_M = 0.35
 
 # Grenzen des Reglers. Unter 15 cm sieht der Lidar nichts Verlässliches
@@ -215,10 +288,140 @@ COLLISION_DISTANCE_M = 0.35
 COLLISION_MIN_M = 0.15
 COLLISION_MAX_M = 1.5
 
-# Halber Öffnungswinkel des überwachten Bereichs in Grad. Siehe
-# HOME_CONE_DEG -- dieselbe Abwägung zwischen "übersieht Tischbeine" und
-# "hält vor jeder Wand an, an der man vorbeifahren will".
-COLLISION_CONE_DEG = 35.0
+# --- Fahrschutz: Kollisionsprüfung über die Grundfläche (safety/fahrschutz.py) ---
+#
+# Gilt für alles, was selbst fährt (quelle="autonom": Erkunder,
+# Kartierfahrt, Heimfahrt, Interaktion, genaue Fahrbefehle), und für die
+# Handsteuerung, wenn dort der Hindernisstopp an ist. Für jeden Befehl wird
+# vorausgerechnet, wo die Grundfläche hinfährt -- auch im Bogen und beim
+# Drehen; ragt ein Lidar-Punkt hinein, bremst er rechtzeitig.
+
+# Grundfläche, gemessen ab Lidar-Mitte. Vorn ragt der X3 ~0,15 m über, die
+# Breite ist 0,245 m. Hinten ist geschätzt -- am Roboter nachmessen. Die
+# einzige Stelle dafür: Die Bogenplanung (AUSWEICH_*) nutzt dieselben Werte,
+# sonst bremste der Fahrschutz Bögen, die der Planer für sicher hält.
+ROBOTER_VORN_M = 0.15
+ROBOTER_HINTEN_M = 0.17
+ROBOTER_HALBE_BREITE_M = 0.125
+
+# So viel Luft hält die Roboterkante beim selbstständigen Fahren mindestens.
+# Muss kleiner sein als AUSWEICH_RAND_M (Planer): Die Sicherheitsschicht
+# ist die innere Grenze. Gleich groß, und jedes Rauschen im Scan würgte
+# geplante Bögen ab.
+FAHRSCHUTZ_RAND_M = 0.04
+
+# Vom Befehl bis zur Wirkung vergehen am X3 ~0,22 s (Sensor-Check 28.10.);
+# dazu kommt das Alter des Scans. Solange fährt er ungebremst weiter.
+FAHRSCHUTZ_REAKTION_S = 0.25
+
+# Verzögerung, mit der beim Bremsen gerechnet wird. Bewusst unter der
+# Bremsrampe (RAMPE_BREMSEN_XY): Mecanum-Räder rutschen beim Bremsen.
+FAHRSCHUTZ_BREMSEN = 1.0       # m/s²
+FAHRSCHUTZ_BREMSEN_DREH = 3.0  # rad/s²
+
+# Älter darf der Scan nicht sein, sonst steht er (blind fährt er nicht).
+FAHRSCHUTZ_SCAN_MAX_S = 0.5
+
+# Unter diesem Anteil des Tempos hält er ganz an: So langsam setzen die
+# Motoren es am Boden nicht mehr um.
+FAHRSCHUTZ_MIN_ANTEIL = 0.2
+
+# Kommt eine autonome Fahrt so lange (s) wegen des Fahrschutzes nicht
+# weiter, gibt sie auf, statt ewig vor dem Hindernis zu stehen.
+FAHRSCHUTZ_FEST_S = 10.0
+
+# Die Hindernisse aus der Tiefenkamera (samt Gedächtnis, unten) gehen in den
+# Fahrschutz ein -- er bremst dann auch vor Stuhlfüßen und Kabelkanälen,
+# die unter der Lidar-Ebene liegen.
+FAHRSCHUTZ_MIT_TIEFE = True
+
+# --- Tiefenkamera (Orbbec Astra, sensors/tiefe.py) -----------------------------
+#
+# Der Lidar sieht nur in seiner Ebene (~17 cm über dem Boden). Darunter --
+# Stuhlfüße, Kufen, Kabelkanäle, Bettgestell -- fährt er auf und bleibt
+# hängen. Die Tiefenkamera sieht nach vorn alles zwischen Boden und
+# Roboteroberkante. Angesprochen über Orbbecs OpenNI2-Build (liegt im
+# Yahboom-Container, siehe scripts/orbbec_einrichten.sh), ohne ROS.
+
+TIEFE_AKTIV = True
+# Ordner mit libOpenNI2.so und OpenNI2/Drivers/liborbbec.so.
+TIEFE_OPENNI_PFAD = "~/orbbec_openni2"
+# 320x240 reicht für Hindernisse und spart Rechenzeit und USB-Bandbreite.
+TIEFE_BREITE = 320
+TIEFE_HOEHE_PX = 240
+# So oft (Hz) wird ein Bild ausgewertet; die Kamera liefert 30.
+TIEFE_HZ = 8.0
+# Einbau, gemessen ab Lidar-Mitte am Boden: Höhe der Kamera über dem Boden,
+# Abstand nach vorn, Neigung nach unten. Am Roboter nachmessen -- grobe Fehler
+# gleicht die Bodenerkennung aus, solange sie den Boden sieht.
+TIEFE_KAMERA_HOEHE_M = 0.22
+TIEFE_KAMERA_VOR_M = 0.05
+TIEFE_KAMERA_NEIGUNG_GRAD = 0.0
+# Ausgewertet wird nur dieser Bereich vor dem Roboter (m). Unter ~0,6 m misst
+# die Astra Pro gar nicht (Mindestreichweite), weiter weg wird sie ungenau,
+# und dort sieht der Lidar die Dinge ohnehin, bevor sie wichtig werden.
+TIEFE_MIN_M = 0.55
+TIEFE_MAX_M = 1.8
+# Als Hindernis zählt, was so hoch über dem erkannten Boden liegt (m). Unten
+# nicht unter ~4 cm, sonst wird jede Teppichkante und das Rauschen des
+# Bodens zum Hindernis; oben bis knapp über die Roboteroberkante.
+TIEFE_MIN_HOEHE_M = 0.04
+TIEFE_MAX_HOEHE_M = 0.40
+# Sieht die Kamera keinen Boden (dunkel, glänzend), zählen nur die
+# Einbauwerte. Dann vorsichtiger: höher ansetzen und nicht so weit schauen --
+# 2° falsche Neigung sind in 1,8 m schon 6 cm.
+TIEFE_OHNE_BODEN_ZUSCHLAG_M = 0.05
+TIEFE_OHNE_BODEN_MAX_M = 1.3
+# Rasterzelle (m) und Mindestzahl Punkte je Zelle: Einzelne Ausreißer im
+# Tiefenbild sollen kein Hindernis erzeugen, ein Stuhlfuß hat Dutzende.
+TIEFE_ZELLE_M = 0.05
+TIEFE_MIN_PUNKTE_ZELLE = 4
+# Älter darf ein Tiefenbild nicht sein, sonst gilt die Kamera als aus.
+TIEFE_MAX_ALTER_S = 1.0
+# Wartezeit (s) vor dem nächsten Verbindungsversuch nach einem Fehler.
+TIEFE_NEUVERSUCH_S = 5.0
+
+# Gedächtnis (navigation/hindernisgedaechtnis.py): Unter 0,6 m ist die Kamera
+# blind -- genau dort, wo das Hindernis zählt. Was sie weiter vorn gesehen
+# hat, wird deshalb mit der eigenen Bewegung mitgeführt, bis er vorbei ist.
+# So lange (s) bleibt ein Punkt höchstens, und nur bis zu dieser Entfernung.
+TIEFE_GEDAECHTNIS_S = 30.0
+TIEFE_GEDAECHTNIS_M = 2.5
+
+# Anzeige (/tiefe/stream): Farbskala von nah (rot) bis fern (blau), in m.
+TIEFE_ANZEIGE_NAH_M = 0.5
+TIEFE_ANZEIGE_FERN_M = 3.0
+# Überlagert über dieses Farbbild (dieselbe Orbbec, Kamera daneben).
+TIEFE_UEBER_KAMERA = "orientierung"
+# Die beiden Kameras sitzen ~2,5 cm auseinander und haben verschiedene
+# Bildwinkel. Die Skalierung kommt aus den Bildwinkeln; was dann noch
+# daneben liegt, hier von Hand nachschieben (Pixel im Farbbild, + = rechts/unten)
+# und Zoom (1.0 = nur nach Bildwinkel).
+TIEFE_UEBER_VERSATZ_PX = (0, 0)
+TIEFE_UEBER_ZOOM = 1.0
+# Deckkraft der Tiefenfarben über dem Farbbild (0..1).
+TIEFE_UEBER_DECKKRAFT = 0.45
+
+# --- Fortschrittswache (navigation/fortschritt.py) ------------------------------
+#
+# Vergleicht, was gefahren wurde (Befehl nach Rampe und Fahrschutz), mit dem,
+# was der Lidar an Bewegung sieht (ICP zweier Aufnahmen). Dreht er die Räder,
+# kommt aber nicht vom Fleck, hängt er an etwas, das keiner sieht.
+FORTSCHRITT_AKTIV = True
+# Vergleichsfenster (s) und wie oft (s) eine Aufnahme gemerkt wird.
+FORTSCHRITT_FENSTER_S = 2.0
+FORTSCHRITT_TAKT_S = 0.5
+# Erst ab so viel befohlener Bewegung im Fenster wird geurteilt.
+FORTSCHRITT_MIN_WEG_M = 0.12
+FORTSCHRITT_MIN_DREH_GRAD = 25.0
+# Festgefahren, wenn laut Lidar weniger als dieser Anteil davon geschah.
+FORTSCHRITT_ANTEIL = 0.3
+# An die Stelle, an der er hing, kommt ein gedachtes Hindernis, damit er
+# nicht gleich wieder dort hineinfährt. So lange (s) bleibt es.
+FORTSCHRITT_PHANTOM_S = 30.0
+# So lange ohne neues Befreien, dann zählen die Versuche beim Kartieren neu
+# (beim Zufallsfahren übernimmt das EXPLORE_FREI_ZURUECK_S).
+FORTSCHRITT_ERHOLT_S = 15.0
 
 # --- Heimfahrt ---------------------------------------------------------------------
 
@@ -313,8 +516,12 @@ MANOEVER_BLIND_S = 2.0
 MANOEVER_MAX_M = 5.0
 MANOEVER_MAX_GRAD = 720.0
 # Drehen nur, wenn ringsum so viel Platz ist (Ecken schwenken aus), m ab
-# Lidar-Mitte.
+# Lidar-Mitte. Nur noch Rückfall ohne Fahrschutz; sonst prüft der die
+# Grundfläche über den ganzen Winkel (FAHRSCHUTZ_RAND_M Luft).
 MANOEVER_DREH_FREI_M = 0.30
+# Sperrt der Fahrschutz so lange (s) am Stück, gibt der Befehl auf. Kurz,
+# denn wer "2 Meter vor" sagt, wartet auf eine Antwort.
+MANOEVER_GESPERRT_S = 1.5
 # Für den Abgleich höchstens so viele Lidar-Punkte (Rechenzeit am Pi).
 MANOEVER_MAX_PUNKTE = 300
 
@@ -495,14 +702,15 @@ AUSWEICH_GEDAECHTNIS_M = 1.0
 # so viel weiter sieht (das Ding ist weg oder war ein Messfehler).
 AUSWEICH_FREIRAEUMEN_M = 0.10
 
-# Umriss des Roboters um die Lidar-Mitte (m) für die Bogenplanung. Breite
-# 0,245 m; vorn ~0,15 m wie bei EXPLORE_STOP_M. Heck am Roboter nachmessen.
-AUSWEICH_VORN_M = 0.15
-AUSWEICH_HINTEN_M = 0.15
-AUSWEICH_HALBE_BREITE_M = 0.13
+# Umriss des Roboters um die Lidar-Mitte (m) für die Bogenplanung: derselbe
+# wie beim Fahrschutz (ROBOTER_*), Heck am Roboter nachmessen.
+AUSWEICH_VORN_M = ROBOTER_VORN_M
+AUSWEICH_HINTEN_M = ROBOTER_HINTEN_M
+AUSWEICH_HALBE_BREITE_M = ROBOTER_HALBE_BREITE_M
 
 # Bogenplanung: so weit (s) und in diesen Schritten vorausrechnen. Ein Bogen
-# taugt nur, wenn der Umriss überall mindestens AUSWEICH_RAND_M Luft hat.
+# taugt nur, wenn der Umriss überall mindestens AUSWEICH_RAND_M Luft hat
+# (größer als FAHRSCHUTZ_RAND_M, siehe dort).
 AUSWEICH_HORIZONT_S = 1.2
 AUSWEICH_SCHRITT_S = 0.1
 AUSWEICH_RAND_M = 0.05

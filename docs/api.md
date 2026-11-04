@@ -40,10 +40,17 @@ warum der Roboter stehen bleibt.
 3. **Der Server begrenzt, nicht der Client.** Jeder Befehl wird auf die
    Werte aus der `limits`-Nachricht gekappt. Physikalisch schafft das
    Fahrgestell ohnehin nur rund 1 m/s.
-4. **Die Kollisionsvermeidung kann eingreifen.** Ist sie eingeschaltet und
-   steht etwas zu nah in Fahrtrichtung, werden `vx`/`vy` auf 0 gesetzt. Die
-   Drehung bleibt erlaubt. Was der Roboter tatsächlich ausführt, steht in
-   der `state`-Nachricht, nicht unbedingt das, was man geschickt hat.
+4. **Die Kollisionsvermeidung kann eingreifen.** Ist sie eingeschaltet,
+   prüft der Fahrschutz, ob die Grundfläche des Roboters bei diesem Befehl
+   etwas berühren würde. Er bremst dann stufenlos, so dass der Roboter mit
+   Reaktionszeit und Bremsweg vorher steht, und sperrt zuletzt die Fahrt.
+   Wegfahren und Drehen, bei dem keine Ecke anstößt, bleiben erlaubt.
+   `distance` gilt ab Lidar-Mitte nach vorn; rundum hält die Roboterkante
+   `distance - ROBOTER_VORN_M` Luft. Was der Roboter tatsächlich ausführt,
+   steht in der `state`-Nachricht, nicht unbedingt das, was man geschickt
+   hat. Selbstständige Fahrten (Erkunden, Kartierfahrt, Heimfahrt,
+   Interaktion, genaue Fahrbefehle) prüft der Fahrschutz immer, mit
+   `FAHRSCHUTZ_RAND_M`, und ohne frischen Lidar-Scan fahren sie nicht.
 5. **Alle Clients sind gleichberechtigt.** Es gibt keine Steuerhoheit. Fahren
    zwei Clients gleichzeitig, gilt der jeweils letzte Befehl. Zustand und
    Meldungen gehen an alle.
@@ -292,8 +299,24 @@ weicht allem aus, was der Lidar sieht. Werte in `config.py` (`EXPLORE_*`):
 - **Festfahr-Erkennung:** Fährt er laut Befehl, aber das Board meldet
   kaum Tempo oder das Lidar-Bild rundum ändert sich über `EXPLORE_FEST_S`
   (1,5 s) nicht, befreit er sich ebenso.
+- **Tiefenkamera (seit 04.11.):** Während jeder autonomen Fahrt läuft
+  der Tiefenkanal der Orbbec Astra mit. Was zwischen 4 und 40 cm über dem
+  Boden steht (Stuhlbeine, Tischkanten, Kisten unter der Lidar-Ebene),
+  wird zu Hindernispunkten. Die Astra misst erst ab ~0,6 m. Deshalb merkt
+  sich ein **Hindernisgedächtnis** die Punkte und rechnet sie mit der
+  eigenen Bewegung nach, bis er vorbei ist (`TIEFE_GEDAECHTNIS_S`, 30 s).
+  Ausweichen, Kartierfahrt und Fahrschutz sehen sie wie Lidar-Punkte.
+  Ohne Kamera oder in der Simulation fehlt nur dieser Zusatz.
+- **Fortschrittswache (seit 04.11., beide Modi):** Alle 0,5 s vergleicht
+  er die Bewegung, die der Watchdog über die letzten ~2 s an die Motoren
+  gab, mit der laut Lidar-Abgleich (ICP) gefahrenen. Kam weniger als 30 %
+  an (`FORTSCHRITT_ANTEIL`), hängt er fest. Dann trägt er an dieser Stelle
+  ein **Phantom-Hindernis** ein (verfällt nach `FORTSCHRITT_PHANTOM_S`,
+  30 s) und schiebt sich vom Hindernis weg frei. Ist die Umgebung für den
+  Abgleich mehrdeutig (langer Flur), urteilt er nicht.
 - Erst nach `EXPLORE_BEFREIEN_MAX` (3) erfolglosen Befreiungen hintereinander
-  endet die Fahrt mit „festgefahren“.
+  endet die Fahrt mit „festgefahren“. Beim Kartieren zählen die Versuche
+  neu, wenn `FORTSCHRITT_ERHOLT_S` (15 s) lang keiner nötig war.
 - **Umfahren in Bögen (seit 03.11., F2):** Vor einem Hindernis rechnet er
   mögliche Bögen (Drehrate, etwas seitliches Schieben) gut eine Sekunde
   voraus und nimmt den besten, bei dem sein Umriss überall Luft behält.
@@ -341,6 +364,8 @@ Ist OpenCV installiert, sucht die Personenkamera (Logitech C270, siehe
   "ausweichen": 5,
   "menschen": 1,
   "befreien": 0,
+  "tiefe": 14,
+  "festgefahren": 0,
   "grund": null,
   "hindernisse": [
     {"art": "Stuhl", "winkel": 31.5, "abstand": 0.84, "breite": 0.41,
@@ -355,10 +380,14 @@ Ist OpenCV installiert, sucht die Personenkamera (Logitech C270, siehe
 | Feld | Bedeutung |
 |---|---|
 | `verfuegbar` | Lidar vorhanden, `explore` möglich |
-| `zustand` | `faehrt`, `dreht`, `wartet`, `wartet auf Mensch`, `wartet auf Lidar`, `befreit sich` (neu 03.11.), `hochgehoben` (neu 03.11., F2); `null` wenn aus |
+| `modus` | `zufall` (`explore`) oder `karte` (Kartierfahrt, siehe [Kartierung](#kartierung-slam)); `null` wenn aus |
+| `kartierfahrt` | nur im Modus `karte`: `{"schritt", "text", "randweg_m", "bahnen"}` |
+| `zustand` | `faehrt`, `dreht`, `wartet`, `wartet auf Mensch`, `wartet auf Lidar`, `befreit sich` (neu 03.11.), `hochgehoben` (neu 03.11., F2), `kartiert`; `null` wenn aus |
 | `text` | Erklärung für die Anzeige |
 | `frei_vorn` | freie Strecke im Korridor vor dem Roboter (m) |
 | `ausweichen`, `menschen`, `befreien` | Zähler dieser Fahrt (`befreien` neu 03.11., fehlt bei älteren Servern) |
+| `tiefe` | Punkte im Hindernisgedächtnis (Tiefenkamera und Phantome); `null` ohne Tiefenkamera (neu 04.11.) |
+| `festgefahren` | wie oft die Fortschrittswache in dieser Fahrt ein Festhängen erkannte (neu 04.11.) |
 | `grund` | warum die letzte Fahrt endete |
 | `hindernisse` | die 12 nächsten, nächstes zuerst. `winkel` in Grad wie beim Lidar, `x`/`y` Mitte in Roboterkoordinaten (m) |
 | `personen` | Personenrahmen im Bild der Personenkamera, relativ zur Bildgröße (0..1) |
@@ -474,9 +503,12 @@ nach Zeit oder Radumdrehungen (`navigation/manoever.py`).
   daneben.
 - Tempo `MANOEVER_SPEED` (0,2 m/s), drehen `MANOEVER_DREH` (0,6 rad/s).
 - **Sicherheit:** Er hält an, wenn in Fahrtrichtung etwas näher als
-  `EXPLORE_STOP_M` (0,4 m) kommt, beim Drehen, wenn ringsum etwas näher als
-  `MANOEVER_DREH_FREI_M` (0,3 m) ist, und wenn das Lidar die Umgebung
-  `MANOEVER_BLIND_S` (2 s) lang nicht wiedererkennt.
+  `EXPLORE_STOP_M` (0,4 m) kommt und wenn das Lidar die Umgebung
+  `MANOEVER_BLIND_S` (2 s) lang nicht wiedererkennt. Gedreht wird nur, wenn
+  über den ganzen Winkel keine Ecke der Grundfläche näher als
+  `FAHRSCHUTZ_RAND_M` an etwas herankommt (vorher geprüft). Zusätzlich läuft
+  jeder Befehl durch den Fahrschutz; sperrt der `MANOEVER_GESPERRT_S`
+  (1,5 s) am Stück, gibt er auf und sagt, warum.
 - `GET /manoever/status`: `aktiv`, `art`, `wert`, `text` (Fortschritt),
   `grund` (wie der letzte endete), `erfolgreich`, `gefahren_m`,
   `gedreht_grad` (laut Lidar, gegenüber dem Start), `abgleiche`,
@@ -559,6 +591,10 @@ Testbild als `image/png`, mit eigener Balkenfarbe.
 {
   "standard": "orientierung",
   "personen": "personen",
+  "tiefe": [
+    {"name": "tiefe", "kamera": "Tiefe", "basis": "/tiefe"},
+    {"name": "tiefe-ueber", "kamera": "Tiefe + Farbbild", "basis": "/tiefe/ueberlagert"}
+  ],
   "kameras": [
     {"name": "orientierung", "kamera": "Orbbec (Farbbild)", "geoeffnet": true,
      "stream": "/camera/orientierung/stream",
@@ -572,6 +608,8 @@ Testbild als `image/png`, mit eigener Balkenfarbe.
 
 `personen` ist der Name der Kamera, auf deren Bild die Personenrahmen aus
 `state.autonomie.personen` liegen.
+`tiefe` (neu 04.11.) sind die Ansichten der Tiefenkamera, leer ohne sie. Bild
+unter `<basis>/stream` bzw. `<basis>/snapshot`, siehe [Tiefenkamera](#tiefenkamera).
 
 `/camera/status` bzw. `/camera/<name>/status`:
 
@@ -631,6 +669,58 @@ xy = [(m * math.cos(math.radians(g)), m * math.sin(math.radians(g))) for g, m in
 
 `letztes_residuum_m` sagt, wie gut die aktuelle Aufnahme auf die Referenz
 vom Startpunkt passt. Unter 0,05 ist gut.
+
+### Tiefenkamera
+
+Die Kamera läuft nur während autonomer Fahrten (Strom am USB-Hub). Eingebunden
+wird sie per OpenNI2, Einrichtung siehe [hardware.md](hardware.md#tiefenkamera-orbbec-astra).
+
+**`GET /tiefe/status`**:
+
+```json
+{
+  "kamera": {
+    "verfuegbar": true, "verbunden": true, "aktiv_fuer": ["erkunder"],
+    "bilder_pro_s": 7.6, "hindernisse": 12, "frei_zellen": 230, "naechstes": [0.71, 0.12],
+    "boden_erkannt": true, "kamera_hoehe_m": 0.214, "neigung_grad": -1.5,
+    "bildwinkel_grad": 57.9, "fehler": null
+  },
+  "hinweis": null,
+  "gedaechtnis": {"punkte": 14, "phantome": 0, "rahmen": "lidar"},
+  "fortschritt_aktiv": true
+}
+```
+
+- `kamera` ist `null` in der Simulation oder ohne OpenNI2 (dann steht der
+  Grund in `hinweis`).
+- `boden_erkannt`: Im Bild wurde eine Bodenebene gefunden. Dann stimmen die
+  Höhen, und `kamera_hoehe_m`/`neigung_grad` zeigen die gemessene
+  Einbaulage. Ohne Boden rechnet er vorsichtiger: 5 cm mehr Mindesthöhe,
+  nur bis 1,3 m.
+- `gedaechtnis.rahmen`: worin die Punkte gemerkt werden, `lidar`
+  (Lidar-Odometrie, beim Kartieren) oder `rad` (Odometrie).
+
+**`POST /tiefe/test`**: schaltet die Kamera für 20 s ein, um im Stand
+Bodenerkennung und Einbaulage zu prüfen.
+
+**Tiefenbild ansehen** (neu 04.11., braucht OpenCV am Pi):
+
+| Endpunkt | Liefert |
+|---|---|
+| `GET /tiefe/stream` | MJPEG: Tiefenbild in Farbe |
+| `GET /tiefe/snapshot` | ein Bild davon (JPEG) |
+| `GET /tiefe/ueberlagert/stream` | dasselbe halbdurchsichtig über dem Farbbild der Orbbec (`TIEFE_UEBER_KAMERA`) |
+| `GET /tiefe/ueberlagert/snapshot` | ein Bild davon |
+
+Rot ist nah, blau fern (`TIEFE_ANZEIGE_NAH_M` bis `…_FERN_M`). Schwarz heißt
+keine Messung: näher als ~0,6 m, zu weit, spiegelnd. Magenta zählt als
+Hindernis. Dazu kommen die Entfernung in der Bildmitte (Kreuz), das nächste
+Hindernis und ob der Boden erkannt ist. Wer zusieht, schaltet die Kamera
+ein; nach dem Schließen geht sie wieder aus. Die Überlagerung deckt sich nur
+ungefähr, denn die Kameras haben verschiedene Bildwinkel und sitzen 2–3 cm
+auseinander. Nachstellen lässt sie sich mit `TIEFE_UEBER_VERSATZ_PX` und
+`TIEFE_UEBER_ZOOM`. In der App sind beide Ansichten im Kamera-Umschalter
+wählbar, aber nicht unter „Alle“.
 
 ### Autonomes Fahren
 
@@ -822,6 +912,61 @@ finden). Voraussetzungen auf dem Pi: `mpv` und `yt-dlp`, siehe
 | `WS /sprache/ton` | Mithören (App: Schalter „Mikrofon mithören“): erst eine Textnachricht `{"rate": 16000}` (`null`, solange kein Mikrofon offen ist; bei jedem Wechsel neu und ohne Ton jede Sekunde als Lebenszeichen: Kommt 5 s gar nichts, verbindet die App neu), dann der Rohton als Binärnachrichten, 16 bit little-endian, mono, Blöcke à 0,25 s. Kommt der Browser nicht hinterher, fallen Blöcke weg (`SPRACHE_TON_PUFFER`). Nur solange jemand verbunden ist, wird etwas verschickt. |
 | `WS /sprache/durchsage` | Durchsage (App: Schalter „Über den Roboter sprechen“): Ton aus dem Browser-Mikrofon live über den Lautsprecher des Roboters. Der Server antwortet zuerst `{"bereit": true|false, "grund": …}`, später erneut, wenn der Lautsprecher ausfällt oder wieder geht. Der Client schickt `{"rate": 16000}` und danach Rohton als Binärnachrichten (16 bit little-endian, mono). Läuft in der Warteschlange der Stimme: Musik pausiert, die Spracherkennung hört so lange weg, ein Stopp bricht ab. Nach `DURCHSAGE_PAUSE_S` (2 s) ohne Ton ist der Lautsprecher wieder frei. Browser geben das Mikrofon nur über HTTPS frei, deshalb läuft dieselbe App zusätzlich unter `https://<roboter>:8443` (`HTTPS_PORT`, selbst unterschriebenes Zertifikat in `~/.rosmaster/https`, die Warnung im Browser einmal bestätigen). |
 
+### Kartierung (SLAM)
+
+Die Karte baut slam_toolbox im ROS-Container `x3`. Lidar und Position
+speist der Server selbst ein (E8 in [`entscheidungen.md`](entscheidungen.md)).
+Bedienoberfläche: `GET /map`.
+
+| Endpunkt | Liefert |
+|---|---|
+| `GET /api/mapping/status` | Zustand (siehe unten) |
+| `POST /api/mapping/start` | startet Einspeisung, Kartenempfang und SLAM; Fehler kommen als 503 mit Text |
+| `POST /api/mapping/stop` | beendet alles wieder (auch die Kartierfahrt), die letzte Karte bleibt abrufbar |
+| `POST /api/mapping/fahrt/start` | Kartierfahrt starten (nur bei laufendem Mapping, sonst 409 mit Grund) |
+| `POST /api/mapping/fahrt/stop` | Kartierfahrt anhalten |
+| `GET /api/mapping/map` | letzte Karte (`nav_msgs/OccupancyGrid`, Zellen als Base64), 404 vor der ersten |
+| `POST /api/mapping/save` | speichert die letzte Karte als PGM + YAML, Body `{"name": "wohnzimmer"}` |
+| `GET /api/mapping/maps` | gespeicherte Karten |
+| `WS /api/mapping/ws` | alle 3 s `{"type": "status"}`, bei jeder neuen Karte `{"type": "map"}`, bei Änderungen der Kartierfahrt `{"type": "fahrt"}` |
+
+Für die Rückmeldung im Status:
+
+```json
+{
+  "aktiv": true, "mapping_running": true, "map_available": false,
+  "hinweis": "SLAM läuft, warte auf die erste Karte (6 s). 31 Scans an ROS gegeben.",
+  "hinweis_fehler": false,
+  "einspeisung": {"laeuft": true, "bereit": true, "scans": 31,
+                  "letzter_scan_vor_s": 0.1, "lidar_scan_vor_s": 0.1,
+                  "neustarts": 0, "fehler": null},
+  "slam_log": ["[INFO] [launch]: ...", "..."]
+}
+```
+
+`hinweis` nennt den ersten Schritt, der hakt: Lidar, Weitergabe an ROS,
+SLAM-Prozess, Kartenempfang. Bei `hinweis_fehler` steht die Ursache meist
+in `slam_log`. Dazu kommen `lidar_odometrie` (Position aus dem
+Lidar-Abgleich, Zahl gelungener und verworfener Abgleiche) und `fahrt`
+(`aktiv`, `text`, `schritt`, `bahnen`, `dauer_s`, `grund` der letzten
+Kartierfahrt).
+
+**Kartierfahrt.** Der Roboter fährt den Raum ab wie ein Saugroboter:
+zur nächsten Wand, mit der Wand rechts einmal rundherum, dann Bahnen
+parallel zu dieser Wand, jede `MAP_FAHRT_BAHNABSTAND_M` (0,8 m) weiter im
+Raum, bis zur gegenüberliegenden Wand. Auf den Bahnen dreht er nicht um,
+sondern fährt vor, rutscht seitlich weiter und fährt rückwärts zurück
+(Mecanum). Eine Runde unter `MAP_FAHRT_INSEL_M` (5 m) gilt als Hindernis
+mitten im Raum: Er verlässt es und sucht die Wand. Werte: `MAP_FAHRT_*` in
+`config.py`.
+
+Technisch ist sie ein Modus des Erkunders (`state.autonomie.modus =
+"karte"`). Deshalb beenden sie dieselben Dinge wie `explore`: `stop`,
+`explore_stop`, jede Fahreingabe ≠ 0, `home`, `set_home`, Interaktion,
+Antriebsverlust. Zusätzlich hält sie an, wenn die letzte Seite `/map`
+geschlossen wird (Totmannschaltung), und mit `POST /api/mapping/stop`. Das
+Ende meldet `alert` „Autonomes Fahren beendet: Kartierfahrt fertig -- …“.
+
 ### Sonstiges
 
 | Endpunkt | Liefert |
@@ -884,7 +1029,8 @@ Vorbild ist `navigation/homing.py`.
 | `api/server.py` | alle Endpunkte, WebSocket-Verarbeitung, Hintergrundschleifen |
 | `config.py` | alle Grenzwerte und Einstellungen an einer Stelle |
 | `safety/watchdog.py` | Begrenzung, Totmannschaltung und Anfahrrampe |
-| `safety/collision.py` | Kollisionsvermeidung bei manueller Fahrt |
+| `safety/collision.py` | Kollisionsvermeidung bei manueller Fahrt (über den Fahrschutz) |
+| `safety/fahrschutz.py` | Kollisionsprüfung über die Grundfläche für alle Fahrten |
 | `navigation/odometry.py` | Positionsschätzung |
 | `navigation/localizer.py` | Lidar-Abgleich gegen die Startpunkt-Aufnahme |
 | `navigation/homing.py` | Heimfahrt |
