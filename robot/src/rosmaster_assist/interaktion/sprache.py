@@ -547,6 +547,16 @@ class Spracherkennung:
             log.debug("Gehört ohne Befehl: %r", text)
         return befehl
 
+    def gehoert_seit(self, zeit: float) -> list[str]:
+        """Alles, was seit ``zeit`` (Unix-Zeit) gehört wurde, ältestes zuerst.
+
+        Für Rückfragen wie die des Healthbots ("Geht es Ihnen gut?"): Die
+        Antwort ist kein Befehl und steht deshalb nicht in der Schlange,
+        sondern nur in den Ereignissen.
+        """
+        with self._lock:
+            return [e["text"] for e in self._ereignisse if e["zeit"] >= zeit]
+
     def live(self) -> dict:
         """Für das Mitlesen in der App (GET /sprache/live), etwa 5x pro Sekunde.
 
@@ -941,7 +951,14 @@ class Spracherkennung:
         fahrbefehle = [s for s in _manoever_saetze() if geht(s)]
         log.info("Spracherkennung: %d genaue Fahrbefehle in der Grammatik", len(fahrbefehle))
         wendungen += fahrbefehle
-        saetze = weck + wendungen
+        # Antworten auf Rückfragen (Healthbot), ohne Weckwort und ohne
+        # Befehl: Sie landen nur in den Ereignissen (gehoert_seit()).
+        antworten = [
+            w for w in dict.fromkeys(
+                [*config.HEALTH_WOERTER_HILFE, *config.HEALTH_WOERTER_NEIN]
+            ) if geht(w)
+        ]
+        saetze = weck + wendungen + antworten
         # Name vor und nach dem Befehl als ganze Sätze: so passt Vosk das
         # Gesprochene an einen der erlaubten Sätze an, statt Wortsalat zu bauen.
         for w in weck:
