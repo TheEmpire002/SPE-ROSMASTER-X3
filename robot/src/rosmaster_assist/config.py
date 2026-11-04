@@ -1177,6 +1177,39 @@ AUFZEICHNUNG_ORDNER = Path.home() / ".rosmaster" / "aufzeichnungen"
 # Eine Datei hat gepackt einige hundert KB; ältere werden gelöscht.
 AUFZEICHNUNG_MAX_DATEIEN = 20
 
+# --- Testläufe (testlauf.py, seit 04.11.) -----------------------------------
+# Die Seite /tests startet Messläufe für Mikrofon, Liegend- und
+# Personenerkennung. Sie fahren nie; sie sammeln Daten, die man danach auf
+# den Branch testdaten hochlädt und am Rechner auswertet.
+TESTS_ORDNER = Path.home() / ".rosmaster" / "tests"
+# 5 Proben pro Sekunde reichen für Pose (10 Hz) und Pegel, und ein Lauf
+# bleibt bei einigen hundert KB JSON.
+TESTS_TAKT_HZ = 5.0
+# Zeit zwischen Ansage und Messung, um sich hinzulegen oder hinzustellen.
+TESTS_VORLAUF_S = 6.0
+# Nach dem letzten Mikrofon-Schritt noch so lange hören: Vosk meldet einen
+# Satz erst nach der Sprechpause.
+TESTS_NACHLAUF_S = 2.0
+# Bilder je Lauf (JPEG, je ~40 KB); mehr bläht das Repo auf.
+TESTS_MAX_BILDER = 16
+# Tonmitschnitt höchstens so lang (16 kHz mono = 32 KB/s, 3 min ~ 6 MB).
+TESTS_WAV_MAX_S = 180.0
+# Höchstens so lange auf das Ende einer Ansage warten.
+TESTS_STIMME_WARTEN_S = 10.0
+# Lidar-Runden, die älter sind, gelten als fehlend (wie im Healthbot).
+TESTS_SCAN_MAX_ALTER_S = 1.0
+TESTS_NOTIZ_MAX_ZEICHEN = 2000
+# GitHub-Token (fine-grained, nur "Contents: read and write" für dieses
+# Repo). Liegt nur auf dem Pi, nie im Repo; Anleitung auf der Seite /tests.
+TESTS_GIT_TOKEN_DATEI = Path.home() / ".rosmaster" / "github_token"
+# None = die https-Adresse von "origin" des Repos, in dem der Server liegt.
+TESTS_GIT_URL = None
+# Eigener Branch, damit Messdaten nie in main oder den Arbeitsstand geraten.
+TESTS_GIT_BRANCH = "testdaten"
+TESTS_GIT_TIMEOUT_S = 60.0
+TESTS_GIT_AUTOR = "ROSMASTER X3"
+TESTS_GIT_EMAIL = "rosmaster@localhost"
+
 # --- Musik ("MUKKE") ----------------------------------------------------------------
 
 # YouTube-Links aus der App werden mit mpv auf dem USB-Lautsprecher

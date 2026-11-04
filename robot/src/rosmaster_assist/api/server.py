@@ -62,6 +62,7 @@ from ..sensors.lidar import LidarService, create_lidar
 from ..sensors.personen import Personenerkennung
 from ..sensors.pose import SKELETT, Posenerkennung
 from ..zustandserkennung import Healthbot
+from ..testlauf import Testlauf
 from ..zustandserkennung.simulation import SZENEN, Simulation
 from ..sensors.tiefe import create_tiefe
 from ..sensors import tiefe_anzeige
@@ -284,6 +285,14 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         roh_lidar = getattr(lidar, "_lidar", None) if lidar is not None else None
         health_sim = Simulation(pose, pose_quelle, getattr(roh_lidar, "hindernisse_setzen", None))
 
+    # Messläufe für die Seite /tests: sammeln Daten von Mikrofon, Pose und
+    # Personenerkennung, damit man sie später in Ruhe auswerten kann. Sie
+    # fahren nie.
+    testlauf = Testlauf(
+        pose=pose, personen=personen, kamera=personen_kamera, kameras=kameras,
+        lidar=lidar, stimme=stimme, sprache=sprache, mock=use_mock_camera,
+    )
+
     # Die Diagnoseseite zeigt auch die Server-Meldungen. Ein alter Puffer
     # (create_app ein zweites Mal, etwa in Tests) wird ersetzt, sonst
     # käme jede Zeile doppelt an.
@@ -397,6 +406,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             manoever.abbrechen("Server wird beendet")
             interaktion.abbrechen("Server wird beendet")
             healthbot.beenden()
+            testlauf.beenden()
             await watchdog.shutdown()
             # Erst nach dem Anhalten: Das Beenden im Container kann dauern,
             # und ein Fehler darin (Docker schon weg, auf dem Laptop gar
@@ -976,6 +986,73 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             headers={"Content-Disposition": f'attachment; filename="{pfad.name}"'},
         )
 
+    # --- Tests (Messläufe) ---
+    #
+    # Starten, Notizen und Hochladen per POST wie bei den Einstellungen:
+    # fremde Webseiten dürfen per CORS nur lesen.
+
+    async def _tests_json(request: Request) -> dict:
+        try:
+            daten = await request.json()
+        except ValueError:
+            return {}
+        return daten if isinstance(daten, dict) else {}
+
+    @app.get("/tests/katalog")
+    async def tests_katalog() -> dict:
+        return Testlauf.katalog()
+
+    @app.get("/tests/status")
+    async def tests_status() -> dict:
+        return testlauf.status()
+
+    @app.get("/tests/liste")
+    async def tests_liste() -> dict:
+        # Liest die Ordner auf der SD-Karte -- nicht in der Ereignisschleife.
+        return {"laeufe": await asyncio.to_thread(testlauf.liste)}
+
+    @app.post("/tests/start")
+    async def tests_start(request: Request):
+        daten = await _tests_json(request)
+        fehler = testlauf.start(str(daten.get("test", "")))
+        if fehler:
+            return JSONResponse({"fehler": fehler}, status_code=400)
+        return testlauf.status()
+
+    @app.post("/tests/stop")
+    async def tests_stop() -> dict:
+        testlauf.stop()
+        return testlauf.status()
+
+    @app.post("/tests/notiz")
+    async def tests_notiz(request: Request):
+        daten = await _tests_json(request)
+        fehler = await asyncio.to_thread(
+            testlauf.notiz, str(daten.get("name", "")), str(daten.get("text", "")))
+        if fehler:
+            return JSONResponse({"fehler": fehler}, status_code=400)
+        return {"ok": True}
+
+    @app.get("/tests/zip")
+    async def tests_zip(name: str):
+        daten = await asyncio.to_thread(testlauf.zip_bauen, name)
+        if daten is None:
+            return JSONResponse({"fehler": "Lauf nicht gefunden"}, status_code=404)
+        return Response(
+            daten,
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{name}.zip"'},
+        )
+
+    @app.post("/tests/hochladen")
+    async def tests_hochladen(request: Request) -> dict:
+        daten = await _tests_json(request)
+        namen = daten.get("namen")
+        if not isinstance(namen, list):
+            namen = None
+        # git push dauert Sekunden -- im Thread, sonst stockt die Steuerung.
+        return await asyncio.to_thread(testlauf.hochladen, namen)
+
     # --- Diagnose ---
 
     @app.get("/diagnose/status")
@@ -1160,6 +1237,12 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         antwort_um: float | None = None
         while True:
             await asyncio.sleep(0.1)
+            if testlauf.befehle_sperren:
+                # Beim Mikrofontest sagt man die Befehle absichtlich vor; der
+                # Roboter soll sie nur aufzeichnen, nicht ausführen.
+                sprache.befehle_abholen()
+                antwort_um = None
+                continue
             if antwort_um is not None and time.monotonic() >= antwort_um:
                 antwort_um = None
                 # Kam in der Pause schon der Befehl, ist das Fenster verbraucht
@@ -1301,6 +1384,10 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         @app.get("/healthbot")
         async def healthbot_seite() -> HTMLResponse:
             return _seite("healthbot.html")
+
+        @app.get("/tests")
+        async def tests_seite() -> HTMLResponse:
+            return _seite("tests.html")
     else:
         log.warning("webapp/ nicht gefunden unter %s -- nur /ws verfügbar", WEBAPP_DIR)
 
