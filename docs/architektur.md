@@ -90,6 +90,7 @@ Menschen aus. Es bewertet keinen Gesundheitszustand.
 | `zustandserkennung/` | Healthbot: zu einer Person fahren, Zustand beurteilen (liegend, regungslos, keine Antwort, am Boden), ansprechen, anstupsen, Hilfe holen (`ablauf.py`, `bewertung.py`, Mock-Person `simulation.py`) |
 | `diagnose.py`  | Sammelt Ausfälle (Akku, USB, Unterspannung, Temperatur, Geräte, Log) und macht daraus verständliche Probleme für die Seite `/diagnose` |
 | `aufzeichnung.py` | Fahrtenschreiber: letzte Minute (Scans, Befehle, Odometrie, Zustände) im Speicher, auf Knopfdruck als Datei; dazu Laden und Nachspielen für `scripts/abspielen.py` |
+| `testlauf.py` | Messläufe für die Seite `/tests`: Katalog, Ablauf in Phasen, Mitschrift (Mikrofon, Pose, HOG, Kamera), Speichern je Lauf, ZIP und Hochladen auf den Branch `testdaten` |
 | `box/`         | Motor/Servo der Transportbox *(noch leer)*                  |
 | `api/`         | WebSocket-Server, liefert auch die Web-App aus              |
 | `main.py`      | Startpunkt, baut alles zusammen                             |
@@ -212,3 +213,27 @@ Erkunder: bauen in `create_app`, Abbruch bei Not-Stopp, Handsteuerung,
 Verbindungsverlust, den anderen Modi und Antriebsausfall, Kurzstatus in `state.healthbot`.
 Die Seite `/healthbot` zeigt Ablauf, Zeichen, Urteil und Zeitleiste.
 Begründung in E12 in [`entscheidungen.md`](entscheidungen.md).
+
+## Testläufe
+
+`testlauf.py` sammelt Messdaten, damit man Mikrofon, Liegend-Erkennung und
+Personenerkennung mit echten Daten verbessern kann, ohne per SSH auf den
+Roboter zu müssen. Ein Lauf ist ein eigener Thread: Er sagt die Phasen über
+die Stimme an, liest im Takt `TESTS_TAKT_HZ` die vorhandenen Dienste aus
+(Sprache, Pose, HOG-Personen, Kameras, Lidar) und schreibt alles in einen
+Ordner je Lauf. Er fährt nie und ruft den Watchdog nicht auf. Pose und HOG
+schaltet er nur ein, wenn sie aus waren, und gibt sie danach wieder frei.
+`Personenerkennung.aktivieren` zählt dafür die Nutzer (`erkunder`, `tests`)
+statt nur an/aus zu schalten, damit sich ein Testlauf und der Erkunder
+nicht gegenseitig die HOG-Erkennung abschalten.
+Während eines Mikrofontests sperrt `befehle_sperren` die Ausführung gehörter
+Sprachbefehle in `api/server.py`.
+
+Das Hochladen baut den Commit mit Git-Plumbing (eigene Index-Datei,
+`hash-object`, `write-tree`, `commit-tree`) und pusht nur den Branch
+`testdaten`. So bleibt der Code-Stand des Roboters unberührt, auch wenn dort
+jemand gerade etwas geändert hat. Das Token kommt aus einer Datei und wird
+nur über einen HTTP-Header an git übergeben, nie in die URL oder ins Log.
+Geprüft in `Marlon/diagnose/test_testlauf.py` (mit Attrappen und einem
+lokalen Repository statt GitHub). Die Schnittstelle steht in
+[`api.md`](api.md#tests).

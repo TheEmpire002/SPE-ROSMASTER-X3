@@ -829,6 +829,80 @@ käme er nie bis zur Person. Alle Einstellungen beginnen mit `HEALTH_` in
 `stupser`: je `nr`, `grund` (`Kontakt`: Räder stehen trotz Befehl; `Fahrschutz hält`: er hielt knapp vor der Person, z. B. wenn sie flacher als die Lidar-Ebene liegt und nur Tiefe/Gedächtnis sie sehen; `keine frischen Lidar-Daten`: der Fahrschutz hielt, weil der Lidar ausfiel; `Weggrenze`, `Zeitgrenze`), `weg_m`, `zeit`, `reaktion`, `bewegung`,
 `gehoert`. `timeline`: je `zeit` (Unix-Zeit), `zustand`, `text`.
 
+### Tests
+
+Messläufe, mit denen man Mikrofon, Liegend-Erkennung und Personenerkennung
+gezielt prüft und die Daten zum Auswerten sammelt. Die Seite `/tests` führt
+durch jeden Lauf; gestartet wird dort, nicht per SSH.
+
+Ablauf eines Laufs:
+
+1. `POST /tests/start {"test": "<id>"}` wählt einen Test aus dem Katalog.
+   Es läuft immer nur einer; ein zweiter Start wird mit `400` abgelehnt.
+2. Nach einem kurzen Vorlauf (`TESTS_VORLAUF_S`) sagt der Roboter jede Phase
+   an; die Seite zeigt Anweisung, Restzeit und die Live-Werte.
+3. Mitgeschrieben wird je nach Art des Tests: Pegel, gehörte Sätze und Ton
+   (Mikrofon), Skelette, Liegend- und Boden-Zeichen samt Lidar (Liegend),
+   zusätzlich die HOG-Erkennung (Personen) oder Bildtakt und Bildalter
+   (Kamera). Pose und HOG werden nur für den Lauf eingeschaltet und danach
+   wieder so hinterlassen, wie sie waren. `Personenerkennung.aktivieren`
+   zählt dabei die Nutzer (`wer="tests"` neben `"erkunder"`), damit das
+   Ende eines Tests die HOG-Erkennung eines gleichzeitig laufenden
+   Erkunders nicht abschaltet.
+4. Am Ende schreibt der Server `ergebnis.json` mit einer Zusammenfassung je
+   Phase (was erwartet war, wie oft es stimmte).
+
+**Der Roboter fährt dabei nie.** Während eines Mikrofontests werden gehörte
+Sprachbefehle nur aufgezeichnet, nicht ausgeführt (man sagt sie absichtlich
+vor).
+
+Katalog (`GET /tests/katalog`):
+
+| Kategorie | Test-IDs |
+|---|---|
+| `mikrofon` | `mikro_pegel`, `mikro_befehle` |
+| `liegend` | `liegend_haltungen`, `liegend_abstand`, `liegend_zwei_personen` |
+| `personen` | `personen_leerer_raum`, `personen_abstand`, `kamera_takt` |
+
+Jeder Eintrag hat `titel`, `kurz`, `anleitung` (Liste) und `phasen` mit
+Titel, Anweisung, Dauer und dem erwarteten Ergebnis.
+
+Gespeichert wird auf dem Roboter unter `~/.rosmaster/tests/` (im Mock
+`~/.rosmaster/tests_mock/`), ein Ordner je Lauf, benannt nach Datum und
+Uhrzeit:
+
+```
+2026-11-04_15-30-12_liegend_haltungen/
+  ergebnis.json     Phasen, Messwerte, Zusammenfassung, Notiz
+  bilder/           wenige Kamerabilder (höchstens TESTS_MAX_BILDER)
+  ton.wav           nur bei Mikrofontests
+  hochgeladen.json  erst nach dem Hochladen
+```
+
+| Endpunkt | Liefert |
+|---|---|
+| `GET /tests` | die Testseite der Web-App |
+| `GET /tests/katalog` | alle Tests nach Kategorie |
+| `GET /tests/status` | laufender Test (`aktiv`, Phase, `rest_s`, Live-Werte), `letzter`, `meldung`, `ordner`, `simulation`, `token` (nur ob eins da ist) |
+| `GET /tests/liste` | `{"laeufe": [...]}`, neueste zuerst: Name, Test, Beginn, `abgebrochen`, `notiz`, Kurzergebnis je Phase, `hochgeladen`, `bytes` |
+| `GET /tests/zip?name=` | einen Lauf als ZIP-Download |
+| `POST /tests/start` | `{"test": id}`, Antwort wie `/tests/status` |
+| `POST /tests/stop` | bricht den Lauf ab; das Bisherige bleibt gespeichert |
+| `POST /tests/notiz` | `{"name", "text"}`, Notiz zu einem Lauf (max. `TESTS_NOTIZ_MAX_ZEICHEN`) |
+| `POST /tests/hochladen` | `{"namen": [...]}` oder leer für alle noch nicht hochgeladenen; Antwort `{"ok", "hochgeladen", "fehler", "commit"}` |
+
+**Hochladen:** Der Roboter legt die Läufe als Commit auf den Branch
+`testdaten` (`TESTS_GIT_BRANCH`) unter `tests/<Ordnername>/` und pusht ihn.
+Sein eigener Code-Stand (HEAD, Index, Arbeitsverzeichnis) bleibt unberührt;
+der Commit wird mit einem eigenen Index gebaut. Dafür braucht er ein
+GitHub-Token (fine-grained, nur dieses Repository, *Contents: Read and
+write*) in `~/.rosmaster/github_token`. Fehlt es, meldet `/tests/hochladen`
+einen Fehler, und die Seite bietet den ZIP-Download an. Das Token erscheint
+nie in Antworten oder Logs.
+
+Einstellungen in `config.py`: `TESTS_*` (Ordner, Takt, Vorlauf, Zahl der
+Bilder, WAV-Länge, Git-Branch, -URL und -Timeout).
+
 ### Fahrtenschreiber
 
 Neu 03.11. Der Server hält immer die letzte Minute (`AUFZEICHNUNG_PUFFER_S`)
@@ -961,7 +1035,7 @@ finden). Voraussetzungen auf dem Pi: `mpv` und `yt-dlp`, siehe
 | Endpunkt | Liefert |
 |---|---|
 | `GET /sprache/status` | `aktiviert`, `verfuegbar`, `simuliert`, `zustand` (`aus`, `laedt`, `hoert`, `fehler`, `simuliert`), `mikrofon` (Gerätename), `modell` (Pfad), `weckwort`, `geweckt`, `zuletzt_gehoert`, `letzter_befehl`, `erkannt` (Anzahl), `konfidenz` (kleinste Wort-Konfidenz des letzten Satzes, 0..1), `verworfen` (Anzahl), `zuletzt_verworfen` (Befehl, Text, Grund), `befehle` (alle Wendungen je Befehl), `fehler` (z. B. „vosk fehlt (pip install vosk sounddevice)“, „Vosk-Modell fehlt: …“ oder „kein Mikrofon gefunden (vorhanden: …)“) |
-| `GET /sprache/live` | Mitlesen (App: Schalter „Mikrofon mitlesen“, fragt 4x pro Sekunde): `verfuegbar`, `zustand`, `mikrofon`, `rate` (Hz), `pegel` (0..1, −60 dBFS bis Vollaussteuerung), `teil` (was Vosk im laufenden Satz bisher versteht), `taub` (spricht gerade selbst, wertet nichts aus), `geweckt`, `ereignisse` (letzte Sätze: `zeit` (Unix-Zeit), `text`, `ergebnis` = `befehl` / `verworfen` / `weckwort` / `ohne`, dazu `befehl` und bei `verworfen` der `grund`). Pegel und `teil` rechnet der Server nur, solange jemand abfragt. |
+| `GET /sprache/live` | Mitlesen (App: Schalter „Mikrofon mitlesen“, fragt 4x pro Sekunde): `verfuegbar`, `zustand`, `mikrofon`, `rate` (Hz), `pegel` (0..1, −60 dBFS bis Vollaussteuerung), `teil` (was Vosk im laufenden Satz bisher versteht), `taub` (spricht gerade selbst, wertet nichts aus), `geweckt`, `ereignisse` (letzte Sätze: `zeit` (Unix-Zeit), `text`, `ergebnis` = `befehl` / `verworfen` / `weckwort` / `ohne`, dazu `befehl` und bei `verworfen` der `grund`; seit 04.11. bei Sätzen vom Mikrofon auch `konfidenz` (niedrigste Wortkonfidenz von Vosk, 0..1) und `woerter` (je `wort`, `konfidenz`)). Pegel und `teil` rechnet der Server nur, solange jemand abfragt. |
 | `WS /sprache/ton` | Mithören (App: Schalter „Mikrofon mithören“): erst eine Textnachricht `{"rate": 16000}` (`null`, solange kein Mikrofon offen ist; bei jedem Wechsel neu und ohne Ton jede Sekunde als Lebenszeichen: Kommt 5 s gar nichts, verbindet die App neu), dann der Rohton als Binärnachrichten, 16 bit little-endian, mono, Blöcke à 0,25 s. Kommt der Browser nicht hinterher, fallen Blöcke weg (`SPRACHE_TON_PUFFER`). Nur solange jemand verbunden ist, wird etwas verschickt. |
 | `WS /sprache/durchsage` | Durchsage (App: Schalter „Über den Roboter sprechen“): Ton aus dem Browser-Mikrofon live über den Lautsprecher des Roboters. Der Server antwortet zuerst `{"bereit": true|false, "grund": …}`, später erneut, wenn der Lautsprecher ausfällt oder wieder geht. Der Client schickt `{"rate": 16000}` und danach Rohton als Binärnachrichten (16 bit little-endian, mono). Läuft in der Warteschlange der Stimme: Musik pausiert, die Spracherkennung hört so lange weg, ein Stopp bricht ab. Nach `DURCHSAGE_PAUSE_S` (2 s) ohne Ton ist der Lautsprecher wieder frei. Browser geben das Mikrofon nur über HTTPS frei, deshalb läuft dieselbe App zusätzlich unter `https://<roboter>:8443` (`HTTPS_PORT`, selbst unterschriebenes Zertifikat in `~/.rosmaster/https`, die Warnung im Browser einmal bestätigen). |
 
@@ -1027,6 +1101,7 @@ Ende meldet `alert` „Autonomes Fahren beendet: Kartierfahrt fertig -- …“.
 | `GET /` | die mitgelieferte Web-App |
 | `GET /einstellungen` | die Einstellungsseite der Web-App |
 | `GET /diagnose`, `GET /logs` | die Diagnoseseite der Web-App |
+| `GET /tests` | die Testseite der Web-App (siehe [Tests](#tests)) |
 | `GET /static/...` | deren Dateien (`webapp/`) |
 | `GET /docs` | automatisch erzeugte HTTP-Übersicht (FastAPI) |
 
