@@ -33,6 +33,7 @@ class Personenerkennung:
         self._camera = camera
         self._lock = threading.Lock()
         self._aktiv = threading.Event()
+        self._nutzer: set[str] = set()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._boxen: list[dict] = []
@@ -76,13 +77,22 @@ class Personenerkennung:
             self._thread.join(timeout=2.0)
             self._thread = None
 
-    def aktivieren(self, an: bool) -> None:
-        """Nur während der Erkundung rechnen."""
-        if an:
-            self._aktiv.set()
-        else:
-            self._aktiv.clear()
-            with self._lock:
+    def aktivieren(self, an: bool, wer: str = "erkunder") -> None:
+        """Nur rechnen, solange jemand die Treffer braucht.
+
+        ``wer`` unterscheidet die Nutzer (Erkunder, Testlauf): Gerechnet wird,
+        solange mindestens einer eingeschaltet hat. Sonst schaltet z. B. das
+        Ende eines Testlaufs dem laufenden Erkunder die Erkennung ab.
+        """
+        with self._lock:
+            if an:
+                self._nutzer.add(wer)
+            else:
+                self._nutzer.discard(wer)
+            if self._nutzer:
+                self._aktiv.set()
+            else:
+                self._aktiv.clear()
                 self._boxen = []
 
     def boxen(self) -> list[dict]:
