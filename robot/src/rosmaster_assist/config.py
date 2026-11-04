@@ -1418,6 +1418,15 @@ HEALTH_STUPSEN_STEHT_MS = 0.01
 HEALTH_STUPSEN_MAX_S = 6.0
 # Abstand (m), aus dem angestupst wird: Näher fährt die Anfahrt vorher heran.
 HEALTH_STUPSEN_START_M = 0.30
+# Tempo (m/s) beim Heranfahren auf Stupsabstand und beim Zurücksetzen danach:
+# langsam, denn der Fahrschutz soll vor der Person sicher halten können.
+HEALTH_HERAN_SPEED = 0.12
+# Höchste Drehrate (rad/s), mit der beim Heranfahren auf die Person
+# eingeschwenkt wird. Klein, damit der Roboter nicht seitlich an ihr vorbeiwischt.
+HEALTH_HERAN_OMEGA_MAX = 0.3
+# Hält der Fahrschutz höchstens so viel (m) hinter dem Stupsabstand, reicht das
+# zum Stupsen: Die Person liegt dann ohnehin in Reichweite.
+HEALTH_HERAN_REICHT_M = 0.1
 
 # Anfahrt: Ab diesem Abstand (m) zum Ziel gilt er als angekommen. Großzügig,
 # denn der gemeldete Ort ist nur ungefähr und dort liegt ja die Person.
@@ -1439,6 +1448,9 @@ HEALTH_LIEGEND_SEITENVERHAELTNIS = 1.3
 # misst in ~17 cm Höhe. Ein liegender Körper gibt dort ein breites Stück
 # von mindestens so viel Länge (m).
 HEALTH_BODEN_MIN_BREITE_M = 0.35
+# Ohne Lidar-Echo: Liegt die Unterkante der Person tiefer als dieser Anteil
+# der Bildhöhe, liegt sie vermutlich am Boden (die Kamera blickt leicht nach unten).
+HEALTH_BODEN_BILD_UNTEN = 0.75
 # Suchen: so schnell (rad/s) dreht er sich, bis er eine Person sieht ...
 HEALTH_SUCHEN_OMEGA = 0.4
 # ... höchstens so lange (s), etwa eine Umdrehung.
