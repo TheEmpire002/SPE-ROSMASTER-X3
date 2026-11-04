@@ -229,7 +229,11 @@ class OdometrieAttrappe:
 
 
 class OhneAntrieb:
+    # Die Fortschrittswache liest den zuletzt angenommenen Befehl mit.
+    current_command = DriveCommand()
+
     def submit(self, befehl, quelle=""):
+        self.current_command = befehl
         return befehl
 
     def stop(self):

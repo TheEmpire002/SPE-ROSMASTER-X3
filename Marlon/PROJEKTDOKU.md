@@ -707,6 +707,15 @@ die Rohdaten in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Ergebnis:** Alle 14 Tests in rund 6,5 Minuten. Das langsamste Skript (`test_ausweichen.py`) bestimmt die Dauer.
 - **Probleme:** Beim ersten Lauf nach dem Merge von `main` schlugen zwei Tests fehl. Auf `main` sucht der Roboter jetzt ohne Zeitgrenze, und ein Wiedergefunden zählt erst nach mehreren bestätigten Bildern. Die Tests wurden daran angepasst.
 
+### 04.11.2026 – Vier Tests nach dem Kartierungs-Merge repariert (Marlon, mit Claude)
+- **Was:** `test_erkunder.py`, `test_ausweichen.py`, `test_aufzeichnung.py` und `test_schutz.py` schlugen auf `main` fehl, auch schon auf dem unveränderten Stand von `origin/main`. Alle vier waren veraltete Tests, kein Fehler im Roboter-Code.
+- **Warum:**
+  - Die neue Fortschrittswache (`navigation/fortschritt.py`) liest `watchdog.current_command`. Die Watchdog-Attrappen in den drei Erkunder-Tests hatten dieses Feld nicht. Sie merken sich jetzt den zuletzt angenommenen Befehl, wie der echte Watchdog.
+  - `test_schutz.py` „Wand links: seitlich nach links gebremst“: Der Fahrschutz-Rand wurde bewusst von 6 auf 4 cm verkleinert. Bei einer Wand in 0,30 m bleiben damit 13,5 cm Platz, und der Anhalteweg bei 0,25 m/s beträgt rund 13 cm. Der Fahrschutz muss dort also zu Recht nicht bremsen. Der Test stellt die Wand jetzt auf 0,25 m; dort bremst er auf 0,16 m/s.
+- **Ergebnis:** 14/14 Tests bestanden.
+- **Probleme:** Der Gesamtlauf dauert jetzt rund 12,5 statt 6,5 Minuten. Die Fortschrittswache läuft in den Erkunder-Tests jetzt wirklich mit, und `test_ausweichen.py` braucht allein 747 s.
+- **Offen:** prüfen, ob sich `test_ausweichen.py` kürzen lässt.
+
 ---
 
 ## 3. Ergebnisse und Messwerte
