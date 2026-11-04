@@ -1050,6 +1050,30 @@ ZIEL_TRACK_HALTEN_S = 1.5
 # ändern (Verhältnis klein/groß), sonst ist es nicht derselbe Track.
 ZIEL_HOEHE_VERHAELTNIS = 0.6
 
+# So lange merkt er sich das Aussehen der Person, die er zuletzt verfolgt
+# hat (nur im RAM). Sagt danach jemand "Folgen", obwohl mehrere im Bild
+# stehen, nimmt er wieder diese Person, sofern er sie sicher erkennt --
+# statt abzulehnen. "Loslassen" und Interaktion aus löschen sie sofort.
+ZIEL_MERKEN_S = 120.0
+
+# Passt ein Kandidat beim Wiederfinden klar (halbe Schwelle, doppelte Marge
+# zum Zweitbesten), reichen so viele Bilder statt ZIEL_BESTAETIGEN_BILDER.
+# Spart beim Suchen rund eine halbe Sekunde, ohne bei knappen Fällen
+# weniger vorsichtig zu sein.
+ZIEL_BESTAETIGEN_SCHNELL_BILDER = 3
+
+# Verschwindet die Person näher als so viele Grad am Bildrand, ist sie fast
+# sicher seitlich hinausgegangen -- dann sucht er schon nach
+# FOLGEN_VERLOREN_RAND_S statt nach FOLGEN_VERLOREN_S. In der Bildmitte
+# bleibt die längere Frist (dort ist es eher eine kurze Verdeckung).
+ZIEL_RAND_GRAD = 8.0
+FOLGEN_VERLOREN_RAND_S = 0.7
+
+# Beim Suchen dreht er sich zu einem Lidar-Personencluster (zwei Beine),
+# statt blind weiterzudrehen. Ist der Cluster im Bild, wartet er so lange
+# auf die Kamera; erkennt sie dort niemanden, dreht er normal weiter.
+ZIEL_HINWEIS_S = 1.5
+
 # --- Diagnose (Seite /diagnose) ------------------------------------------------
 # Wie oft die schnellen Messungen laufen (Akku, USB-Überlastzähler, Geräte-
 # zustand) und wie oft die langsamen (Temperatur, vcgencmd, Kernel-Log,

@@ -254,6 +254,43 @@ Eigendrehung, kurze und lange Verdeckung, zweite Person während der Suche,
 gleiche Kleidung, App-Start bei zwei Personen, Geste wählt Gestikulierenden
 und Stopp von Passanten.
 
+### Gemerkte Person und schnelleres Wiederfinden (04.11.)
+
+- **Gemerkte Person:** `ZielSperre` behält nach dem Folgen das zuletzt
+  genutzte Merkmal (`gemerkt`, nur im RAM) samt Zeitstempel. Startet
+  „Folgen“ ohne Antippen bei mehreren Sichtbaren, prüft er zuerst, ob die
+  gemerkte Person klar unter ihnen ist (gleiche Kriterien wie beim
+  Wiederfinden: `ZIEL_MERKMAL_SCHWELLE`, `ZIEL_MERKMAL_MARGE`); nur dann
+  nimmt er sie, sonst weiter die Ablehnung „bitte antippen“. Gültig für
+  `ZIEL_MERKEN_S` (120 s) ab der letzten Zuordnung. Gelöscht wird sie bei
+  „Loslassen“ (`folgen_stop`) und beim Ende der Interaktion, nicht bei
+  Stopp-Geste oder `safe_stop` — dort soll das nächste „Folgen“ wieder
+  dieselbe Person nehmen. Beim Antippen/der Geste wird das Merkmal der
+  gewählten Person sofort als Referenz übernommen, damit ein kurzer
+  Trackverlust in `acquiring_target` sie nicht gleich wieder verliert.
+- **Schneller bestätigt:** Passt ein Kandidat beim Wiederfinden klar
+  (Abstand unter halber Schwelle, Vorsprung vor dem Zweitbesten mindestens
+  doppelte Marge), reichen `ZIEL_BESTAETIGEN_SCHNELL_BILDER` (3) statt der
+  üblichen `ZIEL_BESTAETIGEN_BILDER` (5) Bilder in Folge. Während ein
+  Kandidat geprüft wird (`ZielSperre.prueft_kandidat`), hält der Roboter
+  beim Suchen still, statt die Person durch Weiterdrehen wieder aus dem
+  Bild zu drehen.
+- **Kürzere Suchfrist am Bildrand:** Verschwindet die Person im Zustand
+  `target_temporarily_lost` nahe am Bildrand (`|Winkel| > FOV/2 −
+  ZIEL_RAND_GRAD`, 8°), beginnt die Suche schon nach
+  `FOLGEN_VERLOREN_RAND_S` (0,7 s) statt nach `FOLGEN_VERLOREN_S`. In der
+  Bildmitte gilt weiter die längere Frist, da sie dort meist nur kurz
+  verdeckt ist. Direkt nach einem Moduswechsel (noch kein frischer Winkel)
+  oder schon in `searching_for_target` gilt immer die normale Frist.
+- **Lidar-Hinweis beim Suchen:** Sieht die Hinderniserkennung einen
+  Personen-Cluster (Beinpaar) außerhalb des Kamerabilds, dreht der Roboter
+  dorthin, statt im festen Takt zur zuletzt bekannten Seite zu drehen. Liegt
+  der Cluster schon im Bild, hält er `ZIEL_HINWEIS_S` (1,5 s) still, damit
+  die Kamera ihn erkennen kann; findet sie dort niemanden, gilt für den
+  Rest der Suche wieder der feste Dreh-Pause-Takt. Erkannt wird das Ziel
+  weiter nur über die Kamera (Aussehen) — der Lidar liefert nur die
+  Blickrichtung, nie die Zuordnung selbst.
+
 ### Bedienung in der Web-App (03.11.)
 
 Gesteuert wird über die Web-App; Gesten und Sprache bleiben Nebenwege.
