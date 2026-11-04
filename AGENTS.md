@@ -57,7 +57,7 @@ Für Claude Code liegen passende Subagents in `.claude/agents/`.
   (`sllidar_node`, `yahboomcar_bringup`) und alte Server-Instanzen vorher
   beenden: `pkill -f rosmaster_assist; sudo pkill -f sllidar_node`.
 - Diagnose ohne Log-Suche: die Seite `/diagnose` (alles auf einen Blick),
-  einzeln `/lidar/status`, `/camera/status`, `/stimme/status` (Lautsprecher)
+  einzeln `/lidar/status`, `/camera/status`, `/tiefe/status`, `/stimme/status` (Lautsprecher)
   und `/sprache/status` (Mikrofon).
 - Vor Tests `python scripts/check_hardware.py`: Es warnt bei neuen
   USB-Überlast-Meldungen und wenn der Pi gerade installiert oder kompiliert.

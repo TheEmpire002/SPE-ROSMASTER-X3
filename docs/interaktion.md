@@ -144,7 +144,7 @@ messen) betrachtet, Wände ausgenommen. Gewählt wird in dieser Reihenfolge:
 
 Gibt es keinen Cluster (Person zu weit, steht an der Wand), gilt wie früher
 das Minimum. Die Sicherheit hängt nicht daran: Die Vorwärtsfahrt ist immer
-durch den freien Fahrschlauch begrenzt, und der `AutonomSchutz` im Watchdog
+durch den freien Fahrschlauch begrenzt, und der Fahrschutz im Watchdog
 bremst nach Bremsweg (siehe `docs/architektur.md`).
 
 ### Sanft fahren (29.10.)

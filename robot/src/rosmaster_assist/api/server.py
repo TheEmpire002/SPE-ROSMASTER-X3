@@ -37,6 +37,8 @@ from ..interaktion import sprache as sp
 from ..interaktion import verhalten as vh
 from ..interaktion.sprache import Spracherkennung
 from ..interaktion.stimme import Stimme
+from ..mapping.manager import MappingManager
+from ..mapping.web import create_mapping_router
 from ..interaktion.verhalten import Interaktion
 from ..protocol import (
     DriveCommand,
@@ -50,11 +52,17 @@ from ..protocol import (
 )
 from ..navigation import Erkunder, Hinderniserkennung, Homing, Localizer, Manoever, Odometry
 from ..navigation import manoever as mv
-from ..safety import AutonomSchutz, CollisionGuard, SafetyWatchdog
+from ..navigation.explorer import KARTE
+from ..navigation.kartierfahrt import Kartierfahrt
+from ..navigation.hindernisgedaechtnis import Hindernisgedaechtnis
+from ..navigation.scan_odometrie import ScanOdometrie
+from ..safety import CollisionGuard, Fahrschutz, SafetyWatchdog
 from ..sensors.camera import CameraService, create_cameras
 from ..sensors.lidar import LidarService, create_lidar
 from ..sensors.personen import Personenerkennung
 from ..sensors.pose import SKELETT, Posenerkennung
+from ..sensors.tiefe import create_tiefe
+from ..sensors import tiefe_anzeige
 
 log = logging.getLogger(__name__)
 
@@ -200,16 +208,49 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     )
     localizer = Localizer(odometry, lidar)
     homing = Homing(watchdog, odometry, localizer)
-    guard = CollisionGuard(localizer)
-    if lidar is not None:
-        # Letzte Bremse für Folgen, Erkunden und Heimfahrt, siehe watchdog.py.
-        watchdog.autonom_schutz = AutonomSchutz(lidar)
+    # Tiefenkamera (Astra) für das, was unter der Lidar-Ebene liegt:
+    # Stuhlbeine, Tischkanten. Ihr Gedächtnis rechnet die Punkte mit der
+    # eigenen Bewegung nach -- beim Kartieren mit der Lidar-Odometrie, sonst
+    # mit der Odometrie. scan_odometrie wird erst unten angelegt, daher
+    # der Umweg über die Liste.
+    tiefe = create_tiefe(use_mock_camera)
+    scan_odo_ref: list = []
+
+    def lage_quelle():
+        so = scan_odo_ref[0] if scan_odo_ref else None
+        if so is not None and so.laeuft:
+            alter = so.alter()
+            p = so.pose()
+            if p is not None and alter is not None and alter < 1.0:
+                return "lidar", p
+        x, y, grad = odometry.pose()
+        return "rad", (x, y, math.radians(grad))
+
+    hindernisse = Hindernisgedaechtnis(tiefe, lage_quelle)
+    # Fahrschutz: prüft jeden autonomen Befehl über die Grundfläche des
+    # Roboters (im Watchdog, quelle="autonom") und die Handsteuerung, wenn
+    # der Hindernisstopp an ist. Ohne Lidar gibt es ihn nicht -- dann
+    # fahren nur Heimfahrt (blind wie bisher) und Hand.
+    fahrschutz = (
+        Fahrschutz(lidar, zusatz=hindernisse) if lidar is not None else None
+    )
+    watchdog.fahrschutz = fahrschutz
+    guard = CollisionGuard(localizer, fahrschutz)
     erkennung = Hinderniserkennung()
     # Personenerkennung und Posenerkennung (Gesten, Folgen) schauen beide
     # durch die Personenkamera (C270), siehe docs/interaktion.md.
     personen_kamera = kameras.get(config.PERSON_CAMERA, camera)
     personen = Personenerkennung(personen_kamera)
-    erkunder = Erkunder(watchdog, lidar, erkennung, personen, odometry=odometry)
+    # Lidar-Odometrie für Kartierung und Kartierfahrt: Die Blickrichtung
+    # kommt aus dem Lidar, weil die IMU am X3 keine liefert. Gestartet wird
+    # sie vom MappingManager, nur solange kartiert wird.
+    scan_odometrie = ScanOdometrie(lidar, odometry)
+    scan_odo_ref.append(scan_odometrie)
+    erkunder = Erkunder(
+        watchdog, lidar, erkennung, personen, odometry=odometry,
+        kartierfahrt=Kartierfahrt(scan_odometrie),
+        hindernisse=hindernisse, tiefe=tiefe,
+    )
     manoever = Manoever(watchdog, driver, lidar)
     pose = Posenerkennung(personen_kamera, mock=use_mock_camera)
     mukke = Mukke()
@@ -267,6 +308,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             kamera.start()
         personen.start()
         pose.start()  # rechnet erst, wenn die Interaktion läuft
+        if tiefe is not None:
+            tiefe.start()  # Kamera bleibt aus, bis eine Fahrt sie braucht
         stimme.start()
         # Hörbarer Selbsttest: Wer den Roboter einschaltet, weiß sofort,
         # ob der Lautsprecher geht.
@@ -336,6 +379,13 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             manoever.abbrechen("Server wird beendet")
             interaktion.abbrechen("Server wird beendet")
             await watchdog.shutdown()
+            # Erst nach dem Anhalten: Das Beenden im Container kann dauern,
+            # und ein Fehler darin (Docker schon weg, auf dem Laptop gar
+            # nicht da) darf das Trennen der Hardware nicht verhindern.
+            try:
+                mapping_manager.stop()
+            except Exception:
+                log.exception("Mapping ließ sich beim Beenden nicht sauber stoppen")
             personen.stop()
             pose.stop()
             mukke.stoppen()
@@ -343,6 +393,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             stimme.stop()
             for kamera in kameras.values():
                 kamera.stop()
+            if tiefe is not None:
+                tiefe.stop()
             if lidar is not None:
                 lidar.stop()
             # Vor dem Trennen beenden, sonst meldete sie das Abschalten
@@ -356,6 +408,70 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     # (siehe docs/api.md). Eine Anmeldung gibt es ohnehin nicht -- wer im
     # WLAN ist, kann den Roboter steuern.
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"])
+
+    # Bekommt Lidar und Lidar-Odometrie, um sie in ROS einzuspeisen:
+    # slam_toolbox im Container braucht /scan und TF, und beides hält
+    # dieser Server.
+    mapping_manager = MappingManager(lidar=lidar, scan_odometrie=scan_odometrie)
+    app.state.mapping_manager = mapping_manager
+
+    class _KartierfahrtSteuerung:
+        """Start und Stopp der Kartierfahrt für die Seite /map.
+
+        Die Fahrt ist ein Modus des Erkunders. So gelten Not-Stopp, Eingreifen
+        von Hand, Verbindungsverlust und Antriebsausfall ohne Extrawege.
+        """
+
+        @property
+        def aktiv(self) -> bool:
+            return erkunder.modus == KARTE
+
+        def zustand(self) -> dict[str, Any]:
+            z = erkunder.zustand()
+            aktiv = self.aktiv
+            return {
+                "aktiv": aktiv,
+                "text": z["text"] if aktiv else None,
+                "dauer_s": z["dauer_s"] if aktiv else None,
+                "schritt": (z["kartierfahrt"] or {}).get("schritt") if aktiv else None,
+                "bahnen": (z["kartierfahrt"] or {}).get("bahnen") if aktiv else None,
+                # Warum die letzte Kartierfahrt endete (nicht die letzte
+                # Zufallsfahrt).
+                "grund": (
+                    erkunder.letzter_grund
+                    if not aktiv and erkunder.letzter_modus == KARTE
+                    else None
+                ),
+            }
+
+        def starten(self) -> str | None:
+            if self.aktiv:
+                return None
+            if not mapping_manager.aktiv:
+                return ("Erst das Mapping starten: Die Kartierfahrt lenkt mit der "
+                        "Lidar-Odometrie, und die läuft nur beim Kartieren.")
+            if not erkunder.verfuegbar:
+                return "Die Kartierfahrt geht nur mit Lidar."
+            if not driver.connected:
+                return "Keine Verbindung zum Antrieb."
+            # Nur ein Programm lenkt.
+            homing.abbrechen("Kartierfahrt gestartet")
+            erkunder.abbrechen("Kartierfahrt gestartet")
+            interaktion.abbrechen("Kartierfahrt gestartet")
+            manoever.abbrechen("Kartierfahrt gestartet")
+            if not erkunder.start(KARTE):
+                return "Die Kartierfahrt ließ sich nicht starten."
+            asyncio.get_running_loop().create_task(
+                hub.broadcast(alert_message("info", "Kartierfahrt gestartet"))
+            )
+            return None
+
+        def stoppen(self, grund: str) -> None:
+            if self.aktiv:
+                erkunder.abbrechen(grund)
+                watchdog.stop()
+
+    app.include_router(create_mapping_router(mapping_manager, _KartierfahrtSteuerung()))
 
     @app.websocket("/ws")
     async def websocket_endpoint(ws: WebSocket) -> None:
@@ -486,6 +602,12 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         return {
             "standard": camera.name if camera is not None else None,
             "personen": personen.status().get("kamera"),
+            # Ansichten der Tiefenkamera -- eigene Liste, weil sie keine Kameras
+            # mit Rolle und Einstellungen sind (Einstellungsseite listet "kameras").
+            "tiefe": [
+                {"name": "tiefe", "kamera": "Tiefe", "basis": "/tiefe"},
+                {"name": "tiefe-ueber", "kamera": "Tiefe + Farbbild", "basis": "/tiefe/ueberlagert"},
+            ] if tiefe is not None else [],
             "kameras": [
                 {
                     **k.status(),
@@ -522,6 +644,127 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         if lidar is None:
             return {"lidar": None, "hinweis": "LIDAR_ENABLED ist False"}
         return {**lidar.status(), "ortung": localizer.status()}
+
+    # --- Tiefenkamera ---
+
+    @app.get("/tiefe/status")
+    async def tiefe_status():
+        """Tiefenkamera und Hindernisgedächtnis (Stuhlbeine, Phantome)."""
+        return {
+            "kamera": tiefe.status() if tiefe is not None else None,
+            "hinweis": None if tiefe is not None else (
+                "Simulation" if use_mock_camera else
+                "aus (TIEFE_AKTIV) oder OpenNI2 fehlt, siehe scripts/orbbec_einrichten.sh"
+            ),
+            "gedaechtnis": hindernisse.status(),
+            "fortschritt_aktiv": config.FORTSCHRITT_AKTIV,
+        }
+
+    @app.post("/tiefe/test")
+    async def tiefe_test():
+        """Kamera für 20 s einschalten -- um Bodenerkennung und Einbaulage im
+        Stand zu prüfen. Sonst läuft sie nur während autonomer Fahrten."""
+        if tiefe is None:
+            return {"ok": False, "hinweis": "keine Tiefenkamera"}
+        tiefe.aktivieren("test", True)
+        asyncio.get_running_loop().call_later(20.0, tiefe.aktivieren, "test", False)
+        return {"ok": True, "hinweis": "an für 20 s, dann /tiefe/status abfragen"}
+
+    # Tiefenbild zum Ansehen (sensors/tiefe_anzeige.py): allein oder über dem
+    # Farbbild der Orbbec. Wer zusieht, schaltet die Kamera ein.
+
+    def _tiefe_jpeg(bild, ueber: bool) -> bytes:
+        hintergrund = fov = None
+        if ueber:
+            farbkamera = kameras.get(config.TIEFE_UEBER_KAMERA)
+            frame = farbkamera.latest() if farbkamera is not None else None
+            hintergrund = frame[0] if frame is not None else None
+            fov = config.CAMERA_ROLES.get(config.TIEFE_UEBER_KAMERA, {}).get("fov_deg")
+        return tiefe_anzeige.zeichnen(bild, tiefe.hfov, hintergrund, fov)
+
+    def _tiefe_anzeige_fehlt():
+        if tiefe is None:
+            return Response("Keine Tiefenkamera (siehe /tiefe/status)", status_code=503)
+        try:
+            import cv2  # noqa: F401
+        except ImportError:
+            return Response("OpenCV fehlt -- ohne lässt sich das Tiefenbild nicht zeichnen",
+                            status_code=503)
+        return None
+
+    zuschauer = iter(range(1, 1_000_000_000))
+
+    def _tiefe_stream(ueber: bool):
+        fehlt = _tiefe_anzeige_fehlt()
+        if fehlt is not None:
+            return fehlt
+        # Jeder Zuschauer meldet sich einzeln an: Schließt einer das Bild,
+        # bleibt die Kamera für die anderen an.
+        wer = f"anzeige-{next(zuschauer)}"
+
+        async def bilder():
+            tiefe.aktivieren(wer, True)
+            zuletzt = None
+            try:
+                while True:
+                    b = tiefe.bild()
+                    if b is not None and b.roh is not None and b.zeit != zuletzt:
+                        zuletzt = b.zeit
+                        data = await asyncio.to_thread(_tiefe_jpeg, b, ueber)
+                        yield (
+                            f"--{GRENZE}\r\nContent-Type: image/jpeg\r\n"
+                            f"Content-Length: {len(data)}\r\n\r\n".encode() + data + b"\r\n"
+                        )
+                    await asyncio.sleep(0.05)
+            finally:
+                tiefe.aktivieren(wer, False)
+
+        return StreamingResponse(
+            bilder(),
+            media_type=f"multipart/x-mixed-replace; boundary={GRENZE}",
+            headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+        )
+
+    einzelbild_aus: list = []  # Zeitgeber, der die Kamera nach Einzelbildern abschaltet
+
+    async def _tiefe_snapshot(ueber: bool):
+        fehlt = _tiefe_anzeige_fehlt()
+        if fehlt is not None:
+            return fehlt
+        # Einzelbilder (Safari) kommen in kurzer Folge: Die Kamera bleibt an,
+        # bis 10 s lang keins mehr abgeholt wurde.
+        tiefe.aktivieren("anzeige-einzelbild", True)
+        for alt in einzelbild_aus:
+            alt.cancel()
+        einzelbild_aus[:] = [asyncio.get_running_loop().call_later(
+            10.0, tiefe.aktivieren, "anzeige-einzelbild", False)]
+        frist = time.monotonic() + 3.0  # Einschalten dauert etwa 1-2 s
+        b = tiefe.bild()
+        while (b is None or b.roh is None) and time.monotonic() < frist:
+            await asyncio.sleep(0.1)
+            b = tiefe.bild()
+        if b is None or b.roh is None:
+            return Response("Noch kein Tiefenbild", status_code=503)
+        data = await asyncio.to_thread(_tiefe_jpeg, b, ueber)
+        return Response(data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+    @app.get("/tiefe/stream")
+    async def tiefe_stream():
+        """Tiefenbild als MJPEG: rot nah, blau fern, magenta Hindernis."""
+        return _tiefe_stream(False)
+
+    @app.get("/tiefe/snapshot")
+    async def tiefe_snapshot():
+        return await _tiefe_snapshot(False)
+
+    @app.get("/tiefe/ueberlagert/stream")
+    async def tiefe_ueberlagert_stream():
+        """Dasselbe halbdurchsichtig über dem Farbbild der Orbbec."""
+        return _tiefe_stream(True)
+
+    @app.get("/tiefe/ueberlagert/snapshot")
+    async def tiefe_ueberlagert_snapshot():
+        return await _tiefe_snapshot(True)
 
     @app.get("/lidar/scan")
     async def lidar_scan():

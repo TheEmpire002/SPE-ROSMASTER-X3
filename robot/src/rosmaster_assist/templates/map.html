@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Roboter-Mapping</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0e1218;
+      --panel: #171e28;
+      --panel-2: #202a37;
+      --border: #2c3949;
+      --text: #edf2f7;
+      --muted: #9eacbd;
+      --green: #25b879;
+      --red: #d95d67;
+      --blue: #4285f4;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .page { width: min(1500px, 100%); margin: 0 auto; padding: 22px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+    h1 { margin: 0; font-size: 23px; font-weight: 650; letter-spacing: .1px; }
+    .sub { margin-top: 4px; color: var(--muted); font-size: 13px; }
+    .status { display: inline-flex; align-items: center; gap: 8px; padding: 7px 11px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); white-space: nowrap; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #758195; }
+    .status.running { color: #8ee2bb; border-color: #236849; background: #11291f; }
+    .status.running .dot { background: var(--green); box-shadow: 0 0 10px #25b87988; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 16px; }
+    .panel { min-width: 0; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); overflow: hidden; }
+    .map-head, .side-head { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .map-head strong, .side-head strong { font-size: 14px; }
+    .map-meta { color: var(--muted); font-size: 12px; }
+    .canvas-wrap { position: relative; min-height: 560px; height: min(72vh, 850px); background-color: #101720; background-image: linear-gradient(#253140 1px, transparent 1px), linear-gradient(90deg, #253140 1px, transparent 1px); background-size: 28px 28px; }
+    canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+    canvas.dragging { cursor: grabbing; }
+    .empty { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; color: var(--muted); pointer-events: none; padding: 24px; }
+    .empty strong { color: var(--text); font-size: 16px; margin-bottom: 5px; }
+    .side-body { padding: 16px; display: grid; gap: 18px; }
+    .button-row { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+    button { border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; color: var(--text); background: var(--panel-2); font: inherit; font-weight: 600; cursor: pointer; transition: filter .15s, opacity .15s; }
+    button:hover:not(:disabled) { filter: brightness(1.15); }
+    button:disabled { opacity: .38; cursor: not-allowed; }
+    button.primary { background: #176c4a; border-color: #23845c; }
+    button.stop { background: #672e36; border-color: #8b424c; }
+    button.secondary { width: 100%; }
+    label { display: block; margin-bottom: 7px; color: var(--muted); font-size: 12px; }
+    input { width: 100%; padding: 10px 11px; border: 1px solid var(--border); border-radius: 8px; outline: none; background: #101720; color: var(--text); font: inherit; }
+    input:focus { border-color: var(--blue); }
+    .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .metric { padding: 11px; background: #111923; border: 1px solid var(--border); border-radius: 9px; min-width: 0; }
+    .metric span { display: block; color: var(--muted); font-size: 11px; }
+    .metric strong { display: block; margin-top: 4px; overflow-wrap: anywhere; font-size: 13px; }
+    .message { min-height: 38px; padding: 10px; border-radius: 8px; background: #111923; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+    .message.error { color: #ffb4ba; background: #2b171c; }
+    .hinweis { padding: 10px; border-radius: 8px; border: 1px solid #23845c; background: #11291f; color: #c9f2dd; font-size: 13px; overflow-wrap: anywhere; }
+    .hinweis.error { border-color: #8b424c; background: #2b171c; color: #ffb4ba; }
+    .hinweis.idle { border-color: var(--border); background: #111923; color: var(--muted); }
+    .check { display: flex; align-items: center; gap: 7px; margin: 10px 0 0; color: var(--muted); font-size: 12px; }
+    .check input { width: auto; margin: 0; }
+    .fahrt { margin-top: 8px; padding: 9px 10px; border-radius: 8px; border: 1px solid #2f5f9e; background: #13233a; color: #cfe0fb; font-size: 12px; overflow-wrap: anywhere; }
+    .fahrt.idle { border-color: var(--border); background: #111923; color: var(--muted); }
+    details.log summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+    details.log pre { margin: 8px 0 0; padding: 9px; max-height: 220px; overflow: auto; border-radius: 8px; background: #0b1016; color: #c3ccd6; font-size: 11px; line-height: 1.35; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .help { color: var(--muted); font-size: 12px; }
+    .saved-list { display: grid; gap: 7px; max-height: 190px; overflow: auto; }
+    .saved-item { padding: 8px 9px; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      .canvas-wrap { min-height: 420px; height: 58vh; }
+      .side-body { grid-template-columns: 1fr 1fr; align-items: start; }
+      .side-body > .full { grid-column: 1 / -1; }
+    }
+    @media (max-width: 560px) {
+      .page { padding: 12px; }
+      header { align-items: flex-start; flex-direction: column; }
+      .side-body { grid-template-columns: 1fr; }
+      .side-body > .full { grid-column: auto; }
+      .canvas-wrap { min-height: 360px; height: 55vh; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <div>
+        <h1>Roboter-Mapping</h1>
+        <div class="sub">Live-Karte des Rosmaster X3 · LiDAR / SLAM</div>
+      </div>
+      <div id="statusBadge" class="status"><span class="dot"></span><span id="statusText">Verbindung wird hergestellt …</span></div>
+    </header>
+
+    <div class="layout">
+      <section class="panel">
+        <div class="map-head">
+          <strong>Kartenansicht</strong>
+          <span class="map-meta" id="mapMeta">Noch keine Kartendaten</span>
+        </div>
+        <div class="canvas-wrap" id="canvasWrap">
+          <canvas id="mapCanvas" aria-label="Live-Karte"></canvas>
+          <div class="empty" id="emptyState">
+            <strong>Noch keine Karte vorhanden</strong>
+            <span>Starte das Mapping, damit ROS 2 die Umgebung erfasst.</span>
+          </div>
+        </div>
+      </section>
+
+      <aside class="panel">
+        <div class="side-head"><strong>Steuerung</strong></div>
+        <div class="side-body">
+          <div class="full">
+            <div class="button-row">
+              <button id="startButton" class="primary" type="button">▶ Starten</button>
+              <button id="stopButton" class="stop" type="button" disabled>■ Stoppen</button>
+            </div>
+            <label class="check"><input type="checkbox" id="autoFahrt" checked> nach dem Start den Raum automatisch abfahren</label>
+          </div>
+
+          <div class="full">
+            <button id="fahrtButton" class="secondary" type="button" disabled>Kartierfahrt starten</button>
+            <div class="fahrt idle" id="fahrtText">Kartierfahrt aus. Der Roboter fährt erst, wenn sie gestartet wird.</div>
+          </div>
+
+          <div class="hinweis idle full" id="hinweis">Mapping ist gestoppt.</div>
+
+          <div class="metrics full">
+            <div class="metric"><span>Docker-Container</span><strong id="containerState">Unbekannt</strong></div>
+            <div class="metric"><span>Lidar → ROS</span><strong id="feedState">Unbekannt</strong></div>
+            <div class="metric"><span>Kartenempfang</span><strong id="bridgeState">Unbekannt</strong></div>
+            <div class="metric"><span>Letzte Karte</span><strong id="lastMap">–</strong></div>
+            <div class="metric"><span>Kartengröße</span><strong id="mapSize">–</strong></div>
+            <div class="metric"><span>Auflösung</span><strong id="resolution">–</strong></div>
+          </div>
+
+          <div class="full">
+            <label for="mapName">Name der Karte</label>
+            <input id="mapName" type="text" maxlength="64" placeholder="z. B. wohnzimmer">
+            <div style="height:9px"></div>
+            <button id="saveButton" class="secondary" type="button" disabled>Karte speichern</button>
+          </div>
+
+          <div class="full">
+            <label>Gespeicherte Karten</label>
+            <div id="savedMaps" class="saved-list"><div class="help">Noch keine gespeicherten Karten.</div></div>
+          </div>
+
+          <div class="message full" id="message">Warte auf Verbindung zur Mapping-API.</div>
+          <details class="log full" id="logBox" hidden>
+            <summary>SLAM-Protokoll (letzte Zeilen)</summary>
+            <pre id="slamLog"></pre>
+          </details>
+          <div class="help full">Mausrad: Zoom · Ziehen: Karte verschieben · Doppelklick: Ansicht einpassen</div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <script>
+    (() => {
+      const $ = (id) => document.getElementById(id);
+      const canvas = $('mapCanvas');
+      const ctx = canvas.getContext('2d', { alpha: false });
+      const offscreen = document.createElement('canvas');
+      const offctx = offscreen.getContext('2d');
+      let mapPayload = null;
+      let view = { scale: 1, x: 0, y: 0, fitted: false };
+      let dpr = 1;
+      let ws = null;
+      let reconnectTimer = null;
+      let pointer = null;
+      let problemGezeigt = false;
+      let mappingAktiv = false;
+      let fahrtAktiv = false;
+
+      function setFahrt(f) {
+        fahrtAktiv = !!f.aktiv;
+        const knopf = $('fahrtButton');
+        knopf.textContent = fahrtAktiv ? '■ Kartierfahrt anhalten' : 'Kartierfahrt starten';
+        knopf.classList.toggle('stop', fahrtAktiv);
+        knopf.disabled = !fahrtAktiv && !mappingAktiv;
+        let text;
+        if (fahrtAktiv) {
+          text = (f.text || 'fährt') + (f.dauer_s != null ? ` · ${f.dauer_s} s` : '');
+        } else if (f.grund) {
+          text = `Letzte Kartierfahrt: ${f.grund}`;
+        } else {
+          text = 'Kartierfahrt aus. Der Roboter fährt erst, wenn sie gestartet wird.';
+        }
+        $('fahrtText').textContent = text;
+        $('fahrtText').classList.toggle('idle', !fahrtAktiv);
+      }
+
+      async function fahrtStarten() {
+        try {
+          setFahrt(await api('/api/mapping/fahrt/start', { method: 'POST' }));
+          // Die Seite ist die Totmannschaltung: schließt sie, hält er an.
+          message('Kartierfahrt läuft. Diese Seite offen lassen, sonst hält er an. Stopp in der App hält ihn sofort an.');
+        } catch (error) { message(error.message, true); }
+      }
+
+      function message(text, error = false) {
+        $('message').textContent = text;
+        $('message').classList.toggle('error', error);
+      }
+
+      async function api(path, options = {}) {
+        const response = await fetch(path, {
+          headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+          ...options,
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
+        return body;
+      }
+
+      function feedText(f) {
+        if (!f) return '–';
+        if (f.laeuft && f.bereit) return `Läuft · ${f.scans} Scans`;
+        if (f.laeuft) return 'Verbindet …';
+        return f.fehler ? 'Unterbrochen' : 'Aus';
+      }
+
+      function setStatus(s) {
+        const running = !!s.mapping_running;
+        // "aktiv" heißt gestartet und nicht gestoppt, auch wenn SLAM
+        // inzwischen abgestürzt ist. Stoppen muss dann trotzdem gehen.
+        const aktiv = !!s.aktiv;
+        $('statusBadge').classList.toggle('running', running);
+        $('statusText').textContent = running ? 'Mapping aktiv' : (aktiv ? 'SLAM beendet' : 'Mapping gestoppt');
+        $('containerState').textContent = s.container_running ? 'Läuft' : 'Gestoppt';
+        $('feedState').textContent = feedText(s.einspeisung);
+        $('bridgeState').textContent = s.bridge_running ? 'Verbunden' : 'Getrennt';
+        $('lastMap').textContent = s.last_map_at
+          ? `vor ${Math.max(0, Math.round(Date.now() / 1000 - s.last_map_at))} s` : '–';
+        $('startButton').disabled = running || aktiv;
+        $('stopButton').disabled = !running && !aktiv && !s.bridge_running;
+        mappingAktiv = aktiv;
+        // Karte aus einem früheren Lauf (etwa in einem zweiten Tab)? Weg damit.
+        if (mapPayload && s.started_at && (mapPayload.received_at || 0) < s.started_at) karteLeeren();
+        if (s.fahrt) setFahrt(s.fahrt);
+        $('fahrtButton').disabled = !fahrtAktiv && !mappingAktiv;
+        $('saveButton').disabled = !s.map_available;
+
+        if (s.hinweis) {
+          const h = $('hinweis');
+          h.textContent = s.hinweis;
+          h.classList.toggle('error', !!s.hinweis_fehler);
+          h.classList.toggle('idle', !aktiv && !s.hinweis_fehler);
+        }
+        const log = s.slam_log || [];
+        $('logBox').hidden = !log.length;
+        $('slamLog').textContent = log.join('\n');
+        // Bei einem neuen Problem einmal aufklappen, dort steht meist die
+        // Ursache. Nicht bei jeder Meldung wieder, sonst lässt es sich
+        // nicht zuklappen.
+        if (s.hinweis_fehler && log.length && !problemGezeigt) $('logBox').open = true;
+        problemGezeigt = !!s.hinweis_fehler;
+        if (s.error && !aktiv) message(s.error, true);
+      }
+
+      function updateMap(payload) {
+        const info = payload.info || {};
+        const width = Number(info.width || 0);
+        const height = Number(info.height || 0);
+        if (!width || !height || !payload.data_b64) return;
+
+        let binary;
+        try { binary = atob(payload.data_b64); }
+        catch { message('Kartendaten konnten nicht dekodiert werden.', true); return; }
+        if (binary.length !== width * height) {
+          message(`Unvollständige Kartendaten (${binary.length}/${width * height}).`, true);
+          return;
+        }
+
+        offscreen.width = width;
+        offscreen.height = height;
+        const image = offctx.createImageData(width, height);
+        const bytes = image.data;
+        for (let y = 0; y < height; y++) {
+          const sourceRow = (height - 1 - y) * width;
+          for (let x = 0; x < width; x++) {
+            const raw = binary.charCodeAt(sourceRow + x);
+            const occupancy = raw > 127 ? raw - 256 : raw;
+            let shade;
+            if (occupancy < 0) shade = 105;       // unbekannt
+            else if (occupancy >= 65) shade = 12; // Hindernis
+            else if (occupancy <= 19) shade = 242; // freie Fläche
+            else shade = 155;                     // unklar
+            const i = (y * width + x) * 4;
+            bytes[i] = shade;
+            bytes[i + 1] = shade;
+            bytes[i + 2] = shade;
+            bytes[i + 3] = 255;
+          }
+        }
+        offctx.putImageData(image, 0, 0);
+        mapPayload = payload;
+        $('emptyState').style.display = 'none';
+        $('mapMeta').textContent = `${width} × ${height} Zellen · ${Number(info.resolution || 0).toFixed(3)} m/Zelle`;
+        $('mapSize').textContent = `${width} × ${height}`;
+        $('resolution').textContent = `${Number(info.resolution || 0).toFixed(3)} m`;
+        $('saveButton').disabled = false;
+        if (!view.fitted) fitMap();
+        else draw();
+        message('Kartendaten werden live empfangen.');
+      }
+
+      function resizeCanvas() {
+        const rect = canvas.getBoundingClientRect();
+        dpr = Math.max(1, window.devicePixelRatio || 1);
+        canvas.width = Math.max(1, Math.round(rect.width * dpr));
+        canvas.height = Math.max(1, Math.round(rect.height * dpr));
+        draw();
+      }
+
+      function fitMap() {
+        if (!mapPayload) return;
+        const w = offscreen.width;
+        const h = offscreen.height;
+        view.scale = Math.max(0.01, Math.min(canvas.width / w, canvas.height / h) * 0.9);
+        view.x = (canvas.width - w * view.scale) / 2;
+        view.y = (canvas.height - h * view.scale) / 2;
+        view.fitted = true;
+        draw();
+      }
+
+      function draw() {
+        if (!canvas.width || !canvas.height) return;
+        ctx.fillStyle = '#101720';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        if (!mapPayload) return;
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(offscreen, view.x, view.y, offscreen.width * view.scale, offscreen.height * view.scale);
+      }
+
+      canvas.addEventListener('pointerdown', (event) => {
+        pointer = { id: event.pointerId, x: event.clientX * dpr, y: event.clientY * dpr, originX: view.x, originY: view.y };
+        canvas.setPointerCapture(event.pointerId);
+        canvas.classList.add('dragging');
+      });
+      canvas.addEventListener('pointermove', (event) => {
+        if (!pointer || pointer.id !== event.pointerId) return;
+        view.x = pointer.originX + event.clientX * dpr - pointer.x;
+        view.y = pointer.originY + event.clientY * dpr - pointer.y;
+        draw();
+      });
+      function endPointer() { pointer = null; canvas.classList.remove('dragging'); }
+      canvas.addEventListener('pointerup', endPointer);
+      canvas.addEventListener('pointercancel', endPointer);
+      canvas.addEventListener('wheel', (event) => {
+        if (!mapPayload) return;
+        event.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const px = (event.clientX - rect.left) * dpr;
+        const py = (event.clientY - rect.top) * dpr;
+        const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
+        const next = Math.min(30, Math.max(0.02, view.scale * factor));
+        const ratio = next / view.scale;
+        view.x = px - (px - view.x) * ratio;
+        view.y = py - (py - view.y) * ratio;
+        view.scale = next;
+        draw();
+      }, { passive: false });
+      canvas.addEventListener('dblclick', fitMap);
+      window.addEventListener('resize', resizeCanvas);
+
+      async function refreshStatus() {
+        try { setStatus(await api('/api/mapping/status')); }
+        catch (error) { message(`API nicht erreichbar: ${error.message}`, true); }
+      }
+
+      async function refreshSavedMaps() {
+        try {
+          const maps = await api('/api/mapping/maps');
+          const container = $('savedMaps');
+          container.replaceChildren();
+          if (!maps.length) {
+            const empty = document.createElement('div');
+            empty.className = 'help';
+            empty.textContent = 'Noch keine gespeicherten Karten.';
+            container.append(empty);
+            return;
+          }
+          for (const item of maps) {
+            const row = document.createElement('div');
+            row.className = 'saved-item';
+            row.textContent = item.name;
+            container.append(row);
+          }
+        } catch (error) { message(`Kartenliste: ${error.message}`, true); }
+      }
+
+      function connectWebSocket() {
+        const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(`${scheme}//${location.host}/api/mapping/ws`);
+        ws.onopen = () => { message('Live-Verbindung hergestellt.'); };
+        ws.onmessage = (event) => {
+          let packet;
+          try { packet = JSON.parse(event.data); } catch { return; }
+          if (packet.type === 'status') setStatus(packet.data);
+          else if (packet.type === 'map') updateMap(packet.data);
+          else if (packet.type === 'fahrt') setFahrt(packet.data);
+          else if (packet.type === 'error') message(packet.message, true);
+        };
+        ws.onclose = () => {
+          $('statusText').textContent = 'Verbindung getrennt';
+          reconnectTimer = window.setTimeout(connectWebSocket, 2500);
+        };
+        ws.onerror = () => { try { ws.close(); } catch {} };
+      }
+
+      function karteLeeren() {
+        // Ein neuer Start ist eine neue Karte -- die alte nicht stehen lassen.
+        mapPayload = null;
+        view.fitted = false;
+        $('emptyState').style.display = '';
+        $('mapMeta').textContent = 'Noch keine Kartendaten';
+        $('mapSize').textContent = '–';
+        $('resolution').textContent = '–';
+        $('saveButton').disabled = true;
+        draw();
+      }
+
+      $('startButton').addEventListener('click', async () => {
+        $('startButton').disabled = true;
+        karteLeeren();
+        message('Starte ROS 2 und SLAM …');
+        try {
+          setStatus(await api('/api/mapping/start', { method: 'POST' }));
+          message('Mapping wurde gestartet. Warte auf die erste Karte …');
+        } catch (error) {
+          message(error.message, true);
+          $('startButton').disabled = false;
+          return;
+        }
+        if ($('autoFahrt').checked) await fahrtStarten();
+      });
+
+      $('fahrtButton').addEventListener('click', async () => {
+        $('fahrtButton').disabled = true;
+        if (fahrtAktiv) {
+          try { setFahrt(await api('/api/mapping/fahrt/stop', { method: 'POST' })); }
+          catch (error) { message(error.message, true); }
+        } else {
+          await fahrtStarten();
+        }
+        $('fahrtButton').disabled = !fahrtAktiv && !mappingAktiv;
+      });
+
+      $('stopButton').addEventListener('click', async () => {
+        $('stopButton').disabled = true;
+        message('Stoppe SLAM …');
+        try {
+          setStatus(await api('/api/mapping/stop', { method: 'POST' }));
+          message('Mapping gestoppt. Die bisherige Karte bleibt sichtbar und kann gespeichert werden.');
+        } catch (error) { message(error.message, true); }
+      });
+
+      $('saveButton').addEventListener('click', async () => {
+        const name = $('mapName').value.trim();
+        message('Speichere Karte …');
+        try {
+          const result = await api('/api/mapping/save', {
+            method: 'POST', body: JSON.stringify({ name: name || null }),
+          });
+          message(`Karte „${result.name}“ gespeichert (${result.width} × ${result.height}).`);
+          refreshSavedMaps();
+        } catch (error) { message(error.message, true); }
+      });
+
+      resizeCanvas();
+      refreshStatus();
+      refreshSavedMaps();
+      connectWebSocket();
+      window.addEventListener('beforeunload', () => {
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        if (ws) ws.close();
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Rosmaster Mapping</title>
+    <script src="https://cdn.jsdelivr.net/npm/roslib/build/roslib.min.js"></script>
+
+    <style>
+        body {
+            background: #171717;
+            color: white;
+            font-family: Arial;
+            text-align: center;
+        }
+
+        canvas {
+            background: #333;
+            width: 90vw;
+            max-width: 1000px;
+            height: auto;
+            border: 1px solid #555;
+            image-rendering: pixelated;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>Rosmaster X3 – Live Mapping</h2>
+    <p id="status">Verbinde mit ROS...</p>
+    <canvas id="map"></canvas>
+
+    <script>
+        const ros = new ROSLIB.Ros({
+            url: "ws://localhost:9090"
+        });
+
+        const status = document.getElementById("status");
+        const canvas = document.getElementById("map");
+        const ctx = canvas.getContext("2d");
+
+        ros.on("connection", () => {
+            status.innerText = "ROS verbunden";
+        });
+
+        ros.on("error", () => {
+            status.innerText = "ROS Verbindungsfehler";
+        });
+
+        ros.on("close", () => {
+            status.innerText = "ROS getrennt";
+        });
+
+        const mapTopic = new ROSLIB.Topic({
+            ros: ros,
+            name: "/map",
+            messageType: "nav_msgs/msg/OccupancyGrid"
+        });
+
+        mapTopic.subscribe((msg) => {
+            const width = msg.info.width;
+            const height = msg.info.height;
+            const data = msg.data;
+
+            canvas.width = width;
+            canvas.height = height;
+
+            const image = ctx.createImageData(width, height);
+
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+
+                    const index = y * width + x;
+                    const value = data[index];
+
+                    let color;
+
+                    if (value === -1) {
+                        color = 120; // Unbekannt
+                    } else {
+                        color = 255 - Math.round(value * 2.55);
+                    }
+
+                    const pixel = index * 4;
+
+                    image.data[pixel] = color;
+                    image.data[pixel + 1] = color;
+                    image.data[pixel + 2] = color;
+                    image.data[pixel + 3] = 255;
+                }
+            }
+
+            // ROS-Kartenkoordinaten vertikal umdrehen
+            const tempCanvas = document.createElement("canvas");
+            tempCanvas.width = width;
+            tempCanvas.height = height;
+
+            const tempCtx = tempCanvas.getContext("2d");
+            tempCtx.putImageData(image, 0, 0);
+
+            ctx.save();
+            ctx.translate(0, height);
+            ctx.scale(1, -1);
+            ctx.drawImage(tempCanvas, 0, 0);
+            ctx.restore();
+
+            status.innerText =
+                `Map: ${width} x ${height} | Auflösung: ${msg.info.resolution} m/Pixel`;
+        });
+    </script>
+</body>
+</html>

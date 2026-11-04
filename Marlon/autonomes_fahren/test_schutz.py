@@ -1,12 +1,13 @@
-"""Prüft die Bremsweg-Prüfung für autonome Fahrt und den Folgen-Abstand -- ohne Roboter.
+"""Prüft den Fahrschutz für autonome Fahrt und den Folgen-Abstand -- ohne Roboter.
 
     python Marlon/autonomes_fahren/test_schutz.py
 
 Zwei Teile:
 
-* ``AutonomSchutz`` (safety/collision.py): erlaubtes Tempo nach Bremsweg,
-  veralteter Scan, Hindernis vorn/seitlich, Einbindung im Watchdog nur für
-  ``quelle="autonom"``;
+* ``Fahrschutz`` (safety/fahrschutz.py): Bremsen vor der Wand, veralteter
+  Scan, Hindernis vorn/seitlich/neben dem Rad, Drehen neben der Wand,
+  Einbindung im Watchdog nur für ``quelle="autonom"``. Bis 03.11. prüfte
+  hier ``AutonomSchutz``, der ist im Fahrschutz aufgegangen;
 * ``Interaktion._abstand_zu`` (interaktion/verhalten.py): Abstand zur Person
   aus ihrem Lidar-Cluster -- ein Möbelbein davor zählt nicht als Person.
 
@@ -25,7 +26,8 @@ from rosmaster_assist import config  # noqa: E402
 from rosmaster_assist.drive.base import DriveBase  # noqa: E402
 from rosmaster_assist.interaktion import verhalten as vh  # noqa: E402
 from rosmaster_assist.protocol import DriveCommand  # noqa: E402
-from rosmaster_assist.safety import AutonomSchutz, SafetyWatchdog  # noqa: E402
+from rosmaster_assist.safety import Fahrschutz, SafetyWatchdog  # noqa: E402
+from rosmaster_assist.safety.fahrschutz import KEIN_LIDAR  # noqa: E402
 from rosmaster_assist.sensors.lidar import Scan  # noqa: E402
 
 fehler = 0
@@ -89,86 +91,72 @@ def wand_vorn(x):
     return scan(strecken=[(x, -2.0, x, 2.0)])
 
 
-# --- Teil 1: erlaubtes Tempo ---------------------------------------------------
-
-schutz = AutonomSchutz(Lidar())
-rand = config.AUTONOM_SCHUTZ_RAND_M
-
-pruefe("Tempo: am Rand 0", schutz.erlaubtes_tempo(rand, 0.0) == 0.0)
-pruefe("Tempo: innerhalb des Rands 0", schutz.erlaubtes_tempo(rand - 0.1, 0.0) == 0.0)
-pruefe("Tempo: frei unendlich", math.isinf(schutz.erlaubtes_tempo(float("inf"), 0.0)))
-
-for frei, alter in [(0.5, 0.0), (1.0, 0.13), (0.4, 0.3)]:
-    v = schutz.erlaubtes_tempo(frei, alter)
-    t = config.AUTONOM_SCHUTZ_LATENZ_S + alter
-    weg = v * t + v * v / (2 * config.AUTONOM_SCHUTZ_BREMSEN)
-    pruefe(f"Tempo: Bremsweg passt genau ({frei} m, Alter {alter} s)",
-           abs(weg - (frei - rand)) < 1e-9, f"v={v:.3f} weg={weg:.3f}")
-
-pruefe("Tempo: weiter frei -> schneller",
-       schutz.erlaubtes_tempo(0.6, 0.1) < schutz.erlaubtes_tempo(1.0, 0.1))
-pruefe("Tempo: älterer Scan -> langsamer",
-       schutz.erlaubtes_tempo(0.6, 0.4) < schutz.erlaubtes_tempo(0.6, 0.0))
-
-# Die Modi selbst dürfen nicht ausgebremst werden (siehe config.py): Befreien
-# mit EXPLORE_BEFREIEN_V bis EXPLORE_BEFREIEN_STOP_M, Erkunden bis EXPLORE_STOP_M.
-pruefe("Tempo: Befreien bei 0,30 m und altem Scan nicht gebremst",
-       schutz.erlaubtes_tempo(0.30, 0.13) >= 0.08, round(schutz.erlaubtes_tempo(0.30, 0.13), 3))
-pruefe("Tempo: Erkunden bei 0,45 m nicht unter 0,3 m/s",
-       schutz.erlaubtes_tempo(0.45, 0.13) >= 0.3, round(schutz.erlaubtes_tempo(0.45, 0.13), 3))
-
-
-# --- Teil 1: pruefen() ---------------------------------------------------------
+# --- Teil 1: Fahrschutz pruefen() ----------------------------------------------
+# Grundfläche: vorn ROBOTER_VORN_M (0,15), seitlich ROBOTER_HALBE_BREITE_M
+# (0,125) ab Lidar-Mitte; die Kante hält FAHRSCHUTZ_RAND_M (0,04) Luft.
 
 li = Lidar()
-schutz = AutonomSchutz(li)
-jetzt = time.monotonic
+schutz = Fahrschutz(li)
+STOP = DriveCommand(0.0, 0.0, 0.0)
 
 li.s = None
-c = schutz.pruefen(DriveCommand(0.2, 0.0, 0.5), jetzt())
-pruefe("ohne Scan: nicht fahren, drehen erlaubt", c == DriveCommand(0.0, 0.0, 0.5), c)
+p = schutz.pruefen(DriveCommand(0.2, 0.0, 0.5))
+pruefe("ohne Scan: steht", p.befehl == STOP and p.grund == KEIN_LIDAR, p)
 
 li.s = wand_vorn(3.0)
-li.s.zeit -= config.AUTONOM_SCHUTZ_SCAN_MAX_S + 0.2
-c = schutz.pruefen(DriveCommand(0.2, 0.1, -0.3), jetzt())
-pruefe("veralteter Scan: nicht fahren, drehen erlaubt", c == DriveCommand(0.0, 0.0, -0.3), c)
-c = schutz.pruefen(DriveCommand(0.0, 0.0, 0.7), jetzt())
-pruefe("veralteter Scan: reine Drehung unverändert", c == DriveCommand(0.0, 0.0, 0.7), c)
-pruefe("Eingriffe gezählt", schutz.zustand()["eingriffe"] == 2, schutz.zustand())
+li.s.zeit -= config.FAHRSCHUTZ_SCAN_MAX_S + 0.2
+p = schutz.pruefen(DriveCommand(0.2, 0.1, -0.3))
+pruefe("veralteter Scan: steht", p.befehl == STOP and p.grund == KEIN_LIDAR, p)
 
 li.s = scan(strecken=[(5.0, -5.0, 5.0, 5.0)])
-c = schutz.pruefen(DriveCommand(0.3, 0.0, 0.2), jetzt())
+c = schutz.pruefen(DriveCommand(0.3, 0.0, 0.2)).befehl
 pruefe("weit frei: unverändert", c == DriveCommand(0.3, 0.0, 0.2), c)
 
-li.s = wand_vorn(0.5)
-c = schutz.pruefen(DriveCommand(0.3, 0.0, 0.2), jetzt())
-pruefe("Wand 0,5 m vorn: 0,3 m/s noch erlaubt", c == DriveCommand(0.3, 0.0, 0.2), c)
+li.s = wand_vorn(0.8)
+c = schutz.pruefen(DriveCommand(0.3, 0.0, 0.0)).befehl
+pruefe("Wand 0,8 m vorn: 0,3 m/s noch erlaubt", c == DriveCommand(0.3, 0.0, 0.0), c)
 
 li.s = wand_vorn(0.3)
-c = schutz.pruefen(DriveCommand(0.3, 0.0, 0.2), jetzt())
-erwartet = schutz.erlaubtes_tempo(0.3, jetzt() - (li.s.zeit - li.s.dauer))
-pruefe("Wand 0,3 m vorn: gebremst, nicht gestoppt", 0.0 < c.vx < 0.3, c)
-pruefe("Wand 0,3 m vorn: Tempo nach Bremsweg", abs(c.vx - erwartet) < 0.01, f"{c.vx:.3f} ~ {erwartet:.3f}")
-pruefe("Wand 0,3 m vorn: Drehung bleibt", c.omega == 0.2, c)
+p = schutz.pruefen(DriveCommand(0.3, 0.0, 0.2))
+c = p.befehl
+pruefe("Wand 0,3 m vorn: gebremst, nicht gestoppt", 0.0 < c.vx < 0.3, p)
+pruefe("Wand 0,3 m vorn: Bogen bleibt derselbe (alles gleich skaliert)",
+       abs(c.omega / c.vx - 0.2 / 0.3) < 1e-9, c)
 
-# Kurzes Brett 0,21 m vorn (innerhalb des Rands), seitlich ist frei.
-li.s = scan(strecken=[(0.21, -0.3, 0.21, 0.3)])
-c = schutz.pruefen(DriveCommand(0.2, 0.0, 0.0), jetzt())
-pruefe("Brett 0,21 m vorn: steht", c.vx == 0.0 and c.vy == 0.0, c)
-c = schutz.pruefen(DriveCommand(-0.1, 0.0, 0.0), jetzt())
-pruefe("Brett 0,21 m vorn: rückwärts weg erlaubt", c == DriveCommand(-0.1, 0.0, 0.0), c)
-c = schutz.pruefen(DriveCommand(0.0, 0.15, 0.0), jetzt())
-pruefe("Brett 0,21 m vorn: seitlich weg erlaubt", c == DriveCommand(0.0, 0.15, 0.0), c)
+# Kurzes Brett 2 cm vor der Kante (innerhalb des Rands), seitlich ist frei.
+li.s = scan(strecken=[(0.17, -0.3, 0.17, 0.3)])
+c = schutz.pruefen(DriveCommand(0.2, 0.0, 0.0)).befehl
+pruefe("Brett im Rand vorn: steht", c == STOP, c)
+c = schutz.pruefen(DriveCommand(-0.1, 0.0, 0.0)).befehl
+pruefe("Brett im Rand vorn: rückwärts weg erlaubt", c == DriveCommand(-0.1, 0.0, 0.0), c)
+c = schutz.pruefen(DriveCommand(0.0, 0.15, 0.0)).befehl
+pruefe("Brett im Rand vorn: seitlich daran entlang erlaubt", c == DriveCommand(0.0, 0.15, 0.0), c)
 
 li.s = scan(strecken=[(-2.0, 0.3, 2.0, 0.3)])  # Wand links in 0,30 m
-c = schutz.pruefen(DriveCommand(0.0, 0.25, 0.0), jetzt())
+c = schutz.pruefen(DriveCommand(0.0, 0.25, 0.0)).befehl
 pruefe("Wand links: seitlich nach links gebremst", 0.0 <= c.vy < 0.25, c)
-c = schutz.pruefen(DriveCommand(0.25, 0.0, 0.0), jetzt())
+c = schutz.pruefen(DriveCommand(0.25, 0.0, 0.0)).befehl
 pruefe("Wand links: vorwärts daran entlang frei", c == DriveCommand(0.25, 0.0, 0.0), c)
 
 li.s = wand_vorn(0.3)
-c = schutz.pruefen(DriveCommand(0.3, 0.1, 0.0), jetzt())
-pruefe("schräg: Richtung bleibt", abs(c.vy / c.vx - 1 / 3) < 1e-9 and c.vx < 0.3, c)
+c = schutz.pruefen(DriveCommand(0.3, 0.1, 0.0)).befehl
+pruefe("schräg: Richtung bleibt", c.vx < 0.3 and abs(c.vy / c.vx - 1 / 3) < 1e-9, c)
+
+# Drehen: Das konnte AutonomSchutz nicht -- er ließ jede Drehung durch.
+li.s = scan(strecken=[(-2.0, 0.16, 2.0, 0.16)])  # Wand 3,5 cm neben der linken Seite
+c = schutz.pruefen(DriveCommand(0.0, 0.0, 0.5)).befehl
+pruefe("Wand dicht links: Drehen gesperrt (Ecke schwenkt aus)", c == STOP, c)
+pruefe("Wand dicht links: drehen_frei sagt warum", schutz.drehen_frei(math.pi / 2) is not None,
+       schutz.drehen_frei(math.pi / 2))
+li.s = scan(strecken=[(1.0, -2.0, 1.0, 2.0), (-1.0, -2.0, -1.0, 2.0)])
+c = schutz.pruefen(DriveCommand(0.0, 0.0, 0.5)).befehl
+pruefe("viel Platz: Drehen unverändert", c == DriveCommand(0.0, 0.0, 0.5), c)
+pruefe("viel Platz: drehen_frei", schutz.drehen_frei(2 * math.pi) is None)
+
+# Tischbein vorn rechts neben dem Rad, 5 cm vor der Kante.
+li.s = scan(kreise=[(0.22, -0.11, 0.02)], schritt=0.25)
+c = schutz.pruefen(DriveCommand(0.3, 0.0, 0.0)).befehl
+pruefe("Tischbein neben dem Vorderrad: gebremst", c.vx < 0.3, c)
 
 
 # --- Teil 1: Einbindung im Watchdog -------------------------------------------
@@ -196,20 +184,26 @@ class Attrappe(DriveBase):
 
 
 wd = SafetyWatchdog(Attrappe())
-li = Lidar(wand_vorn(0.21))
+li = Lidar(scan(strecken=[(0.17, -0.3, 0.17, 0.3)]))
 wd.submit(DriveCommand(0.2, 0.0, 0.0), quelle="autonom")
 pruefe("Watchdog ohne Schutz: autonom wie bisher", wd._ziel.vx == 0.2, wd._ziel)
 
-wd.autonom_schutz = AutonomSchutz(li)
-wd.submit(DriveCommand(0.2, 0.0, 0.3), quelle="autonom")
-pruefe("Watchdog: autonom vor der Wand gestoppt, dreht", wd._ziel == DriveCommand(0.0, 0.0, 0.3), wd._ziel)
+wd.fahrschutz = Fahrschutz(li)
+wd.submit(DriveCommand(0.2, 0.0, 0.0), quelle="autonom")
+pruefe("Watchdog: autonom vor dem Brett gestoppt", wd._ziel == STOP, wd._ziel)
+pruefe("Watchdog: Ergebnis für die Modi", wd.letzte_pruefung is not None
+       and wd.letzte_pruefung.anteil == 0.0, wd.letzte_pruefung)
+pruefe("Watchdog: Eingriff gezählt", wd.fahrschutz.zustand()["eingriffe"] == 1, wd.fahrschutz.zustand())
 wd.submit(DriveCommand(0.2, 0.0, 0.0), quelle="hand")
 pruefe("Watchdog: Handsteuerung unberührt", wd._ziel.vx == 0.2, wd._ziel)
 
 config.AUTONOM_SCHUTZ_AKTIV = False
 wd.submit(DriveCommand(0.2, 0.0, 0.0), quelle="autonom")
 pruefe("Watchdog: abgeschaltet -> autonom unberührt", wd._ziel.vx == 0.2, wd._ziel)
+pruefe("Watchdog: abgeschaltet -> kein altes Ergebnis", wd.letzte_pruefung is None)
 config.AUTONOM_SCHUTZ_AKTIV = True
+
+pruefe("Fahrschutz-Rand kleiner als Planer-Rand", config.FAHRSCHUTZ_RAND_M < config.AUSWEICH_RAND_M)
 
 
 # --- Teil 2: Folgen-Abstand aus dem Lidar-Cluster ------------------------------

@@ -8,7 +8,7 @@
 | Fahrgestell     | Yahboom ROSMASTER X3  | USB-Serial       | vorhanden   |
 | Expansion Board | Yahboom (STM32)       | USB-Serial       | vorhanden   |
 | Lidar           | Slamtec RPLIDAR A1    | USB-Seriell      | eingebunden (Ortung + Hindernisse) |
-| Tiefenkamera    | Orbbec (Farb- + Tiefenkanal) | USB (über Hub) | Farbbild eingebunden (Kamera `orientierung`), Tiefe noch nicht |
+| Tiefenkamera    | Orbbec (Farb- + Tiefenkanal) | USB (über Hub) | Farbbild eingebunden (Kamera `orientierung`), Tiefe seit 04.11. (Hindernisse beim autonomen Fahren) |
 | Webcam          | Logitech C270 (vorn, leicht nach oben) | USB, eigener Bus (direkt am Pi) | eingebunden (Kamera `personen`: Personenerkennung, Gesten) |
 | Mikrofon        | USB-Mikrofon (FongLun, C-Media `0d8c:0016`); weitere in C270 und Orbbec | USB-Audio, eigener Bus | eingebunden (Sprachbefehle „Robi …“, `SPRACHE_MIKROFON`) |
 | Lautsprecher    | USB-Lautsprecher „UACDemoV1.0“ | USB-Audio, direkt am Pi | eingebunden (MUKKE: Musik von YouTube; Sprachausgabe, `STIMME_GERAET`) |
@@ -49,10 +49,9 @@ Den Eintrag mit `1a86` bzw. `CH340` in `config.py` bei `SERIAL_PORT`
 hinterlegen. Der Lidar hat mit `/dev/rplidar` bereits einen festen Namen.
 
 Die **Orbbec-Tiefenkamera** meldet sich als zwei USB-Geräte. Genutzt wird
-aktuell nur ihr RGB-Kanal als gewöhnliche USB-Kamera. Der Tiefenkanal ist
-für Orientierung und Kollisionsvermeidung gedacht, ist aber kein
-Videogerät (taucht in `v4l2-ctl --list-devices` nicht auf) und braucht das
-Orbbec-SDK.
+ihr RGB-Kanal als gewöhnliche USB-Kamera. Der Tiefenkanal ist kein
+Videogerät (taucht in `v4l2-ctl --list-devices` nicht auf); er läuft über
+Orbbecs OpenNI2, siehe [Tiefenkamera](#tiefenkamera-orbbec-astra).
 
 Seit dem 28.10. ist zusätzlich eine **Logitech C270** vorn montiert. Sie
 hängt direkt am Pi, nicht am Hub: Am Hub hängen schon Board, Lidar und
@@ -256,6 +255,47 @@ Der Stream liegt unter `/camera/<name>/stream` (MJPEG) und ein Einzelbild
 unter `/camera/<name>/snapshot`, z. B. `/camera/personen/stream`. Beides ist
 direkt im Browser aufrufbar, auch ohne die App. `/camera/stream` ohne Namen
 zeigt die Standardkamera (`orientierung`).
+
+## Tiefenkamera (Orbbec Astra)
+
+Seit 04.11. nutzt das autonome Fahren den Tiefenkanal (`sensors/tiefe.py`),
+um zu sehen, was unter der Lidar-Ebene liegt: Stuhl- und Tischbeine,
+Kisten, Taschen. Am Stuhlbein ist der Roboter vorher hängen geblieben.
+
+**Einrichten (einmal am Pi):** `bash scripts/orbbec_einrichten.sh`.
+Das Skript kopiert `libOpenNI2.so` und den Orbbec-Treiber aus dem
+Yahboom-Container nach `~/orbbec_openni2` (`TIEFE_OPENNI_PFAD`). Das
+pip-Paket `openni` läuft unter Python 3.13 nicht, deshalb gibt es eine
+eigene kleine ctypes-Anbindung. Die udev-Regel `56-orbbec-usb.rules`
+von Yahboom erlaubt den Zugriff ohne root. Fehlt die Bibliothek, läuft
+der Server ohne Tiefe weiter und meldet das im Log und unter `/tiefe/status`.
+
+**Was man wissen muss:**
+
+- Die Astra misst erst ab **~0,6 m** (`TIEFE_MIN_M`). Was näher ist, kennt
+  der Roboter nur aus dem Gedächtnis, also von früher, als es weiter weg
+  war. Ein Stuhl, der direkt neben ihm hingestellt wird, bleibt unsichtbar.
+  Dagegen hilft die Fortschrittswache (siehe `docs/api.md`).
+- Gelesen wird mit 320×240. Ausgewertet werden 8 Bilder/s (`TIEFE_HZ`),
+  die Kamera liefert 30.
+- Hindernis ist, was 4–40 cm über dem **Boden** steht. Den Boden sucht
+  er in jedem Bild als Ebene. So gleicht er die Einbaulage aus
+  (`TIEFE_KAMERA_HOEHE_M`, `…_NEIGUNG_GRAD` sind nur Startwerte). Findet er
+  keinen Boden (dunkler oder spiegelnder Boden, Roboter aufgebockt), zählt
+  erst ab 9 cm Höhe und nur bis 1,3 m.
+- **Strom:** Der Projektor ist einer der größten Verbraucher am Hub (siehe
+  USB-Resets unten). Deshalb ist die Kamera nur während autonomer Fahrten
+  an und sonst geschlossen. Meldet sie sich ab, verbindet sie sich nach
+  `TIEFE_NEUVERSUCH_S` neu. Die Fahrt läuft derweil mit dem Lidar allein.
+- Die Tiefenpunkte gehen bewusst **nicht** in die Karte (SLAM). Die Karte
+  bleibt eine Lidar-Karte, die Punkte dienen nur dem Ausweichen.
+- Ansehen: in der App im Kamera-Umschalter „Tiefe“ bzw. „Tiefe + Farbbild“
+  (oder `/tiefe/stream` im Browser), Farben siehe `docs/api.md`.
+- Prüfen im Stand: `curl -X POST <IP>:8000/tiefe/test`, dann
+  `/tiefe/status`. Auf dem Boden stehend sollte `boden_erkannt` true sein
+  und `kamera_hoehe_m` ungefähr die echte Höhe zeigen. Zur Kontrolle von
+  links/rechts eine Hand links vor die Kamera halten (mehr als 60 cm weg):
+  `naechstes` muss dann ein positives y zeigen (Konvention: y links).
 
 ## Lautsprecher und Musik („MUKKE“)
 
