@@ -50,6 +50,8 @@ class OccupancyMap:
         self.origin = (float(origin[0]), float(origin[1]))
         self.name = name
         self.timestamp = time.time() if timestamp is None else timestamp
+        # always-on mapping: same frame_id = newer state of the same map
+        self.frame_id: str | None = None
         self.height, self.width = self.occupancy.shape
         b = self.occupancy.astype(np.int16)
         self.occupied = b >= OCCUPIED_MIN
@@ -120,6 +122,74 @@ class OccupancyMap:
             "received_at": self.timestamp,
             "name": self.name,
         }
+
+    @classmethod
+    def derived(cls, occupancy, resolution, origin, previous: "OccupancyMap | None",
+                dirty: tuple[int, int, int, int] | None, name: str | None = None) -> "OccupancyMap":
+        """A newer state of ``previous`` where only the cells in ``dirty`` changed.
+
+        ``dirty`` = (ix0, iy0, ix1, iy1), end exclusive. The distance field is
+        clamped at NAV_DISTANCE_MAX_M, so a change can only reach that far:
+        only that neighbourhood is recomputed, the rest is copied. Exact, and
+        for a growing map a fraction of the full computation. Same shape,
+        origin and resolution required -- otherwise everything is rebuilt.
+        """
+        new = cls(occupancy, resolution, origin, name=name)
+        if (
+            previous is None or dirty is None
+            or previous.occupancy.shape != new.occupancy.shape
+            or previous.origin != new.origin or previous.resolution != new.resolution
+        ):
+            _ = new.gradient
+            return new
+        ix0, iy0, ix1, iy1 = dirty
+        h, w = new.height, new.width
+        if (ix1 - ix0) * (iy1 - iy0) > 0.5 * h * w:
+            _ = new.gradient
+            return new
+        m = int(math.ceil(config.NAV_DISTANCE_MAX_M / resolution)) + 1
+        # inner: cells whose distance may have changed; window: everything
+        # that can be their nearest wall
+        ax0, ay0 = max(0, ix0 - m), max(0, iy0 - m)
+        ax1, ay1 = min(w, ix1 + m), min(h, iy1 + m)
+        wx0, wy0 = max(0, ix0 - 2 * m), max(0, iy0 - 2 * m)
+        wx1, wy1 = min(w, ix1 + 2 * m), min(h, iy1 + 2 * m)
+        local = distance_field(new.occupied[wy0:wy1, wx0:wx1], resolution, config.NAV_DISTANCE_MAX_M)
+        d = previous.distance.copy()
+        d[ay0:ay1, ax0:ax1] = local[ay0 - wy0:ay1 - wy0, ax0 - wx0:ax1 - wx0]
+        new._distance = d
+        gx, gy = previous.gradient
+        gx, gy = gx.copy(), gy.copy()
+        # one cell more for the central differences at the edge of inner
+        bx0, by0 = max(0, ax0 - 1), max(0, ay0 - 1)
+        bx1, by1 = min(w, ax1 + 1), min(h, ay1 + 1)
+        if by1 - by0 >= 2 and bx1 - bx0 >= 2:
+            ly, lx = np.gradient(d[by0:by1, bx0:bx1], resolution)
+            gx[ay0:ay1, ax0:ax1] = lx[ay0 - by0:ay1 - by0, ax0 - bx0:ax1 - bx0]
+            gy[ay0:ay1, ax0:ax1] = ly[ay0 - by0:ay1 - by0, ax0 - bx0:ax1 - bx0]
+        else:
+            gy_all, gx_all = np.gradient(d, resolution)
+            gx, gy = gx_all, gy_all
+        new._gradient = (gx, gy)
+        return new
+
+    def nearest_free(self, x: float, y: float, reach_m: float) -> tuple[float, float] | None:
+        """Nearest known free cell centre within ``reach_m`` (m), None if there is none."""
+        ix, iy = self.cell(x, y)
+        r = int(math.ceil(reach_m / self.resolution))
+        x0, y0 = max(0, int(ix) - r), max(0, int(iy) - r)
+        x1, y1 = min(self.width, int(ix) + r + 1), min(self.height, int(iy) + r + 1)
+        if x0 >= x1 or y0 >= y1:
+            return None
+        ys, xs = np.nonzero(self.free[y0:y1, x0:x1])
+        if len(xs) == 0:
+            return None
+        cx, cy = self.world(xs + x0, ys + y0)
+        dist = np.hypot(cx - x, cy - y)
+        i = int(np.argmin(dist))
+        if dist[i] > reach_m:
+            return None
+        return float(cx[i]), float(cy[i])
 
     # --- Conversion ----------------------------------------------------------------
 

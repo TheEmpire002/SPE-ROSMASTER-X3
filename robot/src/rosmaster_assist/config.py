@@ -459,6 +459,11 @@ LIVE_MAP_SEED_OCC_LO = 3.0
 LIVE_MAP_SEED_FREE_LO = -2.0
 # empty map: this many good scans at standstill found it
 LIVE_BOOTSTRAP_SCANS = 3
+# ... moving more than this between them starts the founding again (m, deg)
+LIVE_BOOTSTRAP_MAX_MOVE_M = 0.02
+LIVE_BOOTSTRAP_MAX_TURN_DEG = 1.0
+# rays per scan that are written; more cost time and add little
+LIVE_MAP_MAX_RAYS = 240
 
 # new snapshot for localization and planner at most this often (s)
 LIVE_MAP_SNAPSHOT_S = 2.0
