@@ -488,6 +488,13 @@ class MapLocalization:
 
     # --- Queries -----------------------------------------------------------------
 
+    def correction(self) -> tuple[float, float, float] | None:
+        """Odometry frame -> map frame while the pose is tracked, else None."""
+        with self._lock:
+            if self._map is None or self._run_id is None or self._run_id != self._odo.run:
+                return None
+            return self._correction
+
     def pose(self) -> tuple[float, float, float] | None:
         """Pose in the map (x, y, radians) or None while unknown."""
         with self._lock:

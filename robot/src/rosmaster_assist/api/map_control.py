@@ -16,6 +16,8 @@ parties involved (explorer, homing, interaction, drive commands, driver):
 4. **Always-on mapping** (E14). The main map is loaded at start; behind the
    integrate gate every drive extends it. Snapshots for localization and
    planner, autosave and the last confident pose run beside the tick.
+   While slam maps, it pauses; afterwards the slam map can become the main
+   map (``adopt_slam``) or be dropped (``discard_slam``).
 """
 
 from __future__ import annotations
@@ -73,6 +75,8 @@ class MapControl:
         self._pose_dirty = False
         # mock only: map pose of the simulation's true frame
         self._sim_origin: tuple | None = None
+        # main map -> odometry correction when slam started, and the odometry run
+        self._slam_from: tuple | None = None
         # the trail driven in the main map, and the anchors on it (way back)
         self.crumbs = Breadcrumbs()
         self._crumbs_dirty = False
@@ -355,6 +359,114 @@ class MapControl:
         self._pose_saved = None
         self._sim_origin = None
         self._report("info", "Neue Karte: bitte kurz stillhalten, dann beginnt sie hier")
+        return None
+
+    # --- slam as the optional first mapping (E14) ---------------------------------------
+
+    def before_slam(self) -> None:
+        """Slam is about to start: save the main map, remember how it lies.
+
+        slam maps in the lidar odometry frame, which keeps running; with the
+        main map's correction at this moment both frames can be related later
+        """
+        self._slam_from = None
+        if not self._live_ok:
+            return
+        if self._localization.source == "dauer" and self._scan_odometry is not None:
+            correction = self._localization.correction()
+            if correction is not None and self._localization.confident:
+                self._slam_from = (correction, self._scan_odometry.run)
+        # paused right away: the tick only notices slam a moment later
+        self._mapper.pause("slam")
+        try:
+            self._save_now()
+        except Exception:
+            log.exception("Main map could not be saved before slam")
+
+    @property
+    def _slam_result(self) -> bool:
+        """Slam has stopped and its map is still loaded: adopt or discard."""
+        return (self._live_ok and not self._manager.active
+                and self._localization.source == "slam")
+
+    def _main_to_odometry(self) -> tuple | None:
+        """Main map frame -> odometry (= slam) frame, if the odometry ran through."""
+        if self._slam_from is None or self._scan_odometry is None:
+            return None
+        correction, run = self._slam_from
+        return _inverse(correction) if run == self._scan_odometry.run else None
+
+    def adopt_slam(self) -> str | None:
+        """The slam map becomes the main map and grows from now on. Error text or None."""
+        if not self._live_ok:
+            return "Dauerkartierung ist abgeschaltet (LIVE_MAP_ENABLED)"
+        if self._manager.active:
+            return "Erst das Mapping stoppen"
+        occ_map = self._localization.occ_map
+        if occ_map is None or self._localization.source != "slam":
+            return "Keine SLAM-Karte zum Übernehmen"
+        self._cancel_others("SLAM-Karte wird übernommen")
+        try:
+            if self._mapper.has_map:
+                self._save_now()
+                self._store.backup(self._live_name)
+        except Exception:
+            log.exception("Main map could not be backed up before adopting the slam map")
+            return "Sicherung der Hauptkarte fehlgeschlagen -- SLAM-Karte nicht übernommen"
+        correction = self._localization.correction()
+        slam_start = tuple(self._localization.start)
+        old_start = _pose3(self._extra.get("start"))
+        to_slam = self._main_to_odometry()
+        self._mapper.import_occupancy(occ_map)
+        # slam may have bent its frame a little (loop closure): good enough
+        # for the trail and the anchors, the pose itself stays tracked
+        if to_slam is not None:
+            self.crumbs.transform(to_slam)
+            start = _compose(to_slam, old_start) if old_start is not None else slam_start
+        else:
+            self.crumbs.clear()
+            start = slam_start
+        self._extra = {"start": list(start)}
+        self._pose_saved = None
+        self._sim_origin = None
+        self._slam_from = None
+        if correction is not None:
+            self._attach_main(None, correction=correction, start=start)
+        else:
+            self._attach_main(startup_stages(self._extra), start=start)
+        self._store.set_active(self._live_name)
+        self._crumbs_dirty = True
+        self._save_time = 0.0   # save the new main map soon
+        self._report("info", "SLAM-Karte als Hauptkarte übernommen -- sie wächst ab jetzt "
+                             "beim Fahren weiter")
+        return None
+
+    def discard_slam(self) -> str | None:
+        """Back to the main map; the pose is searched where the odometry expects it."""
+        if not self._live_ok:
+            return "Dauerkartierung ist abgeschaltet (LIVE_MAP_ENABLED)"
+        if self._manager.active:
+            return "Erst das Mapping stoppen"
+        if self._localization.source != "slam":
+            return "Keine SLAM-Karte zum Verwerfen"
+        self._cancel_others("SLAM-Karte verworfen")
+        stages: list[Stage] = []
+        odo = self._scan_odometry.pose() if self._scan_odometry is not None else None
+        if self._main_to_odometry() is not None and odo is not None:
+            guess = _compose(self._slam_from[0], odo)
+            share = config.NAV_SEARCH_MIN_SHARE
+            stages.append(Stage((guess[0], guess[1]), config.LIVE_START_SEARCH_NEAR_M, guess[2],
+                                share, text="sucht die eigene Lage, wo die Odometrie ihn sieht"))
+            stages.append(Stage((guess[0], guess[1]), config.NAV_SEARCH_RADIUS_M, None, share,
+                                text="sucht die eigene Lage rund um diese Stelle"))
+        extra = dict(self._extra)
+        if self._pose_saved is not None:
+            extra["last_pose"] = list(self._pose_saved)
+        self._slam_from = None
+        self._localization.unload()
+        if self._mapper.has_map:
+            self._attach_main(stages + startup_stages(extra))
+        self._report("info", "SLAM-Karte verworfen -- zurück in der Hauptkarte")
         return None
 
     def start_here(self) -> bool:
@@ -670,6 +782,7 @@ class MapControl:
         status["waechst"] = self._growing
         status["gespeichert"] = self._store.last_saved if self._store else None
         status["speicherfehler"] = self._store.last_error if self._store else None
+        status["slam_karte"] = self._slam_result
         return status
 
 

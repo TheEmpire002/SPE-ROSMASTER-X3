@@ -86,6 +86,9 @@ def create_mapping_router(manager: MappingManager | None = None, drive=None) -> 
 
     @router.post("/api/mapping/start")
     async def mapping_start() -> dict[str, Any]:
+        # the main map is saved and remembered before slam takes the lidar
+        if drive is not None:
+            await run_in_threadpool(drive.before_slam)
         try:
             return await run_in_threadpool(mapping_manager.start)
         except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
@@ -211,6 +214,22 @@ def create_mapping_router(manager: MappingManager | None = None, drive=None) -> 
     async def mapping_return(request: ReturnRequest) -> dict[str, Any]:
         control = _control()
         error = control.return_to(request.ziel)
+        if error:
+            raise HTTPException(status_code=409, detail=error)
+        return control.display()
+
+    @router.post("/api/mapping/hauptkarte/uebernehmen")
+    async def mapping_adopt_slam() -> dict[str, Any]:
+        control = _control()
+        error = await run_in_threadpool(control.adopt_slam)
+        if error:
+            raise HTTPException(status_code=409, detail=error)
+        return control.display()
+
+    @router.post("/api/mapping/hauptkarte/verwerfen")
+    async def mapping_discard_slam() -> dict[str, Any]:
+        control = _control()
+        error = await run_in_threadpool(control.discard_slam)
         if error:
             raise HTTPException(status_code=409, detail=error)
         return control.display()

@@ -174,6 +174,14 @@
                 <label class="check"><input type="checkbox" id="autoFahrt" checked> nach dem Start automatisch abfahren, Raum für Raum</label>
               </div>
 
+              <div id="slamWahl" hidden>
+                <div class="hinweis" style="margin-bottom:9px">SLAM ist fertig. Die neue Karte als Hauptkarte übernehmen (die alte wird gesichert) oder verwerfen und zur Hauptkarte zurückkehren?</div>
+                <div class="button-row">
+                  <button id="slamUebernehmen" class="primary" type="button">Als Hauptkarte übernehmen</button>
+                  <button id="slamVerwerfen" class="stop" type="button">Verwerfen</button>
+                </div>
+              </div>
+
               <div>
                 <button id="fahrtButton" class="secondary" type="button" disabled>Kartierfahrt starten</button>
                 <div class="fahrt idle" id="fahrtText">Kartierfahrt aus. Der Roboter fährt erst, wenn sie gestartet wird.</div>
@@ -574,6 +582,9 @@
         const overlay = $('liveOverlay');
         $('livePause').disabled = !k || k.zustand === 'aus';
         $('neueKarte').disabled = !k || mappingActive;
+        const choose = !!(k && k.slam_karte);
+        if (choose && $('slamWahl').hidden) $('erstBox').open = true;
+        $('slamWahl').hidden = !choose;
         if (!k) {
           field.textContent = 'Dauerkartierung ist abgeschaltet.';
           field.className = 'ortung idle';
@@ -849,6 +860,22 @@
           await api('/api/mapping/hauptkarte/neu', { method: 'POST' });
           clearMap();
           message('Neue Karte: bitte den Roboter kurz stillhalten, dann beginnt sie an dieser Stelle.');
+        } catch (error) { message(error.message, true); }
+      });
+
+      $('slamUebernehmen').addEventListener('click', async () => {
+        try {
+          setLocalization(await api('/api/mapping/hauptkarte/uebernehmen', { method: 'POST' }));
+          view.fitted = false;
+          message('SLAM-Karte ist jetzt die Hauptkarte und wächst beim Fahren weiter. Die alte liegt im Ordner backups.');
+        } catch (error) { message(error.message, true); }
+      });
+      $('slamVerwerfen').addEventListener('click', async () => {
+        if (!window.confirm('SLAM-Karte verwerfen und zur Hauptkarte zurückkehren?')) return;
+        try {
+          setLocalization(await api('/api/mapping/hauptkarte/verwerfen', { method: 'POST' }));
+          view.fitted = false;
+          message('Zurück in der Hauptkarte -- er sucht seine Lage dort, wo die Odometrie ihn sieht.');
         } catch (error) { message(error.message, true); }
       });
 

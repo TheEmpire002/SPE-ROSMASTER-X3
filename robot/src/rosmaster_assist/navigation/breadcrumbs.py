@@ -76,6 +76,18 @@ class Breadcrumbs:
             self._broken = False
             self.anchors.clear()
 
+    def transform(self, t) -> None:
+        """Into another frame: ``t`` (x, y, theta) maps old coordinates to new ones."""
+        c, s = math.cos(t[2]), math.sin(t[2])
+        with self._lock:
+            for k in self._crumbs:
+                x, y = k[0], k[1]
+                k[0], k[1] = t[0] + c * x - s * y, t[1] + s * x + c * y
+            for a in self.anchors.values():
+                x, y, theta = a["pose"]
+                a["pose"] = [t[0] + c * x - s * y, t[1] + s * x + c * y,
+                             math.atan2(math.sin(theta + t[2]), math.cos(theta + t[2]))]
+
     # --- anchors ----------------------------------------------------------------------
 
     def set_anchor(self, name: str, pose) -> None:
