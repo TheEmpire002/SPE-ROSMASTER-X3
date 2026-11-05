@@ -41,9 +41,16 @@ Matching subagents for Claude Code are in `.claude/agents/`.
 - **Settings belong in `config.py`**, not as numbers in the code.
 - **Conventions:** `vx` forward, `vy` left, `omega` counter-clockwise; lidar
   angle 0° = front, 90° = left. Details in `docs/api.md`.
-- **Language:**
+- **Language:** applies to every agent and contributor, whatever tool writes
+  the code (Claude Code reads this file via `CLAUDE.md`).
   - Code (identifiers, comments, docstrings, log messages), tests, docs and
     commit messages are in **English**. Comments explain the *why*.
+  - **Code comments** are concise English sentence fragments, no trailing
+    periods, all lowercase except proper nouns, absolutely clear. Example:
+    `# wheels slip on turns, so the heading comes from the lidar`, not
+    `# The heading is computed from the lidar because the wheels slip.`
+    This applies to new and changed comments; existing ones are adapted
+    when their code is touched.
   - Everything users see stays **German**: the web app, the `/map` page,
     alert texts, the `"text"`/`"grund"`/`"hinweis"` fields of the state,
     diagnostics texts, settings labels; also the robot's spoken sentences and

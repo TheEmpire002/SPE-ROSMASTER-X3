@@ -24,7 +24,9 @@ the surrounding code if needed. Check:
    (web app, `/map`, alert texts, state `"text"`/`"grund"`/`"hinweis"`,
    diagnostics texts, settings labels, spoken sentences, speech commands)
    stays German. Protocol/API names (message types, JSON fields and values,
-   HTTP URLs) unchanged even when German.
+   HTTP URLs) unchanged even when German. New or changed code comments:
+   concise English sentence fragments, no trailing periods, all lowercase
+   except proper nouns, absolutely clear (report violations in the diff).
 6. **Hardware:** New hardware integrations reconnect on their own and never
    leave a robot driving.
 7. **Docs:** Entry in `Marlon/PROJECT_LOG.md` present?
