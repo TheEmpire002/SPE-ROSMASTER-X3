@@ -125,6 +125,7 @@ function renderTests() {
       const li = node("li");
       li.append(node("strong", null, p.titel), document.createTextNode(` (${p.dauer_s} s): ${p.anweisung}`));
       if (p.satz) li.append(node("span", "ts-sentence-small", ` Sagen: „${p.satz}“`));
+      if (test.faehrt) li.append(node("span", "ts-sentence-small", p.fahrt ? " (Räder drehen)" : " (Räder stehen)"));
       phases.append(li);
     }
     card.append(phases);
@@ -132,7 +133,7 @@ function renderTests() {
     const start = node("button", "btn btn-primary ts-start", "Start");
     start.type = "button";
     start.disabled = active;
-    start.addEventListener("click", () => startTest(test.id));
+    start.addEventListener("click", () => startTest(test));
     card.append(start);
     ui.list.append(card);
   }
@@ -145,9 +146,15 @@ async function loadCatalog() {
   renderTests();
 }
 
-async function startTest(id) {
+async function startTest(test) {
+  const body = { test: test.id };
+  if (test.faehrt) {
+    // the server refuses without this confirmation
+    if (!confirm("Bei diesem Test drehen sich die Räder.\n\nSteht der Roboter auf dem Podest und können die Räder frei in der Luft drehen?")) return;
+    body.podest = true;
+  }
   try {
-    showStatus(await post("/tests/start", { test: id }));
+    showStatus(await post("/tests/start", body));
     showMessage("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   } catch (e) {
@@ -185,6 +192,8 @@ function heardText(g) {
   return text;
 }
 
+const MOTOR_TEXT = { aus: "stehen", langsam: "langsam", schnell: "schnell", drehen: "Drehung" };
+
 function renderValues(st) {
   ui.values.replaceChildren();
   const live = st.live || {};
@@ -196,6 +205,7 @@ function renderValues(st) {
     bar.append(fill);
     ui.values.append(value("Pegel", bar));
     ui.values.append(value("hört gerade", live.teil || "–"));
+    if (st.faehrt) ui.values.append(value("Räder", MOTOR_TEXT[st.bedingung] || st.bedingung || "–"));
     ui.values.append(value("zuletzt erkannt", st.gehoert ? heardText(st.gehoert) : "noch nichts"));
     return;
   }

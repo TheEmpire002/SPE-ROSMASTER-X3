@@ -282,7 +282,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     # the testdaten branch so they can be read without the robot
     test_runs = TestRuns(
         pose=pose, people=people, camera=person_camera, cameras=cameras,
-        lidar=lidar, voice=voice, speech=speech, mock=use_mock_camera,
+        lidar=lidar, voice=voice, speech=speech, mock=use_mock_camera, watchdog=watchdog,
     )
     # healthbot gets its own homing so its drives to a spot do not show up as
     # "Heimfahrt"; map localization and planner are shared, only one drives
@@ -467,6 +467,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         interaction=interaction, maneuver=maneuver, watchdog=watchdog, driver=driver, hub=hub,
     )
     map_control.also_cancel.append(healthbot.cancel)
+    # mapping drives take over the wheels; other test runs keep going
+    map_control.also_cancel.append(lambda reason=None: test_runs.drives and test_runs.stop(reason))
     app.state.map_control = map_control
     app.include_router(create_mapping_router(mapping_manager, map_control))
 
@@ -490,7 +492,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                         msg, watchdog, driver, hub, odometry, homing, localizer, guard,
                         explorer, interaction, voice, speech, recording,
                         maneuver=maneuver, sender=ws, map_control=map_control,
-                        healthbot=healthbot,
+                        healthbot=healthbot, test_runs=test_runs,
                     )
                 except Exception:
                     # A faulty command used to drop the connection -- the
@@ -521,6 +523,9 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                 maneuver.cancel("Verbindung verloren")
                 interaction.cancel("Verbindung verloren")
                 healthbot.cancel("Verbindung verloren")
+                if test_runs.drives:
+                    # spinning wheels nobody watches any more
+                    test_runs.stop("Verbindung verloren")
                 if with_map:
                     map_control.check_watchers("Verbindung verloren")
                 else:
@@ -572,7 +577,16 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         body = await _json_body(request)
         if isinstance(body, JSONResponse):
             return body
-        error = test_runs.start(body.get("test"))
+        test_id = body.get("test")
+        test = next((t for t in test_runs.catalog()["tests"] if t["id"] == test_id), None)
+        if test is not None and test.get("faehrt"):
+            # only one program steers the wheels
+            busy = [homing.active, explorer.active, interaction.active, maneuver.active,
+                    healthbot.active, healthbot.watch]
+            if any(busy):
+                return JSONResponse({"fehler": "Erst die laufende Fahrt beenden (oder die Wache ausschalten)."},
+                                    status_code=400)
+        error = test_runs.start(test_id, podest=bool(body.get("podest")))
         if error is not None:
             return JSONResponse({"fehler": error}, status_code=400)
         return JSONResponse(test_runs.status())
@@ -1231,7 +1245,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         response = await _handle(
             {"type": kind, **fields}, watchdog, driver, hub, odometry, homing, localizer, guard,
             explorer, interaction, voice, speech, maneuver=maneuver, map_control=map_control,
-            healthbot=healthbot,
+            healthbot=healthbot, test_runs=test_runs,
         )
         if response is None:
             return True
@@ -1378,6 +1392,13 @@ def _say_meters(meter: float) -> str:
     return f"{meter:g} Meter".replace(".", ",")
 
 
+# commands that end a test run with spinning wheels (mikro_fahrt)
+_ENDS_DRIVING_TEST = frozenset({
+    "drive", "stop", "move", "turn", "explore", "interaction_start", "follow", "home", "goto",
+    "map_load", "health_check", "health_stop", "health_wache",
+})
+
+
 async def _handle(
     msg: dict[str, Any],
     watchdog: SafetyWatchdog,
@@ -1396,6 +1417,7 @@ async def _handle(
     sender: object | None = None,
     map_control: MapControl | None = None,
     healthbot: Healthbot | None = None,
+    test_runs: TestRuns | None = None,
 ) -> dict[str, Any] | None:
     """Process an incoming message.
 
@@ -1403,6 +1425,18 @@ async def _handle(
     ``sender`` is the connection it came from (for drive priority).
     """
     kind = msg.get("type")
+
+    # a test spinning the wheels on the stand gives way to every drive input
+    # and every stop; the app's idle zeros must not brake it
+    if test_runs is not None and test_runs.drives and kind in _ENDS_DRIVING_TEST:
+        if kind == "drive":
+            try:
+                idle = DriveCommand.from_message(msg).is_stop()
+            except ProtocolError:
+                idle = False  # the drive branch reports the error
+            if idle:
+                return None
+        test_runs.stop(f"Befehl {kind}")
 
     if kind == "drive":
         try:

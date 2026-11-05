@@ -39,7 +39,7 @@ from rosmaster_assist.sensors import pose as ps  # noqa: E402
 failures = 0
 
 
-def check(name, condition, result=""):
+def check(name, condition, result: object = ""):
     global failures
     print(("ok  " if condition else "FAIL"), name, result)
     failures += not condition
@@ -306,6 +306,77 @@ z = dm_data["phasen"][0]["zusammenfassung"]
 check("command recognized", z["treffer"] is True, z["kurz"])
 check("level measured", bool(z["pegel"]) and z["pegel"]["median"] == 0.3)
 check("microphone verdict", m["urteil"] == "1/1 Befehle erkannt", m["urteil"])
+
+# --- microphone test with spinning wheels ---------------------------------------
+
+
+class Watchdog:
+    """Dummy: records drive commands and stops."""
+
+    def __init__(self):
+        self.log = []
+
+    def submit(self, cmd, source="hand", margin_m=None):
+        self.log.append(("submit", cmd, source))
+        return cmd
+
+    def stop(self):
+        self.log.append(("stop",))
+
+
+motor_test = next(t for t in tl.CATALOG if t["id"] == "mikro_fahrt")
+check("motor test: 12 phases, four conditions", len(motor_test["phasen"]) == 12
+      and {p["bedingung"] for p in motor_test["phasen"]} == {"aus", "langsam", "schnell", "drehen"})
+check("motor test: never backwards", all(p["fahrt"] is None or p["fahrt"]["vx"] >= 0
+                                         for p in motor_test["phasen"]))
+check("motor test marked as driving", motor_test.get("faehrt") is True)
+wd = Watchdog()
+motor = tl.TestRuns(speech=Speech(), mock=True, folder=tmp / "motor", watchdog=wd)
+refused = motor.start("mikro_fahrt")
+check("motor test: refused without stand confirmation", refused is not None and "Podest" in refused, refused)
+no_drive = tl.TestRuns(speech=Speech(), mock=True, folder=tmp / "motor_x").start("mikro_fahrt", podest=True)
+check("motor test: refused without drive", no_drive is not None and "kein Antrieb" in no_drive, no_drive)
+check("motor test: nothing driven on refusal", wd.log == [])
+
+full_phases = motor_test["phasen"]
+# short version: slow wheels (silence, stopp), then wheels off (stopp)
+motor_test["phasen"] = [dict(p, dauer_s=0.6) for p in (full_phases[3], full_phases[4], full_phases[1])]
+try:
+    check("motor test starts on the stand", motor.start("mikro_fahrt", podest=True) is None)
+    time.sleep(config.TESTS_LEAD_S + 0.4)
+    check("drives while the wheels spin", motor.drives is True)
+    deadline = time.time() + 20
+    while motor.active and time.time() < deadline:
+        time.sleep(0.1)
+    submits = [e for e in wd.log if e[0] == "submit"]
+    check("wheels driven via the watchdog as hand input", bool(submits)
+          and all(e[2] == "hand" for e in submits), submits[:1])
+    check("wheels driven forward only", all(e[1].vx >= 0 for e in submits))
+    check("keepalive resubmits faster than the dead man's switch", len(submits) >= 5, len(submits))
+    check("wheels stopped at the end", wd.log[-1] == ("stop",), wd.log[-3:])
+    check("not driving after the run", motor.drives is False)
+    mf = next(e for e in motor.list_runs() if e["test"] == "mikro_fahrt")
+    mf_data = json.loads((motor.folder / mf["name"] / "ergebnis.json").read_text(encoding="utf-8"))
+    check("samples record the motor command", any(s.get("motor") for s in mf_data["proben"]),
+          mf_data["proben"][:1])
+    check("verdict split by wheel condition", "langsam" in mf["urteil"] and "aus" in mf["urteil"], mf["urteil"])
+
+    # cancel while the wheels spin
+    wd.log.clear()
+    motor_test["phasen"] = [dict(full_phases[3], dauer_s=5)]
+    motor.start("mikro_fahrt", podest=True)
+    time.sleep(config.TESTS_LEAD_S + 0.5)
+    check("spinning before the cancel", motor.drives is True and any(e[0] == "submit" for e in wd.log))
+    motor.stop("Prüfung")
+    motor._thread.join(timeout=5)
+    time.sleep(0.3)
+    n = len(wd.log)
+    time.sleep(0.4)
+    check("cancel stops the wheels", ("stop",) in wd.log and not motor.active and not motor.drives, wd.log[-3:])
+    check("no drive commands after the cancel", len(wd.log) == n
+          and wd.log[-1] == ("stop",), wd.log[n - 2:])
+finally:
+    motor_test["phasen"] = full_phases
 
 # --- upload without a token ------------------------------------------------------
 config.TESTS_GIT_TOKEN_FILE = str(tmp / "no_token")

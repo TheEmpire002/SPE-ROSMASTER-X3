@@ -1332,8 +1332,9 @@ RECORDING_MAX_FILES = 20
 
 # --- Test runs (testrun.py, since 04.11.) -----------------------------------
 # The /tests page starts measurement runs for the microphone, lying and
-# person detection. They never drive; they collect data that is uploaded to
-# the "testdaten" branch afterwards and evaluated on a computer.
+# person detection. They collect data that is uploaded to the "testdaten"
+# branch afterwards and evaluated on a computer. They never drive, except
+# the motor-noise test "mikro_fahrt", which spins the wheels on the stand.
 TESTS_FOLDER = Path.home() / ".rosmaster" / "tests"
 # 5 samples per second are enough for pose (10 Hz) and level, and a run
 # stays at a few hundred KB of JSON.
@@ -1345,12 +1346,21 @@ TESTS_LEAD_S = 6.0
 TESTS_TAIL_S = 2.0
 # Images per run and camera (JPEG, ~40 KB each); more bloats the repo.
 TESTS_MAX_IMAGES = 16
-# Audio recording at most this long (16 kHz mono = 32 KB/s, 3 min ~ 6 MB).
-TESTS_WAV_MAX_S = 180.0
+# audio recording at most this long (16 kHz mono = 32 KB/s, 4 min ~ 8 MB),
+# the motor-noise test with its 12 phases takes about 3.5 min
+TESTS_WAV_MAX_S = 240.0
 # Wait at most this long for an announcement to end.
 TESTS_VOICE_WAIT_S = 10.0
 # Lidar revolutions older than this count as missing (as in the health check).
 TESTS_SCAN_MAX_AGE_S = 1.0
+# wheel speeds of the motor-noise test "mikro_fahrt" (robot on its stand,
+# wheels in the air), fast = autonomous top speed since that is when
+# "Robi, stopp" matters most
+TESTS_MOTOR_SLOW_MS = 0.15
+TESTS_MOTOR_FAST_MS = 0.35
+TESTS_MOTOR_OMEGA = 1.0  # rad/s, turning on the spot
+# renew the drive command this often, the dead man's switch stops after 0.5 s
+TESTS_MOTOR_KEEPALIVE_HZ = 10.0
 TESTS_NOTE_MAX_CHARS = 2000
 # GitHub token (fine-grained, only "Contents: read and write" for this
 # repo). Lives only on the Pi, never in the repo; instructions on /tests.

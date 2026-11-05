@@ -25,13 +25,20 @@ After every saved run a background upload starts on its own if a token
 exists and ``config.TESTS_GIT_AUTO_UPLOAD`` is set; failed uploads are
 retried with the next run or upload call.
 
-A test run never drives. During a microphone test the server does not
-execute recognized speech commands (``block_commands``); otherwise the
-robot would start moving on "Robi, folge mir".
+A test run never drives, with one exception: ``mikro_fahrt`` spins the
+wheels while the robot stands on its stand, to measure how much the motor
+noise hurts speech recognition. It only starts after the stand has been
+confirmed (``podest``), drives through ``SafetyWatchdog.submit()`` (dead
+man's switch: the motor thread renews the command several times a second)
+and stops on every stop path (button, app input, connection loss, end of
+the test). During a microphone test the server does not execute recognized
+speech commands (``block_commands``); otherwise the robot would start
+moving on "Robi, folge mir".
 """
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
 import json
@@ -53,6 +60,7 @@ from pathlib import Path
 
 from . import config
 from .health import assessment
+from .protocol import DriveCommand
 
 log = logging.getLogger(__name__)
 
@@ -77,6 +85,29 @@ _NO_TOKEN_HINT = "kein GitHub-Token: Läufe bleiben lokal (als ZIP herunterladen
 
 def _phase(name, titel, anweisung, dauer_s, **extra) -> dict:
     return {"name": name, "titel": titel, "anweisung": anweisung, "dauer_s": dauer_s, **extra}
+
+
+def _motor_phases() -> list[dict]:
+    """Phases of the motor-noise test: per wheel condition silence, then two commands.
+
+    Forward and turning only: on the stand the direction does not matter for
+    the noise, and on the floor there is no room behind the robot.
+    """
+    conditions = (
+        ("aus", "Räder stehen", None),
+        ("langsam", "Räder langsam", {"vx": config.TESTS_MOTOR_SLOW_MS, "vy": 0.0, "omega": 0.0}),
+        ("schnell", "Räder schnell", {"vx": config.TESTS_MOTOR_FAST_MS, "vy": 0.0, "omega": 0.0}),
+        ("drehen", "Räder drehen (Drehung)", {"vx": 0.0, "vy": 0.0, "omega": config.TESTS_MOTOR_OMEGA}),
+    )
+    phases = []
+    for cond, title, drive in conditions:
+        phases.append(_phase(f"{cond}_stille", f"{title}: Stille", "Bitte still sein, nur zuhören.", 5,
+                             erwartet="nichts", bedingung=cond, fahrt=drive))
+        for command, sentence in (("stopp", "stopp"), ("folgen", "folge mir")):
+            phases.append(_phase(f"{cond}_{command}", f"{title}: „Robi, {sentence}“",
+                                 f"Sag jetzt: Robi, {sentence}.", 7, erwartet=command,
+                                 satz=f"Robi, {sentence}", bedingung=cond, fahrt=drive))
+    return phases
 
 
 # ``art`` decides what is recorded: "mikro" (level, audio, heard sentences),
@@ -125,6 +156,24 @@ CATALOG: list[dict] = [
                 ("nach_hause", "nach Hause"), ("musik_aus", "Musik aus"),
             )
         ],
+    },
+    {
+        "id": "mikro_fahrt",
+        "kategorie": "mikrofon",
+        "titel": "Mikrofon: Befehle bei drehenden Rädern (Podest)",
+        "kurz": "Übertönen die Motoren die Befehle? Stille und zwei Befehle bei stehenden, "
+                "langsamen, schnellen und drehenden Rädern.",
+        "art": "mikro",
+        "faehrt": True,
+        "anleitung": [
+            "Nur auf dem Podest! Die Räder müssen frei in der Luft drehen können.",
+            "In etwa 1 m Abstand vor den Roboter stellen.",
+            "Nach jeder Ansage den angezeigten Satz einmal deutlich sagen, mit 'Robi' davor.",
+            "Der Roboter führt die Befehle nicht aus; die Räder drehen nur nach Plan.",
+            "Stopp-Knopf auf dieser Seite oder Not-Stopp in der App beendet den Test sofort.",
+            "Aufgezeichnet werden Erkanntes, Verworfenes, Konfidenz je Wort, Pegel und der Ton.",
+        ],
+        "phasen": _motor_phases(),
     },
     {
         "id": "liegend_haltungen",
@@ -293,6 +342,7 @@ class TestRuns:
     def __init__(
         self, pose=None, people=None, camera=None, cameras=None, lidar=None,
         voice=None, speech=None, mock: bool = False, folder: Path | None = None,
+        watchdog=None,
     ) -> None:
         self._pose = pose
         self._people = people
@@ -323,6 +373,12 @@ class TestRuns:
         self._upload_last: dict | None = None
         self._upload_error: str | None = None
         self._code_info: dict | None = None
+        # wheels for mikro_fahrt: the watchdog lives in the event loop, so
+        # every call is handed over to it (``_on_loop``)
+        self._watchdog = watchdog
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._motor_lock = threading.Lock()
+        self._motor_target: DriveCommand | None = None
 
     # --- queries ----------------------------------------------------------------
 
@@ -339,6 +395,12 @@ class TestRuns:
         """True during a microphone test: do not execute recognized commands."""
         with self._lock:
             return bool(self._state.get("aktiv")) and self._state.get("art") == "mikro"
+
+    @property
+    def drives(self) -> bool:
+        """True while a test that spins the wheels runs."""
+        with self._lock:
+            return bool(self._state.get("aktiv")) and bool(self._state.get("faehrt"))
 
     def status(self) -> dict:
         with self._lock:
@@ -421,8 +483,12 @@ class TestRuns:
 
     # --- control ----------------------------------------------------------------
 
-    def start(self, test_id: str) -> str | None:
-        """Start a test. Returns a (German) reason on failure, otherwise None."""
+    def start(self, test_id: str, podest: bool = False) -> str | None:
+        """Start a test. Returns a (German) reason on failure, otherwise None.
+
+        ``podest``: the user confirmed that the robot stands on its stand;
+        tests that spin the wheels refuse without it.
+        """
         test = next((t for t in CATALOG if t["id"] == test_id), None)
         if test is None:
             return f"unbekannter Test: {test_id!r}"
@@ -431,18 +497,75 @@ class TestRuns:
         missing = self._missing(test)
         if missing:
             return missing
+        if test.get("faehrt") and not podest:
+            return "Nur auf dem Podest: bitte bestätigen, dass die Räder frei drehen."
+        try:
+            self._loop = asyncio.get_running_loop()
+        except RuntimeError:  # started outside the server (tests, scripts)
+            self._loop = None
         self._stop.clear()
         self._message = None
         with self._lock:
-            self._state = {"aktiv": True, "test": test["id"], "titel": test["titel"], "art": test["art"]}
+            self._state = {"aktiv": True, "test": test["id"], "titel": test["titel"], "art": test["art"],
+                           "faehrt": bool(test.get("faehrt"))}
         self._thread = threading.Thread(target=self._run_safe, args=(test,), name="test-run", daemon=True)
         self._thread.start()
         return None
 
-    def stop(self) -> None:
+    def stop(self, reason: str | None = None) -> None:
+        """Cancel the running test; ``reason`` only for the log (map_control passes one)."""
+        if reason and self.active:
+            log.info("Test run stopped: %s", reason)
         self._stop.set()
         if self._voice is not None:
             self._voice.mute()
+        if self._motor_set(None):
+            self._on_loop(self._watchdog.stop)
+
+    # --- wheels (mikro_fahrt) ---------------------------------------------------
+
+    def _on_loop(self, fn, *args) -> None:
+        """Run ``fn`` in the event loop of the watchdog (it has no lock)."""
+        loop = self._loop
+        try:
+            on_loop = asyncio.get_running_loop() is loop
+        except RuntimeError:
+            on_loop = False
+        if loop is None or on_loop:
+            fn(*args)
+            return
+        try:
+            loop.call_soon_threadsafe(fn, *args)
+        except RuntimeError:
+            # loop closed: the server is shutting down and the watchdog has stopped the robot
+            pass
+
+    def _motor_set(self, target: DriveCommand | None) -> bool:
+        """Set what the wheels should do. True if they were turning before."""
+        with self._motor_lock:
+            before = self._motor_target
+            self._motor_target = target
+        return before is not None and self._watchdog is not None
+
+    def _motor_submit(self) -> None:
+        # checked again here: a stop may have come in since the call was queued
+        with self._motor_lock:
+            target = self._motor_target
+        if target is None or self._stop.is_set():
+            return
+        # "hand": the drive guard would block the autonomous path with a person
+        # in front; the speeds come from config and the stand is confirmed
+        self._watchdog.submit(target, source="hand")
+
+    def _motor_loop(self, end: threading.Event) -> None:
+        """Renews the drive command so the dead man's switch keeps the wheels going."""
+        period = 1.0 / max(1.0, config.TESTS_MOTOR_KEEPALIVE_HZ)
+        while not end.is_set() and not self._stop.is_set():
+            with self._motor_lock:
+                target = self._motor_target
+            if target is not None:
+                self._on_loop(self._motor_submit)
+            end.wait(period)
 
     def shutdown(self) -> None:
         """When the server shuts down."""
@@ -492,6 +615,8 @@ class TestRuns:
 
     def _missing(self, test: dict) -> str | None:
         kind = test["art"]
+        if test.get("faehrt") and self._watchdog is None:
+            return "kein Antrieb"
         if kind == "mikro":
             if self._speech is None or not self._speech.available:
                 return "Spracherkennung nicht verfügbar (siehe /sprache/status)"
@@ -557,8 +682,13 @@ class TestRuns:
             "phasen": [], "proben": [], "status": [], "bilder": [], "ereignisse": [], "notiz": "",
         }
         start_mono, start_unix = time.monotonic(), time.time()
-        subscription = wav = sound_thread = None
+        subscription = wav = sound_thread = motor_thread = None
         sound_end = threading.Event()
+        motor_end = threading.Event()
+        if test.get("faehrt") and self._watchdog is not None:
+            motor_thread = threading.Thread(target=self._motor_loop, args=(motor_end,),
+                                            name="test-run-motor", daemon=True)
+            motor_thread.start()
         events: dict = {}
         if self._pose is not None and sight:
             self._pose.activate(True, _POSE_USER)
@@ -587,7 +717,13 @@ class TestRuns:
                     break
                 self._set(phase=nr, phasen=len(test["phasen"]), phase_titel=phase["titel"],
                           anweisung=phase["anweisung"], satz=phase.get("satz"), vorlauf=True,
-                          ende=time.monotonic() + config.TESTS_LEAD_S, live=None)
+                          ende=time.monotonic() + config.TESTS_LEAD_S, live=None,
+                          bedingung=phase.get("bedingung"))
+                if motor_thread is not None:
+                    # set already in the lead time: the ramp has settled when the measurement starts
+                    drive = phase.get("fahrt")
+                    if self._motor_set(DriveCommand(**drive) if drive else None) and not drive:
+                        self._on_loop(self._watchdog.stop)
                 self._say(phase["anweisung"])
                 if kind == "mikro":
                     self._wait_for_voice()
@@ -610,6 +746,8 @@ class TestRuns:
                     if now >= phase_end:
                         break
                     sample = {"t": _r(now - start_mono, 2), "phase": phase["name"]}
+                    if motor_thread is not None:
+                        sample["motor"] = phase.get("bedingung")
                     if kind == "mikro":
                         sample.update(self._sample_microphone(start_unix, events))
                     if sight:
@@ -634,12 +772,20 @@ class TestRuns:
                     self._stop.wait(1.0 / config.TESTS_RATE_HZ)
                 entry["bis_s"] = _r(time.monotonic() - start_mono, 2)
                 data["phasen"].append(entry)
+            if motor_thread is not None and self._motor_set(None):
+                # the wheels are done with the last phase, no need to spin while listening on
+                self._on_loop(self._watchdog.stop)
             if kind == "mikro" and self._speech is not None and not self._stop.is_set():
                 # a sentence from the end of a phase is only recognized after
                 # the speaking pause; keep listening briefly or it is missing
                 self._stop.wait(config.TESTS_TAIL_S)
                 self._sample_microphone(start_unix, events)
         finally:
+            if motor_thread is not None:
+                if self._motor_set(None):
+                    self._on_loop(self._watchdog.stop)
+                motor_end.set()
+                motor_thread.join(timeout=2.0)
             if self._pose is not None and sight:
                 self._pose.activate(False, _POSE_USER)
             if kind == "personen" and self._people is not None:
@@ -716,7 +862,8 @@ class TestRuns:
         names = ["CAMERA_FPS", "PERSON_CAMERA", "POSE_MAX_FRAME_AGE_S"]
         if kind == "mikro":
             names += ["SPEECH_MIN_CONFIDENCE", "SPEECH_MIN_CONFIDENCE_MUSIC", "SPEECH_MAX_UNK_SHARE",
-                      "SPEECH_MICROPHONE", "SPEECH_WAKE_WINDOW_S"]
+                      "SPEECH_MICROPHONE", "SPEECH_WAKE_WINDOW_S", "TESTS_MOTOR_SLOW_MS",
+                      "TESTS_MOTOR_FAST_MS", "TESTS_MOTOR_OMEGA"]
         else:
             names += ["HEALTH_LYING_DEG", "HEALTH_LYING_ASPECT", "HEALTH_FLOOR_MIN_WIDTH_M",
                       "HEALTH_FLOOR_IMAGE_BOTTOM", "CAMERA_WIDTH", "CAMERA_HEIGHT"]
@@ -781,7 +928,7 @@ class TestRuns:
     def _live(kind: str, sample: dict) -> dict:
         """Short version for the page: what is being measured right now."""
         if kind == "mikro":
-            return {"pegel": sample.get("pegel"), "teil": sample.get("teil")}
+            return {"pegel": sample.get("pegel"), "teil": sample.get("teil"), "motor": sample.get("motor")}
         people = sample.get("personen") or []
         live = {"personen": len(people), "liegend": [p["liegend"] for p in people],
                 "rumpfwinkel": [p["rumpfwinkel"] for p in people]}
@@ -996,6 +1143,14 @@ def verdict(data: dict) -> str | None:
     correct = [z["richtig"] for z in summaries if z.get("richtig") is not None]
     if correct:
         parts.append(f"{statistics.fmean(correct) * 100:.0f} % richtig")
+    # motor-noise test: hits per wheel condition, that is the actual finding
+    per_condition: dict[str, list[bool]] = {}
+    for p in data.get("phasen", []):
+        z = p.get("zusammenfassung") or {}
+        if p.get("bedingung") and "treffer" in z:
+            per_condition.setdefault(p["bedingung"], []).append(bool(z["treffer"]))
+    if per_condition:
+        parts.append(", ".join(f"{c} {sum(h)}/{len(h)}" for c, h in per_condition.items()))
     text = ", ".join(parts) or "keine Daten"
     return f"abgebrochen, {text}" if data.get("abgebrochen") else text
 

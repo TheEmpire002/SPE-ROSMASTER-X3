@@ -1122,15 +1122,26 @@ Reproducible measurements for camera, pose and microphone: the robot announces
 each phase („Stell dich links neben mich …“; left/right always seen from the
 test person) and records readings, images and sound. The page `GET /tests`
 guides through it. While a microphone test runs, recognized speech commands are
-not executed.
+not executed (this includes a spoken „Robi, stopp“; use the stop button).
+
+Tests never drive, with one exception: `mikro_fahrt` (new 05.11.) spins the
+wheels while the robot stands on its stand, to measure how much motor noise
+hurts speech recognition (stopped, slow 0.15 m/s, fast 0.35 m/s, turning
+1.0 rad/s; `TESTS_MOTOR_*`; forward and turning only). It needs `podest: true`
+in the start request, runs through the watchdog (dead man's switch), and ends
+on `POST /tests/stop`, any drive input ≠ 0, `stop`, `move`/`turn`,
+`explore`, `interaction_start`/`follow`, `home`, `goto`, `map_load`,
+`health_check`/`health_stop`/`health_wache`, and when the last client
+disconnects. The verdict lists hits per wheel condition, e.g.
+`aus 2/2, langsam 2/2, schnell 1/2, drehen 0/2`.
 
 | Endpoint | Returns |
 |---|---|
 | `GET /tests` | the tests page |
-| `GET /tests/katalog` | `{"kategorien": {key: name}, "tests": [{id, kategorie, titel, kurz, art, anleitung[], phasen[{name, titel, anweisung, dauer_s, satz?}]}]}` |
+| `GET /tests/katalog` | `{"kategorien": {key: name}, "tests": [{id, kategorie, titel, kurz, art, faehrt?, anleitung[], phasen[{name, titel, anweisung, dauer_s, satz?, bedingung?, fahrt?}]}]}`; `faehrt: true` = the test spins the wheels, then each phase has `bedingung` (wheel condition) and `fahrt` (`{vx, vy, omega}` or `null`) |
 | `GET /tests/status` | the running test: `aktiv`, `test`, `titel`, `art`, `phase`, `phase_titel`, `anweisung`, `satz`, `rest_s`, `live` (current readings), `gehoert` (microphone); always `letzter` (last run), `meldung`, `ordner` (folder on the Pi), `simulation`, `token` (GitHub token present) and `upload` (`auto`, `laeuft`, `ausstehend` = runs not uploaded yet, `letzter`, `fehler`, `hinweis`) |
 | `GET /tests/liste` | `{"laeufe": [...]}`, newest first: `name`, `typ` (`"test"` / `"health"`), `test`, `titel`, `kategorie`, `beginn`, `abgebrochen`, `urteil`, `notiz`, `phasen[{titel, kurz}]`, `bytes`, `hochgeladen`, `upload_commit`, `upload_zeit`, `upload_fehler` |
-| `POST /tests/start` | `{"test": "<id>"}` starts a test; 400 with `fehler` if unknown, already running or a sensor is missing |
+| `POST /tests/start` | `{"test": "<id>", "podest": true}` starts a test (`podest` only needed for tests with `faehrt`); 400 with `fehler` if unknown, already running, a sensor is missing, the stand was not confirmed, or (for `faehrt`) another drive or the healthbot watch is active |
 | `POST /tests/stop` | cancel the running test (the run is still stored, marked `abgebrochen`) |
 | `POST /tests/notiz` | `{"name": "<run>", "text": "…"}`: note on a run (what stood out); counts as a change, so the run is uploaded again |
 | `GET /tests/zip?name=<run>` | the run folder as a ZIP |

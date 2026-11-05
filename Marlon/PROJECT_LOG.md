@@ -816,6 +816,14 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Result:** All test scripts pass, smoke test 26/26 with both pages and scripts, rule check clean (no `innerHTML`, all field names match the server, user text German). Also fixed the docs: `health_check` `x`/`y` are in the odometry frame like homing, not in the map frame.
 - **Open:** Try both pages on the robot once it runs again.
 
+### 05.11.2026 – New microphone test "mikro_fahrt": speech commands over motor noise (with Claude)
+- **What:** New microphone test `mikro_fahrt` (Mikrofon bei drehenden Rädern) on branch `test-runs`. The robot stands on its stand with the wheels in the air; four wheel conditions (aus, langsam vx 0.15 m/s, schnell vx 0.35 m/s = autonomous top speed, drehen omega 1.0 rad/s), each 5 s silence then "Robi, stopp" and "Robi, folge mir" (12 phases, ~3.5 min). The verdict breaks down per condition, e.g. "aus 2/2, langsam 1/2"; every sample records the wheel condition (`motor`), so the level can be compared with the motor noise.
+- **Why:** The user reported that motor noise while driving is so loud that speech commands are not understood; this test measures from which speed recognition breaks down, as the basis for fixes (e.g. noise gate, lower speed while listening, mic placement).
+- **Changes:** Drives only via `SafetyWatchdog.submit(source="hand")` from a keepalive thread at 10 Hz (`TESTS_MOTOR_KEEPALIVE_HZ`, dead man's switch 0.5 s), marshalled onto the asyncio loop because the watchdog has no lock. `source="hand"` deliberately, because the autonomous drive guard would block with the test person standing in front; acceptable only because the wheels are in the air. Starting requires confirming the stand (web app confirm, field `podest: true`; the server refuses otherwise) and is refused while homing/explorer/interaction/maneuver/healthbot runs. The wheels stop at the end of the last phase, on cancel, on WebSocket disconnect, on any other drive command (`drive` ≠ 0, `stop`, move/turn, explore, home, goto, `health_check`, ...), and when mapping or a goal drive starts. Forward and turning only, never backwards. Spoken "Robi, stopp" does not stop the wheels during the test (commands are only recorded in mic tests) — use the stop button. New settings `TESTS_MOTOR_SLOW_MS`/`FAST_MS`/`OMEGA`/`KEEPALIVE_HZ`; `TESTS_WAV_MAX_S` raised to 240 s.
+- **Result:** 20 new checks in `Marlon/diagnostics/test_test_runs.py` pass (with a dummy watchdog: hand source, forward only, keepalive, stop at the end, stop on cancel and no submits afterwards); smoke test 18/19 (the known flaky homing check "position is tracked"); rule check done, fixes applied (wheels now stop before the 2 s listening tail; config comment style).
+- **Problems:** None beyond the known flaky smoke-test check.
+- **Open:** Run on the robot on its stand, then evaluate the results on the `testdaten` branch.
+
 ---
 
 ## 3. Results and measurements
