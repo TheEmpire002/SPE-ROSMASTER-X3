@@ -1109,6 +1109,8 @@ a.einst-knopf { text-decoration: none; }
 .ts-value { display: flex; gap: 0.8rem; align-items: center; }
 .ts-value-name { color: var(--muted); min-width: 9rem; }
 .ts-level { flex: 1; max-width: 420px; height: 14px; background: #272b34; border-radius: 7px; overflow: hidden; }
+/* cameras below the values; small enough that the instruction stays readable */
+.ts-cams { margin-top: 0.8rem; max-width: 900px; }
 .ts-level-fill { height: 100%; width: 0; background: var(--ok); transition: width 0.2s linear; }
 
 .ts-message { margin: 0; padding: 0.6rem 0.9rem; border: 1px solid var(--line); border-radius: 8px; background: #1a1d23; }

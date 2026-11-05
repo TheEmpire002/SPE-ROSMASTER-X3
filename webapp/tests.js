@@ -19,6 +19,7 @@ const ui = {
   sentence: el("ts-sentence"),
   rest: el("ts-rest"),
   values: el("ts-values"),
+  cams: el("ts-cams"),
   message: el("ts-message"),
   categories: el("ts-categories"),
   list: el("ts-list"),
@@ -225,6 +226,112 @@ function renderValues(st) {
   if ("hog" in live) ui.values.append(value("Personen (HOG)", String(live.hog)));
 }
 
+// --- cameras during a test ----------------------------------------------------
+
+// every running test shows what the cameras see, so the tester can check the
+// framing (is the person in the picture?) without switching pages
+// mjpeg first, snapshots if the browser decodes nothing (safari on ios)
+const CAM_CHECK_MS = 4000;
+// lower than in the main app: the pi is measuring at the same time
+const CAM_SNAPSHOT_FPS = 5;
+
+class TestCam {
+  constructor(name, title) {
+    this.base = name ? `/camera/${encodeURIComponent(name)}` : "/camera";
+    this.mode = "aus";
+    this.timer = this.checkTimer = null;
+    this.el = node("div", "cam-wrap");
+    this.img = node("img", "cam");
+    this.img.alt = `Kamerabild ${title}`;
+    const label = node("span", "cam-titel", title);
+    this.errorBox = node("p", "cam-error");
+    this.errorBox.hidden = true;
+    const retry = node("button", null, "Erneut versuchen");
+    retry.type = "button";
+    retry.addEventListener("click", () => this.start());
+    this.errorBox.append("Kein Bild. ", retry);
+    this.el.append(this.img, label, this.errorBox);
+    this.img.addEventListener("error", () => {
+      if (this.mode === "mjpeg") this.errorBox.hidden = false;
+    });
+  }
+
+  stop() {
+    clearTimeout(this.timer);
+    clearTimeout(this.checkTimer);
+    this.timer = this.checkTimer = null;
+    this.mode = "aus";
+    this.img.onload = this.img.onerror = null;
+    // an open mjpeg stream keeps one of the few connections per host busy
+    this.img.src = "data:,";
+  }
+
+  start() {
+    this.stop();
+    this.errorBox.hidden = true;
+    this.mode = "mjpeg";
+    // timestamp so the browser does not reuse an aborted response from the cache
+    this.img.src = `${this.base}/stream?t=${Date.now()}`;
+    // the load event never fires for a stream in some browsers, naturalWidth does
+    this.checkTimer = setTimeout(() => {
+      if (this.mode === "mjpeg" && this.img.naturalWidth === 0) this.startSnapshots();
+    }, CAM_CHECK_MS);
+  }
+
+  startSnapshots() {
+    clearTimeout(this.checkTimer);
+    this.mode = "einzelbild";
+    // next image only after the previous one, so a slow link does not pile up requests
+    const next = () => {
+      if (this.mode !== "einzelbild") return;
+      this.timer = setTimeout(() => {
+        this.img.src = `${this.base}/snapshot?t=${Date.now()}`;
+      }, 1000 / CAM_SNAPSHOT_FPS);
+    };
+    this.img.onload = () => {
+      this.errorBox.hidden = true;
+      next();
+    };
+    this.img.onerror = () => {
+      this.errorBox.hidden = false;
+      next();
+    };
+    this.img.src = `${this.base}/snapshot?t=${Date.now()}`;
+  }
+}
+
+let cams = [];
+// bumped on every start/stop, so a stale /cameras answer is dropped
+let camGeneration = 0;
+
+// color cameras only: the depth views switch on the projector, which draws a
+// lot of usb current (over-current resets on the x3)
+async function startCameras() {
+  const generation = ++camGeneration;
+  let list;
+  try {
+    const data = await fetchJson("/cameras", { cache: "no-store" });
+    list = (data.kameras || []).map((k) => [k.name, k.kamera || k.name]);
+  } catch {
+    list = [];
+  }
+  // a server without /cameras still knows the default camera
+  if (!list.length) list = [[null, "Kamera"]];
+  if (generation !== camGeneration) return;
+  for (const c of cams) c.stop();
+  cams = list.map(([name, title]) => new TestCam(name, title));
+  ui.cams.classList.toggle("mehrere", cams.length > 1);
+  ui.cams.replaceChildren(...cams.map((c) => c.el));
+  for (const c of cams) c.start();
+}
+
+function stopCameras() {
+  camGeneration++;
+  for (const c of cams) c.stop();
+  cams = [];
+  ui.cams.replaceChildren();
+}
+
 function showUploadStatus(up) {
   if (!up) {
     ui.uploadStatus.hidden = true;
@@ -270,7 +377,11 @@ function showStatus(st) {
   }
   if (st.meldung && !active) showMessage(st.meldung, false);
 
-  if (wasActive !== active) renderTests();
+  if (wasActive !== active) {
+    renderTests();
+    if (active) startCameras();
+    else stopCameras();
+  }
   if (st.letzter !== lastRun) {
     lastRun = st.letzter;
     loadList();

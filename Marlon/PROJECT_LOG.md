@@ -832,6 +832,14 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Problems:** None.
 - **Open:** Not yet deployed to the robot (robot paused).
 
+### 05.11.2026 – Live camera images during every test (with Claude)
+- **What:** While a test runs, the tests web page shows live tiles of all color cameras from `GET /cameras` (orientierung and personen) below the measured values. MJPEG first, snapshots at 5 fps if the browser decodes nothing; streams are closed when the test ends. Only `webapp/tests.html`, `tests.js`, `style.css`; no server or protocol change.
+- **Why:** The tester wants visual feedback during a test, e.g. whether the person is in the picture, without switching to the main page.
+- **Changes:** Depth views are left out on purpose: they switch on the projector, which draws a lot of USB current (over-current resets on the X3). A generation counter drops stale `/cameras` answers when a test stops and restarts quickly.
+- **Result:** Mock smoke test 19/19; both cameras answer on `/camera/<name>/stream` and `/snapshot`; rule check clean.
+- **Problems:** None.
+- **Open:** Check on the robot whether two streams during a pose test cost noticeable CPU.
+
 ---
 
 ## 3. Results and measurements
