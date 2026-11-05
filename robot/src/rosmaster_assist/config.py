@@ -1362,6 +1362,9 @@ TESTS_GIT_BRANCH = "testdaten"
 TESTS_GIT_TIMEOUT_S = 60.0
 TESTS_GIT_AUTHOR = "ROSMASTER X3"
 TESTS_GIT_EMAIL = "rosmaster@localhost"
+# upload every finished run and health check right away, so the data can be
+# read on GitHub without the robot; without a token the record just stays local
+TESTS_GIT_AUTO_UPLOAD = True
 
 # --- Music ("MUKKE") ----------------------------------------------------------------
 

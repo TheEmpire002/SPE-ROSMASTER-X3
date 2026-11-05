@@ -23,6 +23,11 @@ class so that every existing abort (emergency stop, manual control,
 connection lost, another drive starts) also ends the goal drive. If the
 path gets blocked, the spot counts as a wall for a while and it replans
 around it.
+
+**Odometry goal (05.11.2026, health check):** ``start_to`` drives the same
+straight route to another point in the odometry frame, e.g. to a reported
+person -- without a map. Because the person there is the obstacle itself,
+"blocked, but already close enough" may count as arrived.
 """
 
 from __future__ import annotations
@@ -81,6 +86,12 @@ class Homing:
         self._lift = avoidance.LiftDetector()
         self._page = 0.0
         self._blocked_since: float | None = None
+        # straight drive goal in the odometry frame; (0, 0) is home
+        self._goal = (0.0, 0.0)
+        self._goal_name = "Startpunkt"
+        self._tolerance: float | None = None
+        self._blocked_enough_m = 0.0
+        self._arrived = False
 
     @property
     def active(self) -> bool:
@@ -92,9 +103,18 @@ class Homing:
         return self._reason
 
     @property
+    def arrived(self) -> bool:
+        """Whether the last drive reached its goal (not aborted)."""
+        return self._arrived
+
+    @property
+    def _home(self) -> bool:
+        return self._target is None and self._goal == (0.0, 0.0)
+
+    @property
     def label(self) -> str:
         """For messages: "Heimfahrt" or "Fahrt zum Ziel"."""
-        return "Heimfahrt" if self._target is None else "Fahrt zum Ziel"
+        return "Heimfahrt" if self._home else "Fahrt zum Ziel"
 
     @property
     def by_map(self) -> bool:
@@ -119,6 +139,8 @@ class Homing:
             self._reason = "ohne sichere Lage in einer Karte geht keine Fahrt zum Ziel"
             return False
         self._reason = None
+        self._arrived = False
+        self._set_goal(0.0, 0.0, None, "Startpunkt", 0.0)
         self._target = None if target is None else (float(target[0]), float(target[1]))
         self._path = []
         self._by_map = self.map_ready
@@ -131,12 +153,46 @@ class Homing:
             self._task = asyncio.create_task(self._drive())
         return True
 
+    def start_to(
+        self,
+        x: float,
+        y: float,
+        tolerance: float | None = None,
+        name: str = "Startpunkt",
+        blocked_enough_m: float = 0.0,
+    ) -> bool:
+        """Drive straight to a point in the odometry frame. False if a drive is running.
+
+        No map needed: dead reckoning like the homing drive without a map.
+        ``tolerance`` replaces ``HOME_TOLERANCE_M``. If ``blocked_enough_m``
+        is greater than zero, the drive counts as arrived when something is
+        in the way within that distance of the goal -- meant for goals that
+        are an obstacle themselves (a person on the floor).
+        """
+        if self.active:
+            return False
+        self._reason = None
+        self._arrived = False
+        self._target = None
+        self._path = []
+        self._by_map = False
+        self._set_goal(x, y, tolerance, name, blocked_enough_m)
+        self._task = asyncio.create_task(self._drive())
+        return True
+
+    def _set_goal(self, x: float, y: float, tolerance: float | None, name: str,
+                  blocked_enough_m: float) -> None:
+        self._goal = (float(x), float(y))
+        self._goal_name = name
+        self._tolerance = tolerance
+        self._blocked_enough_m = max(0.0, float(blocked_enough_m))
+
     def state(self) -> dict:
         """For state.karte and the /map page."""
         active = self.active
         return {
             "aktiv": active,
-            "art": "heim" if self._target is None else "ziel",
+            "art": "heim" if self._home else "ziel",
             "nach_karte": self._by_map if active else None,
             "ziel": list(self._target) if self._target is not None else None,
             "weg": [[round(p[0], 2), round(p[1], 2)] for p in self._path] if active else [],
@@ -159,10 +215,13 @@ class Homing:
         self._lift.reset()
         self._page = 0.0
         self._blocked_since = None
+        goal_x, goal_y = self._goal
+        tolerance = config.HOME_TOLERANCE_M if self._tolerance is None else self._tolerance
+        name = self._goal_name
 
         start_x, start_y, _ = self._odometry.pose()
-        dist = math.hypot(start_x, start_y)
-        log.info("Homing started -- %.2f m to drive", dist)
+        dist = math.hypot(start_x - goal_x, start_y - goal_y)
+        log.info("%s started -- %.2f m to drive", self.label, dist)
 
         if not self._odometry.actually_measuring:
             log.warning(
@@ -173,10 +232,13 @@ class Homing:
         try:
             while True:
                 x, y, angle_deg = self._odometry.pose()
+                # relative to the goal from here on, _step always drives to (0, 0)
+                x, y = x - goal_x, y - goal_y
                 distance = math.hypot(x, y)
 
-                if distance <= config.HOME_TOLERANCE_M:
+                if distance <= tolerance:
                     self._watchdog.stop()
+                    self._arrived = True
                     self._reason = f"angekommen ({distance:.2f} m Restabweichung)"
                     log.info("Homing finished -- %s", self._reason)
                     return
@@ -199,6 +261,10 @@ class Homing:
                         log.warning("Homing aborted -- %s", self._reason)
                         return
                     free = self._detour(command, distance, scan)
+                    if free is None and distance <= self._blocked_enough_m:
+                        # the goal itself is in the way (person on the floor), closer is impossible
+                        self._finish_blocked(distance)
+                        return
                     if free is None:
                         # Wait briefly: a person walking past should not end
                         # the homing drive.
@@ -209,7 +275,7 @@ class Homing:
                             self._watchdog.stop()
                             blocked = self._obstacle(command)
                             where = f"Hindernis in {blocked:.2f} m" if blocked is not None else "kein Weg frei"
-                            self._reason = f"{where}, noch {distance:.2f} m bis zum Startpunkt"
+                            self._reason = f"{where}, noch {distance:.2f} m bis zum {name}"
                             log.warning("Homing stopped -- %s", self._reason)
                             return
                         self._watchdog.submit(DriveCommand(0.0, 0.0, 0.0), source="autonom")
@@ -226,9 +292,12 @@ class Homing:
                 blocked = self._obstacle(command)
                 if blocked is not None:
                     self._watchdog.stop()
+                    if distance <= self._blocked_enough_m:
+                        self._finish_blocked(distance)
+                        return
                     self._reason = (
                         f"Hindernis in {blocked:.2f} m, noch {distance:.2f} m "
-                        "bis zum Startpunkt"
+                        f"bis zum {name}"
                     )
                     log.warning("Homing stopped -- %s", self._reason)
                     return
@@ -300,6 +369,7 @@ class Homing:
                 command, state = self._follower.step(pose, points)
                 if state == pf.ARRIVED:
                     rest = math.hypot(target[0] - pose[0], target[1] - pose[1])
+                    self._arrived = True
                     self._shutdown(f"angekommen ({rest:.2f} m Restabweichung)")
                     return
 
@@ -346,6 +416,12 @@ class Homing:
             self._watchdog.stop()
             self._reason = "Fehler während der Fahrt"
             log.exception("%s aborted", name)
+
+    def _finish_blocked(self, distance: float) -> None:
+        self._watchdog.stop()
+        self._arrived = True
+        self._reason = f"angekommen, Weg versperrt ({distance:.2f} m vor dem Ziel)"
+        log.info("%s finished -- %s", self.label, self._reason)
 
     def _shutdown(self, reason: str, warning: bool = False) -> None:
         self._watchdog.stop()
@@ -448,8 +524,8 @@ class Homing:
         return DriveCommand(vx=speed * math.cos(a), vy=speed * math.sin(a), omega=0.0)
 
     def _step(self, x: float, y: float, angle_deg: float, distance: float) -> DriveCommand:
-        """Drive command for this moment."""
-        # Direction to the start point, in world coordinates.
+        """Drive command for this moment (x, y relative to the goal)."""
+        # direction to the goal, in world coordinates
         dx, dy = -x, -y
 
         # Rotate into robot coordinates: the drive only knows "forward"

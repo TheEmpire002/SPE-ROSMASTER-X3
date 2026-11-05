@@ -196,6 +196,35 @@ class Mukke:
             self._start(source, title, headers)
         log.info("MUKKE: playing %s", url)
 
+    def file_missing(self) -> str | None:
+        """What is missing to play a local file, or None.
+
+        Like ``missing()`` but without yt-dlp: a file in the package needs
+        no YouTube, so the healthbot does not stay silent just because
+        yt-dlp is outdated or not installed.
+        """
+        if not config.MUKKE_ENABLED:
+            return "abgeschaltet (config.MUKKE_ENABLED)"
+        if shutil.which("mpv") is None:
+            return "mpv fehlt -- sudo apt install mpv"
+        if not hasattr(socket, "AF_UNIX"):
+            return "nur auf Linux"
+        return None
+
+    def play_file(self, path: str, title: str | None = None) -> None:
+        """Play an audio file on the Pi (e.g. the healthbot's music)."""
+        if not os.path.isfile(path):
+            raise MukkeError(f"Datei fehlt: {path}")
+        missing = self.file_missing()
+        if missing:
+            raise MukkeError(f"Abspielen geht nicht: {missing}")
+        with self._lock:
+            self._shutdown()
+            self._interrupted = None
+            self._url, self._title, self._error = None, title, None
+            self._start(path, title, {})
+        log.info("MUKKE: playing file %s", path)
+
     def interrupt(self) -> None:
         """Free the speaker while the voice is speaking.
 

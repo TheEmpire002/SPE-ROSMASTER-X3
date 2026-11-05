@@ -501,13 +501,18 @@ class SpeechRecognition:
             self._state = SWITCHED_OFF
 
     def hear(
-        self, text: str, allowed: tuple[str, ...] | None = None, reason: str | None = None
+        self,
+        text: str,
+        allowed: tuple[str, ...] | None = None,
+        reason: str | None = None,
+        details: dict | None = None,
     ) -> str | None:
         """Evaluate a heard (or typed) sentence. Returns the command.
 
         ``allowed``: only these commands count (uncertain input, music);
         ``reason`` then goes into the log. A wake word heard this way does not
         wake, otherwise a single "komm" from the song would be enough afterwards.
+        ``details`` (confidence, words from Vosk) only go into the event log.
         """
         text = " ".join(str(text).split())
         if not text:
@@ -551,7 +556,7 @@ class SpeechRecognition:
                 event = {"ergebnis": "weckwort"}
             else:
                 event = {"ergebnis": "ohne"}
-            self._events.append({"zeit": time.time(), "text": text, **event})
+            self._events.append({"zeit": time.time(), "text": text, **event, **(details or {})})
             self._partial = ""
         if command is not None:
             log.info("Speech command %s (heard: %r)", command, text)
@@ -560,6 +565,11 @@ class SpeechRecognition:
         else:
             log.debug("Heard without command: %r", text)
         return command
+
+    def heard_since(self, t: float) -> list[str]:
+        """Texts heard since wall-clock time ``t``, e.g. answers in the health check."""
+        with self._lock:
+            return [e["text"] for e in self._events if e["zeit"] >= t]
 
     def live(self) -> dict:
         """For following along in the app (GET /sprache/live), about 5x per second.
@@ -868,12 +878,19 @@ class SpeechRecognition:
             # "La da da" otherwise counts without the name -- the song itself
             # must not start another one.
             reason = "ohne Weckwort"
+        details = {
+            "konfidenz": self._confidence,
+            "woerter": [
+                {"wort": w.get("word"), "konfidenz": round(float(w.get("conf", 1.0)), 2)}
+                for w in words
+            ],
+        }
         if reason is None:
-            self.hear(text)
+            self.hear(text, details=details)
         elif music:
-            self.hear(text, allowed=(STOP, MUSIC_OFF), reason=f"{reason}, Musik läuft")
+            self.hear(text, allowed=(STOP, MUSIC_OFF), reason=f"{reason}, Musik läuft", details=details)
         else:
-            self.hear(text, allowed=(STOP,), reason=reason)
+            self.hear(text, allowed=(STOP,), reason=reason, details=details)
 
     def _check_pause(self) -> bool:
         """True while the microphone should stay closed; then sets the state.
@@ -987,7 +1004,10 @@ class SpeechRecognition:
         drive_commands = [s for s in _maneuver_phrases() if possible(s)]
         log.info("Speech recognition: %d precise drive commands in the grammar", len(drive_commands))
         phrases += drive_commands
-        sentences = wake + phrases
+        # health check answers are no commands: they only land in the events (heard_since())
+        answers = [w for w in dict.fromkeys([*config.HEALTH_WORDS_HELP, *config.HEALTH_WORDS_NO])
+                   if possible(w)]
+        sentences = wake + phrases + answers
         # Name before and after the command as whole sentences: that way Vosk
         # fits what was spoken to one of the allowed sentences instead of building word salad.
         for w in wake:
