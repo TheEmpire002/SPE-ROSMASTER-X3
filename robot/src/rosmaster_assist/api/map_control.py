@@ -52,6 +52,8 @@ class MapControl:
         self._interrupted: float | None = None   # driver gone during the mapping drive
         self._frontiers: list[list[float]] = []
         self._frontiers_time = 0.0
+        # further cancel(reason) callbacks this module does not know, e.g. the healthbot
+        self.also_cancel: list = []
 
     # --- 1. Mapping drive (interface as before for mapping/web.py) --------------------
 
@@ -87,6 +89,8 @@ class MapControl:
         self._explorer.cancel(reason)
         self._interaction.cancel(reason)
         self._maneuver.cancel(reason)
+        for cancel in self.also_cancel:
+            cancel(reason)
 
     def start(self, resume: bool = False) -> str | None:
         if self.active:

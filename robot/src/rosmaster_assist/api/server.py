@@ -31,6 +31,9 @@ from fastapi.staticfiles import StaticFiles
 from .. import config, settings
 from ..recording import Recorder
 from ..diagnostics import Diagnostics, LogBuffer
+from ..health import Healthbot
+from ..health.simulation import SCENES, Simulation
+from ..test_runs import TestRuns
 from ..drive.base import DriveBase
 from ..audio.mukke import Mukke, MukkeError
 from ..interaction import speech as sp
@@ -274,6 +277,28 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     # commands.
     speech = SpeechRecognition(mock=use_mock_camera, voice=voice, mukke=mukke)
 
+    # test runs for /tests collect microphone, pose and person data for later
+    # analysis; finished runs and healthbot checks are saved and uploaded to
+    # the testdaten branch so they can be read without the robot
+    test_runs = TestRuns(
+        pose=pose, people=people, camera=person_camera, cameras=cameras,
+        lidar=lidar, voice=voice, speech=speech, mock=use_mock_camera,
+    )
+    # healthbot gets its own homing so its drives to a spot do not show up as
+    # "Heimfahrt"; map localization and planner are shared, only one drives
+    healthbot = Healthbot(
+        watchdog, odometry,
+        Homing(watchdog, odometry, localizer, localization=localization, planner=planner),
+        lidar=lidar, pose=pose, voice=voice, speech=speech, mukke=mukke,
+        report=hub.broadcast, on_finished=test_runs.save_health_record,
+    )
+    # scenes (lying person) only exist in the simulation: pose and mock lidar
+    # see the same imaginary person
+    health_sim = None
+    if use_mock_camera and true_pose_source is not None:
+        raw_lidar = getattr(lidar, "_lidar", None)
+        health_sim = Simulation(pose, true_pose_source, getattr(raw_lidar, "set_obstacles", None))
+
     # The diagnostics page also shows the server messages. An old buffer
     # (create_app called a second time, e.g. in tests) is replaced, otherwise
     # every line would arrive twice.
@@ -337,7 +362,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             _status_loop(
                 hub, watchdog, driver, odometry, homing, localizer, guard,
                 explorer, detection, lidar, people, interaction, voice, speech, maneuver,
-                map_control=map_control,
+                map_control=map_control, healthbot=healthbot,
             )
         )
         speech_task = asyncio.create_task(_speech_loop())
@@ -345,7 +370,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         match_task = asyncio.create_task(_match_loop(localizer))
         hw_task = asyncio.create_task(
             _hardware_loop(hub, watchdog, driver, homing, explorer, interaction, maneuver,
-                           map_control=map_control)
+                           map_control=map_control, healthbot=healthbot)
         )
         pulse_task = asyncio.create_task(_pulse_loop(diagnostics))
         map_task = asyncio.create_task(map_control.tick_loop(_loop_error))
@@ -387,6 +412,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             explorer.cancel("Server wird beendet")
             maneuver.cancel("Server wird beendet")
             interaction.cancel("Server wird beendet")
+            healthbot.shutdown()
+            test_runs.shutdown()
             await watchdog.shutdown()
             # Only after stopping: shutting down the container can take a
             # while, and an error in it (Docker already gone, or not present
@@ -439,6 +466,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         mapping_manager=mapping_manager, localization=localization, explorer=explorer, homing=homing,
         interaction=interaction, maneuver=maneuver, watchdog=watchdog, driver=driver, hub=hub,
     )
+    map_control.also_cancel.append(healthbot.cancel)
     app.state.map_control = map_control
     app.include_router(create_mapping_router(mapping_manager, map_control))
 
@@ -462,6 +490,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                         msg, watchdog, driver, hub, odometry, homing, localizer, guard,
                         explorer, interaction, voice, speech, recording,
                         maneuver=maneuver, sender=ws, map_control=map_control,
+                        healthbot=healthbot,
                     )
                 except Exception:
                     # A faulty command used to drop the connection -- the
@@ -491,10 +520,101 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                     explorer.cancel("Verbindung verloren")
                 maneuver.cancel("Verbindung verloren")
                 interaction.cancel("Verbindung verloren")
+                healthbot.cancel("Verbindung verloren")
                 if with_map:
                     map_control.check_watchers("Verbindung verloren")
                 else:
                     watchdog.stop()
+
+    # --- Healthbot ---
+
+    @app.get("/healthbot/status")
+    async def healthbot_status() -> dict[str, Any]:
+        return {
+            **healthbot.status(),
+            "simulation": health_sim.status() if health_sim is not None else None,
+            "szenen": list(SCENES) if health_sim is not None else [],
+        }
+
+    @app.post("/healthbot/simulation")
+    async def healthbot_simulation(request: Request) -> JSONResponse:
+        if health_sim is None:
+            return JSONResponse({"fehler": "Simulation gibt es nur mit --mock"}, status_code=404)
+        body = await _json_body(request)
+        if isinstance(body, JSONResponse):
+            return body
+        x, y = body.get("x"), body.get("y")
+        if (x is not None and not _is_number(x)) or (y is not None and not _is_number(y)):
+            return JSONResponse({"fehler": "x und y müssen Zahlen sein"}, status_code=400)
+        try:
+            health_sim.set(body.get("szene"), x, y)
+        except ValueError as exc:
+            return JSONResponse({"fehler": str(exc)}, status_code=400)
+        return JSONResponse(health_sim.status())
+
+    # --- Test runs ---
+
+    @app.get("/tests/katalog")
+    async def tests_catalog() -> dict[str, Any]:
+        return TestRuns.catalog()
+
+    @app.get("/tests/status")
+    async def tests_status() -> dict[str, Any]:
+        return test_runs.status()
+
+    @app.get("/tests/liste")
+    async def tests_list() -> dict[str, Any]:
+        # reads many small files from the sd card, not in the event loop
+        return {"laeufe": await asyncio.to_thread(test_runs.list_runs)}
+
+    @app.post("/tests/start")
+    async def tests_start(request: Request) -> JSONResponse:
+        body = await _json_body(request)
+        if isinstance(body, JSONResponse):
+            return body
+        error = test_runs.start(body.get("test"))
+        if error is not None:
+            return JSONResponse({"fehler": error}, status_code=400)
+        return JSONResponse(test_runs.status())
+
+    @app.post("/tests/stop")
+    async def tests_stop() -> JSONResponse:
+        test_runs.stop()
+        return JSONResponse(test_runs.status())
+
+    @app.post("/tests/notiz")
+    async def tests_note(request: Request) -> JSONResponse:
+        body = await _json_body(request)
+        if isinstance(body, JSONResponse):
+            return body
+        error = await asyncio.to_thread(test_runs.set_note, body.get("name"), body.get("text"))
+        if error is not None:
+            return JSONResponse({"fehler": error}, status_code=400)
+        return JSONResponse({"ok": True})
+
+    @app.get("/tests/zip")
+    async def tests_zip(name: str = Query("")) -> Response:
+        data = await asyncio.to_thread(test_runs.zip_bytes, name)
+        if data is None:
+            return JSONResponse({"fehler": "Lauf nicht gefunden"}, status_code=404)
+        safe = re.sub(r"[^A-Za-z0-9_.-]", "_", name) or "lauf"
+        return Response(
+            data, media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{safe}.zip"'},
+        )
+
+    @app.post("/tests/hochladen")
+    async def tests_upload(request: Request) -> JSONResponse:
+        body = await _json_body(request, allow_empty=True)
+        if isinstance(body, JSONResponse):
+            return body
+        names = body.get("namen")
+        if names is not None and (
+            not isinstance(names, list) or not all(isinstance(n, str) for n in names)
+        ):
+            return JSONResponse({"fehler": "namen muss eine Liste von Namen sein"}, status_code=400)
+        # git push takes seconds, not in the event loop
+        return JSONResponse(await asyncio.to_thread(test_runs.upload, names))
 
     # --- Camera ---
     #
@@ -1086,6 +1206,11 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         answered_at: float | None = None
         while True:
             await asyncio.sleep(0.1)
+            if test_runs.block_commands:
+                # a test run records what is said, the robot must not react
+                speech.fetch_commands()
+                answered_at = None
+                continue
             if answered_at is not None and time.monotonic() >= answered_at:
                 answered_at = None
                 # If the command already came during the pause, the window is
@@ -1106,6 +1231,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         response = await _handle(
             {"type": kind, **fields}, watchdog, driver, hub, odometry, homing, localizer, guard,
             explorer, interaction, voice, speech, maneuver=maneuver, map_control=map_control,
+            healthbot=healthbot,
         )
         if response is None:
             return True
@@ -1127,6 +1253,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         homing.cancel("Interaktion gestartet")
         explorer.cancel("Interaktion gestartet")
         maneuver.cancel("Interaktion gestartet")
+        healthbot.cancel("Interaktion gestartet")
         if interaction.start(mode):
             await hub.broadcast(alert_message("info", f"Interaktion an -- {text}"))
 
@@ -1139,6 +1266,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                 homing.cancel("Not-Stopp")
                 explorer.cancel("Not-Stopp")
                 maneuver.cancel("Not-Stopp")
+                await healthbot.end_alarm("Not-Stopp")
                 interaction.switch_to(vh.READY, "angehalten (per Sprache)")
                 watchdog.stop()
                 voice.say("Okay, ich halte an.", priority=True)
@@ -1170,6 +1298,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             homing.cancel("vom Nutzer beendet")
             explorer.cancel("vom Nutzer beendet")
             maneuver.cancel("vom Nutzer beendet")
+            healthbot.cancel("vom Nutzer beendet")
             await _issue_command("interaction_stop")
             voice.say("Gute Nacht.")
         elif command == sp.GO_HOME:
@@ -1220,6 +1349,14 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         @app.get("/logs")
         async def diagnostics_page() -> HTMLResponse:
             return _page("diagnose.html")
+
+        @app.get("/healthbot")
+        async def healthbot_page() -> HTMLResponse:
+            return _page("healthbot.html")
+
+        @app.get("/tests")
+        async def tests_page() -> HTMLResponse:
+            return _page("tests.html")
     else:
         log.warning("webapp/ not found at %s -- only /ws available", WEBAPP_DIR)
 
@@ -1258,6 +1395,7 @@ async def _handle(
     maneuver: Maneuver | None = None,
     sender: object | None = None,
     map_control: MapControl | None = None,
+    healthbot: Healthbot | None = None,
 ) -> dict[str, Any] | None:
     """Process an incoming message.
 
@@ -1314,6 +1452,12 @@ async def _handle(
                 return None
             maneuver.cancel("von Hand übersteuert")
 
+        # healthbot too, but a stop must not end a running alarm by accident
+        if healthbot is not None and healthbot.active:
+            if cmd.is_stop():
+                return None
+            healthbot.cancel("von Hand übersteuert")
+
         allowed, obstacle = guard.check(cmd)
         if obstacle is not None and guard.report():
             await hub.broadcast(
@@ -1340,6 +1484,8 @@ async def _handle(
             interaction.cancel("Not-Stopp")
         if maneuver is not None:
             maneuver.cancel("Not-Stopp")
+        if healthbot is not None:
+            await healthbot.end_alarm("Not-Stopp")
         watchdog.stop()
         if voice is not None:
             # Priority: everything still in the queue is obsolete.
@@ -1359,6 +1505,8 @@ async def _handle(
             explorer.cancel("Fahrbefehl gestartet")
         if interaction is not None:
             interaction.cancel("Fahrbefehl gestartet")
+        if healthbot is not None:
+            healthbot.cancel("Fahrbefehl gestartet")
         error = maneuver.start(category, value)
         if error is not None:
             return alert_message("warning", error)
@@ -1375,6 +1523,8 @@ async def _handle(
             interaction.cancel("autonomes Fahren gestartet")
         if maneuver is not None:
             maneuver.cancel("autonomes Fahren gestartet")
+        if healthbot is not None:
+            healthbot.cancel("autonomes Fahren gestartet")
         if explorer.start():
             await hub.broadcast(alert_message("info", "Autonomes Fahren gestartet"))
         return None
@@ -1398,6 +1548,8 @@ async def _handle(
                 explorer.cancel("Interaktion gestartet")
             if maneuver is not None:
                 maneuver.cancel("Interaktion gestartet")
+            if healthbot is not None:
+                healthbot.cancel("Interaktion gestartet")
         if kind == "follow":
             was_active = interaction.active
             target_id = msg.get("ziel_id")
@@ -1453,6 +1605,8 @@ async def _handle(
             interaction.cancel("Heimfahrt gestartet")
         if maneuver is not None:
             maneuver.cancel("Heimfahrt gestartet")
+        if healthbot is not None:
+            healthbot.cancel("Heimfahrt gestartet")
         if homing.start():
             text = (
                 "Heimfahrt nach Karte gestartet (zum Ausgangspunkt der Karte)"
@@ -1508,6 +1662,8 @@ async def _handle(
             interaction.cancel("Startpunkt wurde verschoben")
         if maneuver is not None:
             maneuver.cancel("Startpunkt wurde verschoben")
+        if healthbot is not None:
+            healthbot.cancel("Startpunkt wurde verschoben")
         # Only present in the simulation: there the imaginary reality also
         # has to go back to the start, otherwise the robot would be outside
         # the simulated room.
@@ -1557,6 +1713,8 @@ async def _handle(
         if not isinstance(text, str) or not text.strip():
             return error_message("speech braucht ein Feld text")
         if speech.hear(text) is None:
+            if healthbot is not None and healthbot.active:
+                return None  # healthbot waits for answer words, they are no commands
             return alert_message(
                 "info", f"Kein Befehl erkannt in {text!r} (Weckwort: {config.SPEECH_WAKE_WORD})"
             )
@@ -1573,6 +1731,44 @@ async def _handle(
         # From the ESP: pass on to all clients so the app displays them.
         # Deliberately without evaluation -- see docs/decisions.md, E3.
         await hub.broadcast(vitals_message(msg.get("bpm"), msg.get("motion")))
+        return None
+
+    if kind == "health_check":
+        if healthbot is None:
+            return alert_message("warning", "Healthbot gibt es hier nicht")
+        x, y = msg.get("x"), msg.get("y")
+        if (x is None) != (y is None) or (x is not None and not (_is_number(x) and _is_number(y))):
+            return alert_message("warning", "Healthbot: x und y müssen beide Zahlen sein")
+        if not healthbot.active:
+            # only one program steers
+            homing.cancel("Healthbot gestartet")
+            if explorer is not None:
+                explorer.cancel("Healthbot gestartet")
+            if interaction is not None:
+                interaction.cancel("Healthbot gestartet")
+            if maneuver is not None:
+                maneuver.cancel("Healthbot gestartet")
+        reason = healthbot.start(x, y, "eingabe")
+        if reason is not None:
+            return alert_message("warning", f"Healthbot: {reason}")
+        text = ("Healthbot: prüft hier" if x is None
+                else f"Healthbot: prüft bei ({float(x):.2f}, {float(y):.2f})")
+        await hub.broadcast(alert_message("info", text))
+        return None
+
+    if kind == "health_stop":
+        if healthbot is None:
+            return alert_message("warning", "Healthbot gibt es hier nicht")
+        await healthbot.end_alarm("vom Nutzer beendet")
+        watchdog.stop()
+        return None
+
+    if kind == "health_wache":
+        if healthbot is None:
+            return alert_message("warning", "Healthbot gibt es hier nicht")
+        reason = healthbot.set_watch(bool(msg.get("an")))
+        if reason is not None:
+            return alert_message("warning", f"Healthbot-Wache: {reason}")
         return None
 
     if kind == "box":
@@ -1632,6 +1828,7 @@ async def _hardware_loop(
     interaction: Interaction | None = None,
     maneuver: Maneuver | None = None,
     map_control: MapControl | None = None,
+    healthbot: Healthbot | None = None,
 ) -> None:
     """Keeps the connection to the driver alive.
 
@@ -1660,6 +1857,8 @@ async def _hardware_loop(
                     explorer.cancel("Verbindung zum Antrieb verloren")
                 if maneuver is not None:
                     maneuver.cancel("Verbindung zum Antrieb verloren")
+                if healthbot is not None:
+                    healthbot.cancel("Verbindung zum Antrieb verloren")
                 if interaction is not None:
                     # Do not end it, only stop: gesture control stays on and
                     # is ready again right after reconnecting. It used to be
@@ -1768,6 +1967,7 @@ async def _status_loop(
     speech: SpeechRecognition | None = None,
     maneuver: Maneuver | None = None,
     map_control: MapControl | None = None,
+    healthbot: Healthbot | None = None,
 ) -> None:
     """Regularly sends the state to all clients."""
     last_active = False
@@ -1840,12 +2040,38 @@ async def _status_loop(
                         voice=voice.state() if voice is not None else None,
                         speech=speech.state() if speech is not None else None,
                         occ_map=map_control.state_brief() if map_control is not None else None,
+                        healthbot=_healthbot_brief(healthbot) if healthbot is not None else None,
                     )
                 )
         except Exception:
             # This used to end the status messages for good: the app showed
             # frozen values, it looked like a crash.
             _loop_error("Statusmeldungen")
+
+
+def _healthbot_brief(healthbot: Healthbot) -> dict[str, Any]:
+    """Short form for state.healthbot, everything else is in /healthbot/status."""
+    st = healthbot.status()
+    return {k: st.get(k) for k in ("aktiv", "zustand", "schritt", "alarm", "wache")}
+
+
+def _is_number(value: Any) -> bool:
+    # bool is an int in python, but true is no coordinate
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+async def _json_body(request: Request, allow_empty: bool = False) -> dict[str, Any] | JSONResponse:
+    """Request body as a dict, or the matching 400 response."""
+    raw = await request.body()
+    if allow_empty and not raw.strip():
+        return {}
+    try:
+        body = json.loads(raw)
+    except (ValueError, UnicodeDecodeError):
+        return JSONResponse({"fehler": "kein gültiges JSON"}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"fehler": "JSON-Objekt erwartet"}, status_code=400)
+    return body
 
 
 def _autonomy(
