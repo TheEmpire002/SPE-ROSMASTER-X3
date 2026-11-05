@@ -822,6 +822,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
   - Pose saving and autosave wrote the map's json at the same time and collided on the temp file. Fixed with a lock (read-modify-write) and unique temp file names.
   - `from_json` incremented the segment counter twice.
 - **Open:** Test on the robot: CPU on `/diagnose` (estimate 10–20 % of one core), map grows when driving by hand, lifting the robot → frozen, restart finds the last pose, mission start → next room → return. No loop closure: large loops may freeze; do the first mapping with slam.
+- **First robot test (05.11. afternoon):** the map hardly grew, it froze every few seconds. In the log about half the freezes said "bewegt sich ohne die Räder (getragen?)" at standstill: scans come 0.1–0.15 s apart and the A1's 1–2 cm matching jitter looked like 0.1 m/s; the carry check now measures both speeds over 0.4 s. The other half said "Abgleich widerspricht der Odometrie (5–10 cm)": now such a scan is only skipped, the map freezes only at twice the allowance (8 cm / 3° plus drift) or after 3 s of disagreement; coming back needs 5 strict matches over 1.5 s instead of 10 over 3 s. The spoken "Halt." on every stop is gone (the app sends stop whenever it loses focus).
 
 ---
 

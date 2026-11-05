@@ -1112,9 +1112,11 @@ moment; that spot becomes the origin. A scan only goes into the map when the
 pose passes a strict test (the integrate gate: good match, enough known
 walls in view, no ambiguous corridor, no jump, consistent with the odometry,
 not turning fast, not lifted or carried, lidar not just reconnected) -- and
-only once the next two scans pass too. On any doubt the map **freezes**
-(`zustand: "eingefroren"`, `grund` says why) and stays bit for bit
-unchanged; after 10 strict matches over at least 3 s it writes again. Walls
+only once the next two scans pass too. A scan that is a little off is only
+skipped (`grund` says why, the map keeps growing); on real doubt the map
+**freezes** (`zustand: "eingefroren"`) and stays bit for bit unchanged;
+after 5 strict matches over at least 1.5 s it writes again (new 05.11.: was
+10 over 3 s, which kept the map standing still on the robot). Walls
 that were sure at load time can be weakened by a bad session at most to
 "unknown", never to "free". It saves every `LIVE_MAP_SAVE_S` (60 s) when
 something changed and on shutdown (`.npz` with the grid, plus `.pgm/.yaml`

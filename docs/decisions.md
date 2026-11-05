@@ -672,8 +672,10 @@ as good when the new quality criteria say so.
    `NAV_BLIND_MAX_M` (how far odometry alone may carry the pose); a found
    pose is confirmed after a search.
 3. **`IntegrateGate`** decides whether a scan may be written. Hard and soft
-   criteria; states FROZEN → CONFIRMING (10 strict matches, at least 3 s) →
-   INTEGRATING. A lag buffer of 2 scans means the last scan before a failure
+   criteria; states FROZEN → CONFIRMING (5 strict matches, at least 1.5 s)
+   → INTEGRATING. A match slightly off the odometry track is only skipped,
+   twice the allowance (or off for 3 s) freezes; the first robot test with
+   10 matches / 3 s and an immediate freeze kept the map standing still. A lag buffer of 2 scans means the last scan before a failure
    never lands in the map. "Carried" is also detected by comparing wheel speed
    with lidar speed (before the lift detector fires). While turning faster
    than 0.15 rad/s nothing is written.

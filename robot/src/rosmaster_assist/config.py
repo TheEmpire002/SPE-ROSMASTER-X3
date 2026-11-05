@@ -500,10 +500,13 @@ LIVE_GATE_DEGENERATE_S = 3.0
 # raw match vs prediction (twice this: hard)
 LIVE_GATE_MAX_JUMP_M = 0.08
 LIVE_GATE_MAX_JUMP_DEG = 3.0
-# spread of the correction over the last accepted matches
+# spread of the correction over the last accepted matches; beyond it the
+# scan is skipped, beyond LIVE_GATE_WINDOW_HARD times it the map freezes (on
+# the robot 5-10 cm happen while driving, a wrong match is much further off)
 LIVE_GATE_WINDOW_N = 8
-LIVE_GATE_WINDOW_M = 0.06
-LIVE_GATE_WINDOW_DEG = 2.5
+LIVE_GATE_WINDOW_M = 0.08
+LIVE_GATE_WINDOW_DEG = 3.0
+LIVE_GATE_WINDOW_HARD = 2.0
 # ... plus this much per metre driven inside the window (odometry drift)
 LIVE_GATE_DRIFT_M_PER_M = 0.10
 LIVE_GATE_DRIFT_DEG_PER_M = 4.0
@@ -521,16 +524,17 @@ LIVE_GATE_CARRY_MIN_SPEED = 0.08
 LIVE_GATE_CARRY_WHEEL_SHARE = 0.25
 # both speeds over this window (s): from one scan to the next the a1's
 # matching jitter of 1-2 cm already looks like 0.1 m/s at standstill
-LIVE_GATE_CARRY_WINDOW_S = 0.6
+LIVE_GATE_CARRY_WINDOW_S = 0.4
 # lidar odometry healthy: this many good icp matches in a row
 LIVE_GATE_ODO_GOOD_N = 3
 LIVE_GATE_MAX_AGE_S = 0.4
 # soft failures longer than this freeze as well
 LIVE_GATE_SOFT_MAX_S = 3.0
-# back from frozen: this many strict matches over at least this long
-LIVE_GATE_CONFIRM_N = 10
+# back from frozen: this many strict matches over at least this long (more
+# made the map stand still most of the time on the robot)
+LIVE_GATE_CONFIRM_N = 5
 LIVE_GATE_CONFIRM_SHARE = 0.75
-LIVE_GATE_CONFIRM_MIN_S = 3.0
+LIVE_GATE_CONFIRM_MIN_S = 1.5
 # a scan is written only after this many later scans also passed
 LIVE_GATE_LAG_N = 2
 

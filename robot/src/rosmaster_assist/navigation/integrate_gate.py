@@ -249,9 +249,12 @@ class IntegrateGate:
             self._degenerate_since = None
 
         if not any(k == HARD for k, _ in issues) and inp.accepted and inp.kind == "track":
-            consistent = self._consistent(inp)
-            if consistent is not None:
-                issues.append((HARD, consistent))
+            inconsistent = self._consistent(inp)
+            if inconsistent is not None:
+                issues.append(inconsistent)
+                if inconsistent[0] == SOFT and self._window:
+                    # re-anchor slowly: one old outlier must not block every scan
+                    self._window.popleft()
 
         hard = [r for k, r in issues if k == HARD]
         soft = [r for k, r in issues if k == SOFT]
@@ -264,9 +267,8 @@ class IntegrateGate:
             if inp.now - self._soft_since > config.LIVE_GATE_SOFT_MAX_S:
                 self.freeze(f"länger unsicher: {soft[0]}")
                 return False
-            if self.state == CONFIRMING:
-                self._k = 0
-                self._confirm_since = None
+            # while confirming it simply does not count; only a freeze
+            # starts the count again
             self.reason = soft[0]
             return False
         self._soft_since = None
@@ -303,7 +305,7 @@ class IntegrateGate:
         self.passed += 1
         return True
 
-    def _consistent(self, inp: GateInputs) -> str | None:
+    def _consistent(self, inp: GateInputs) -> tuple[str, str] | None:
         """Does this match agree with the earlier ones, given the odometry in between?
 
         The oldest match of the window plus the odometry since then predicts
@@ -325,9 +327,11 @@ class IntegrateGate:
         # the lidar odometry drifts most while turning on the spot
         allowed_deg = (config.LIVE_GATE_WINDOW_DEG + config.LIVE_GATE_DRIFT_DEG_PER_M * travel
                        + config.LIVE_GATE_DRIFT_DEG_PER_RAD * abs(rel[2]))
-        if err > allowed or err_deg > allowed_deg:
-            return f"Abgleich widerspricht der Odometrie ({100 * err:.0f} cm, {err_deg:.0f}°)"
-        return None
+        if err <= allowed and err_deg <= allowed_deg:
+            return None
+        hard = config.LIVE_GATE_WINDOW_HARD
+        kind = HARD if err > hard * allowed or err_deg > hard * allowed_deg else SOFT
+        return kind, f"Abgleich widerspricht der Odometrie ({100 * err:.0f} cm, {err_deg:.0f}°)"
 
     def status(self) -> dict:
         return {

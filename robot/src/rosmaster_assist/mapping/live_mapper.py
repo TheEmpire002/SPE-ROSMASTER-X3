@@ -379,7 +379,7 @@ class LiveMapper:
         hist = self._motion_hist
         hist.append((track.timestamp, track.odo_pose, wheel))
         # carried: both speeds over a window, scan-to-scan jitter is too large
-        while len(hist) > 2 and track.timestamp - hist[1][0] >= config.LIVE_GATE_CARRY_WINDOW_S:
+        while len(hist) > 2 and track.timestamp - hist[0][0] > config.LIVE_GATE_CARRY_WINDOW_S:
             hist.popleft()
         t0, o0, w0 = hist[0]
         span = track.timestamp - t0

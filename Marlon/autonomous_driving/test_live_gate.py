@@ -175,12 +175,13 @@ check("enough confirmations but too quickly: still confirming", gate.state == ig
 
 d = Drive()
 gate = ig.IntegrateGate()
-for _ in range(6):
+for _ in range(3):
     gate.update(d.step())
+before = gate.status()["bestaetigt"]
 gate.update(d.step(share=0.6))
 status = gate.status()
-check("a soft failure while confirming starts the count again", status["bestaetigt"] == 0,
-      str(status))
+check("a soft failure while confirming does not count, but keeps the count",
+      status["bestaetigt"] == before, str(status))
 for _ in range(30):
     if gate.update(d.step()):
         break
@@ -190,9 +191,12 @@ d = Drive()
 gate = ig.IntegrateGate()
 for _ in range(6):
     gate.update(d.step())
+for _ in range(config.LIVE_GATE_CONFIRM_N - 2):
+    gate.update(d.step())
+before = gate.status()["bestaetigt"]
 gate.update(d.step(omega=0.6))
 status = gate.status()
-check("turning while confirming keeps the count", status["bestaetigt"] == 6, str(status))
+check("turning while confirming keeps the count", status["bestaetigt"] == before, str(status))
 
 d = Drive()
 gate = ig.IntegrateGate()
@@ -240,6 +244,27 @@ for k in range(8):
     ok &= gate.update(d.step(match_pose=(x, 0.01 * k, 0.0)))
 check("slow drift within the allowance keeps writing", ok and gate.state == ig.INTEGRATING,
       gate.reason)
+
+d = Drive()
+gate = integrating_gate()
+for _ in range(5):
+    gate.update(d.step())
+x = d.x + 0.05
+passed = gate.update(d.step(match_pose=(x + 0.12, 0.0, 0.0), jump_m=0.0))
+again = gate.update(d.step())
+check("a match a little off the odometry (12 cm) is only skipped, the map keeps writing",
+      not passed and again and gate.state == ig.INTEGRATING, gate.reason)
+
+d = Drive()
+gate = integrating_gate()
+for _ in range(5):
+    gate.update(d.step())
+for k in range(int(config.LIVE_GATE_SOFT_MAX_S / 0.25) + 2):
+    x = d.x + 0.05
+    gate.update(d.step(match_pose=(x + (0.12 if k % 2 else -0.12), 0.0, 0.0), jump_m=0.0))
+# a single pass in between never reaches the map: it waits for LIVE_GATE_LAG_N more
+check("... but matches jumping back and forth freeze the map",
+      gate.frozen >= 1 and gate.state != ig.INTEGRATING, gate.reason)
 
 # --- constraint ---------------------------------------------------------------------------
 
