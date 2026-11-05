@@ -487,6 +487,11 @@ LIVE_GATE_MAX_JUMP_DEG = 3.0
 LIVE_GATE_WINDOW_N = 8
 LIVE_GATE_WINDOW_M = 0.06
 LIVE_GATE_WINDOW_DEG = 2.5
+# ... plus this much per metre driven inside the window (odometry drift)
+LIVE_GATE_DRIFT_M_PER_M = 0.10
+LIVE_GATE_DRIFT_DEG_PER_M = 4.0
+# after the lidar was gone (usb dropout) nothing is written for this long (s)
+LIVE_GATE_RECONNECT_HOLD_S = 5.0
 # a1 scans are distorted while turning (0.18 s per revolution)
 LIVE_GATE_MAX_OMEGA = 0.35
 LIVE_GATE_MAX_SPEED = 0.35
