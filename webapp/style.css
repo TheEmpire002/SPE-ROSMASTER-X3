@@ -890,3 +890,239 @@ a.einst-knopf { text-decoration: none; }
   margin: 0 0.3rem;
 }
 .genau-knoepfe { display: grid; grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr)); gap: 0.4rem; }
+
+/* --- Healthbot (/healthbot) --- */
+
+/* heart button on the start page: red so it is found at once in an emergency */
+.hb-button {
+  color: #ffd9d9;
+  background: linear-gradient(180deg, #6a2330, #521b26);
+  border-color: #8f2d3d;
+}
+.hb-button:hover {
+  background: linear-gradient(180deg, #7d2a39, #63202d);
+  border-color: var(--danger);
+}
+.hb-button:hover svg { transform: scale(1.15); }
+
+.hb-alarm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.8rem;
+  font-size: 1.15rem;
+  color: #fff;
+  background: #7a1f2b;
+  border-color: var(--danger);
+  animation: hb-pulse 1.2s ease-in-out infinite;
+}
+.hb-alarm[hidden] { display: none; }
+@keyframes hb-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(240, 93, 93, 0.6); }
+  50% { box-shadow: 0 0 0 10px rgba(240, 93, 93, 0); }
+}
+
+/* step chain: finished steps green, the current one highlighted blue */
+.hb-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.8rem;
+  counter-reset: hb-step;
+}
+.hb-steps li {
+  counter-increment: hb-step;
+  flex: 1 1 7rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.hb-steps li::before { content: counter(hb-step) ". "; }
+.hb-steps li.done { color: var(--ok); border-color: #2a6b51; }
+.hb-steps li.current { color: #fff; background: #1d3a5c; border-color: var(--accent); }
+
+.hb-now { margin: 0 0 0.8rem; }
+.hb-badge {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  background: #272b34;
+  border: 1px solid var(--line);
+  white-space: nowrap;
+}
+.hb-badge.z-hilfe { background: #7a1f2b; border-color: var(--danger); color: #fff; }
+.hb-badge.z-ansprechbar, .hb-badge.z-unauffaellig { color: var(--ok); border-color: #2a6b51; }
+.hb-badge.z-abgebrochen, .hb-badge.z-keine_person { color: var(--warn); border-color: #7a5a1a; }
+
+.hb-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.hb-row input[type="text"] {
+  flex: 1;
+  min-width: 8rem;
+  font: inherit;
+  color: var(--text);
+  background: #1b1e25;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+}
+.hb-row .btn:disabled { opacity: 0.45; cursor: default; }
+.hb-stop-button { background: #3a2126; color: var(--danger); border-color: #6b2b35; }
+.hb-stop-button:hover { background: var(--danger); color: #fff; }
+.hb-toggle { display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer; }
+.hb-toggle input { accent-color: var(--accent); }
+.hb-note { color: var(--muted); font-size: 0.85rem; margin: 0.5rem 0 0; }
+.hb-note[hidden] { display: none; }
+
+.hb-map {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  background: #14161b;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: crosshair;
+}
+.hb-legend i {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  margin: 0 0.25rem 0 0.6rem;
+  border-radius: 50%;
+  vertical-align: -1px;
+}
+.hb-legend i:first-child { margin-left: 0; }
+.hb-legend .lg-robot { background: #e6e8ec; }
+.hb-legend .lg-home { background: var(--ok); }
+.hb-legend .lg-goal { background: var(--warn); }
+.hb-legend .lg-lidar { background: #4da3ff; }
+.hb-legend .lg-map { background: #787878; }
+
+/* the skeleton lies exactly over the camera image */
+.hb-camera { position: relative; line-height: 0; }
+.hb-camera img { width: 100%; height: auto; border-radius: 8px; background: #000; }
+.hb-camera canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+
+/* the four signs as traffic lights: red = conspicuous, green = fine, grey = open */
+.hb-checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
+}
+.hb-check {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.5rem;
+  align-items: center;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--line);
+  border-left-width: 4px;
+  border-radius: 8px;
+}
+.hb-check p { grid-column: 1 / -1; margin: 0.35rem 0 0; color: var(--muted); font-size: 0.85rem; }
+.hb-check-verdict { grid-column: 2; font-size: 0.8rem; color: var(--muted); }
+.hb-check-light { grid-row: span 2; width: 0.9rem; height: 0.9rem; border-radius: 50%; background: #555; }
+.hb-check.auffaellig { border-left-color: var(--danger); }
+.hb-check.auffaellig .hb-check-light { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+.hb-check.ok { border-left-color: var(--ok); }
+.hb-check.ok .hb-check-light { background: var(--ok); }
+.hb-check.unbekannt { border-left-color: #555; }
+
+.hb-verdict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+.hb-verdict-level { font-weight: 700; font-size: 1.1rem; }
+.hb-points { margin-left: auto; color: var(--muted); font-size: 0.85rem; }
+.hb-verdict.notfall { background: #7a1f2b; border-color: var(--danger); color: #fff; }
+.hb-verdict.notfall .hb-points { color: #ffd9d9; }
+.hb-verdict.auffaellig { border-color: var(--warn); }
+.hb-verdict.auffaellig .hb-verdict-level { color: var(--warn); }
+.hb-verdict.ansprechbar .hb-verdict-level, .hb-verdict.unauffaellig .hb-verdict-level { color: var(--ok); }
+.hb-verdict.unbekannt .hb-verdict-level { color: var(--muted); }
+
+.hb-nudges { margin: 0; padding-left: 1.1rem; font-size: 0.9rem; }
+
+.hb-timeline { list-style: none; margin: 0; padding: 0; max-height: 22rem; overflow-y: auto; }
+.hb-timeline li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.9rem;
+}
+.hb-timeline time { color: var(--muted); font-variant-numeric: tabular-nums; }
+.hb-timeline li.z-hilfe { color: #ffb3b3; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hb-alarm { animation: none; }
+}
+
+/* --- Tests (/tests) --- */
+.ts-steps { margin: 0.3rem 0 0.6rem; padding-left: 1.3rem; line-height: 1.5; }
+.ts-steps pre {
+  background: #15181d; border: 1px solid var(--line); border-radius: 6px;
+  padding: 0.5rem 0.7rem; overflow-x: auto; font-size: 0.85rem;
+}
+.ts-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.8rem; }
+.ts-tab {
+  background: #20242c; color: var(--muted); border: 1px solid var(--line);
+  border-radius: 999px; padding: 0.35rem 0.9rem; cursor: pointer; font: inherit;
+}
+.ts-tab[aria-selected="true"] { background: #1d3a5c; border-color: var(--accent); color: #fff; }
+.ts-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 0.8rem; }
+.ts-card, .ts-run {
+  border: 1px solid var(--line); border-radius: 10px; padding: 0.8rem 0.9rem;
+  background: #1a1d23;
+}
+.ts-card h3 { margin: 0 0 0.3rem; font-size: 1.05rem; }
+.ts-card h4 { margin: 0.7rem 0 0.2rem; font-size: 0.85rem; color: var(--muted); font-weight: 600; }
+.ts-summary { margin: 0; color: var(--muted); }
+.ts-phases { margin: 0; padding-left: 1.3rem; font-size: 0.9rem; line-height: 1.45; }
+.ts-sentence-small { color: var(--accent); }
+.ts-start { margin-top: 0.8rem; width: 100%; }
+.ts-start:disabled { opacity: 0.45; cursor: default; }
+
+/* the running test must be readable from a few meters (the tester may lie on the floor) */
+.ts-live { border-color: var(--accent); }
+.ts-live-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.ts-live-head h2 { margin: 0; }
+.ts-phase { margin: 0.6rem 0 0.2rem; font-size: 1.1rem; }
+.ts-lead { color: var(--warn); margin-left: 0.4rem; }
+.ts-instruction { font-size: 1.6rem; line-height: 1.3; margin: 0.4rem 0; color: #fff; }
+.ts-sentence { font-size: 1.8rem; color: var(--accent); margin: 0.4rem 0; font-weight: 600; }
+.ts-rest { font-size: 2.6rem; font-variant-numeric: tabular-nums; margin: 0.2rem 0 0.6rem; font-weight: 700; }
+.ts-values { display: grid; gap: 0.35rem; }
+.ts-value { display: flex; gap: 0.8rem; align-items: center; }
+.ts-value-name { color: var(--muted); min-width: 9rem; }
+.ts-level { flex: 1; max-width: 420px; height: 14px; background: #272b34; border-radius: 7px; overflow: hidden; }
+.ts-level-fill { height: 100%; width: 0; background: var(--ok); transition: width 0.2s linear; }
+
+.ts-message { margin: 0; padding: 0.6rem 0.9rem; border: 1px solid var(--line); border-radius: 8px; background: #1a1d23; }
+.ts-message.ts-error { border-color: var(--danger); }
+
+.ts-runs { display: grid; gap: 0.6rem; margin-top: 0.6rem; }
+.ts-run-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: pointer; }
+.ts-time { color: var(--muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.ts-results { margin: 0.5rem 0; padding-left: 1.2rem; font-size: 0.9rem; line-height: 1.45; }
+.ts-run .hb-row input[type="text"] { flex: 1; min-width: 12rem; }
+.ts-run a.btn { text-decoration: none; }
+/* one line per run: what came out (verdict of the server) */
+.ts-verdict { margin: 0.4rem 0 0; font-weight: 600; }
+.ts-ok { color: var(--ok); }
+.ts-warn { color: var(--warn); }
+.ts-error { color: var(--danger); }
+#ts-token summary { cursor: pointer; font-weight: 600; }

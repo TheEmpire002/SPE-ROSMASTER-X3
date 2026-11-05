@@ -48,8 +48,9 @@ From the app / the ESP to the robot
 {"type": "map_load", "name": "wohnung"}                   load a saved map to drive
                                                           in it
 {"type": "health_check", "x": 2.5, "y": -1.0}            healthbot: drive to the spot and check the
-                                                          person's condition (x, y in m, map frame;
-                                                          without x/y: check here).
+                                                          person's condition (x, y in m, odometry
+                                                          frame like homing; without x/y: check
+                                                          here).
                                                           Drives and nudges! Only on the floor.
 {"type": "health_stop"}                                   cancel the healthbot check, stop
 {"type": "health_wache", "an": true}                      healthbot watch: detect a lying person

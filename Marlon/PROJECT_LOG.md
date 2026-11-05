@@ -810,6 +810,12 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Problems:** None beyond the known flaky smoke-test check.
 - **Open:** Not yet tested on the robot (robot paused). The `testdaten` branch does not exist on GitHub yet; the first upload creates it.
 
+### 05.11.2026 – Tests and healthbot pages in the web app (with Claude)
+- **What:** Ported the pages `/tests` (`webapp/tests.html`, `tests.js`) and `/healthbot` (`webapp/healthbot.html`, `healthbot.js`) from the old German branch onto the English code base; links in `index.html`, styles in `style.css`. The tests page guides through a test run, shows live readings and what the microphone heard, lists all runs with note, ZIP and upload state (pending, last upload, error). The healthbot page shows the steps with reasons, the four signs as traffic lights, the camera image with the person and a map to pick the target.
+- **Why:** The server endpoints were ported in the previous step; without the pages nobody can start a test or follow a check.
+- **Result:** All test scripts pass, smoke test 26/26 with both pages and scripts, rule check clean (no `innerHTML`, all field names match the server, user text German). Also fixed the docs: `health_check` `x`/`y` are in the odometry frame like homing, not in the map frame.
+- **Open:** Try both pages on the robot once it runs again.
+
 ---
 
 ## 3. Results and measurements
