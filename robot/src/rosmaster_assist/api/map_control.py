@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import threading
 import time
 from typing import Any
 
@@ -77,6 +78,8 @@ class MapControl:
         self._sim_origin: tuple | None = None
         # main map -> odometry correction when slam started, and the odometry run
         self._slam_from: tuple | None = None
+        # adopt/discard swap the main map while autosave collects it
+        self._swap_lock = threading.RLock()
         # the trail driven in the main map, and the anchors on it (way back)
         self.crumbs = Breadcrumbs()
         self._crumbs_dirty = False
@@ -369,9 +372,9 @@ class MapControl:
         slam maps in the lidar odometry frame, which keeps running; with the
         main map's correction at this moment both frames can be related later
         """
+        if not self._live_ok or self._manager.active:
+            return   # slam already runs: keep what was remembered at its start
         self._slam_from = None
-        if not self._live_ok:
-            return
         if self._localization.source == "dauer" and self._scan_odometry is not None:
             correction = self._localization.correction()
             if correction is not None and self._localization.confident:
@@ -413,29 +416,30 @@ class MapControl:
         except Exception:
             log.exception("Main map could not be backed up before adopting the slam map")
             return "Sicherung der Hauptkarte fehlgeschlagen -- SLAM-Karte nicht übernommen"
-        correction = self._localization.correction()
-        slam_start = tuple(self._localization.start)
-        old_start = _pose3(self._extra.get("start"))
-        to_slam = self._main_to_odometry()
-        self._mapper.import_occupancy(occ_map)
-        # slam may have bent its frame a little (loop closure): good enough
-        # for the trail and the anchors, the pose itself stays tracked
-        if to_slam is not None:
-            self.crumbs.transform(to_slam)
-            start = _compose(to_slam, old_start) if old_start is not None else slam_start
-        else:
-            self.crumbs.clear()
-            start = slam_start
-        self._extra = {"start": list(start)}
-        self._pose_saved = None
-        self._sim_origin = None
-        self._slam_from = None
-        if correction is not None:
-            self._attach_main(None, correction=correction, start=start)
-        else:
-            self._attach_main(startup_stages(self._extra), start=start)
-        self._store.set_active(self._live_name)
-        self._crumbs_dirty = True
+        with self._swap_lock:
+            correction = self._localization.correction()
+            slam_start = tuple(self._localization.start)
+            old_start = _pose3(self._extra.get("start"))
+            to_slam = self._main_to_odometry()
+            self._mapper.import_occupancy(occ_map)
+            # slam may have bent its frame a little (loop closure): good enough
+            # for the trail and the anchors, the pose itself stays tracked
+            if to_slam is not None and old_start is not None:
+                self.crumbs.transform(to_slam)
+                start = _compose(to_slam, old_start)
+            else:
+                self.crumbs.clear()
+                start = slam_start
+            self._extra = {"start": list(start)}
+            self._pose_saved = None
+            self._sim_origin = None
+            self._slam_from = None
+            if correction is not None:
+                self._attach_main(None, correction=correction, start=start)
+            else:
+                self._attach_main(startup_stages(self._extra), start=start)
+            self._store.set_active(self._live_name)
+            self._crumbs_dirty = True
         self._save_time = 0.0   # save the new main map soon
         self._report("info", "SLAM-Karte als Hauptkarte übernommen -- sie wächst ab jetzt "
                              "beim Fahren weiter")
@@ -463,9 +467,12 @@ class MapControl:
         if self._pose_saved is not None:
             extra["last_pose"] = list(self._pose_saved)
         self._slam_from = None
-        self._localization.unload()
+        # replaced in one step: an unloaded moment would let the tick attach
+        # the main map with its own search stages
         if self._mapper.has_map:
             self._attach_main(stages + startup_stages(extra))
+        else:
+            self._localization.unload()
         self._report("info", "SLAM-Karte verworfen -- zurück in der Hauptkarte")
         return None
 
@@ -739,21 +746,23 @@ class MapControl:
             return
         if not self._mapper.changed and not self._pose_dirty and not self._crumbs_dirty:
             return
-        self._mapper.changed = False
-        self._crumbs_dirty = False
-        arrays = self._mapper.arrays()
-        snap = self._mapper.snapshot()
-        if snap is not None and self._growing:
-            self._localization.update_map(snap)
-        extra: dict[str, Any] = {}
-        if self._localization.source == "dauer":
-            extra["start"] = [round(v, 4) for v in self._localization.start]
-        if self._pose_saved is not None:
-            extra["last_pose"] = [round(v, 4) for v in self._pose_saved]
-        extra.update(self.crumbs.to_json())
-        self._extra.update(extra)
+        with self._swap_lock:
+            self._mapper.changed = False
+            self._crumbs_dirty = False
+            arrays = self._mapper.arrays()
+            snap = self._mapper.snapshot()
+            frame_id = self._mapper.frame_id
+            if snap is not None and self._growing:
+                self._localization.update_map(snap)
+            extra: dict[str, Any] = {}
+            if self._localization.source == "dauer":
+                extra["start"] = [round(v, 4) for v in self._localization.start]
+            if self._pose_saved is not None:
+                extra["last_pose"] = [round(v, 4) for v in self._pose_saved]
+            extra.update(self.crumbs.to_json())
+            self._extra.update(extra)
         try:
-            self._store.save(self._live_name, arrays, snap, self._mapper.frame_id, extra)
+            self._store.save(self._live_name, arrays, snap, frame_id, extra)
             self._pose_dirty = False
         except Exception:
             self._mapper.changed = True   # try again next time

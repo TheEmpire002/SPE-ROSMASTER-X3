@@ -128,6 +128,19 @@ broken = Breadcrumbs()
 broken.from_json({"spur": [[1, "x"]], "anker": {"mission": {}}})
 check("broken json gives an empty trail", len(broken.near()) == 0 and not broken.anchors)
 
+# --- into another frame (slam map adopted) --------------------------------------------------
+
+f = Breadcrumbs()
+f.add((1.0, 0.0, 0.0), True)
+f.set_anchor("mission", (1.0, 0.0, 0.0))
+f.transform((0.5, 0.0, math.pi / 2))
+crumb = f.display()[-1]
+anchor = f.anchor("mission")
+check("transform moves crumbs and anchors alike",
+      abs(crumb[0] - 0.5) < 1e-6 and abs(crumb[1] - 1.0) < 1e-6
+      and abs(anchor[0] - 0.5) < 1e-6 and abs(anchor[1] - 1.0) < 1e-6
+      and abs(anchor[2] - math.pi / 2) < 1e-6, f"{crumb} {anchor}")
+
 # --- planning along the trail ---------------------------------------------------------------
 
 res = 0.05

@@ -172,23 +172,32 @@ class IntegrateGate:
     def pause(self, by: str) -> None:
         self._paused_by.add(by)
         self.state = PAUSED
-        self.reason = _PAUSE_TEXT.get(by, "pausiert")
+        self.reason = self._pause_text()
         self._reset()
 
     def resume(self, by: str) -> None:
         self._paused_by.discard(by)
         if self._paused_by or self.state != PAUSED:
+            if self.state == PAUSED:
+                self.reason = self._pause_text()
             return
         # never straight back to writing: the pose has to prove itself first
         self.state = FROZEN
         self.reason = "fortgesetzt -- bestätigt erst die Lage"
+
+    def _pause_text(self) -> str:
+        # the user's pause outlasts slam, so it names the reason first
+        for by in ("nutzer", "slam"):
+            if by in self._paused_by:
+                return _PAUSE_TEXT[by]
+        return "pausiert"
 
     @property
     def paused_by(self) -> set[str]:
         return set(self._paused_by)
 
     def integrating_now(self, map_gen: int) -> None:
-        """A new map was just founded at a known pose (bootstrap, adoption)."""
+        """A new map was just founded at a known pose (bootstrap)."""
         self._reset()
         self._map_gen = map_gen
         if not self._paused_by:
