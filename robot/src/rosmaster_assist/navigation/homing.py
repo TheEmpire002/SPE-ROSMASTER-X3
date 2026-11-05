@@ -23,6 +23,14 @@ class so that every existing abort (emergency stop, manual control,
 connection lost, another drive starts) also ends the goal drive. If the
 path gets blocked, the spot counts as a wall for a while and it replans
 around it.
+
+**Way back (E14):** ``kind="zurueck"`` drives to an anchor (mission start,
+home) along the breadcrumb trail (``corridor``); if no path is found, it
+drives the trail backwards (``fallback_points``). When the pose gets
+unsure on a map drive it no longer gives up after a few seconds: it stops,
+searches near the trail, turns a little after a while so the lidar sees
+more, and drives on after a few good matches -- after
+``NAV_RELOCALIZE_WAIT_S`` it gives up and asks to be shown where it is.
 """
 
 from __future__ import annotations
@@ -40,7 +48,7 @@ from ..safety import SafetyWatchdog
 from . import avoidance
 from . import path_follower as pf
 from .odometry import Odometry
-from .path_planning import BackgroundPlanner
+from .path_planning import BackgroundPlanner, PlannedPath
 
 if TYPE_CHECKING:  # only for the type hint -- avoids a circular import
     from .map_localization import MapLocalization
@@ -71,6 +79,10 @@ class Homing:
         self._reason: str | None = None
         # Drive by map: goal (None = home), path, follower.
         self._target: tuple[float, float] | None = None
+        self._kind: str | None = None             # "zurueck" or None (heim/ziel)
+        self._corridor = None                     # breadcrumb trail for the planner
+        self._fallback: list[tuple[float, float]] = []
+        self._waiting: str | None = None
         self._by_map = False
         self._follower = pf.PathFollower()
         self._path: list[tuple[float, float]] = []
@@ -93,7 +105,9 @@ class Homing:
 
     @property
     def label(self) -> str:
-        """For messages: "Heimfahrt" or "Fahrt zum Ziel"."""
+        """For messages: "Heimfahrt", "Rückfahrt" or "Fahrt zum Ziel"."""
+        if self._kind == "zurueck":
+            return "Rückfahrt"
         return "Heimfahrt" if self._target is None else "Fahrt zum Ziel"
 
     @property
@@ -106,12 +120,15 @@ class Homing:
         """Pose in a map known -- then it drives by map."""
         return self._localization is not None and self._planner is not None and self._localization.confident
 
-    def start(self, target: tuple[float, float] | None = None, angle: float | None = None) -> bool:
+    def start(self, target: tuple[float, float] | None = None, angle: float | None = None,
+              kind: str | None = None, corridor=None, fallback_points=None) -> bool:
         """Begin homing or the drive to ``target`` (map frame, m).
 
-        ``angle`` (radians): align like this at the goal. False if a drive
-        is already running or a goal is requested without a confident pose
-        in the map (the reason is then in ``last_reason``).
+        ``angle`` (radians): align like this at the goal. ``kind="zurueck"``:
+        the way back along ``corridor`` (breadcrumbs), ``fallback_points``
+        if no path is found. False if a drive is already running or a goal
+        is requested without a confident pose in the map (the reason is then
+        in ``last_reason``).
         """
         if self.active:
             return False
@@ -120,6 +137,10 @@ class Homing:
             return False
         self._reason = None
         self._target = None if target is None else (float(target[0]), float(target[1]))
+        self._kind = kind
+        self._corridor = corridor
+        self._fallback = list(fallback_points or [])
+        self._waiting = None
         self._path = []
         self._by_map = self.map_ready
         if self._by_map:
@@ -136,12 +157,13 @@ class Homing:
         active = self.active
         return {
             "aktiv": active,
-            "art": "heim" if self._target is None else "ziel",
+            "art": self._kind or ("heim" if self._target is None else "ziel"),
             "nach_karte": self._by_map if active else None,
             "ziel": list(self._target) if self._target is not None else None,
             "weg": [[round(p[0], 2), round(p[1], 2)] for p in self._path] if active else [],
             "rest_m": round(self._follower.rest_m, 2) if active and self._by_map else None,
             "grund": None if active else self._reason,
+            "wartet": self._waiting if active else None,
         }
 
     def cancel(self, reason: str = "abgebrochen") -> None:
@@ -253,10 +275,12 @@ class Homing:
         self._lift.reset()
         replans = 0
         uncertain_since: float | None = None
+        resume_left = 0
+        last_nr = None
         blocked_since: float | None = None
         name = self.label
         try:
-            path = await self._plan(target)
+            path = await self._plan(target) or self._fallback_path()
             if path is None:
                 self._shutdown("kein Weg durch die bekannte Karte", warning=True)
                 return
@@ -271,18 +295,46 @@ class Homing:
                     self._shutdown(f"Zeit abgelaufen, noch {self._follower.rest_m:.2f} m", warning=True)
                     return
 
-                # Do not drive on without a confident pose -- but wait briefly:
-                # a person standing in front of the lidar only blocks it briefly.
+                # never on without a confident pose: stop, search, turn a
+                # little, and only trust it again after a few good matches
                 pose = self._localization.pose()
                 if pose is None or not self._localization.confident:
-                    uncertain_since = uncertain_since or now
-                    if now - uncertain_since > config.NAV_CONFIDENT_S:
-                        self._shutdown("Lage in der Karte verloren", warning=True)
+                    if uncertain_since is None:
+                        uncertain_since = now
+                        self._localization.relocalize()
+                        log.info("%s waits for the pose in the map", name)
+                    waited = now - uncertain_since
+                    if waited > config.NAV_RELOCALIZE_WAIT_S:
+                        self._shutdown("Lage in der Karte verloren -- auf der Karte mit "
+                                       "„Hier stehe ich“ zeigen, wo er steht", warning=True)
                         return
-                    self._watchdog.submit(DriveCommand(0.0, 0.0, 0.0), source="autonom")
+                    self._waiting = "wartet auf Ortung"
+                    resume_left = config.NAV_RESUME_CONFIRM_N
+                    deadline += tick   # waiting does not count as driving time
+                    self._watchdog.submit(self._search_turn(waited), source="autonom")
                     await asyncio.sleep(tick)
                     continue
-                uncertain_since = None
+                if uncertain_since is not None:
+                    track = self._localization.last_track
+                    if track is not None and track.nr != last_nr:
+                        last_nr = track.nr
+                        good = track.accepted and track.kind == "track"
+                        resume_left = resume_left - 1 if good else config.NAV_RESUME_CONFIRM_N
+                    if resume_left > 0:
+                        deadline += tick
+                        self._watchdog.submit(DriveCommand(0.0, 0.0, 0.0), source="autonom")
+                        await asyncio.sleep(tick)
+                        continue
+                    uncertain_since = None
+                    self._waiting = None
+                    log.info("%s has the pose again -- planning anew", name)
+                    self._watchdog.stop()
+                    path = await self._plan(target) or self._fallback_path()
+                    if path is None:
+                        self._shutdown("kein Weg durch die bekannte Karte", warning=True)
+                        return
+                    self._set_path(path, angle)
+                    continue
 
                 self._memory.advance(tick)
                 scan = self._localizer.scan() if self._localizer is not None else None
@@ -324,7 +376,7 @@ class Homing:
                         if blocked:
                             self._set_block(pose, points)
                         self._watchdog.stop()
-                        path = await self._plan(target)
+                        path = await self._plan(target) or (None if blocked else self._fallback_path())
                         if path is None:
                             self._shutdown("kein Weg mehr frei", warning=True)
                             return
@@ -347,7 +399,41 @@ class Homing:
             self._reason = "Fehler während der Fahrt"
             log.exception("%s aborted", name)
 
+    def _search_turn(self, waited: float) -> DriveCommand:
+        """While waiting for the pose: after a while turn a little so the lidar sees more."""
+        omega = config.NAV_RELOCALIZE_OMEGA
+        if (not config.NAV_RELOCALIZE_TURN or omega <= 0.0
+                or waited < config.NAV_RELOCALIZE_TURN_AFTER_S):
+            return DriveCommand(0.0, 0.0, 0.0)
+        phase = math.radians(config.NAV_RELOCALIZE_TURN_DEG) / omega
+        t = waited - config.NAV_RELOCALIZE_TURN_AFTER_S
+        # left, twice as far right, back to the middle, then hold still
+        for sign, length in ((1.0, phase), (-1.0, 2 * phase), (1.0, phase)):
+            if t < length:
+                return DriveCommand(0.0, 0.0, sign * omega)
+            t -= length
+        return DriveCommand(0.0, 0.0, 0.0)
+
+    def _fallback_path(self) -> PlannedPath | None:
+        """The breadcrumbs backwards, from the crumb nearest to the robot on."""
+        if not self._fallback:
+            return None
+        pose = self._localization.pose()
+        points = self._fallback
+        if pose is not None:
+            nearest = min(range(len(points)),
+                          key=lambda i: (points[i][0] - pose[0]) ** 2 + (points[i][1] - pose[1]) ** 2)
+            points = points[nearest:]
+        length = 0.0
+        previous = (pose[0], pose[1]) if pose is not None else points[0]
+        for p in points:
+            length += math.hypot(p[0] - previous[0], p[1] - previous[1])
+            previous = p
+        log.info("No path through the map -- driving the trail back (%.1f m)", length)
+        return PlannedPath(list(points), length, points[-1])
+
     def _shutdown(self, reason: str, warning: bool = False) -> None:
+        self._waiting = None
         self._watchdog.stop()
         self._reason = reason
         (log.warning if warning else log.info)("%s finished -- %s", self.label, reason)
@@ -364,7 +450,7 @@ class Homing:
         now = time.monotonic()
         self._blocks = [s for s in self._blocks if s[2] > now]
         future = self._planner.path(occ_map, (pose[0], pose[1]), target,
-                                   [(s[0], s[1]) for s in self._blocks])
+                                   [(s[0], s[1]) for s in self._blocks], self._corridor)
         return await asyncio.wrap_future(future)
 
     def _set_block(self, pose, points) -> None:

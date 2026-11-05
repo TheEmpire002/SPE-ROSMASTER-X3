@@ -28,6 +28,7 @@ from typing import Any
 
 from .. import config
 from ..mapping.occ_map import OccupancyMap
+from ..navigation.breadcrumbs import Breadcrumbs
 from ..navigation.explorer import MAP
 from ..navigation.map_localization import Stage
 from ..navigation.path_planning import frontiers_for_display
@@ -72,6 +73,11 @@ class MapControl:
         self._pose_dirty = False
         # mock only: map pose of the simulation's true frame
         self._sim_origin: tuple | None = None
+        # the trail driven in the main map, and the anchors on it (way back)
+        self.crumbs = Breadcrumbs()
+        self._crumbs_dirty = False
+        self._crumb_confident = False
+        localization.near_source = self.crumbs.near
 
     # --- 1. Mapping drive (interface as before for mapping/web.py) --------------------
 
@@ -206,12 +212,17 @@ class MapControl:
             return "x und y müssen Zahlen sein (Meter im Kartenrahmen)"
         if not all(math.isfinite(v) for v in (x, y)):
             return "x und y müssen endlich sein"
-        if self._localization.occ_map is None:
+        occ_map = self._localization.occ_map
+        if occ_map is None:
             return "Keine Karte geladen"
         if not self._localization.confident:
             return "Lage in der Karte unbekannt -- erst auf der Karte zeigen, wo er steht"
         if not self._driver.connected:
             return "Keine Verbindung zum Antrieb"
+        # only into space the map knows to be free: what was never scanned
+        # could be a wall
+        if occ_map.nearest_free(x, y, config.NAV_GOAL_KNOWN_M) is None:
+            return "Ziel liegt außerhalb der bekannten Karte"
         self._cancel_others("neues Ziel")
         if not self._homing.start(target=(x, y), angle=angle):
             return self._homing.last_reason or "Fahrt zum Ziel ließ sich nicht starten"
@@ -273,6 +284,79 @@ class MapControl:
         self._manager.remember_start((x, y, angle))
         return True
 
+    # --- missions: remember a place, come back to it (E14) ---------------------------------
+
+    def mission_start(self) -> str | None:
+        """"Missionsstart hier": the way back leads here. Error text or None."""
+        if self._localization.source != "dauer":
+            return "Missionen gehen nur in der Hauptkarte (Dauerkartierung)"
+        pose = self._localization.pose()
+        if pose is None or not self._localization.confident:
+            return "Lage in der Karte unsicher -- erst wenn sie sicher ist"
+        self.crumbs.set_anchor("mission", pose)
+        self._crumbs_dirty = True
+        self._report("info", "Missionsstart gesetzt -- der Rückweg führt hierher")
+        return None
+
+    def return_to(self, goal: str = "mission") -> str | None:
+        """Drive back to an anchor ("mission" or "home") along the trail. Error text or None."""
+        if goal not in ("mission", "home"):
+            return "ziel muss \"mission\" oder \"home\" sein"
+        if self._localization.occ_map is None:
+            return "Keine Karte geladen"
+        if not self._localization.confident:
+            return "Lage in der Karte unsicher -- erst wenn sie sicher ist"
+        if not self._driver.connected:
+            return "Keine Verbindung zum Antrieb"
+        if goal == "mission":
+            anchor = self.crumbs.anchor("mission")
+            if anchor is None:
+                return "Kein Missionsstart gesetzt"
+            since = "mission"
+        else:
+            anchor = self._localization.start
+            since = None
+        self._cancel_others("Rückfahrt")
+        if not self._homing.start(target=(anchor[0], anchor[1]), angle=anchor[2], kind="zurueck",
+                                  corridor=self.crumbs.corridor(since),
+                                  fallback_points=self.crumbs.reversed_path(since)):
+            return self._homing.last_reason or "Rückfahrt ließ sich nicht starten"
+        where = "zum Missionsstart" if goal == "mission" else "zum Ausgangspunkt"
+        self._report("info", f"Rückfahrt {where} gestartet")
+        return None
+
+    def map_live(self, active: bool) -> str | None:
+        """Switch always-on mapping on/off for the user (the pose is still tracked)."""
+        if not self._live_ok:
+            return "Dauerkartierung ist abgeschaltet (LIVE_MAP_ENABLED)"
+        if active:
+            self._mapper.resume("nutzer")
+        else:
+            self._mapper.pause("nutzer")
+        return None
+
+    def new_map(self) -> str | None:
+        """Begin a new main map at the next standstill; the old one goes to the backups."""
+        if not self._live_ok:
+            return "Dauerkartierung ist abgeschaltet (LIVE_MAP_ENABLED)"
+        if self._manager.active:
+            return "Erst das Mapping stoppen"
+        self._cancel_others("neue Karte")
+        try:
+            self._save_now()
+            self._store.backup(self._live_name)
+        except Exception:
+            log.exception("Main map could not be backed up before starting a new one")
+            return "Sicherung der alten Karte fehlgeschlagen -- neue Karte nicht begonnen"
+        self._mapper.start_empty()
+        self._localization.unload()
+        self.crumbs.clear()
+        self._extra = {}
+        self._pose_saved = None
+        self._sim_origin = None
+        self._report("info", "Neue Karte: bitte kurz stillhalten, dann beginnt sie hier")
+        return None
+
     def start_here(self) -> bool:
         """"Startpunkt hier setzen" (set start here) also applies to map-based homing when a map exists."""
         pose = self._localization.pose()
@@ -291,6 +375,8 @@ class MapControl:
             "kartierfahrt": {"weg": k.get("weg") or [], "ziel": k.get("ziel")},
             "luecken": self._frontiers,
             "kartieren": self.live_status(),
+            "brotkrumen": self.crumbs.display(),
+            "anker": {k: [round(v, 3) for v in a["pose"]] for k, a in self.crumbs.anchors.items()},
         }
 
     def state_brief(self) -> dict[str, Any] | None:
@@ -299,14 +385,24 @@ class MapControl:
         if not o["karte"]:
             return None
         f = self._homing.state()
+        mission = self.crumbs.anchor("mission")
         return {
             "name": o["name"],
             "live": o["live"],
             "pose": o["pose"],
             "sicher": o["sicher"],
             "text": o["text"],
-            "fahrt": {k: f[k] for k in ("aktiv", "art", "ziel", "rest_m", "grund")},
+            "fahrt": {k: f[k] for k in ("aktiv", "art", "ziel", "rest_m", "grund", "wartet")},
+            "kartieren": self._live_brief(),
+            "mission": [round(v, 3) for v in mission] if mission else None,
+            "spur_m": round(self.crumbs.length_m("mission" if mission else None), 1),
         }
+
+    def _live_brief(self) -> dict[str, Any] | None:
+        if self._mapper is None:
+            return None
+        g = self._mapper.status()
+        return {"aktiv": g["aktiv"], "zustand": g["zustand"], "grund": g["grund"]}
 
     # --- 3. Tick -----------------------------------------------------------------------
 
@@ -344,6 +440,22 @@ class MapControl:
         track = self._localization.match_scan()
         if self._growing:
             self._mapper.step(track)
+        self._drop_crumb()
+
+    def _drop_crumb(self) -> None:
+        """Breadcrumbs while the pose in the main map is confident; a gap when it is not."""
+        if self._localization.source != "dauer":
+            return
+        if self._localization.confident:
+            pose = self._localization.pose()
+            if pose is not None:
+                strict = self._mapper is not None and self._mapper.integrating
+                if self.crumbs.add(pose, strict):
+                    self._crumbs_dirty = True
+                self._crumb_confident = True
+        elif self._crumb_confident:
+            self.crumbs.gap()
+            self._crumb_confident = False
 
     # --- 4. Always-on mapping ---------------------------------------------------------
 
@@ -401,6 +513,7 @@ class MapControl:
         self._extra = dict(saved.get("extra") or {})
         self._pose_saved = None
         self._sim_origin = None
+        self.crumbs.from_json(self._extra)
         self._attach_main(startup_stages(self._extra))
 
     def _attach_main(self, stages: list[Stage] | None, correction=None, start=None) -> None:
@@ -420,6 +533,7 @@ class MapControl:
         if not self._mapper.bootstrap(m):
             return
         self._extra = {"start": list(m.pose)}
+        self.crumbs.clear()
         self._attach_main(None, correction=(0.0, 0.0, 0.0), start=tuple(m.pose))
         true = self._sim_true()
         # standing still, so the scan and the true pose belong together
@@ -460,7 +574,7 @@ class MapControl:
                 true, pose = self._sim_true(), self._localization.pose()
                 if true is not None and pose is not None:
                     self._sim_origin = _compose(pose, _inverse(true))
-        if ((self._mapper.changed or self._pose_dirty)
+        if ((self._mapper.changed or self._pose_dirty or self._crumbs_dirty)
                 and now - self._save_time >= config.LIVE_MAP_SAVE_S
                 and (self._save_task is None or self._save_task.done())):
             self._save_time = now
@@ -511,9 +625,10 @@ class MapControl:
         """Save the main map if it changed (thread or shutdown)."""
         if not self._live_ok or not self._mapper.has_map:
             return
-        if not self._mapper.changed and not self._pose_dirty:
+        if not self._mapper.changed and not self._pose_dirty and not self._crumbs_dirty:
             return
         self._mapper.changed = False
+        self._crumbs_dirty = False
         arrays = self._mapper.arrays()
         snap = self._mapper.snapshot()
         if snap is not None and self._growing:
@@ -523,6 +638,7 @@ class MapControl:
             extra["start"] = [round(v, 4) for v in self._localization.start]
         if self._pose_saved is not None:
             extra["last_pose"] = [round(v, 4) for v in self._pose_saved]
+        extra.update(self.crumbs.to_json())
         self._extra.update(extra)
         try:
             self._store.save(self._live_name, arrays, snap, self._mapper.frame_id, extra)

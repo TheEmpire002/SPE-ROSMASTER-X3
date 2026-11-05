@@ -46,7 +46,15 @@ From the app / the ESP to the robot
 {"type": "map_pose", "x": 1.0, "y": 0.5, "winkel": 0}     "I am standing here": search the pose
                                                           in the map there (winkel optional)
 {"type": "map_load", "name": "wohnung"}                   load a saved map to drive
-                                                          in it
+                                                          in it (with always-on mapping it
+                                                          becomes the main map and grows)
+{"type": "mission_start"}                                 the way back leads here (anchor
+                                                          "mission" in the main map)
+{"type": "return", "ziel": "mission"}                     drive back along the trail,
+                                                          "mission" | "home"; cancel with
+                                                          goto_cancel
+{"type": "map_live", "aktiv": false}                      always-on mapping off/on (the pose
+                                                          is still tracked)
 {"type": "ping"}                                          keep the connection alive
 
 From the robot to the app
@@ -63,7 +71,12 @@ From the robot to the app
                     "geweckt":…, "gehoert":…, "befehl":…};
                     with a loaded map additionally "karte": {"name":…,
                     "live":…, "pose": {"x","y","winkel"}|null, "sicher":…,
-                    "text":…, "fahrt": {"aktiv","art","ziel","rest_m","grund"}})
+                    "text":…, "fahrt": {"aktiv","art","ziel","rest_m","grund",
+                    "wartet"}, "kartieren": {"aktiv","zustand","grund"}|null,
+                    "mission": [x, y, rad]|null, "spur_m":…};
+                    fahrt.art "heim"|"ziel"|"zurueck", fahrt.wartet "wartet auf
+                    Ortung"|null; kartieren.zustand "integriert"|"bestaetigt"|
+                    "eingefroren"|"pausiert"|"start"|"aus")
 {"type": "vitals", "bpm":…, "motion":…}                   forwarded ESP data
 {"type": "alert",  "level": "info"|"warning"|"emergency", "text": "…"}
 {"type": "error",  "text": "…"}                           invalid message or similar

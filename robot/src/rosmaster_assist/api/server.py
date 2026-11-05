@@ -1492,6 +1492,28 @@ async def _handle(
         watchdog.stop()
         return None
 
+    if kind == "mission_start":
+        if map_control is None:
+            return alert_message("warning", "Keine Karte eingerichtet")
+        error = map_control.mission_start()
+        return alert_message("warning", error) if error else None  # message from MapControl
+
+    if kind == "return":
+        if map_control is None:
+            return alert_message("warning", "Keine Karte eingerichtet")
+        error = map_control.return_to(msg.get("ziel") or "mission")
+        return alert_message("warning", error) if error else None
+
+    if kind == "map_live":
+        if map_control is None:
+            return alert_message("warning", "Keine Karte eingerichtet")
+        active = bool(msg.get("aktiv", True))
+        error = map_control.map_live(active)
+        if error:
+            return alert_message("warning", error)
+        return alert_message("info", "Dauerkartierung an" if active else
+                             "Dauerkartierung pausiert -- die Karte ändert sich nicht")
+
     if kind == "map_pose":
         if map_control is None:
             return alert_message("warning", "Keine Karte eingerichtet")

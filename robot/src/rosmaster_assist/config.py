@@ -369,6 +369,9 @@ NAV_WALL_COST = 3.0
 # If the goal lies in a wall or too close to one, it is moved up to this far
 # (m) to the nearest drivable spot.
 NAV_GOAL_SNAP_M = 0.6
+# a tapped goal needs known free space within this distance (m): what was
+# never scanned could be a wall
+NAV_GOAL_KNOWN_M = 0.3
 
 # Driving along the path.
 NAV_DRIVE_SPEED = 0.25
@@ -552,11 +555,19 @@ BREADCRUMB_SIMPLIFY_M = 0.08
 BREADCRUMB_CORRIDOR_M = 0.15
 BREADCRUMB_COST_FACTOR = 0.5
 BREADCRUMB_MIN_CLEARANCE_M = 0.20
+# neighbouring strict crumbs further apart than this are not joined in the
+# corridor: something in between was not driven strictly
+BREADCRUMB_FILL_GAP_M = 0.5
+# crumbs sent to the /map page and kept in the saved map
+BREADCRUMB_DISPLAY_MAX = 600
+BREADCRUMB_SAVE_MAX = 2000
 # map drives that lose the pose stop, relocalize and continue
 NAV_RELOCALIZE_WAIT_S = 20.0
 NAV_RELOCALIZE_TURN = True
 NAV_RELOCALIZE_TURN_AFTER_S = 5.0
 NAV_RELOCALIZE_OMEGA = 0.3
+# the search turn: this far left, twice as far right, back to the middle (degrees)
+NAV_RELOCALIZE_TURN_DEG = 30.0
 NAV_RESUME_CONFIRM_N = 3
 
 # --- Collision avoidance during manual control ----------------------------------
