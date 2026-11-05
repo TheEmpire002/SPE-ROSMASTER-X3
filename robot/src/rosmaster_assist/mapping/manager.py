@@ -258,8 +258,9 @@ class MappingManager:
         with self._lock:
             # Every mapping run starts a new map frame at the current
             # location. A loaded map (including the pose in it) no longer
-            # belongs to it; and lidar odometry should start afresh at (0, 0),
-            # where slam_toolbox also puts its origin.
+            # belongs to it. slam_toolbox maps in the lidar odometry frame;
+            # with permanent odometry (user "immer") that frame keeps
+            # running, otherwise it starts afresh at (0, 0).
             if self.localization is not None:
                 self.localization.unload()
             if self.simulation is not None:

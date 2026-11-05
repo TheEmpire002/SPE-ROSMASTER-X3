@@ -270,8 +270,10 @@ class MapLocalization:
             if start is not None:
                 self._start = tuple(start)
             if live and new:
-                # Mapping begins: map and odometry share the origin.
-                self._start = (0.0, 0.0, 0.0)
+                # mapping begins: slam maps in the odometry frame, so the
+                # correction is zero; home is where the robot stands now
+                # (with permanent odometry that is no longer (0, 0, 0))
+                self._start = self._odo.pose() or (0.0, 0.0, 0.0)
                 self._correction = (0.0, 0.0, 0.0)
                 self._run_id = self._odo.run
                 self._success_time = time.monotonic()

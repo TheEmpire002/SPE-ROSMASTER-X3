@@ -211,8 +211,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     localizer = Localizer(odometry, lidar)
     # Lidar odometry for mapping, the mapping drive and localization in the
     # map: the heading comes from the lidar because the IMU on the X3 does
-    # not deliver one. It only runs while mapping or while a map is loaded
-    # (MappingManager or MapLocalization subscribe to it).
+    # not deliver one. With always-on mapping it runs permanently (user
+    # "immer"), otherwise only while mapping or while a map is loaded.
     scan_odometry = ScanOdometry(lidar, odometry)
     # Pose in the map (E12) and paths through it: for continuing while
     # mapping and for drives to a point on the map.
@@ -322,6 +322,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         speech.start()  # loads the model in its own thread, does not block
         if lidar is not None:
             lidar.start()
+            if config.LIVE_LOCALIZATION_ALWAYS:
+                scan_odometry.start("immer")
             # Give the lidar one revolution, then calibrate the start.
             # Without a reference there would be no correction until the
             # first "set_home" -- and experience shows nobody presses the
@@ -397,6 +399,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             except Exception:
                 log.exception("Mapping could not be stopped cleanly on shutdown")
             localization.unload()
+            scan_odometry.stop("immer")
             people.stop()
             pose.stop()
             mukke.stop()
