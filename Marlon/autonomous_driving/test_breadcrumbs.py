@@ -167,8 +167,11 @@ if along is not None:
 
 walled = occupancy.copy()
 walled[28:37, 50] = 100                              # gap closed
-check("a trail never leads through a wall, nor does a guess",
-      pp.plan_path(OccupancyMap(walled, res, (0.0, 0.0)), start, goal, corridor=trail) is None)
+through = pp.plan_path(OccupancyMap(walled, res, (0.0, 0.0)), start, goal, corridor=trail)
+check("a trail through a wall of the map is only a guess (a door leaf, a person): checked on site",
+      through is not None and through.guessed)
+check("without a trail a wall stays a wall, also for a guess",
+      pp.plan_path(OccupancyMap(walled, res, (0.0, 0.0)), start, goal) is None)
 
 # --- two mapped areas, the unknown in between ------------------------------------------------
 

@@ -10,7 +10,8 @@ paths lead through the middle of doors.
 
 With a breadcrumb trail (``corridor``): the cells along it cost only
 ``BREADCRUMB_COST_FACTOR`` and are drivable from ``BREADCRUMB_MIN_CLEARANCE_M``
-on -- the robot was physically there. Occupied stays blocked in any case.
+on -- the robot was physically there. Occupied stays blocked, except on
+the trail itself when guessing.
 
 If no path leads through known free space, ``plan_path`` guesses
 (``NAV_GUESS_PATHS``): unknown cells and spots down to
@@ -96,19 +97,22 @@ class Grid:
             self.cost = np.where(self.unknown, self.cost * config.NAV_GUESS_UNKNOWN_COST,
                                  self.cost)
         if corridor is not None and len(corridor):
-            trail = self._along(np.asarray(corridor, dtype=float).reshape(-1, 2))
+            points = np.asarray(corridor, dtype=float).reshape(-1, 2)
+            trail = self._along(points, config.BREADCRUMB_CORRIDOR_M)
             self.drivable |= (trail & self.free & ~self.occupied
                               & (distance >= config.BREADCRUMB_MIN_CLEARANCE_M))
+            if guess:
+                self.drivable |= self._along(points, config.BREADCRUMB_CORE_M)
             self.cost = np.where(trail, self.cost * config.BREADCRUMB_COST_FACTOR, self.cost)
 
-    def _along(self, points: np.ndarray) -> np.ndarray:
-        """Cells within ``BREADCRUMB_CORRIDOR_M`` of the trail points."""
+    def _along(self, points: np.ndarray, radius_m: float) -> np.ndarray:
+        """Cells within ``radius_m`` of the trail points."""
         near = np.zeros((self.height, self.width), dtype=bool)
         ix = np.floor((points[:, 0] - self.origin[0]) / self.resolution).astype(int)
         iy = np.floor((points[:, 1] - self.origin[1]) / self.resolution).astype(int)
         inside = (ix >= 0) & (iy >= 0) & (ix < self.width) & (iy < self.height)
         near[iy[inside], ix[inside]] = True
-        r = int(math.ceil(config.BREADCRUMB_CORRIDOR_M / self.resolution))
+        r = int(math.ceil(radius_m / self.resolution))
         grown = near.copy()
         for dy in range(-r, r + 1):
             for dx in range(-r, r + 1):

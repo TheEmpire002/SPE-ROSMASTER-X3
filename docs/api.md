@@ -1155,7 +1155,9 @@ driven with a confident pose count as passable.
 e.g. two areas were mapped but the link between them was never scanned --
 the planner guesses the likely one: unknown cells and narrow spots down to
 `NAV_GUESS_CLEARANCE_M` (0.20 m) become drivable, unknown ones at
-`NAV_GUESS_UNKNOWN_COST` (4×) the price. The robot drives it
+`NAV_GUESS_UNKNOWN_COST` (4×) the price; the trail driven itself
+(`BREADCRUMB_CORE_M`) is passable even where the map has a wall -- a door
+leaf, a person or noise when it was mapped. The robot drives it
 (`fahrt.vermutet: true`, drawn in orange on `/map`) and replans every
 `NAV_GUESS_REPLAN_S` (2 s) without stopping, while the map grows on site: as
 soon as a sure path exists it takes it; if something is in the way it plans

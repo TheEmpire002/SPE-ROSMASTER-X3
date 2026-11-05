@@ -562,6 +562,10 @@ BREADCRUMB_SIMPLIFY_M = 0.08
 BREADCRUMB_CORRIDOR_M = 0.15
 BREADCRUMB_COST_FACTOR = 0.5
 BREADCRUMB_MIN_CLEARANCE_M = 0.20
+# a guessed path may follow the trail itself (this close to the crumbs, m)
+# even where the map has a wall: the robot drove there, so it was a door
+# leaf, a person or noise -- the lidar checks on site
+BREADCRUMB_CORE_M = 0.1
 # neighbouring strict crumbs further apart than this are not joined in the
 # corridor: something in between was not driven strictly
 BREADCRUMB_FILL_GAP_M = 0.5
