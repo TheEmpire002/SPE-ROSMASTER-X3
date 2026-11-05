@@ -37,6 +37,8 @@ from ..interaction import speech as sp
 from ..interaction import behavior as vh
 from ..interaction.speech import SpeechRecognition
 from ..interaction.voice import Voice
+from ..mapping.live_mapper import LiveMapper
+from ..mapping.live_store import LiveStore
 from ..mapping.manager import MappingManager
 from ..mapping.web import create_mapping_router
 from ..interaction.behavior import Interaction
@@ -217,6 +219,11 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     # Pose in the map (E12) and paths through it: for continuing while
     # mapping and for drives to a point on the map.
     localization = MapLocalization(scan_odometry)
+    # always-on mapping (E14): the main map grows behind the integrate gate;
+    # wheel travel only for lift detection, and only when really measured
+    live_mapper = LiveMapper(
+        wheel_pose_at=lambda t: odometry.pose_at(t) if odometry.actually_measuring else None
+    )
     planner = BackgroundPlanner()
     homing = Homing(watchdog, odometry, localizer, localization=localization, planner=planner)
     # Depth camera (Astra) for what lies below the lidar plane: chair legs,
@@ -332,6 +339,11 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                 asyncio.create_task(_catch_up_reference(localizer, odometry)),
                 "Startpunkt einmessen", endless=False,
             )
+        # main map from disk, the pose searched where the robot was switched off
+        try:
+            await asyncio.to_thread(map_control.live_startup)
+        except Exception:
+            log.exception("Main map could not be loaded -- always-on mapping stays off")
         diagnostics.start()
         asyncio.get_running_loop().set_exception_handler(diagnostics.loop_error)
 
@@ -398,6 +410,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                 mapping_manager.stop()
             except Exception:
                 log.exception("Mapping could not be stopped cleanly on shutdown")
+            map_control.live_shutdown()
             localization.unload()
             scan_odometry.stop("immer")
             people.stop()
@@ -441,6 +454,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     map_control = MapControl(
         mapping_manager=mapping_manager, localization=localization, explorer=explorer, homing=homing,
         interaction=interaction, maneuver=maneuver, watchdog=watchdog, driver=driver, hub=hub,
+        live_mapper=live_mapper, live_store=LiveStore(mapping_manager.map_service),
+        scan_odometry=scan_odometry,
     )
     app.state.map_control = map_control
     app.include_router(create_mapping_router(mapping_manager, map_control))
@@ -1515,8 +1530,12 @@ async def _handle(
         # has to go back to the start, otherwise the robot would be outside
         # the simulated room.
         zero = getattr(driver, "reset_true_pose", None)
+        moved_in_map = False
         if zero is not None:
+            before = driver.true_pose()
             zero()
+            if map_control is not None:
+                moved_in_map = map_control.simulation_moved(before, driver.true_pose())
         odometry.reset()
         # The old reference scan belongs to the old start and would
         # otherwise pull the position back there.
@@ -1527,7 +1546,7 @@ async def _handle(
             else "Startpunkt gesetzt (ohne Lidar -- Position wird nur geschätzt)"
         )
         # With a map: this is also the goal of map-based homing.
-        if map_control is not None and map_control.start_here():
+        if moved_in_map or (map_control is not None and map_control.start_here()):
             text += ", auch in der Karte"
         await hub.broadcast(alert_message("info", text))
         return None

@@ -25,11 +25,14 @@ own (``Marlon/autonomous_driving/test_live_gate.py``).
 
 from __future__ import annotations
 
+import logging
 import math
 from collections import deque
 from dataclasses import dataclass
 
 from .. import config
+
+log = logging.getLogger(__name__)
 
 # kinds of failure
 HARD = "hart"
@@ -186,6 +189,7 @@ class IntegrateGate:
             return
         if self.state != FROZEN:
             self.frozen += 1
+            log.info("Map frozen: %s", reason)
         self.state = FROZEN
         self.reason = reason
         self._reset()
@@ -258,11 +262,15 @@ class IntegrateGate:
                 self._confirm_since = inp.now
                 self.reason = f"bestätigt die Lage (zu wenige Treffer, {100 * inp.share:.0f} %)"
                 return False
+            if self._confirm_since is None:
+                # the count started again after a soft failure
+                self._confirm_since = inp.now
             self._k += 1
             if (self._k >= config.LIVE_GATE_CONFIRM_N
                     and inp.now - self._confirm_since >= config.LIVE_GATE_CONFIRM_MIN_S):
                 self.state = INTEGRATING
                 self.reason = None
+                log.info("Map confirmed after %d strict matches -- writing again", self._k)
             else:
                 self.reason = f"bestätigt die Lage ({self._k}/{config.LIVE_GATE_CONFIRM_N})"
                 return False

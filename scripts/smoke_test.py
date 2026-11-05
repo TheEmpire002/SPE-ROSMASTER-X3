@@ -287,10 +287,36 @@ async def _test_homing(ws) -> None:
     await ws.send(json.dumps({"type": "home"}))
     started = await wait_for_state(ws, lambda m: m.get("homing") is True, seconds=5)
     check("homing starts", bool(started and started.get("homing")))
+    by_map = bool((_map_display().get("fahrt") or {}).get("nach_karte"))
 
     done = await wait_for_state(ws, lambda m: m.get("homing") is False, seconds=40)
     rest = _distance(done) if done else 99.0
-    check(f"returns to the start (remaining deviation {rest:.2f} m)", rest < 0.25)
+    # with a confident pose in the (always-on) map homing drives by the
+    # lidar to the map's start; the wheel odometry slips in the simulation,
+    # so there the map is the better ruler
+    in_map = _map_rest() if done and by_map else None
+    if in_map is not None:
+        check(f"returns to the start (remaining deviation in the map {in_map:.2f} m, "
+              f"by wheel odometry {rest:.2f} m)", in_map < 0.25)
+    else:
+        check(f"returns to the start (remaining deviation {rest:.2f} m)", rest < 0.25)
+
+
+def _map_display() -> dict:
+    try:
+        with urllib.request.urlopen(_base + "/api/mapping/ortung", timeout=5) as r:
+            return json.loads(r.read()) or {}
+    except (urllib.error.URLError, ValueError):
+        return {}
+
+
+def _map_rest() -> float | None:
+    """Distance to the map's start if the pose in a map is confident, else None."""
+    o = _map_display().get("ortung") or {}
+    if not o.get("sicher") or not o.get("pose") or not o.get("start"):
+        return None
+    p, s = o["pose"], o["start"]
+    return ((p["x"] - s[0]) ** 2 + (p["y"] - s[1]) ** 2) ** 0.5
 
 
 def _distance(state: dict | None) -> float:
@@ -338,8 +364,12 @@ async def test_websocket(ws_url: str, allow_motion: bool) -> None:
         check("unknown type returns an error message", err is not None)
 
 
+_base = ""
+
+
 async def main_async(host: str, port: int, allow_motion: bool) -> int:
-    base = f"http://{host}:{port}"
+    global _base
+    base = _base = f"http://{host}:{port}"
     print(f"Testing {base}")
 
     test_http(base)

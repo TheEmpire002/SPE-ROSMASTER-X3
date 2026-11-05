@@ -13,6 +13,9 @@ parties involved (explorer, homing, interaction, drive commands, driver):
    tapped point (``Homing.start(target=...)``).
 3. **Tick.** Pass new maps from mapping to localization and track the pose
    (computed in a thread, not in the event loop).
+4. **Always-on mapping** (E14). The main map is loaded at start; behind the
+   integrate gate every drive extends it. Snapshots for localization and
+   planner, autosave and the last confident pose run beside the tick.
 """
 
 from __future__ import annotations
@@ -26,6 +29,7 @@ from typing import Any
 from .. import config
 from ..mapping.occ_map import OccupancyMap
 from ..navigation.explorer import MAP
+from ..navigation.map_localization import Stage
 from ..navigation.path_planning import frontiers_for_display
 from ..protocol import alert_message
 
@@ -36,7 +40,8 @@ class MapControl:
     """Mapping drive, localization and goal drive -- for /map and the app."""
 
     def __init__(self, *, mapping_manager, localization, explorer, homing, interaction, maneuver,
-                 watchdog, driver, hub) -> None:
+                 watchdog, driver, hub, live_mapper=None, live_store=None,
+                 scan_odometry=None) -> None:
         self._manager = mapping_manager
         self._localization = localization
         self._explorer = explorer
@@ -52,6 +57,21 @@ class MapControl:
         self._interrupted: float | None = None   # driver gone during the mapping drive
         self._frontiers: list[list[float]] = []
         self._frontiers_time = 0.0
+        # always-on mapping
+        self._mapper = live_mapper
+        self._store = live_store
+        self._scan_odometry = scan_odometry
+        self._live_name = config.LIVE_MAP_NAME
+        self._extra: dict[str, Any] = {}          # json of the main map
+        self._snap_task: asyncio.Task | None = None
+        self._save_task: asyncio.Task | None = None
+        self._snap_time = 0.0
+        self._save_time = time.monotonic()
+        self._pose_time = 0.0
+        self._pose_saved: tuple | None = None
+        self._pose_dirty = False
+        # mock only: map pose of the simulation's true frame
+        self._sim_origin: tuple | None = None
 
     # --- 1. Mapping drive (interface as before for mapping/web.py) --------------------
 
@@ -216,7 +236,42 @@ class MapControl:
 
     def load(self, name: str) -> dict[str, Any]:
         self._cancel_others("Karte wird geladen")
-        return self._manager.load_map(name)
+        if not self._live_ok:
+            return self._manager.load_map(name)
+        # always-on mapping: the chosen map becomes the one that grows
+        if self._manager.active:
+            raise RuntimeError("Erst das Mapping stoppen: Gerade entsteht eine neue Karte.")
+        saved = self._store.load(name)
+        if saved is None:
+            raise ValueError(f"Karte '{name}' nicht gefunden.")
+        self._save_now()
+        self._take_saved(name, saved)
+        self._store.set_active(name)
+        occ_map = self._localization.occ_map
+        start = self._extra.get("start") or [0.0, 0.0, 0.0]
+        return {"name": name, "breite": occ_map.width if occ_map else None,
+                "hoehe": occ_map.height if occ_map else None,
+                "aufloesung": occ_map.resolution if occ_map else None, "start": start}
+
+    def simulation_moved(self, before, after) -> bool:
+        """Mock only: ``set_home`` put the imagined robot back to its start.
+
+        for the localization that is a kidnapping -- the map would freeze and
+        home would land in the wrong place. The simulation knows the true
+        pose, so the new pose in the map is a hint, and it is home. The
+        current map pose is only the fallback: after earlier teleports it
+        may already be wrong.
+        """
+        origin = self._sim_origin
+        if origin is None:
+            pose = self._localization.pose()
+            if pose is None:
+                return False
+            origin = _compose(pose, _inverse(before))
+        x, y, angle = _compose(origin, after)
+        self._localization.set_pose(x, y, angle)
+        self._manager.remember_start((x, y, angle))
+        return True
 
     def start_here(self) -> bool:
         """"Startpunkt hier setzen" (set start here) also applies to map-based homing when a map exists."""
@@ -235,6 +290,7 @@ class MapControl:
             "fahrt": self._homing.state(),
             "kartierfahrt": {"weg": k.get("weg") or [], "ziel": k.get("ziel")},
             "luecken": self._frontiers,
+            "kartieren": self.live_status(),
         }
 
     def state_brief(self) -> dict[str, Any] | None:
@@ -268,16 +324,271 @@ class MapControl:
                         last_map = stamp
                         occ_map = await asyncio.to_thread(_build_map, payload)
                         self._localization.set_map(occ_map, live=True)
+                self._live_switches()
                 occ_map = self._localization.occ_map
                 if occ_map is not None:
-                    await asyncio.to_thread(self._localization.match_scan)
+                    await asyncio.to_thread(self._track)
                     if self.pages > 0 and time.monotonic() - self._frontiers_time > 5.0:
                         self._frontiers_time = time.monotonic()
                         self._frontiers = await asyncio.to_thread(frontiers_for_display, occ_map)
                 else:
                     self._frontiers = []
+                    if self._founding:
+                        await asyncio.to_thread(self._found)
+                self._live_background(report_error)
             except Exception:
                 report_error("Ortung in der Karte")
+
+    def _track(self) -> None:
+        """Match the scan, then let the mapper decide whether it goes into the map."""
+        track = self._localization.match_scan()
+        if self._growing:
+            self._mapper.step(track)
+
+    # --- 4. Always-on mapping ---------------------------------------------------------
+
+    @property
+    def _live_ok(self) -> bool:
+        return self._mapper is not None and self._store is not None and config.LIVE_MAP_ENABLED
+
+    @property
+    def _growing(self) -> bool:
+        """The loaded map is the main map, so tracking results may extend it."""
+        if not self._live_ok or self._manager.active:
+            return False
+        occ_map = self._localization.occ_map
+        return (occ_map is not None and self._localization.source == "dauer"
+                and occ_map.frame_id is not None and occ_map.frame_id == self._mapper.frame_id)
+
+    @property
+    def _founding(self) -> bool:
+        return (self._live_ok and not self._mapper.has_map and not self._manager.active
+                and self._localization.occ_map is None)
+
+    def live_startup(self) -> None:
+        """Server start: the main map, searched at the last pose -- or a new one."""
+        if not self._live_ok:
+            return
+        if self._scan_odometry is not None:
+            # founding a map needs the lidar odometry before any map exists
+            self._scan_odometry.start("dauer")
+        name = self._store.active_name()
+        saved = self._store.load(name)
+        if saved is None:
+            self._live_name = name
+            self._mapper.name = name
+            self._extra = {}
+            self._mapper.start_empty()
+            log.info("Always-on mapping: no main map '%s' yet -- founding one at standstill", name)
+            return
+        self._take_saved(name, saved)
+        log.info("Always-on mapping: main map '%s' loaded", name)
+
+    def _take_saved(self, name: str, saved: dict) -> None:
+        if "lo" in saved:
+            self._mapper.load_array(saved["lo"], saved["origin"], saved["resolution"],
+                                    saved["frame_id"])
+        else:
+            self._mapper.import_occupancy(saved["occ_map"], saved["frame_id"])
+        self._live_name = name
+        self._mapper.name = name
+        self._extra = dict(saved.get("extra") or {})
+        self._pose_saved = None
+        self._sim_origin = None
+        self._attach_main(startup_stages(self._extra))
+
+    def _attach_main(self, stages: list[Stage] | None, correction=None, start=None) -> None:
+        snap = self._mapper.snapshot()
+        if snap is None:
+            return
+        if start is None:
+            start = _pose3(self._extra.get("start")) or (0.0, 0.0, 0.0)
+        self._localization.set_map(snap, start=start, source="dauer", stages=stages,
+                                   correction=correction)
+
+    def _found(self) -> None:
+        """No map at all: found one from still scans, here is home."""
+        if self._scan_odometry is None:
+            return
+        m = self._scan_odometry.measurement()
+        if not self._mapper.bootstrap(m):
+            return
+        self._extra = {"start": list(m.pose)}
+        self._attach_main(None, correction=(0.0, 0.0, 0.0), start=tuple(m.pose))
+        true = self._sim_true()
+        # standing still, so the scan and the true pose belong together
+        self._sim_origin = _compose(tuple(m.pose), _inverse(true)) if true else None
+        self._mapper.gate.integrating_now(self._localization.map_gen)
+        self._store.set_active(self._live_name)
+        self._save_time = 0.0   # save the founded map soon
+        log.info("Always-on mapping: new main map '%s' founded", self._live_name)
+
+    def _live_switches(self) -> None:
+        """Pause while slam maps; take the main map back when nothing else is loaded."""
+        if not self._live_ok:
+            return
+        if self._manager.active:
+            self._mapper.pause("slam")
+            return
+        self._mapper.resume("slam")
+        if self._mapper.has_map and self._localization.occ_map is None:
+            extra = dict(self._extra)
+            if self._pose_saved is not None:
+                extra["last_pose"] = list(self._pose_saved)
+            self._attach_main(startup_stages(extra))
+
+    def _live_background(self, report_error) -> None:
+        """Snapshot, autosave and last pose -- each in its own thread, never waited for."""
+        if not self._live_ok:
+            return
+        now = time.monotonic()
+        growing = self._growing
+        if (growing and now - self._snap_time >= config.LIVE_MAP_SNAPSHOT_S
+                and (self._snap_task is None or self._snap_task.done())):
+            self._snap_time = now
+            self._snap_task = asyncio.get_running_loop().create_task(
+                self._guarded(self._refresh, report_error, "Kartenschnappschuss"))
+        if growing:
+            self._remember_pose(now)
+            if self._sim_origin is None and self._localization.confident:
+                true, pose = self._sim_true(), self._localization.pose()
+                if true is not None and pose is not None:
+                    self._sim_origin = _compose(pose, _inverse(true))
+        if ((self._mapper.changed or self._pose_dirty)
+                and now - self._save_time >= config.LIVE_MAP_SAVE_S
+                and (self._save_task is None or self._save_task.done())):
+            self._save_time = now
+            self._save_task = asyncio.get_running_loop().create_task(
+                self._guarded(self._save_now, report_error, "Karte speichern"))
+
+    @staticmethod
+    async def _guarded(job, report_error, what: str) -> None:
+        try:
+            await asyncio.to_thread(job)
+        except Exception:
+            report_error(what)
+
+    def _refresh(self) -> None:
+        snap = self._mapper.snapshot()
+        if snap is not None and snap is not self._localization.occ_map:
+            self._localization.update_map(snap)
+
+    def _remember_pose(self, now: float) -> None:
+        if now - self._pose_time < config.LIVE_POSE_SAVE_S or not self._localization.confident:
+            return
+        pose = self._localization.pose()
+        if pose is None:
+            return
+        self._pose_time = now
+        last = self._pose_saved
+        if last is not None and (
+            math.hypot(pose[0] - last[0], pose[1] - last[1]) < config.LIVE_POSE_SAVE_MOVE_M
+            and abs(math.degrees(math.atan2(math.sin(pose[2] - last[2]),
+                                            math.cos(pose[2] - last[2]))))
+            < config.LIVE_POSE_SAVE_MOVE_DEG
+        ):
+            return
+        self._pose_saved = tuple(pose)
+        self._pose_dirty = True
+        # small file, written right away (a power cut must not cost the pose),
+        # but in a thread: a slow sd card must not hold up the loop
+        asyncio.get_running_loop().create_task(asyncio.to_thread(self._write_pose, pose))
+
+    def _write_pose(self, pose) -> None:
+        try:
+            self._store.save_extra(self._live_name, {"last_pose": [round(v, 4) for v in pose]})
+            self._pose_dirty = False
+        except OSError:
+            log.warning("Last pose could not be saved", exc_info=True)
+
+    def _save_now(self) -> None:
+        """Save the main map if it changed (thread or shutdown)."""
+        if not self._live_ok or not self._mapper.has_map:
+            return
+        if not self._mapper.changed and not self._pose_dirty:
+            return
+        self._mapper.changed = False
+        arrays = self._mapper.arrays()
+        snap = self._mapper.snapshot()
+        if snap is not None and self._growing:
+            self._localization.update_map(snap)
+        extra: dict[str, Any] = {}
+        if self._localization.source == "dauer":
+            extra["start"] = [round(v, 4) for v in self._localization.start]
+        if self._pose_saved is not None:
+            extra["last_pose"] = [round(v, 4) for v in self._pose_saved]
+        self._extra.update(extra)
+        try:
+            self._store.save(self._live_name, arrays, snap, self._mapper.frame_id, extra)
+            self._pose_dirty = False
+        except Exception:
+            self._mapper.changed = True   # try again next time
+            raise
+        log.info("Main map '%s' saved", self._live_name)
+
+    def _sim_true(self) -> tuple | None:
+        true_pose = getattr(self._driver, "true_pose", None)
+        return tuple(true_pose()) if true_pose is not None else None
+
+    def live_shutdown(self) -> None:
+        if not self._live_ok:
+            return
+        try:
+            self._save_now()
+        except Exception:
+            log.exception("Main map could not be saved on shutdown")
+        if self._scan_odometry is not None:
+            self._scan_odometry.stop("dauer")
+
+    def live_status(self) -> dict[str, Any] | None:
+        if self._mapper is None:
+            return None
+        status = self._mapper.status()
+        status["name"] = self._live_name
+        status["waechst"] = self._growing
+        status["gespeichert"] = self._store.last_saved if self._store else None
+        status["speicherfehler"] = self._store.last_error if self._store else None
+        return status
+
+
+def _compose(a, b) -> tuple[float, float, float]:
+    c, s = math.cos(a[2]), math.sin(a[2])
+    return (a[0] + c * b[0] - s * b[1], a[1] + s * b[0] + c * b[1],
+            math.atan2(math.sin(a[2] + b[2]), math.cos(a[2] + b[2])))
+
+
+def _inverse(a) -> tuple[float, float, float]:
+    c, s = math.cos(a[2]), math.sin(a[2])
+    return (-c * a[0] - s * a[1], s * a[0] - c * a[1], -a[2])
+
+
+def _pose3(value) -> tuple[float, float, float] | None:
+    try:
+        x, y, theta = (float(v) for v in value[:3])
+    except (TypeError, ValueError):
+        return None
+    return (x, y, theta) if all(math.isfinite(v) for v in (x, y, theta)) else None
+
+
+def startup_stages(extra: dict) -> list[Stage]:
+    """Where to look after a start: last pose, around it, home, the whole map.
+
+    the robot usually starts where it was switched off
+    """
+    share = config.NAV_SEARCH_MIN_SHARE
+    stages = []
+    last = _pose3(extra.get("last_pose"))
+    if last is not None:
+        stages.append(Stage((last[0], last[1]), config.LIVE_START_SEARCH_NEAR_M, last[2], share,
+                            text="sucht die eigene Lage dort, wo er zuletzt stand"))
+        stages.append(Stage((last[0], last[1]), config.NAV_SEARCH_RADIUS_M, None, share,
+                            text="sucht die eigene Lage rund um die letzte Stelle"))
+    start = _pose3(extra.get("start"))
+    if start is not None:
+        stages.append(Stage((start[0], start[1]), config.NAV_SEARCH_RADIUS_M, start[2], share,
+                            text="sucht die eigene Lage am Ausgangspunkt der Karte"))
+    stages.append(Stage(None, 0.0, None, share, text="sucht die eigene Lage in der ganzen Karte"))
+    return stages
 
 
 def _build_map(payload) -> OccupancyMap:

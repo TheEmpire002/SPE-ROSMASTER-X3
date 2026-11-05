@@ -95,7 +95,7 @@ for name, over in hard_cases.items():
 soft_cases = {
     "too few points": dict(kind="skip", accepted=False),
     "few hits": dict(share=0.6),
-    "residual": dict(residual=0.08),
+    "residual": dict(residual=0.12),
     "little overlap": dict(known=40),
     "little overlap share": dict(known_share=0.2),
     "corridor": dict(constraint=0.05),
@@ -161,6 +161,10 @@ gate.update(d.step(share=0.6))
 status = gate.status()
 check("a soft failure while confirming starts the count again", status["bestaetigt"] == 0,
       str(status))
+for _ in range(30):
+    if gate.update(d.step()):
+        break
+check("... and strict matches after it confirm again", gate.state == ig.INTEGRATING, gate.reason)
 
 d = Drive()
 gate = ig.IntegrateGate()

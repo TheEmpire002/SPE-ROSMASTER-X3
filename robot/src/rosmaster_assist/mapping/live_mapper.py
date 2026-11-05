@@ -176,7 +176,6 @@ class LiveMapper:
         pts = np.asarray(points, dtype=float).reshape(-1, 2)
         if len(pts) == 0:
             return
-        pts = pts[:: max(1, int(math.ceil(len(pts) / config.LIVE_MAP_MAX_RAYS)))]
         r = np.hypot(pts[:, 0], pts[:, 1])
         keep = r >= config.LIDAR_MIN_M
         pts, r = pts[keep], r[keep]
@@ -185,7 +184,14 @@ class LiveMapper:
         c, s = math.cos(pose[2]), math.sin(pose[2])
         wx = c * pts[:, 0] - s * pts[:, 1] + pose[0]
         wy = s * pts[:, 0] + c * pts[:, 1] + pose[1]
+        # every hit is written (one cell each, cheap): with only every n-th
+        # ray the walls get gaps, and points of the next scan land in unknown
+        # cells -- the gate would then never see enough known map
         hit = r <= config.LIVE_MAP_HIT_RANGE_M
+        hx, hy = wx[hit], wy[hit]
+        # free rays cost a cell per step: only every n-th
+        k = max(1, int(math.ceil(len(pts) / config.LIVE_MAP_MAX_RAYS)))
+        wx, wy, r = wx[::k], wy[::k], r[::k]
         # free space along each ray: up to just before the hit, at most FREE_RANGE
         reach = np.minimum(r - config.LIVE_MAP_FREE_MARGIN_M, config.LIVE_MAP_FREE_RANGE_M)
         steps = int(math.ceil(max(float(reach.max()), 0.0) / self.resolution))
@@ -195,7 +201,6 @@ class LiveMapper:
         fx = pose[0] + share * (wx - pose[0])[:, None]
         fy = pose[1] + share * (wy - pose[1])[:, None]
         fx, fy = fx[valid], fy[valid]
-        hx, hy = wx[hit], wy[hit]
         with self._lock:
             if self._lo is None:
                 self._new_grid(pose)
@@ -465,6 +470,18 @@ class LiveMapper:
         return occ_map
 
     # --- state ----------------------------------------------------------------------
+
+    def pause(self, by: str) -> None:
+        """Write nothing while ``by`` holds (slam run, the user); idempotent."""
+        with self._step_lock:
+            if self.gate.state != ig.OFF and by not in self.gate.paused_by:
+                self.gate.pause(by)
+                self._pending.clear()
+
+    def resume(self, by: str) -> None:
+        with self._step_lock:
+            if by in self.gate.paused_by:
+                self.gate.resume(by)
 
     @property
     def integrating(self) -> bool:

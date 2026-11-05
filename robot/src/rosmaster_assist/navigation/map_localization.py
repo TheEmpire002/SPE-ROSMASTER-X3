@@ -125,11 +125,15 @@ def score(occ_map, points, pose) -> Match:
     c, s = math.cos(pose[2]), math.sin(pose[2])
     qx = c * points[:, 0] - s * points[:, 1] + pose[0]
     qy = s * points[:, 0] + c * points[:, 1] + pose[1]
-    known = ~occ_map.unknown_at(qx, qy)
+    d_all = occ_map.distance_at(qx, qy)
+    # a point right next to a known wall hits known map even if its own cell
+    # is unknown: a growing map has walls one cell thin with unknown cells
+    # behind and just in front of them, and half the wall points land there
+    known = ~occ_map.unknown_at(qx, qy) | (d_all < config.NAV_HIT_M)
     n = int(known.sum())
     if n == 0:
         return Match(pose[0], pose[1], pose[2], 0.0, float("inf"), 0)
-    d = occ_map.distance_at(qx[known], qy[known])
+    d = d_all[known]
     hits = d < config.NAV_HIT_M
     residuum = float(d[hits].mean()) if hits.any() else float("inf")
     return Match(pose[0], pose[1], pose[2], float(hits.mean()), residuum, n)
@@ -191,7 +195,9 @@ def constraint(occ_map, points, pose) -> float:
     qx = c * points[:, 0] - s * points[:, 1] + pose[0]
     qy = s * points[:, 0] + c * points[:, 1] + pose[1]
     d, _, inside = occ_map.sample(qx, qy, with_gradient=False)
-    on_wall = inside & (d < config.NAV_HIT_M) & ~occ_map.unknown_at(qx, qy)
+    # near an occupied cell is on a known wall, whatever its own cell says
+    # (as in score: growing maps have walls one cell thin)
+    on_wall = inside & (d < config.NAV_HIT_M)
     # on the wall the distance field has its minimum and no gradient; a step
     # back along the ray lands in front of the wall, where it is the normal
     r = np.maximum(np.hypot(points[:, 0], points[:, 1]), 1e-6)
@@ -357,7 +363,7 @@ class MapLocalization:
         return self._start
 
     def set_map(self, occ_map, start=None, live: bool = False, source: str | None = None,
-                stages: list[Stage] | None = None) -> None:
+                stages: list[Stage] | None = None, correction=None) -> None:
         """Take over a new map.
 
         ``live``: the map is currently growing (slam mapping), its frame is
@@ -366,6 +372,8 @@ class MapLocalization:
         found it. Otherwise it is a loaded map, and the pose has to be
         searched for first -- at the map's starting point, or along
         ``stages`` (after a restart: the last saved pose first).
+        ``correction``: the pose is known (a map founded right here, or the
+        main map back after slam) -- no search, odometry frame -> map frame.
         """
         self._odo.start("ortung")
         with self._lock:
@@ -389,6 +397,14 @@ class MapLocalization:
                 self._confirm_left = 0
                 self._clear_search()
                 self._trail.clear()
+            elif not live and correction is not None:
+                self._correction = tuple(float(v) for v in correction)
+                self._run_id = self._odo.run
+                self._success_time = time.monotonic()
+                self._success_odo = self._odo.pose()
+                self._confirm_left = 0
+                self._clear_search()
+                self._trail.clear()
             elif not live:
                 self._run_id = None
                 self._success_time = None
@@ -406,6 +422,8 @@ class MapLocalization:
         with self._lock:
             if self._map is None:
                 return
+            if getattr(self._map, "frame_id", None) != getattr(occ_map, "frame_id", None):
+                return   # a late snapshot of a map that is no longer loaded
             self._map = occ_map
 
     @property

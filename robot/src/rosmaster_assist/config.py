@@ -462,7 +462,7 @@ LIVE_BOOTSTRAP_SCANS = 3
 # ... moving more than this between them starts the founding again (m, deg)
 LIVE_BOOTSTRAP_MAX_MOVE_M = 0.02
 LIVE_BOOTSTRAP_MAX_TURN_DEG = 1.0
-# rays per scan that are written; more cost time and add little
+# free-space rays per scan that are written (hits always all); more cost time and add little
 LIVE_MAP_MAX_RAYS = 240
 
 # new snapshot for localization and planner at most this often (s)
@@ -472,13 +472,20 @@ LIVE_MAP_SAVE_S = 60.0
 LIVE_MAP_BACKUPS = 3
 # remember the last confident pose for the next start at most this often (s)
 LIVE_POSE_SAVE_S = 10.0
+# ... and only after this much motion since the saved one (m, deg)
+LIVE_POSE_SAVE_MOVE_M = 0.05
+LIVE_POSE_SAVE_MOVE_DEG = 5.0
+# after a start the pose is searched here first: radius around the last pose (m)
+LIVE_START_SEARCH_NEAR_M = 0.5
 
 # --- integrate gate (navigation/integrate_gate.py) ---
 # hard = freeze the map at once and confirm again; soft = skip this scan
 # share of known points that hit a wall (below the hard value: hard)
 LIVE_GATE_MIN_SHARE = 0.70
 LIVE_GATE_HARD_SHARE = 0.50
-LIVE_GATE_MAX_RESIDUAL_M = 0.05
+# mean distance of the hits to the wall (m); a wall one cell thin already
+# gives half a cell to a cell (2.5-5 cm) without any lidar noise
+LIVE_GATE_MAX_RESIDUAL_M = 0.08
 # overlap with established map: absolute points and share of the scan
 LIVE_GATE_MIN_KNOWN = 70
 LIVE_GATE_MIN_KNOWN_SHARE = 0.35

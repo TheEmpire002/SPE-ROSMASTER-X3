@@ -13,12 +13,16 @@ Cases:
   frozen, a freeze drops the waiting scans, standing still writes once;
 * founding a map needs still, good scans;
 * ``OccupancyMap.derived`` equals the full distance field;
-* ``nearest_free``.
+* ``nearest_free``;
+* ``LiveStore``: round trip, extras, backups, a broken npz falls back to
+  the pgm; the search stages after a start.
 """
 
 import math
 import pathlib
 import sys
+import tempfile
+import time
 
 import numpy as np
 
@@ -31,7 +35,10 @@ config.MOCK_APARTMENT = True
 config.LIVE_MAP_ENABLED = True
 
 import apartment_sim as sim  # noqa: E402
+from rosmaster_assist.api.map_control import startup_stages  # noqa: E402
 from rosmaster_assist.mapping.live_mapper import LiveMapper  # noqa: E402
+from rosmaster_assist.mapping.live_store import LiveStore  # noqa: E402
+from rosmaster_assist.mapping.map_service import MapService  # noqa: E402
 from rosmaster_assist.mapping.occ_map import OccupancyMap  # noqa: E402
 from rosmaster_assist.navigation import integrate_gate as ig  # noqa: E402
 from rosmaster_assist.navigation import map_localization as ml  # noqa: E402
@@ -254,6 +261,61 @@ p = room.nearest_free(sim.X_MAX + 0.3, 0.0, 0.2)
 check("nearest_free outside the map within a small reach: none", p is None)
 p = room.nearest_free(sim.X_MAX + 0.1, 0.0, 0.6)
 check("nearest_free outside but near: a cell inside", p is not None and p[0] < sim.X_MAX)
+
+# --- saving and loading ------------------------------------------------------------------
+
+with tempfile.TemporaryDirectory() as folder:
+    store = LiveStore(MapService(storage_dir=folder))
+    check("without a file the main map does not exist", store.load("hauptkarte") is None
+          and store.active_name() == config.LIVE_MAP_NAME)
+    mapper = LiveMapper()
+    for pose in [(-1.0, 0.0, 0.0), (-0.5, 0.3, 0.5)]:
+        mapper.integrate(sim.scan_points(*pose), pose)
+    snap = mapper.snapshot()
+    store.save("hauptkarte", mapper.arrays(), snap, mapper.frame_id,
+               {"start": [-1.0, 0.0, 0.0], "last_pose": [-0.5, 0.3, 0.5]})
+    saved = store.load("hauptkarte")
+    lo = mapper.arrays()[0]
+    check("npz round trip: grid, origin, frame id",
+          saved is not None and "lo" in saved and saved["lo"].shape == lo.shape
+          and float(np.abs(saved["lo"] - lo).max()) < 0.01
+          and saved["origin"] == mapper.arrays()[1] and saved["frame_id"] == mapper.frame_id)
+    check("extras come back", saved["extra"].get("last_pose") == [-0.5, 0.3, 0.5]
+          and saved["extra"].get("start") == [-1.0, 0.0, 0.0])
+    check("the map list shows it (pgm/yaml)",
+          any(m["name"] == "hauptkarte" for m in MapService(storage_dir=folder).list_maps()))
+    again = LiveMapper()
+    again.load_array(saved["lo"], saved["origin"], saved["resolution"], saved["frame_id"])
+    snap2 = again.snapshot()
+    check("loaded map equals the saved one", np.array_equal(snap2.occupancy, snap.occupancy))
+
+    store.save_extra("hauptkarte", {"last_pose": [1.0, 2.0, 0.3]})
+    check("save_extra keeps the other extras",
+          store.load("hauptkarte")["extra"].get("start") == [-1.0, 0.0, 0.0])
+
+    for _ in range(config.LIVE_MAP_BACKUPS + 2):
+        store.backup("hauptkarte")
+        time.sleep(1.05)   # one stamp per second
+    stamps = {b.name.split(".")[1] for b in (pathlib.Path(folder) / "backups").iterdir()}
+    check("only LIVE_MAP_BACKUPS backups are kept", len(stamps) == config.LIVE_MAP_BACKUPS,
+          str(sorted(stamps)))
+
+    (pathlib.Path(folder) / "hauptkarte.npz").write_bytes(b"kaputt")
+    saved = store.load("hauptkarte")
+    check("a broken npz falls back to the pgm",
+          saved is not None and "occ_map" in saved
+          and np.array_equal(saved["occ_map"].occupancy, snap.occupancy))
+    check("... and is kept as .broken", any(pathlib.Path(folder).glob("hauptkarte.*.broken")))
+
+    store.set_active("keller")
+    check("the active map is remembered", LiveStore(MapService(storage_dir=folder)).active_name()
+          == "keller")
+
+stages = startup_stages({"start": [0.0, 0.0, 0.0], "last_pose": [1.0, 2.0, 0.5]})
+check("after a start: last pose, around it, home, whole map",
+      [s.center for s in stages] == [(1.0, 2.0), (1.0, 2.0), (0.0, 0.0), None]
+      and stages[0].radius == config.LIVE_START_SEARCH_NEAR_M and stages[1].angle is None)
+check("without extras only the whole map", len(startup_stages({})) == 1)
 
 print()
 print("All good." if error == 0 else f"{error} failed.")

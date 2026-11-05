@@ -18,7 +18,9 @@ from __future__ import annotations
 import base64
 import json
 import math
+import os
 import re
+import threading
 import time
 from pathlib import Path
 
@@ -340,6 +342,7 @@ def read_extra(yaml_path: str | Path) -> dict:
 
 def write_extra(yaml_path: str | Path, data: dict) -> None:
     path = extra_path(yaml_path)
-    tmp = path.with_suffix(".json.tmp")
+    # own tmp name per writer: two threads must not replace each other's file
+    tmp = path.with_suffix(f".json.{os.getpid()}.{threading.get_ident()}.tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp.replace(path)
