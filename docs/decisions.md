@@ -641,3 +641,49 @@ people using the robot and the web app are German speakers.
 
 **Re-evaluate when:** the protocol gets a new major version -- then field
 names could become English too, with app and ESP updated together.
+
+---
+
+## E14 — Test results on a separate git branch `testdaten`
+
+**Date:** 2026-11-05
+**Status:** implemented
+
+**Context.** Test runs (`test_runs.py`) and healthbot checks collect
+camera images, pose readings and microphone recordings so they can be
+reviewed without the robot. They should stay reachable even when the Pi is
+off or the robot is away, and they must not pollute `main` or feature
+branches with binary data.
+
+**Decision.** After every run, the robot uploads all runs not yet uploaded
+to the branch `testdaten` of this repository (`TESTS_GIT_BRANCH`,
+`TESTS_GIT_AUTO_UPLOAD`): each run under `tests/<name>/`, plus an
+`index.json` and a `README.md` with a table GitHub renders. The upload uses
+a separate git index and `commit-tree`, so the Pi's working tree and current
+branch are never touched. A GitHub token with write access
+(`~/.rosmaster/github_token`, `TESTS_GIT_TOKEN_FILE`) travels as an HTTP
+header via `GIT_CONFIG_*` environment variables, never in the URL, the log
+or the git config; the upload retries once if the remote branch moved
+meanwhile. Without a reachable token or GitHub, runs stay pending and go
+along with the next upload. `--mock` never uploads automatically.
+
+Other options were not chosen:
+- *Commit test data to `main`:* every run would grow the history of the
+  code branch with images and WAV files that have nothing to do with the
+  code.
+- *External storage or cloud:* needs its own account, credentials and
+  client code on the Pi; GitHub is already the place developers look at,
+  and a branch needs only git and a token.
+- *ZIP download only:* works (`GET /tests/zip`), but needs the robot
+  online at download time; it stays available alongside the branch upload
+  for a single run.
+
+**Consequences.**
+- *Good:* Runs are browsable and machine-readable on GitHub
+  (`index.json`, raw `ergebnis.json`) without SSH or the robot running.
+- *Good:* Binary test data never touches `main` or feature branches.
+- *Bad:* A GitHub token with write access must live on the Pi
+  (`~/.rosmaster/github_token`, readable only by the user); if it is
+  missing or expired, runs only queue up locally until it is fixed.
+- *Open:* Not yet tested on the robot; the `testdaten` branch does not
+  exist on GitHub yet, the first upload creates it.

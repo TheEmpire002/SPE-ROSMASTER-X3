@@ -803,6 +803,13 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Result:** All 16 test scripts pass on the groundwork. Server wiring, health package, test runner, web pages and docs follow in the next steps.
 - **Open:** Check on the robot: depth camera setup (`/tiefe/status`), depth at a lying person (only measures from ~0.6 m), camera tilt/height values, two pose instances on the Hailo at once.
 
+### 05.11.2026 – Healthbot and test runs on the English code base, results on GitHub (with Claude)
+- **What:** Ported the healthbot (`health/`: drive to a person, overview from the camera pose, address by voice, nudge, call for help; watch mode) and the test-run store (`test_runs.py`: guided reproducible camera/pose/microphone tests, each run stored as `~/.rosmaster/tests/<name>/` with `ergebnis.json` including meta data -- code commit, config snapshot, test definition -- plus images and a WAV file) from the old German branch to the English code base, and wired both into `api/server.py` (`/healthbot*`, `/tests*` endpoints, `health_check`/`health_stop`/`health_wache` commands). Map control now also cancels the healthbot when another mode starts.
+- **Why:** Test results must be reachable later (report, comparison) without the robot being on; a separate data branch keeps binary test data out of `main` and feature branches and needs nothing but git and a token.
+- **Result:** After every run the robot pushes all not yet uploaded runs to the git branch `testdaten` (`tests/<name>/`, `index.json`, `README.md` table). Uses a separate git index and `commit-tree` so the Pi's working tree and branch stay untouched; the token from `~/.rosmaster/github_token` travels as an HTTP header via `GIT_CONFIG_*` environment variables, never in the URL, log or config; the upload retries once if the remote moved. Pending runs go with the next upload; no auto upload in `--mock`. New settings: `TESTS_FOLDER`, `TESTS_GIT_*` (decision E14 in `docs/decisions.md`). All 17 test scripts pass, smoke test 18/19 (only the known flaky homing check).
+- **Problems:** None beyond the known flaky smoke-test check.
+- **Open:** Not yet tested on the robot (robot paused). The `testdaten` branch does not exist on GitHub yet; the first upload creates it.
+
 ---
 
 ## 3. Results and measurements

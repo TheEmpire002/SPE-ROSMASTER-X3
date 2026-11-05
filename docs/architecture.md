@@ -88,6 +88,8 @@ human. It does not assess a health condition.
 | `navigation/`  | Odometry, lidar localization, homing (with a map also goal drive), explorer, mapping drive, avoidance (`avoidance.py`), obstacle naming, obstacle memory for depth points (`obstacle_memory.py`), progress watch against getting stuck (`progress.py`), pose in the map (`map_localization.py`), paths and frontiers (`path_planning.py`), path following (`path_follower.py`) |
 | `mapping/`     | Mapping: slam_toolbox in the container including the feed, save/load the map (`occ_map.py`), map in the simulation (`simulation.py`), `/map` page (`web.py`) |
 | `interaction/` | Gestures, behavior (follow, come here, go away), voice (speech output) and speech commands with the wake word "Robi"; planned: mind ("Geist") — see [`interaction.md`](interaction.md) |
+| `health/` | Healthbot: drive to a person, overview from the camera pose, address by voice, nudge, call for help (`procedure.py`, state machine), the four signs as pure computation (`assessment.py`), a lying person in the mock (`simulation.py`) |
+| `test_runs.py` | Guided, reproducible camera/pose/microphone test runs for the `/tests` page; stores each run under `~/.rosmaster/tests/<name>/` and uploads it to the `testdaten` branch |
 | `diagnostics.py`  | Collects failures (battery, USB, undervoltage, temperature, devices, log) and turns them into understandable problems for the `/diagnose` page |
 | `recording.py` | Recorder: last minute (scans, commands, odometry, states) in memory, saved to a file at the push of a button; plus loading and replaying for `scripts/replay.py` |
 | `box/`         | Motor/servo of the transport box *(still empty)*           |

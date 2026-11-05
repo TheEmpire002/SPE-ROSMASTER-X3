@@ -183,6 +183,9 @@ Right after connecting, the robot sends on its own, in this order:
 | `speech` | `text` (string) | Treat the text as if it had been spoken into the microphone (see "Speech commands in detail"). For trying things out without a microphone and in `--mock`. | `alert` „Sprachbefehl: …“ to all if a command was recognized; otherwise `alert` (info) „Kein Befehl erkannt …“ (no command recognized); without `text` `error` |
 | `set_home` | – | The current position becomes the new start point (0, 0, 0°), the lidar reference is re-recorded. With a map and a confident pose, the position also becomes the map's origin (and is remembered in its file). | `alert` to all |
 | `collision` | `enabled` (bool, optional), `distance` (m, optional) | Collision avoidance on/off, minimum distance. `distance` is clamped to 0.15–1.5 m. | `collision` to all |
+| `health_check` | `x`, `y` (m in the map frame, optional: both or neither) | Healthbot check (new 05.11., see "Healthbot" under HTTP): drive to the spot, look at the person, address them, nudge them if they do not answer, call for help. Without `x`/`y` it checks a person near the robot. **Drives and nudges, only on the floor.** Cancels homing, autonomous driving, interaction and precise drive commands. Any drive input ≠ 0, `stop`, `move`/`turn`, `explore`, `home`, `interaction_start` or a voice „Robi stopp“ cancels it. | `alert` to all; otherwise `alert` (warning) with reason |
+| `health_stop` | – | Cancel the check, stop alarm music, stop. | none |
+| `health_wache` | `an` (bool) | Watch: look out for a lying person on its own and then start a check. Does not drive off as long as nobody is seen. | none; `alert` (warning) if not possible |
 | `beep` | `ms` (int, default 100) | Buzzer. | none |
 | `vitals` | `bpm` (number/null), `motion` (bool/null) | Readings from the ESP32, relayed to all. | `vitals` to all |
 | `box` | `action`: `"open"` / `"close"` | Not built yet. | `alert` „Box ist noch nicht angebaut“ (box not attached yet) |
@@ -240,6 +243,7 @@ it only turns.
 | `stimme` | voice output: `verfuegbar` (sound comes out), `spricht` (speaking a sentence right now), `text` (last sentence spoken, or `null`). See "Voice in detail". Missing on older servers. |
 | `sprache` | speech commands: `verfuegbar` (microphone and model ready), `geweckt` (awake: „Robi“ was just said on its own, the next sentence needs no name), `gehoert` (last sentence understood, or `null`), `befehl` (recognized command, for a few seconds, otherwise `null`), `pause` (why the microphone is deliberately closed right now, e.g. „Mapping läuft“; then `verfuegbar` is `false`, otherwise `null`). See "Speech commands in detail". Missing on older servers. |
 | `karte` | Only present when a map exists (new 04.11.): `name` (saved map, `null` for the live map during mapping), `live`, `pose` (pose **in the map frame**, not to be confused with `pose` above in the odometry frame; `null` while unknown), `sicher` (confident; `goto` only works then), `text`, `fahrt` (running or last map-based drive: `art` (kind) `"heim"` (home) / `"ziel"` (goal), `ziel` (goal), `rest_m` (remaining distance), `grund` (reason)). See "Using the map" under Mapping. |
+| `healthbot` | Healthbot short form (new 05.11.): `aktiv`, `zustand` (state: `bereit`, `anfahrt`, `gesamtbild`, `ansprechen`, `anstupsen`, `nachfrage`, `hilfe`, `ansprechbar`, `unauffaellig`, `keine_person`, `abgebrochen`), `schritt` (current step as text), `alarm`, `wache` (watch on). Everything else in `GET /healthbot/status`. Missing on older servers. |
 
 **`collision`**: on connect and after every change, fields as in
 `state.collision`.
@@ -1095,6 +1099,82 @@ the server then builds the map itself from the simulated lidar
 `ROSMASTER_MOCK_WOHNUNG=1` the imaginary room becomes an apartment with two
 rooms, a door and furniture -- for trying out the room-to-room continuation.
 
+### Healthbot
+
+The healthbot checks whether a person is fine: drive there, overview from the
+camera pose (lying? on the floor? moving?), address them by voice, nudge them
+gently if there is no answer, call for help (alarm music, `alert`
+`emergency`). Commands go over the WebSocket (`health_check`, `health_stop`,
+`health_wache`); the page `GET /healthbot` shows the run.
+
+| Endpoint | Returns |
+|---|---|
+| `GET /healthbot` | page with the run: steps with reasons, traffic lights of the four signs, camera image with the person |
+| `GET /healthbot/status` | `aktiv`, `zustand`, `schritt`, `timeline` (steps `{zeit, zustand, text}`), `checks` (the four signs, each `{name, titel, zustand, text, ...}`), `urteil` (verdict), `ziel` (target), `alarm`, `stupser` (nudges), `wache`, `stupsen_aktiv` (nudging enabled), `person` (`{box, kp, winkel}` or `null`); in `--mock` also `simulation` and `szenen` (scene names) |
+| `POST /healthbot/simulation` | only `--mock`: `{"szene": "liegt", "x": 2.0, "y": 0.5}` puts a simulated person into the scene (`x`/`y` optional). 400 with `fehler` for an unknown scene, 404 without mock. |
+
+Every finished check (any outcome) is stored as a run like the tests below
+(`typ: "health"`), so it can be looked at later without the robot.
+
+### Test runs
+
+Reproducible measurements for camera, pose and microphone: the robot announces
+each phase („Stell dich links neben mich …“; left/right always seen from the
+test person) and records readings, images and sound. The page `GET /tests`
+guides through it. While a microphone test runs, recognized speech commands are
+not executed.
+
+| Endpoint | Returns |
+|---|---|
+| `GET /tests` | the tests page |
+| `GET /tests/katalog` | `{"kategorien": {key: name}, "tests": [{id, kategorie, titel, kurz, art, anleitung[], phasen[{name, titel, anweisung, dauer_s, satz?}]}]}` |
+| `GET /tests/status` | the running test: `aktiv`, `test`, `titel`, `art`, `phase`, `phase_titel`, `anweisung`, `satz`, `rest_s`, `live` (current readings), `gehoert` (microphone); always `letzter` (last run), `meldung`, `ordner` (folder on the Pi), `simulation`, `token` (GitHub token present) and `upload` (`auto`, `laeuft`, `ausstehend` = runs not uploaded yet, `letzter`, `fehler`, `hinweis`) |
+| `GET /tests/liste` | `{"laeufe": [...]}`, newest first: `name`, `typ` (`"test"` / `"health"`), `test`, `titel`, `kategorie`, `beginn`, `abgebrochen`, `urteil`, `notiz`, `phasen[{titel, kurz}]`, `bytes`, `hochgeladen`, `upload_commit`, `upload_zeit`, `upload_fehler` |
+| `POST /tests/start` | `{"test": "<id>"}` starts a test; 400 with `fehler` if unknown, already running or a sensor is missing |
+| `POST /tests/stop` | cancel the running test (the run is still stored, marked `abgebrochen`) |
+| `POST /tests/notiz` | `{"name": "<run>", "text": "…"}`: note on a run (what stood out); counts as a change, so the run is uploaded again |
+| `GET /tests/zip?name=<run>` | the run folder as a ZIP |
+| `POST /tests/hochladen` | `{"namen": [...]}` (optional, without = all new ones) uploads runs to GitHub; `{ok, hochgeladen[], commit, fehler}` |
+
+**Storage.** Each run is a folder `~/.rosmaster/tests/<date>_<time>_<test>/`
+on the Pi (`TESTS_FOLDER`) with `ergebnis.json` (readings, summary per phase,
+verdict, note, and in `meta` the code commit/branch, the computer, all scalar
+settings and the test definition, so old runs stay comparable after
+thresholds change), `bilder/` and, for microphone tests, a WAV file.
+
+**Upload.** After every run the robot pushes all runs that are not uploaded
+yet to the branch `testdaten` of the repository (`TESTS_GIT_BRANCH`,
+`TESTS_GIT_AUTO_UPLOAD`), each into `tests/<name>/`, plus `index.json` and
+`README.md` (a table GitHub renders). The Pi's working tree and branch stay
+untouched (separate git index, `commit-tree`). It needs a GitHub token with
+write access in `~/.rosmaster/github_token` (`TESTS_GIT_TOKEN_FILE`, file only
+readable by the user); the token travels as an HTTP header, never in the URL,
+the log or the git config. Without a token, or when GitHub is not reachable,
+runs stay pending and go along with the next upload. In `--mock` nothing is
+uploaded automatically.
+
+**Results without the robot.** Everything uploaded is on GitHub:
+
+- Browse: <https://github.com/TheEmpire002/SPE-ROSMASTER-X3/tree/testdaten>
+  (README with all runs, newest first).
+- Machine-readable: `index.json` with `{branch, erzeugt, anzahl, laeufe: [{name, datum, typ, test, titel, urteil, abgebrochen, simulation, notiz, code_commit, pfad}]}`.
+  Raw: `https://raw.githubusercontent.com/TheEmpire002/SPE-ROSMASTER-X3/testdaten/index.json`,
+  one run: `.../testdaten/tests/<name>/ergebnis.json`.
+- Locally without touching your branch:
+
+```bash
+git fetch origin testdaten
+git show origin/testdaten:index.json
+git worktree add ../testdaten origin/testdaten   # all files as a folder
+```
+
+```python
+import json, urllib.request
+base = "https://raw.githubusercontent.com/TheEmpire002/SPE-ROSMASTER-X3/testdaten/"
+index = json.load(urllib.request.urlopen(base + "index.json"))
+run = json.load(urllib.request.urlopen(base + index["laeufe"][0]["pfad"] + "ergebnis.json"))
+```
+
 ### Miscellaneous
 
 | Endpoint | Returns |
@@ -1102,6 +1182,7 @@ rooms, a door and furniture -- for trying out the room-to-room continuation.
 | `GET /` | the bundled web app |
 | `GET /einstellungen` | the web app's settings page |
 | `GET /diagnose`, `GET /logs` | the web app's diagnostics page |
+| `GET /tests`, `GET /healthbot` | test runs and healthbot pages (see above) |
 | `GET /static/...` | its files (`webapp/`) |
 | `GET /docs` | automatically generated HTTP overview (FastAPI) |
 
