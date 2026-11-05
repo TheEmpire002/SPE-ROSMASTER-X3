@@ -269,6 +269,14 @@ class MockLidar(LidarBase):
     def __init__(self, true_pose_source=None) -> None:
         super().__init__()
         self._pose_source = true_pose_source
+        # Extra round obstacles (x, y, radius), e.g. a person lying on the
+        # floor for the health check. Always replaced as a whole, never
+        # mutated, so the reader thread needs no lock.
+        self._extra: tuple[tuple[float, float, float], ...] = ()
+
+    def set_obstacles(self, circles) -> None:
+        """Extra obstacles as circles (x, y, radius) in world coordinates."""
+        self._extra = tuple((float(x), float(y), float(r)) for x, y, r in circles)
 
     def _open(self) -> None:
         log.info("Lidar: simulation (no real hardware)")
@@ -316,9 +324,10 @@ class MockLidar(LidarBase):
             if x_min - 1e-6 <= px <= x_max + 1e-6 and y_min - 1e-6 <= py <= y_max + 1e-6:
                 hits = min(hits, t)
 
-        t_pillar = self._hit_pillar(x, y, dx, dy)
-        if t_pillar is not None:
-            hits = min(hits, t_pillar)
+        for circle in (self.PILLAR, *self._extra):
+            t_circle = self._hit_pillar(x, y, dx, dy, circle)
+            if t_circle is not None:
+                hits = min(hits, t_circle)
         if config.MOCK_APARTMENT:
             for wall in self.APARTMENT_WALLS:
                 t_wall = _hit_segment(x, y, dx, dy, wall)
@@ -326,8 +335,8 @@ class MockLidar(LidarBase):
                     hits = min(hits, t_wall)
         return hits
 
-    def _hit_pillar(self, x, y, dx, dy) -> float | None:
-        cx, cy, radius = self.PILLAR
+    def _hit_pillar(self, x, y, dx, dy, circle=None) -> float | None:
+        cx, cy, radius = circle if circle is not None else self.PILLAR
         mx, my = x - cx, y - cy
         b = 2 * (mx * dx + my * dy)
         c = mx * mx + my * my - radius * radius

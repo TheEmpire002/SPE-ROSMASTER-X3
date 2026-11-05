@@ -1033,6 +1033,11 @@ POSE_KP_MIN_CONF = 0.4
 # interaction is off (e.g. for hailo-apps).
 POSE_KEEP_WARM = True
 
+# Camera images older than this are not evaluated by the pose detection.
+# After a USB dropout the camera can deliver the last image again and again;
+# evaluating it would keep a person "visible" who has long moved on.
+POSE_MAX_FRAME_AGE_S = 0.5
+
 # --- Gestures ----------------------------------------------------------------------
 
 # How far back to look to see movements (waving, swiping).
@@ -1325,6 +1330,39 @@ RECORDING_FOLDER = Path.home() / ".rosmaster" / "aufzeichnungen"
 # One file is a few hundred KB compressed; older ones are deleted.
 RECORDING_MAX_FILES = 20
 
+# --- Test runs (testrun.py, since 04.11.) -----------------------------------
+# The /tests page starts measurement runs for the microphone, lying and
+# person detection. They never drive; they collect data that is uploaded to
+# the "testdaten" branch afterwards and evaluated on a computer.
+TESTS_FOLDER = Path.home() / ".rosmaster" / "tests"
+# 5 samples per second are enough for pose (10 Hz) and level, and a run
+# stays at a few hundred KB of JSON.
+TESTS_RATE_HZ = 5.0
+# Time between announcement and measurement, to lie down or stand up.
+TESTS_LEAD_S = 6.0
+# Keep listening this long after the last microphone step: Vosk reports a
+# sentence only after the speaking pause.
+TESTS_TAIL_S = 2.0
+# Images per run and camera (JPEG, ~40 KB each); more bloats the repo.
+TESTS_MAX_IMAGES = 16
+# Audio recording at most this long (16 kHz mono = 32 KB/s, 3 min ~ 6 MB).
+TESTS_WAV_MAX_S = 180.0
+# Wait at most this long for an announcement to end.
+TESTS_VOICE_WAIT_S = 10.0
+# Lidar revolutions older than this count as missing (as in the health check).
+TESTS_SCAN_MAX_AGE_S = 1.0
+TESTS_NOTE_MAX_CHARS = 2000
+# GitHub token (fine-grained, only "Contents: read and write" for this
+# repo). Lives only on the Pi, never in the repo; instructions on /tests.
+TESTS_GIT_TOKEN_FILE = Path.home() / ".rosmaster" / "github_token"
+# None = the https address of "origin" of the repo the server runs from.
+TESTS_GIT_URL = None
+# Own branch, so measurement data never ends up in main or the working tree.
+TESTS_GIT_BRANCH = "testdaten"
+TESTS_GIT_TIMEOUT_S = 60.0
+TESTS_GIT_AUTHOR = "ROSMASTER X3"
+TESTS_GIT_EMAIL = "rosmaster@localhost"
+
 # --- Music ("MUKKE") ----------------------------------------------------------------
 
 # YouTube links from the app are played with mpv on the USB speaker, audio
@@ -1551,3 +1589,99 @@ SPEECH_OFF_WHILE_MAPPING = True
 # How often (s) the listening thread checks during the pause whether it is
 # over.
 SPEECH_PAUSE_CHECK_S = 0.5
+
+# --- Health check / healthbot (health/) ---------------------------------------
+#
+# The robot drives to a person who is probably unwell, takes stock (posture,
+# movement, answer, position on the floor), nudges them and gets help if
+# there is no reaction. Page: /healthbot.
+
+# Main switch. Off: health_check is rejected.
+HEALTH_ACTIVE = True
+
+# Nudging with real contact. Off: the step is skipped and the verdict comes
+# from observing and talking alone.
+HEALTH_NUDGE_ACTIVE = True
+# Speed when nudging (m/s). Very slow, so the contact is only a tap and the
+# robot stops at once.
+HEALTH_NUDGE_SPEED = 0.05
+# At most this far (m) beyond the measured lidar distance. It never drives
+# further, even if it feels no resistance.
+HEALTH_NUDGE_DEPTH_M = 0.10
+# How often it nudges, backing off right after each one.
+HEALTH_NUDGE_COUNT = 2
+# Distance (m) back after each nudge.
+HEALTH_NUDGE_BACK_M = 0.08
+# Margin for the drive guard while nudging. 0 means contact is allowed --
+# otherwise it would stop 4 cm short of the person as intended. Speed,
+# distance and the dead man's switch still limit it (docs/decisions.md).
+HEALTH_NUDGE_MARGIN_M = 0.0
+# Driving this long (s) with a command while odometry measures no movement
+# counts as contact (the person pushes back).
+HEALTH_NUDGE_CONTACT_S = 0.4
+# Below this measured speed (m/s) it stands still (for contact detection).
+HEALTH_NUDGE_STILL_MS = 0.01
+# A nudge lasts at most this long (s), then back.
+HEALTH_NUDGE_MAX_S = 6.0
+# Distance (m) from which it nudges: the approach drives closer first.
+HEALTH_NUDGE_START_M = 0.30
+# Speed (m/s) when closing in to nudging distance and when backing off:
+# slow, so the drive guard can stop safely in front of the person.
+HEALTH_APPROACH_SPEED = 0.12
+# Highest turn rate (rad/s) for turning towards the person while closing in.
+# Small, so the robot does not sweep sideways past them.
+HEALTH_APPROACH_OMEGA_MAX = 0.3
+# If the drive guard stops at most this much (m) beyond nudging distance,
+# that is enough for nudging: the person is within reach anyway.
+HEALTH_APPROACH_ENOUGH_M = 0.1
+
+# Approach: within this distance (m) of the goal it counts as arrived.
+# Generous, because the reported spot is only approximate and the person
+# lies there.
+HEALTH_GOAL_TOLERANCE_M = 0.6
+# If something is in the way and the goal is closer than this (m), that is
+# enough: the obstacle is then usually the person.
+HEALTH_BLOCKED_ENOUGH_M = 1.2
+
+# Overall picture: observe this long (s) how much the person moves.
+HEALTH_OBSERVE_S = 5.0
+# If the keypoints move less than this on average (pixels, 640 image), the
+# person counts as motionless.
+HEALTH_MOTIONLESS_PX = 6.0
+# Lying: shoulder-hip axis flatter than this many degrees from horizontal.
+HEALTH_LYING_DEG = 35.0
+# ... or the box is this much wider than tall (fallback without keypoints).
+HEALTH_LYING_ASPECT = 1.3
+# On the floor: lidar echo at the person's angle, but low -- the lidar
+# measures at ~17 cm height. A lying body gives a wide piece there at least
+# this long (m).
+HEALTH_FLOOR_MIN_WIDTH_M = 0.35
+# Without lidar echo: if the person's lower edge is below this share of the
+# image height, they probably lie on the floor (the camera looks slightly down).
+HEALTH_FLOOR_IMAGE_BOTTOM = 0.75
+# Searching: turn this fast (rad/s) until it sees a person ...
+HEALTH_SEARCH_OMEGA = 0.4
+# ... at most this long (s), about one turn.
+HEALTH_SEARCH_S = 18.0
+# A person counts as centred when less than this many degrees off.
+HEALTH_CENTERED_DEG = 8.0
+
+# Wait this long (s) for an answer after asking.
+HEALTH_ANSWER_S = 6.0
+# Questions and announcements (voice; spoken German).
+HEALTH_QUESTION = "Hallo, hören Sie mich? Geht es Ihnen gut?"
+HEALTH_QUESTION_HELP = "Brauchst du Hilfe?"
+HEALTH_ANNOUNCE_HELP = "Achtung! Hier liegt eine Person und reagiert nicht. Ich hole Hilfe."
+HEALTH_ANNOUNCE_OK = "Gut, dass es dir gut geht. Ich fahre zurück."
+# Words that count as an answer (German speech). "ja"/"hilfe" means: get help.
+HEALTH_WORDS_HELP = ("ja", "hilfe", "hilf mir")
+HEALTH_WORDS_NO = ("nein", "alles gut", "geht schon")
+
+# Detect on its own: if pose detection sees a lying person continuously
+# for this long (s), it starts the check by itself.
+HEALTH_AUTO_DETECT = True
+HEALTH_AUTO_S = 3.0
+
+# Music when getting help (in the package under data/).
+HEALTH_MUSIC_FILE = "BeatboxJungs.m4a"
+HEALTH_MUSIC_TITLE = "Beatbox Jungs"

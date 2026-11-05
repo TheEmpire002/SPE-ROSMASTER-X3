@@ -63,12 +63,24 @@ class PoseDetection:
         self._mock = mock
         self._lock = threading.Lock()
         self._active = threading.Event()
+        # Who currently needs the detection. Interaction and health check can
+        # watch at the same time; one switching off must not blind the other.
+        self._users: set[str] = set()
+        # Simulated scene (mock only), e.g. a person lying on the floor for
+        # the health check -- see set_simulation().
+        self._scene: str | None = None
+        self._scene_source = None
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._people: list[dict] = []
         self._time = 0.0
         self._error: str | None = None
         self._frame_buffer = 0
+        # Detect a hanging camera: never compute the same image twice and
+        # skip images that are too old (config.POSE_MAX_FRAME_AGE_S).
+        self._last_capture = 0.0
+        self._frame_age: float | None = None
+        self._stale_frames = 0
         self._fps = 0.0
         self._reopened = 0
         self._np = None
@@ -130,14 +142,37 @@ class PoseDetection:
             self._thread.join(timeout=3.0)
             self._thread = None
 
-    def activate(self, an: bool) -> None:
-        """Only compute while the interaction is running."""
-        if an:
-            self._active.set()
-        else:
-            self._active.clear()
-            with self._lock:
+    def activate(self, an: bool, who: str = "interaction") -> None:
+        """Only compute while someone is watching (interaction, health check ...).
+
+        ``who`` tells the users apart: detection runs as long as at least one
+        of them has switched it on.
+        """
+        with self._lock:
+            if an:
+                self._users.add(who)
+            else:
+                self._users.discard(who)
+            if self._users:
+                self._active.set()
+            else:
+                self._active.clear()
                 self._people = []
+
+    def set_simulation(self, scene: str | None, source=None) -> None:
+        """Mock only: show a different scene instead of the gesture person.
+
+        ``scene`` is ``None`` (gestures as before), ``"liegend_regungslos"``
+        or ``"liegend_bewegt"``. ``source()`` returns where the person lies
+        as seen from the robot: ``(angle_deg, distance_m)`` or ``None``. That
+        way the person moves through the image when the robot turns or
+        approaches.
+        """
+        if not self._mock:
+            return
+        with self._lock:
+            self._scene = scene
+            self._scene_source = source
 
     @property
     def active(self) -> bool:
@@ -181,6 +216,10 @@ class PoseDetection:
                 # overlays the skeleton only there.
                 "kamera": self._camera.name if self._camera is not None else None,
                 "letzte_erkennung_vor_s": round(time.monotonic() - self._time, 1) if self._time else None,
+                # How old the last fetched camera image was and how often an
+                # image was too old -- shows on the robot whether the camera hangs.
+                "bild_alter_s": round(self._frame_age, 2) if self._frame_age is not None else None,
+                "veraltete_bilder": self._stale_frames,
             }
 
     # --- Compute loop ---------------------------------------------------------------
@@ -211,7 +250,7 @@ class PoseDetection:
                 begin = time.monotonic()
                 try:
                     if self._mock:
-                        people = _simulated_people(begin)
+                        people = self._simulate(begin)
                     else:
                         if hailo is None:
                             hailo = _Hailo(self._np)
@@ -242,6 +281,21 @@ class PoseDetection:
         finally:
             if hailo is not None:
                 hailo.close()
+
+    def _simulate(self, t: float) -> list[dict]:
+        with self._lock:
+            scene, source = self._scene, self._scene_source
+        if scene is None:
+            return _simulated_people(t)
+        where = source() if source is not None else (0.0, 1.0)
+        if where is None:
+            return []
+        angle, distance = where
+        fov = self.fov_deg
+        mx = 0.5 - angle / fov
+        if not 0.0 <= mx <= 1.0:
+            return []  # outside the image
+        return [_sim_lying(mx, distance, scene == "liegend_bewegt", t, fov)]
 
     def _open_device(self) -> "_Hailo | None":
         """Open the Hailo in advance. If that fails, the loop tries again later."""
@@ -281,6 +335,22 @@ class PoseDetection:
             frame, captured_at = self._camera.latest(), 0.0
         if frame is None:
             return None
+        if captured_at:
+            if captured_at == self._last_capture:
+                # No new image since the last pass. Do not compute it again:
+                # the result would count as fresh, and a hanging camera would
+                # keep old people alive.
+                return None
+            self._last_capture = captured_at
+            age = time.monotonic() - captured_at
+            with self._lock:
+                self._frame_age = age
+                if age > config.POSE_MAX_FRAME_AGE_S:
+                    self._stale_frames += 1
+            if age > config.POSE_MAX_FRAME_AGE_S:
+                # Too old: better "nobody seen" than an angle that is no
+                # longer true.
+                return []
         cv2, np = self._cv2, self._np
         image = cv2.imdecode(np.frombuffer(frame[0], dtype=np.uint8), cv2.IMREAD_COLOR)
         if image is None:
@@ -602,4 +672,44 @@ def _sim_main_person(t: float) -> dict:
 
     person = _person(box, [[x, yy, 0.9] for x, yy in kp], 0.9, aspect_ratio)
     person["merkmal"] = _sim_feature(1, 6)  # red top
+    return person
+
+
+def _sim_lying(mx: float, distance: float, moving: bool, t: float, fov: float) -> dict:
+    """A person lying on the floor, horizontal in the image (head on the left).
+
+    The closer, the larger and lower in the image -- like a real camera that
+    looks forward and down at the floor.
+    """
+    near = max(0.25, min(1.6, 1.2 / max(0.3, distance)))
+    length = min(0.9, 0.4 * near)
+    center_y = min(0.9, 0.55 + 0.2 * min(1.0, near))
+    d = 0.05 * near  # body thickness in the image
+    left = mx - length / 2
+
+    def x(share: float) -> float:
+        return left + share * length
+
+    # Hardly any noise when motionless -- a real model jitters a little too.
+    jitter = 0.001 * math.sin(t * 7.0)
+    kp = [[x(0.04), center_y], [x(0.03), center_y - d * 0.2], [x(0.03), center_y + d * 0.2],
+          [x(0.06), center_y - d * 0.3], [x(0.06), center_y + d * 0.3],
+          [x(0.18), center_y - d * 0.6], [x(0.18), center_y + d * 0.6],   # shoulders
+          [x(0.32), center_y - d * 0.9], [x(0.32), center_y + d * 0.9],   # elbows
+          [x(0.45), center_y - d * 0.8], [x(0.45), center_y + d * 0.8],   # wrists
+          [x(0.50), center_y - d * 0.4], [x(0.50), center_y + d * 0.4],   # hips
+          [x(0.74), center_y - d * 0.4], [x(0.74), center_y + d * 0.4],
+          [x(0.97), center_y - d * 0.4], [x(0.97), center_y + d * 0.4]]
+    for point in kp:
+        point[1] += jitter
+    if moving:
+        # Arm and head move clearly -- the person is conscious.
+        lift = math.sin(t * 2 * math.pi * 0.8) * d * 2.5
+        kp[KP_HAND_R][1] += lift
+        kp[KP_ELBOW_R][1] += lift * 0.5
+        kp[KP_NOSE][0] += lift * 0.3
+    box = [left, center_y - d * 1.5, left + length, center_y + d * 1.5]
+    person = _person(box, [[px, py, 0.8] for px, py in kp], 0.8,
+                     config.CAMERA_WIDTH / config.CAMERA_HEIGHT, fov)
+    person["merkmal"] = _sim_feature(4, 5)  # yellow top
     return person

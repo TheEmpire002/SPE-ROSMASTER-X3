@@ -797,6 +797,12 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
   - Ben's commits from 04.11. (microphone off while mapping, depth camera crash) were made on the old file names; they are contained in the translated files.
 - **Open:** Teammates' branches based on the old names will conflict on merge; merge them soon or rebase. The old-name settings migration in `settings.py` can be removed once all robots have saved settings with the new names.
 
+### 05.11.2026 – Health check and test runs moved onto the English main (with Claude)
+- **What:** The health check (healthbot) and the test runs from the `tests-panel` branch are being ported to the English code base on branch `test-runs`. First step (groundwork): `HEALTH_*` and `TESTS_*` settings in `config.py`; new commands `health_check`, `health_stop`, `health_wache` and the state field `healthbot` in `protocol.py`; `SafetyWatchdog.submit()` accepts a `margin_m` for the drive guard (nudging); the mock lidar can place extra obstacles; person and pose detection can be switched on by several users at once; pose detection skips images it has already seen and reports none when the camera image is older than `POSE_MAX_FRAME_AGE_S` (still-image problem of the C270).
+- **Why:** `tests-panel` was based on the old German names; main has been translated and now has the depth camera and room mapping, which the lying detection should use.
+- **Result:** All 16 test scripts pass on the groundwork. Server wiring, health package, test runner, web pages and docs follow in the next steps.
+- **Open:** Check on the robot: depth camera setup (`/tiefe/status`), depth at a lying person (only measures from ~0.6 m), camera tilt/height values, two pose instances on the Hailo at once.
+
 ---
 
 ## 3. Results and measurements

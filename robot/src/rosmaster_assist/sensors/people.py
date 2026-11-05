@@ -33,6 +33,7 @@ class PersonDetection:
         self._camera = camera
         self._lock = threading.Lock()
         self._active = threading.Event()
+        self._users: set[str] = set()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._boxes: list[dict] = []
@@ -76,13 +77,22 @@ class PersonDetection:
             self._thread.join(timeout=2.0)
             self._thread = None
 
-    def activate(self, an: bool) -> None:
-        """Only compute while exploring."""
-        if an:
-            self._active.set()
-        else:
-            self._active.clear()
-            with self._lock:
+    def activate(self, an: bool, who: str = "explorer") -> None:
+        """Only compute while someone needs the hits.
+
+        ``who`` tells the users apart (explorer, test run). Detection runs as
+        long as at least one of them has switched it on; otherwise the end
+        of a test run would switch it off for a running explorer.
+        """
+        with self._lock:
+            if an:
+                self._users.add(who)
+            else:
+                self._users.discard(who)
+            if self._users:
+                self._active.set()
+            else:
+                self._active.clear()
                 self._boxes = []
 
     def boxes(self) -> list[dict]:
