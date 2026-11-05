@@ -1539,6 +1539,39 @@ SPEECH_MAX_EXTRA_WORDS = 0
 # "Musik aus" always).
 SPEECH_MIN_CONFIDENCE_MUSIC = 0.85
 
+# Microphone cleaning before recognition (interaction/audio_filter.py).
+# The mic tests of 05.11. showed a hum below 100 Hz louder than the voice,
+# motor rumble below 50 Hz and a quiet voice; the filter keeps only the
+# speech band, suppresses steady noise and levels the voice.
+SPEECH_FILTER_ENABLED = True
+# Kept band (Hz) and the width of its soft edges. Hum, DC and motor rumble
+# lie below, hiss above; Vosk works at 16 kHz and needs little above 4 kHz.
+SPEECH_FILTER_LOW_HZ = 200.0
+SPEECH_FILTER_HIGH_HZ = 4500.0
+SPEECH_FILTER_EDGE_HZ = 80.0
+# Noise estimate: minimum over this window (s). A new noise (motor starts)
+# is fully suppressed after this time; a word must be shorter than it.
+SPEECH_FILTER_NOISE_WINDOW_S = 1.5
+# The minimum lies below the mean noise; this factor lifts it back up.
+# Higher = more suppression, but quiet speech gets thinner. 1.0-2.0 scored
+# equally on the 05.11. recordings; 2.0 keeps silence and chatter quietest.
+SPEECH_FILTER_NOISE_FACTOR = 2.0
+# Strongest attenuation of noise (0.3 = -10 dB). Lower values remove more,
+# but leave gaps that make recognition worse (0.1 found 1 command, 0.3 found
+# 3-4 of 18 at conf >= 0.7, raw audio none).
+SPEECH_FILTER_FLOOR = 0.3
+# A frame counts as speech above this SNR (dB) in the speech band, a block
+# (0.25 s) above this share of speech frames.
+SPEECH_FILTER_VOICE_SNR_DB = 6.0
+SPEECH_FILTER_VOICED_SHARE = 0.2
+# Automatic gain: the voice is brought to this level (dBFS), at most by this
+# many dB; it rises by at most RELEASE dB per second, lowering is immediate.
+SPEECH_FILTER_TARGET_DBFS = -20.0
+SPEECH_FILTER_MAX_GAIN_DB = 24.0
+SPEECH_FILTER_RELEASE_DB_S = 12.0
+# Soft limiter above this share of full scale.
+SPEECH_FILTER_LIMIT = 0.7
+
 # Reply to a lone "Robi" (None = silent). It is only said after this pause
 # (s): whoever says "Robi ... folge mir" with a short pause should not be
 # interrupted by the "Ja?" -- while the robot is speaking, it does not

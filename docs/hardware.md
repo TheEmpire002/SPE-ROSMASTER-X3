@@ -420,6 +420,49 @@ arecord -D plughw:CARD=Device,DEV=0 -d 3 -f S16_LE -r 16000 test.wav && aplay te
   the microphone input is discarded. It does hear music (MUKKE), though;
   "Robi, Musik aus" ("Robi, music off") usually still gets through.
 
+### Speech filter (mic tests 05.11.)
+
+The microphone carries only speech commands, so every block passes
+`interaction/audio_filter.py` (`SpeechFilter`) before Vosk:
+
+1. band-pass 200–4500 Hz,
+2. noise suppression,
+3. automatic gain on speech frames only,
+4. a soft limiter.
+
+The settings are `SPEECH_FILTER_*`, and `SPEECH_FILTER_ENABLED = False`
+falls back to raw audio. `/sprache/status` shows `filter` with
+`verstaerkung_db`, `snr_db` and `uebersteuert` (share of clipped samples).
+
+What the three runs `mikro_pegel`, `mikro_befehle` and `mikro_fahrt`
+showed:
+
+- **Hum:** a constant hum at 46/52 Hz and its harmonics at about
+  −19 dBFS. It is louder than the voice, which sat at −28 to −35 dBFS in
+  the speech band.
+- **Recognition (offline replay through Vosk, 18 command phases,
+  hit = confidence ≥ 0.7):**
+
+  | Input | Hits |
+  |---|---|
+  | raw | 0 (1 weak) |
+  | band-pass + gain only | 0 |
+  | filter with floor 0.1 | 1 |
+  | filter with floor 0.3 (chosen) | 3–4 |
+
+  None of these variants triggered on the 7 phases without a command
+  (silence, background talk, driving).
+- **Output levels with the filter:** silence drops from −19 to about
+  −48 dBFS, and speech peaks reach about −20 dBFS.
+- **Driving fast or turning:** the raw signal clips at −1 to −3 dBFS. No
+  software can undo clipping. **Lower the ALSA capture gain** of the USB
+  microphone (`alsamixer` → F4 "Capture", or `amixer -c <card> scontrols`
+  for the control name) until `uebersteuert` stays at 0 while driving.
+  Then speak closer: the commands from a distance were mostly not heard.
+- **Remaining limits:** the small model is unsure about "stopp" when
+  spoken quietly (confidence 0.4–0.5), and it often hears the command word
+  as a second "ruby"/"robbie".
+
 ## AI HAT+
 
 > **Addendum 28.10.:** The installed unit is an **AI HAT+ 2 with Hailo-10H**

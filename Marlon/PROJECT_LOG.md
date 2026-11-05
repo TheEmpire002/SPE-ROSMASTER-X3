@@ -840,6 +840,13 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Problems:** None.
 - **Open:** Check on the robot whether two streams during a pose test cost noticeable CPU.
 
+### 05.11.2026 – Speech filter against hum and motor noise (with Claude)
+- **What:** New `robot/src/rosmaster_assist/interaction/audio_filter.py` (`SpeechFilter`): STFT with sqrt-Hann window, 50 % overlap; band-pass 200–4500 Hz; minimum-statistics noise estimate with a decision-directed Wiener gain and a floor; AGC only on voiced frames to -20 dBFS, max +24 dB gain; soft tanh limiter. Applied in `SpeechRecognition._listen_until_error` to every mic block before Vosk, after the existing dead-stream zero check; any exception falls back to the raw audio. New settings `SPEECH_FILTER_*` in `config.py`, switch `SPEECH_FILTER_ENABLED`. `/sprache/status` gets a new key `filter` with `aktiv`, `verstaerkung_db`, `snr_db`, `uebersteuert`. Test `Marlon/interaction/test_audio_filter.py` (11 checks). Cost about 2 ms per 250 ms block on the laptop.
+- **Why:** The user wants the microphone only for speech commands, with noise gone and the voice loud and clear. Analysis of the mic test runs from 05.11. (`mikro_pegel`, `mikro_befehle`, `mikro_fahrt`) showed a constant hum at 46/52 Hz and harmonics around -19 dBFS, louder than the voice (-28 to -35 dBFS in the speech band), plus motor noise while driving.
+- **Result:** Offline replay of the recordings through Vosk (small German model, robot grammar), 18 command phases, hit = confidence >= 0.7: raw audio 0 hits (1 weak); band-pass + AGC only 0 hits; filter with floor 0.1 and noise factor 2.5 gave 1 hit; the chosen settings (floor 0.3, factor 2.0) gave 3–4 hits plus 6 weak ones. 0 false triggers in 7 non-command phases for all variants. Silence dropped from about -19 to about -48 dBFS; speech peaks stayed around -20 dBFS. Run-to-run variance about ±1 dB.
+- **Problems:** Fast driving and turning clip the raw signal (-1 to -3 dBFS); this cannot be recovered in software, the ALSA capture gain of the USB microphone needs lowering on the robot (control name still to be checked with `amixer`) until `uebersteuert` stays 0. Commands from farther away mostly fail, so speak closer. The small model is unsure on a quiet "stopp" (confidence 0.4–0.5) and often hears the command word as a second "ruby"/"robbie".
+- **Open:** Not yet tested live on the robot (robot paused).
+
 ---
 
 ## 3. Results and measurements

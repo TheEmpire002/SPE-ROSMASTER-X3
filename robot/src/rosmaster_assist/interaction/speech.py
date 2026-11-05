@@ -402,6 +402,8 @@ class SpeechRecognition:
         self._level = 0.0  # 0..1
         self._partial = ""  # what Vosk understands of the current sentence so far
         self._rate: int | None = None
+        # stats of the speech filter on the open stream, None without filter
+        self._filter_stats: dict | None = None
         self._events: collections.deque[dict] = collections.deque(maxlen=config.SPEECH_LIVE_EVENTS)
         self._audio_subs: list[queue.Queue] = []
 
@@ -654,6 +656,7 @@ class SpeechRecognition:
                 "befehle": {b: list(w) for b, w in COMMANDS.items()},
                 "fehler": self._error,
                 "pause": self._pause_reason(),
+                "filter": self._filter_stats,
             }
 
     # --- Listening thread -------------------------------------------------------------
@@ -737,6 +740,7 @@ class SpeechRecognition:
         # Individual words with confidence, see _interpret().
         recognizer.SetWords(True)
         block = int(rate * 0.25)
+        speech_filter = self._make_filter(rate)
         # Callback instead of stream.read(): after a USB dropout a blocking
         # read() sometimes never returned, without an error -- no retry
         # kicked in. The queue can be read with a timeout.
@@ -792,6 +796,21 @@ class SpeechRecognition:
                 if rank and now >= next_check:
                     next_check = now + config.SPEECH_MICROPHONE_CHECK_S
                     self._check_better(rank, cards_before, now - opened)
+                # after the silence check: the filter output is never exact zeros
+                if speech_filter is not None:
+                    try:
+                        raw = speech_filter.process(raw)
+                    except Exception:
+                        # a broken filter must not cost the stop command: raw audio
+                        log.exception("Speech filter failed, using raw audio")
+                        speech_filter = self._filter_stats = None
+                    else:
+                        self._filter_stats = {
+                            "aktiv": True,
+                            "verstaerkung_db": round(speech_filter.gain_db, 1),
+                            "snr_db": round(speech_filter.snr_db, 1),
+                            "uebersteuert": round(speech_filter.clipped_share, 3),
+                        }
                 # Listen-in and level also while it speaks: the microphone
                 # still hears, it is just not evaluated.
                 self._distribute_audio(raw)
@@ -818,6 +837,18 @@ class SpeechRecognition:
                     self._partial = " ".join(part.replace("[unk]", " ").split())
         finally:
             _no_wait(stream.close, "closing the microphone stream")
+
+    def _make_filter(self, rate: int):
+        """Speech filter for a new stream, None if switched off or broken."""
+        self._filter_stats = None
+        if not config.SPEECH_FILTER_ENABLED:
+            return None
+        try:
+            from .audio_filter import SpeechFilter
+            return SpeechFilter(rate)
+        except Exception:
+            log.exception("Speech filter unavailable, using raw audio")
+            return None
 
     @staticmethod
     def _check_better(rank: int, cards_before: str, open_s: float) -> None:
