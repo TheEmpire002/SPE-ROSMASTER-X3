@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 PATTERNS = [
     "Marlon/autonomous_driving/test_*.py",
     "Marlon/diagnostics/test_*.py",
+    "Marlon/health/test_*.py",
     "Marlon/interaction/test_*.py",
 ]
 # A hanging test must not block the run forever.
