@@ -799,6 +799,32 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 
 ---
 
+### 05.11.2026 – Always-on mapping, reliable localization, tap a goal, way back (Marlon, with Claude)
+- **What:** The main map now grows during every drive, not only in slam mode. Lidar odometry runs permanently; a gate decides which scans are written; the map is saved and loaded at start; tapping a goal on `/map` plans a path through known free space; the way back follows the breadcrumbs. slam_toolbox stays as an optional first mapping ("Als Hauptkarte übernehmen" or "Verwerfen"). 9 commits on `feat/always-on-mapping`. Rationale: E14 in `docs/decisions.md`.
+- **Why:** The map only grew in slam mode, we could not control which scan was written, and "localization confident" only meant "last match under 4 s ago".
+- **Changes:**
+  - `MapLocalization` hardened (`TrackResult`, constraint and degeneracy from scan normals, search stages, blind distance `NAV_BLIND_MAX_M`, confirm after search).
+  - `navigation/integrate_gate.py`: FROZEN → CONFIRMING (10 strict matches, at least 3 s) → INTEGRATING, lag buffer of 2, carried detection by wheel vs lidar speed, max omega 0.15 rad/s.
+  - `mapping/live_mapper.py` (log-odds grid, established-cell cap), `mapping/live_store.py` (npz/pgm/yaml/json, 3 backups, atomic writes), incremental distance field `OccupancyMap.derived`.
+  - Start search: last pose 0.5 m → 1.5 m → home → whole map; new map from 3 still scans.
+  - `navigation/breadcrumbs.py`, corridor planning, homing waits for the pose (turn ±30° after 5 s, give up after 20 s), fallback along the reversed trail.
+  - `/map` page: always-on mapping card, mission buttons, trail and freeze overlay.
+- **Result:**
+  - Simulation test `test_live_sim`: at least 95 % of the wall cells within 10 cm over 6 seeds, pose error 2–4 cm.
+  - Kidnap, dropout, carried and corridor cases leave the map bit-identical until the pose is confirmed.
+  - Smoke test including mission start → return: 0.12–0.14 m off the start.
+  - Slam adopt and discard checked in the mock.
+- **Problems:**
+  - The gate froze at every turn: the odometry consistency check had a fixed limit, but lidar odometry drifts a little with every turn. Fixed by allowing `LIVE_GATE_DRIFT_DEG_PER_RAD` of heading drift per radian turned.
+  - Door turns wrote a rotation error into the map. Fixed with max omega 0.15 rad/s.
+  - Corridor ends gave a false constraint. Fixed by taking the constraint from the scan normals.
+  - A carried robot wrote scans before the lift detector fired. Fixed with the wheel speed vs lidar speed criterion.
+  - Pose saving and autosave wrote the map's json at the same time and collided on the temp file. Fixed with a lock (read-modify-write) and unique temp file names.
+  - `from_json` incremented the segment counter twice.
+- **Open:** Test on the robot: CPU on `/diagnose` (estimate 10–20 % of one core), map grows when driving by hand, lifting the robot → frozen, restart finds the last pose, mission start → next room → return. No loop closure: large loops may freeze; do the first mapping with slam.
+
+---
+
 ## 3. Results and measurements
 
 | Topic | Result | Source |

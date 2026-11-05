@@ -641,3 +641,76 @@ people using the robot and the web app are German speakers.
 
 **Re-evaluate when:** the protocol gets a new major version -- then field
 names could become English too, with app and ESP updated together.
+
+---
+
+## E14 — Always-on mapping with our own Python mapper; slam_toolbox only optional for a first map
+
+**Date:** 2026-11-05
+**Status:** implemented (`navigation/integrate_gate.py`, `mapping/live_mapper.py`,
+`mapping/live_store.py`, `navigation/breadcrumbs.py`, `navigation/map_localization.py`,
+`api/map_control.py`), checked in tests and simulation, not yet on the robot
+
+**Context.** E8 made slam_toolbox the only map source, E9 kept scan odometry
+off outside mapping, and E12 used the finished map for localization and goal
+drives. In practice the map only grew while slam mode ran, and we had no
+control over which scan was written into it. Localization "confident" meant
+only "last match less than 4 s ago", not "the pose is really right".
+
+**Relation to E8/E9/E12.** E14 re-evaluates three clauses. E8: "the map comes
+from slam_toolbox" now holds only for an optional first map. E9: "scan
+odometry only runs while mapping or with a loaded map" (named there as a
+condition for re-evaluation) becomes "always on". E12: its localization is kept
+and hardened; a single match per scan is still enough, but a scan only counts
+as good when the new quality criteria say so.
+
+**Decision.**
+1. **Lidar odometry always on** (user `"dauer"`), so the pose exists at any time.
+2. **`MapLocalization` hardened:** `TrackResult` per match; `constraint()` and
+   degeneracy from the scan normals (a corridor end does not constrain the
+   direction along the corridor); search stages; blind distance
+   `NAV_BLIND_MAX_M` (how far odometry alone may carry the pose); a found
+   pose is confirmed after a search.
+3. **`IntegrateGate`** decides whether a scan may be written. Hard and soft
+   criteria; states FROZEN → CONFIRMING (10 strict matches, at least 3 s) →
+   INTEGRATING. A lag buffer of 2 scans means the last scan before a failure
+   never lands in the map. "Carried" is also detected by comparing wheel speed
+   with lidar speed (before the lift detector fires). While turning faster
+   than 0.15 rad/s nothing is written.
+4. **`LiveMapper`:** own log-odds grid. Established cells are capped in how far
+   a session may change them, so a bad session can weaken a wall at most to
+   unknown, never erase it. `OccupancyMap.derived` keeps the distance field up
+   to date incrementally instead of recomputing it.
+5. **`LiveStore`:** npz (float16) plus pgm/yaml plus json, `_aktiv.json`, atomic
+   writes, 3 backups; a broken npz is renamed `.broken` and the pgm is used
+   instead.
+6. **Start:** search at the last pose with 0.5 m, then 1.5 m, then home, then
+   the whole map. With no map, a new one is founded from 3 still scans.
+7. **Way back:** breadcrumbs and corridor planning along the trail. Homing
+   waits for the pose: stop, relocalize, turn ±30° after 5 s, resume after 3
+   good matches, give up after 20 s. Fallback: along the reversed trail.
+8. **Tapped goal** must lie in known free space. **Loading** a saved map makes
+   it the main map, which keeps growing.
+9. **slam_toolbox** is optional for a first map: pause, then "Als Hauptkarte
+   übernehmen" (backup first; frames are related through the odometry
+   correction remembered at slam start) or "Verwerfen".
+
+Other options were not chosen:
+- *Keep slam_toolbox as the only mapper:* no say over which scans are written,
+  and every map depends on Docker and ROS2 Foxy (EOL).
+- *Write every scan that matches:* a match is not proof of a good pose; turns
+  and carrying wrote drift and rotation errors (see the project log).
+
+**Consequences.**
+- *Good:* the map grows during every drive; a bad moment freezes the map
+  instead of damaging it.
+- *Good:* localization says "unsicher" for the right reasons.
+- *Bad:* no loop closure. Large loops may freeze instead of producing double
+  walls. Recommendation: do the first mapping with slam, then adopt the map.
+- *Bad:* CPU, estimated 10–20 % of one core (to be measured on the robot).
+- Switches in `config.py`: `LIVE_MAP_ENABLED`, `LIVE_LOCALIZATION_ALWAYS`, `LIVE_MAP_*`.
+- *Open:* everything on the robot (CPU, growth by hand drive, lift → frozen,
+  restart finds the last pose, mission start → next room → return).
+
+**Re-evaluate when:** the map often stays frozen in normal rooms (then loop
+closure or a looser gate), or the CPU load causes dropouts.

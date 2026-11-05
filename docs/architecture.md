@@ -94,6 +94,23 @@ human. It does not assess a health condition.
 | `api/`         | WebSocket server, also serves the web app; `map_control.py` ties together mapping drive, localization and goal drive for `/map` and the app |
 | `main.py`      | Entry point, wires everything together                     |
 
+## Always-on mapping and localization (see E14)
+
+New modules:
+
+| Module | Responsibility |
+|--------|----------------|
+| `navigation/integrate_gate.py` | Decides per scan whether it may be written into the map (FROZEN → CONFIRMING → INTEGRATING, lag buffer of 2) |
+| `mapping/live_mapper.py` | Log-odds grid, the main map that grows during every drive |
+| `mapping/live_store.py` | Saves/loads the main map (npz, pgm/yaml, json, backups, atomic writes) |
+| `navigation/breadcrumbs.py` | Trail of driven poses for planning along it and the way back |
+
+Data flow: lidar → `ScanOdometry` (always on) → `MapControl.tick_loop` at 4 Hz:
+`match_scan` (`MapLocalization`) → `live_mapper.step` (only when the gate says
+INTEGRATING) → every 2 s a snapshot → `update_map` (distance field for planning
+and localization). In parallel the breadcrumbs are recorded from the pose.
+Switches: `LIVE_MAP_ENABLED`, `LIVE_LOCALIZATION_ALWAYS` in `config.py`.
+
 ## Autonomous driving — deliberately later
 
 The base system deliberately contains **no** ROS. For the reasoning see
