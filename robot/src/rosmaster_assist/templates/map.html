@@ -426,7 +426,7 @@
         const mappingDrive = localization.kartierfahrt || {};
         const route = drive.aktiv ? drive.weg : mappingDrive.weg;
         const goal = drive.aktiv ? drive.ziel : mappingDrive.ziel;
-        if (o.pose && route && route.length) drawLine([[o.pose.x, o.pose.y], ...weg], '#9be15d', 2.5, [7, 5]);
+        if (o.pose && route && route.length) drawLine([[o.pose.x, o.pose.y], ...route], '#9be15d', 2.5, [7, 5]);
         if (goal) {
           drawDot(goal[0], goal[1], '#9be15d', 6);
           drawDot(goal[0], goal[1], '#101720', 2.5);
