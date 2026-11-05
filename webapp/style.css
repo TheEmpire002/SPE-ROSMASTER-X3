@@ -17,7 +17,7 @@ body {
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   background: var(--bg);
   color: var(--text);
-  /* Verhindert, dass Wischen beim Steuern die Seite scrollt. */
+  /* Prevents swiping while driving from scrolling the page. */
   overscroll-behavior: none;
 }
 
@@ -53,11 +53,11 @@ main {
          border-radius: 10px; padding: 1rem; }
 .wide-panel { grid-column: 1 / -1; }
 
-/* --- Kamera --- */
+/* --- Camera --- */
 
 .cam-wrap { position: relative; }
 
-/* Siehe .cam-error[hidden]: eigene display-Angabe schlägt sonst hidden. */
+/* See .cam-error[hidden]: otherwise our own display value beats hidden. */
 .cam-wahl[hidden] { display: none; }
 
 .cam-wahl {
@@ -83,8 +83,8 @@ main {
 .cam {
   display: block;
   width: 100%;
-  /* Platz reservieren, damit das Layout beim Eintreffen des ersten
-     Bildes nicht springt. */
+  /* Reserve space so the layout does not jump when the first
+     frame arrives. */
   aspect-ratio: 4 / 3;
   object-fit: contain;
   background: #0d0f13;
@@ -92,12 +92,12 @@ main {
   border-radius: 8px;
 }
 
-/* Das hidden-Attribut wirkt nur über die Browser-Standardregel
-   `display: none` -- und jede eigene display-Angabe schlägt diese.
-   Ohne diese Regel läge das Overlay dauerhaft undurchsichtig über dem
-   Kamerabild: der Stream läuft, man sieht ihn nur nicht.
-   Die Attributangabe gewinnt hier durch höhere Spezifität, nicht
-   durch die Reihenfolge. */
+/* The hidden attribute only works through the browser's default rule
+   `display: none` -- and any display value of our own beats it.
+   Without this rule the overlay would permanently cover the camera
+   image: the stream is running, you just cannot see it.
+   The attribute selector wins here through higher specificity, not
+   through order. */
 .cam-error[hidden] {
   display: none;
 }
@@ -128,7 +128,7 @@ main {
 }
 .cam-error button:hover { background: #30353f; }
 
-/* --- Steuerkreuz --- */
+/* --- Direction pad --- */
 
 .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
 .pad-row { display: grid; grid-template-columns: repeat(2, 1fr);
@@ -154,7 +154,7 @@ main {
 .pad-btn.stop:hover { background: var(--danger); color: #fff; }
 .pad-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* --- Tempo --- */
+/* --- Speed --- */
 
 .slider { display: block; margin-top: 1rem; font-size: 0.85rem; color: var(--muted); }
 .slider output { color: var(--text); font-variant-numeric: tabular-nums; }
@@ -164,7 +164,7 @@ main {
 kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
       padding: 1px 5px; font-size: 0.72rem; margin: 0 1px; }
 
-/* --- Schalter --- */
+/* --- Switches --- */
 
 .switch {
   display: flex;
@@ -180,12 +180,12 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 
 .switch-state { font-size: 0.78rem; color: var(--muted); }
 .switch-state.an { color: var(--ok); }
-/* Greift gerade ein: das muss auffallen, sonst sucht man den Fehler
-   beim Antrieb, während in Wahrheit die Sperre hält. */
+/* Currently intervening: this must stand out, otherwise you look for the
+   fault in the drive while in truth the block is holding it. */
 .switch-state.blockiert { color: var(--warn); }
 
-/* Attributregel vor der display-Angabe -- sonst bliebe das Element
-   trotz hidden sichtbar (siehe .cam-error). */
+/* Attribute rule before the display value -- otherwise the element would
+   stay visible despite hidden (see .cam-error). */
 .slider[hidden] { display: none; }
 
 /* --- Lidar --- */
@@ -200,7 +200,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
   border-radius: 8px;
 }
 
-/* --- Heimfahrt --- */
+/* --- Return home --- */
 
 .home-buttons { display: grid; gap: 0.5rem; margin-top: 0.3rem; }
 
@@ -233,7 +233,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 .btn-primary { background: #1d3a5c; border-color: #2d5a8c; color: #cfe4ff; }
 .btn-primary:hover { background: #244970; }
 
-/* Läuft die Heimfahrt, wird der Knopf zum Abbrechen. */
+/* While returning home, the button becomes a cancel button. */
 .btn-primary.aktiv {
   background: #5c2b1d;
   border-color: #8c472d;
@@ -241,14 +241,14 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 }
 .btn-primary.aktiv:hover { background: #70351f; }
 
-/* --- Anzeigen --- */
+/* --- Readouts --- */
 
 .readout { display: grid; grid-template-columns: auto 1fr;
            gap: 0.35rem 1rem; margin: 0 0 1.2rem; font-size: 0.88rem; }
 .readout dt { color: var(--muted); }
 .readout dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
 
-/* --- Meldungen --- */
+/* --- Messages --- */
 
 .log { list-style: none; margin: 0; padding: 0; max-height: 170px;
        overflow-y: auto; font-size: 0.8rem; font-family: ui-monospace, monospace; }
@@ -257,9 +257,9 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 .log .warning { color: var(--warn); }
 .log .emergency, .log .error { color: var(--danger); }
 
-/* --- Autonomes Fahren --- */
+/* --- Autonomous driving --- */
 
-/* Liegt deckungsgleich über dem Kamerabild; Klicks gehen durch. */
+/* Lies exactly on top of the camera image; clicks pass through. */
 .cam-overlay {
   position: absolute;
   inset: 0;
@@ -287,7 +287,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 .hindernisse li .farbe { width: 9px; height: 9px; border-radius: 50%; }
 .hindernisse li .wo { color: var(--muted); font-variant-numeric: tabular-nums; }
 
-/* --- Mikrofon live (mikro.js) --- */
+/* --- Live microphone (mikro.js) --- */
 
 .mikro-live[hidden] { display: none; }
 .mikro-live { margin-top: 0.7rem; }
@@ -303,7 +303,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
   background: var(--ok);
   transition: width 0.15s linear;
 }
-/* Während der Roboter spricht, wertet das Ohr nichts aus -- grau zeigen. */
+/* While the robot speaks, the ear evaluates nothing -- show grey. */
 .mikro-live.taub .mikro-pegel div { background: var(--muted); }
 .mikro-teil {
   min-height: 1.3em;
@@ -331,7 +331,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 .mikro-ereignisse .befehl .urteil { color: var(--ok); }
 .mikro-ereignisse .verworfen .urteil { color: var(--warn); }
 
-/* --- Kopfzeile: Verweis auf die Einstellungen --- */
+/* --- Header: link to the settings --- */
 
 .header-nav { display: flex; align-items: center; gap: 1rem; }
 
@@ -342,12 +342,12 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 }
 .header-link:hover { color: var(--text); }
 
-/* --- Einstellungsseite --- */
+/* --- Settings page --- */
 
 .einst-kopf p { margin: 0 0 0.7rem; font-size: 0.85rem; color: var(--muted); }
 .einst-kopf code { color: var(--text); }
 
-/* Siehe .cam-error[hidden]. */
+/* See .cam-error[hidden]. */
 .einst-meldung[hidden] { display: none; }
 .einst-meldung { margin: 0.7rem 0 0; font-size: 0.85rem; color: var(--ok); }
 .einst-meldung.fehler { color: var(--danger); }
@@ -367,7 +367,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
   margin-bottom: 0.35rem;
 }
 
-/* Abweichung vom Standard auf einen Blick: farbiger Punkt vor dem Namen. */
+/* Deviation from the default at a glance: coloured dot before the name. */
 .einst-zeile.geaendert .einst-label::before {
   content: "";
   width: 7px;
@@ -406,7 +406,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 
 .einst-einheit { min-width: 2.6rem; font-size: 0.8rem; color: var(--muted); }
 
-/* Siehe .cam-error[hidden]. */
+/* See .cam-error[hidden]. */
 .einst-zurueck[hidden] { display: none; }
 .einst-zurueck {
   font: inherit;
@@ -440,7 +440,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 .einst-kameras .ok { color: var(--ok); }
 .einst-kameras .fehlt { color: var(--warn); }
 
-/* --- Zahnrad in der Kopfzeile, Einstellungs-Modal --- */
+/* --- Gear in the header, settings modal --- */
 
 .header-icon {
   display: inline-flex;
@@ -470,7 +470,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 }
 .einst-dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
 
-/* Kopf bleibt beim Scrollen stehen, damit Schließen immer erreichbar ist. */
+/* Header stays put while scrolling so Close is always reachable. */
 .einst-dialog-kopf {
   position: sticky;
   top: 0;
@@ -483,7 +483,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
   border-bottom: 1px solid var(--line);
 }
 
-/* Dasselbe Raster wie <main>, damit die Blöcke gleich aussehen. */
+/* Same grid as <main> so the blocks look the same. */
 .einst-raster {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
@@ -491,7 +491,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
   padding: 1rem 1.2rem 1.5rem;
 }
 
-/* --- Mehrere Kameras nebeneinander --- */
+/* --- Several cameras side by side --- */
 
 .cam-feld.mehrere {
   display: grid;
@@ -499,7 +499,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
   gap: 0.6rem;
 }
 
-/* Siehe .cam-error[hidden]. */
+/* See .cam-error[hidden]. */
 .cam-titel[hidden] { display: none; }
 .cam-titel {
   position: absolute;
@@ -513,7 +513,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
   pointer-events: none;
 }
 
-/* --- Einstellungsknopf links in der Kopfzeile --- */
+/* --- Settings button on the left of the header --- */
 
 .header-start { display: flex; align-items: center; gap: 0.8rem; }
 
@@ -540,12 +540,12 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 .einst-knopf:active { transform: translateY(1px); }
 .einst-knopf:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* Das Zahnrad dreht sich beim Darüberfahren ein Stück -- zeigt, dass es
-   ein Knopf ist, ohne aufdringlich zu sein. */
+/* The gear turns a little on hover -- shows that it is a button
+   without being intrusive. */
 .einst-knopf svg { transition: transform 0.4s ease; }
 .einst-knopf:hover svg { transform: rotate(60deg); }
 
-/* Auf dem Handy nur das Symbol, sonst drängt es den Titel weg. */
+/* Only the icon on phones, otherwise it pushes the title away. */
 @media (max-width: 520px) {
   .einst-knopf span { display: none; }
   .einst-knopf { padding: 0.45rem; }
@@ -555,15 +555,15 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
   .einst-knopf svg { transition: none; }
 }
 
-/* --- Diagnoseseite (/diagnose) --- */
+/* --- Diagnostics page (/diagnose) --- */
 
-/* Knöpfe als Link: kein Unterstrich, und nur das Zahnrad dreht sich. */
+/* Buttons as links: no underline, and only the gear rotates. */
 a.einst-knopf { text-decoration: none; }
 .diag-knopf, .diag-zurueck { position: relative; }
 .diag-knopf:hover svg, .diag-zurueck:hover svg { transform: none; }
 
-/* Farbiger Punkt am Diagnoseknopf der Startseite: zeigt offene Probleme,
-   auch auf dem Handy, wo die übrige Beschriftung ausgeblendet ist. */
+/* Coloured dot on the diagnostics button of the start page: shows open
+   problems, also on phones where the rest of the label is hidden. */
 .einst-knopf .diag-punkt {
   display: inline-block;
   position: absolute;
@@ -585,7 +585,7 @@ a.einst-knopf { text-decoration: none; }
 .diag-leer[hidden] { display: none; }
 .diag-fussnote { color: var(--muted); font-size: 0.78rem; margin: 0.8rem 0 0; }
 
-/* Gesamtzustand als große Ampel -- das Erste, was man sieht. */
+/* Overall state as a big traffic light -- the first thing you see. */
 .diag-gesamt {
   display: flex;
   align-items: center;
@@ -617,7 +617,7 @@ a.einst-knopf { text-decoration: none; }
 }
 @keyframes diag-blinken { 50% { opacity: 0.45; } }
 
-/* Problemkarten. */
+/* Problem cards. */
 .diag-probleme {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -663,7 +663,7 @@ a.einst-knopf { text-decoration: none; }
 .diag-gesehen[hidden] { display: none; }
 .diag-gesehen summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; margin-bottom: 0.6rem; }
 
-/* Akku und Messwerte. */
+/* Battery and measurements. */
 .diag-akku { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.8rem; }
 .diag-akku-wert { display: flex; align-items: baseline; gap: 0.6rem; }
 #diag-akku-v { font-size: 1.8rem; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -686,7 +686,7 @@ a.einst-knopf { text-decoration: none; }
 .diag-messwerte dd.warnung { color: var(--warn); }
 .diag-messwerte dd.kritisch { color: var(--danger); }
 
-/* Geräteliste mit Ampelpunkt. */
+/* Device list with status dot. */
 .diag-geraete { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
 .diag-geraete li {
   display: grid;
@@ -702,7 +702,7 @@ a.einst-knopf { text-decoration: none; }
 .diag-geraet-text { color: var(--muted); }
 .diag-geraete li.fehler .diag-geraet-text { color: var(--danger); }
 
-/* Filterzeile über Zeitleiste und Log. */
+/* Filter row above timeline and log. */
 .diag-filter {
   display: flex;
   align-items: center;
@@ -722,7 +722,7 @@ a.einst-knopf { text-decoration: none; }
 }
 .diag-filter input[type="search"] { flex: 1; min-width: 140px; }
 
-/* Zeitleiste. */
+/* Timeline. */
 .diag-ereignisse {
   list-style: none;
   margin: 0;
@@ -742,7 +742,7 @@ a.einst-knopf { text-decoration: none; }
 .diag-ereignisse time { color: var(--muted); font-variant-numeric: tabular-nums; }
 .diag-ereignisse li.kritisch .diag-ereignis-text { color: var(--danger); }
 
-/* Abstürze & Hänger */
+/* Crashes & hangs */
 .diag-unter { font-size: 0.85rem; color: var(--muted); margin: 0.9rem 0 0.3rem; font-weight: 600; }
 .diag-vorher { border-left: 3px solid var(--warn); padding: 0.4rem 0.7rem; margin-bottom: 0.8rem; }
 .diag-vorher.kritisch { border-left-color: var(--danger); }
@@ -762,7 +762,7 @@ a.einst-knopf { text-decoration: none; }
 .diag-befunde ul, .diag-befunde ol { padding-left: 1.2rem; font-size: 0.9rem; line-height: 1.5; }
 .diag-befunde code { font-size: 0.8rem; }
 
-/* Server-Log: Festbreitenschrift, damit die Spalten untereinander stehen. */
+/* Server log: monospace font so the columns line up. */
 .diag-log {
   background: #111317;
   border: 1px solid var(--line);
@@ -794,7 +794,7 @@ a.einst-knopf { text-decoration: none; }
 
 /* --- MUKKE --- */
 
-/* Eigene Farbe, damit man die beiden Knöpfe nicht verwechselt. */
+/* Its own colour so the two buttons are not confused. */
 .mukke-knopf {
   color: #f3dcff;
   background: linear-gradient(180deg, #4b2a63, #3a2050);
@@ -804,10 +804,10 @@ a.einst-knopf { text-decoration: none; }
   background: linear-gradient(180deg, #5a3377, #46275f);
   border-color: #c58af9;
 }
-/* Die Note dreht sich nicht wie das Zahnrad, sie hüpft. */
+/* The note does not rotate like the gear, it hops. */
 .mukke-knopf:hover svg { transform: translateY(-2px); }
 
-/* Spielt etwas, leuchtet der Knopf grün und die Note wippt. */
+/* While something plays, the button glows green and the note bobs. */
 .mukke-knopf.spielt {
   color: #d6ffe9;
   background: linear-gradient(180deg, #1f5a3f, #174631);
@@ -867,7 +867,7 @@ a.einst-knopf { text-decoration: none; }
 }
 .mukke-laut input { flex: 1; accent-color: #c58af9; }
 .mukke-laut output { min-width: 2.8rem; text-align: right; color: var(--text); }
-/* Durchsage: Hinweis, warum das Mikrofon nicht freigegeben ist (kein HTTPS). */
+/* Announcement: hint why the microphone is not permitted (no HTTPS). */
 .mikro-hinweis[hidden] { display: none; }
 .mikro-hinweis {
   margin: 0.3rem 0 0.6rem;
@@ -876,7 +876,7 @@ a.einst-knopf { text-decoration: none; }
 }
 .mikro-hinweis a { color: inherit; }
 
-/* --- Genau fahren (genau.js) --- */
+/* --- Precise driving (genau.js) --- */
 .genau-zeile { margin-bottom: 0.8rem; }
 .genau-zeile label { display: block; font-size: 0.85rem; margin-bottom: 0.4rem; }
 .genau-zeile input {

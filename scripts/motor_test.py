@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""Findet heraus, warum sich die Motoren nicht drehen.
+"""Finds out why the motors do not turn.
 
-Läuft direkt auf dem Roboter, ohne Server und ohne App:
+Runs directly on the robot, without server and without app:
 
     robot/.venv/bin/python scripts/motor_test.py
 
-RÄDER AUFBOCKEN. Das Skript lässt sie absichtlich drehen.
+JACK UP THE WHEELS. The script deliberately makes them turn.
 
-Getestet wird der Reihe nach:
+Tested in order:
 
-1. Akkuspannung      -- Motoren brauchen Akkustrom, die Logik nicht
-2. set_motor         -- direkte Radansteuerung (bekannt funktionierend)
-3. set_car_motion    -- was unser Treiber benutzt
-4. set_car_type      -- ob dem Board erst der Fahrzeugtyp fehlt
+1. Battery voltage   -- the motors need battery power, the logic does not
+2. set_motor         -- direct wheel control (known to work)
+3. set_car_motion    -- what our driver uses
+4. set_car_type      -- whether the board is missing the vehicle type first
 
-Nach dem Lauf steht in der Zusammenfassung, welcher Weg funktioniert hat.
+After the run, the summary shows which path worked.
 """
 
 from __future__ import annotations
@@ -25,9 +25,9 @@ import time
 try:
     from Rosmaster_Lib import Rosmaster
 except ImportError:
-    sys.exit("Rosmaster_Lib nicht gefunden -- läuft das hier wirklich auf dem Pi?")
+    sys.exit("Rosmaster_Lib not found -- is this really running on the Pi?")
 
-DAUER = 2.0  # Sekunden pro Versuch
+DURATION = 2.0  # seconds per attempt
 results: dict[str, str] = {}
 
 
@@ -35,82 +35,82 @@ def headline(text: str) -> None:
     print(f"\n{text}\n{'-' * len(text)}")
 
 
-def beobachtung(frage: str) -> bool:
-    """Fragt, ob sich etwas gedreht hat. Das kann nur ein Mensch sehen."""
-    antwort = input(f"    {frage} [j/n] ").strip().lower()
-    return antwort.startswith("j")
+def observation(question: str) -> bool:
+    """Asks whether something turned. Only a human can see that."""
+    response = input(f"    {question} [j=yes/n] ").strip().lower()
+    return response.startswith("j")
 
 
 def main() -> int:
-    print(__doc__.split("Getestet")[0])
-    if not beobachtung("Sind die Räder aufgebockt und drehen frei?"):
-        print("\n  Abgebrochen. Erst aufbocken.\n")
+    print(__doc__.split("Tested in order")[0])
+    if not observation("Are the wheels jacked up and turning freely?"):
+        print("\n  Aborted. Jack up the wheels first.\n")
         return 1
 
     bot = Rosmaster()
     bot.create_receive_threading()
     time.sleep(0.5)
 
-    # --- 1. Stromversorgung ---
-    headline("1. Akku")
+    # --- 1. Power supply ---
+    headline("1. Battery")
     try:
         volt = bot.get_battery_voltage()
-        print(f"    Akkuspannung: {volt} V")
+        print(f"    Battery voltage: {volt} V")
         if volt < 1.0:
-            print("    -> Keine Messung. Ist der Motorstrom-Schalter an?")
-            print("       Der Pi läuft auch ohne Akku über USB -- die Motoren nicht.")
+            print("    -> No reading. Is the motor power switch on?")
+            print("       The Pi also runs on USB without the battery -- the motors do not.")
         elif volt < 10.0:
-            print("    -> Sehr niedrig. Bei leerem Akku drehen die Motoren nicht.")
-        results["Akku"] = f"{volt} V"
+            print("    -> Very low. With an empty battery the motors do not turn.")
+        results["Battery"] = f"{volt} V"
     except Exception as exc:
-        print(f"    Nicht auslesbar: {exc}")
-        results["Akku"] = "unbekannt"
+        print(f"    Cannot be read: {exc}")
+        results["Battery"] = "unknown"
 
-    # --- 2. set_motor: der bekannt funktionierende Weg ---
+    # --- 2. set_motor: the path known to work ---
     headline("2. set_motor(100, 100, 100, -100)")
-    print(f"    Läuft {DAUER:.0f} Sekunden …")
+    print(f"    Running for {DURATION:.0f} seconds …")
     bot.set_motor(100, 100, 100, -100)
-    time.sleep(DAUER)
+    time.sleep(DURATION)
     bot.set_motor(0, 0, 0, 0)
-    results["set_motor"] = "ja" if beobachtung("Haben sich Räder gedreht?") else "NEIN"
+    results["set_motor"] = "yes" if observation("Did the wheels turn?") else "NO"
 
-    # --- 3. set_car_motion: das, was unser Treiber benutzt ---
-    headline("3. set_car_motion -- wie im Treiber")
+    # --- 3. set_car_motion: what our driver uses ---
+    headline("3. set_car_motion -- as in the driver")
     for vx in (0.16, 0.4, 1.0):
         print(f"    vx = {vx} m/s …")
         bot.set_car_motion(vx, 0.0, 0.0)
-        time.sleep(DAUER)
+        time.sleep(DURATION)
         bot.set_car_motion(0.0, 0.0, 0.0)
-        if beobachtung(f"Gedreht bei vx={vx}?"):
-            results["set_car_motion"] = f"ja, ab {vx} m/s"
+        if observation(f"Turned at vx={vx}?"):
+            results["set_car_motion"] = f"yes, from {vx} m/s"
             break
     else:
-        results["set_car_motion"] = "NEIN, bei keiner Geschwindigkeit"
+        results["set_car_motion"] = "NO, at no speed"
 
-    # --- 4. Fahrzeugtyp setzen und erneut versuchen ---
-    # Das Board rechnet die Mecanum-Kinematik selbst. Kennt es den
-    # Fahrzeugtyp nicht, kann set_car_motion wirkungslos bleiben --
-    # set_motor umgeht diese Rechnung und funktioniert trotzdem.
-    headline("4. set_car_type(X3), dann nochmal set_car_motion")
+    # --- 4. Set the vehicle type and try again ---
+    # The board computes the mecanum kinematics itself. If it does not know
+    # the vehicle type, set_car_motion can have no effect -- set_motor
+    # bypasses this computation and works anyway.
+    headline("4. set_car_type(X3), then set_car_motion again")
     try:
         bot.set_car_type(1)  # 1 = X3
         time.sleep(0.5)
         bot.set_car_motion(0.4, 0.0, 0.0)
-        time.sleep(DAUER)
+        time.sleep(DURATION)
         bot.set_car_motion(0.0, 0.0, 0.0)
-        results["nach set_car_type"] = (
-            "ja" if beobachtung("Jetzt gedreht?") else "NEIN"
+        results["after set_car_type"] = (
+            "yes" if observation("Turned now?") else "NO"
         )
     except Exception as exc:
-        print(f"    Fehlgeschlagen: {exc}")
-        results["nach set_car_type"] = f"Fehler: {exc}"
+        print(f"    Failed: {exc}")
+        results["after set_car_type"] = f"Error: {exc}"
 
-    # --- Zusammenfassung ---
+    # --- Summary ---
     bot.set_motor(0, 0, 0, 0)
-    headline("Ergebnis")
+    headline("Result")
     for name, value in results.items():
         print(f"    {name:<20} {value}")
-    print("\n  Diese Ausgabe bitte zurückmelden.\n")
+    print("\n  Please report this output back.\n")
     return 0
 
 
@@ -118,5 +118,5 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except KeyboardInterrupt:
-        print("\n  Abgebrochen.\n")
+        print("\n  Aborted.\n")
         sys.exit(1)

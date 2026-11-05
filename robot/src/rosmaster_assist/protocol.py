@@ -1,72 +1,72 @@
-"""Das Nachrichtenformat zwischen Roboter, Web-App und ESP32.
+"""The message format between robot, web app and ESP32.
 
-Diese Datei ist der Vertrag. Wer hier etwas ändert, muss die Web-App
-(`webapp/app.js`) und die ESP-Firmware mitziehen. Deshalb: lieber einen neuen
-Nachrichtentyp ergänzen als einen bestehenden umbauen.
+This file is the contract. Whoever changes something here must update the
+web app (`webapp/app.js`) and the ESP firmware as well. Therefore: rather add a
+new message type than rework an existing one.
 
-Alle Nachrichten sind JSON-Objekte mit einem Feld `type`.
+All messages are JSON objects with a field `type`.
 
-Von der App / vom ESP an den Roboter
-------------------------------------
-{"type": "drive",  "vx": 0.2, "vy": 0.0, "omega": 0.0}   Fahrbefehl, m/s bzw. rad/s
-{"type": "stop"}                                          sofort anhalten
-{"type": "beep",   "ms": 100}                             Buzzer
-{"type": "box",    "action": "open" | "close"}            Transportbox
-{"type": "vitals", "bpm": 72, "motion": true}             Messwerte vom ESP
-{"type": "home"}                                          zum Startpunkt zurückfahren
-{"type": "home_cancel"}                                   Heimfahrt abbrechen
-{"type": "set_home"}                                      hier ist der neue Startpunkt
-{"type": "collision", "enabled": true, "distance": 0.35}  Kollisionsvermeidung
-{"type": "explore"}                                       autonom umherfahren (Test 1)
-{"type": "explore_stop"}                                  autonomes Fahren beenden
-{"type": "interaction_start"}                             Interaktion an: Gesten steuern
-                                                          (fährt! nur am Boden)
-{"type": "interaction_stop"}                              Interaktion aus, anhalten
-{"type": "follow"}                                        der Person vor der Kamera folgen
-                                                          (schaltet Interaktion mit ein)
-{"type": "follow", "ziel_id": 3}                          mit dieser Person anfangen (nur
-                                                          noch ältere Clients, id aus /interaktion/pose)
-{"type": "follow_stop"}                                   nicht mehr folgen, Interaktion bleibt an
-{"type": "follow_pause"}                                  anhalten, Ziel bleibt gemerkt
-{"type": "follow_resume"}                                 nach der Pause weiterfahren
-{"type": "record_save", "notiz": "..."}                   letzte Minute (Fahrtenschreiber) speichern
-{"type": "say", "text": "Hallo", "vorrang": false}       über den Lautsprecher sprechen
-                                                          (vorrang: Laufendes abbrechen)
-{"type": "say_stop"}                                      sofort verstummen, Schlange leeren
-{"type": "move", "richtung": "vor", "meter": 1.5}          genau so weit fahren, "vor" | "zurueck" |
-                                                          "links" | "rechts" (Lidar misst, bis 5 m)
-{"type": "turn", "grad": 90}                              auf der Stelle drehen, + = links (gegen
-                                                          den Uhrzeigersinn), - = rechts
-{"type": "speech", "text": "robi folgen"}                 Text behandeln, als wäre er ins
-                                                          Mikrofon gesprochen (Test, --mock)
-{"type": "goto", "x": 2.5, "y": -1.0, "winkel": 90}       zu einem Punkt auf der Karte fahren
-                                                          (m im Kartenrahmen; winkel optional,
-                                                          Grad, Blickrichtung am Ziel)
-{"type": "goto_cancel"}                                   Fahrt zum Ziel abbrechen
-{"type": "map_pose", "x": 1.0, "y": 0.5, "winkel": 0}     "hier stehe ich": Lage in der Karte
-                                                          dort suchen (winkel optional)
-{"type": "map_load", "name": "wohnung"}                   gespeicherte Karte laden, um darin
-                                                          zu fahren
-{"type": "ping"}                                          Verbindung am Leben halten
+From the app / the ESP to the robot
+-----------------------------------
+{"type": "drive",  "vx": 0.2, "vy": 0.0, "omega": 0.0}   drive command, m/s or rad/s
+{"type": "stop"}                                          stop immediately
+{"type": "beep",   "ms": 100}                             buzzer
+{"type": "box",    "action": "open" | "close"}            transport box
+{"type": "vitals", "bpm": 72, "motion": true}             readings from the ESP
+{"type": "home"}                                          drive back to the start point
+{"type": "home_cancel"}                                   cancel homing
+{"type": "set_home"}                                      this is the new start point
+{"type": "collision", "enabled": true, "distance": 0.35}  collision avoidance
+{"type": "explore"}                                       drive around autonomously (test 1)
+{"type": "explore_stop"}                                  end autonomous driving
+{"type": "interaction_start"}                             interaction on: gestures control
+                                                          (drives! only on the floor)
+{"type": "interaction_stop"}                              interaction off, stop
+{"type": "follow"}                                        follow the person in front of the camera
+                                                          (also switches interaction on)
+{"type": "follow", "ziel_id": 3}                          start with this person (only older
+                                                          clients; id from /interaktion/pose)
+{"type": "follow_stop"}                                   stop following, interaction stays on
+{"type": "follow_pause"}                                  stop, target stays remembered
+{"type": "follow_resume"}                                 continue after the pause
+{"type": "record_save", "notiz": "..."}                   save the last minute (Recorder)
+{"type": "say", "text": "Hallo", "vorrang": false}       speak through the loudspeaker
+                                                          (vorrang: cancel what is playing)
+{"type": "say_stop"}                                      fall silent immediately, clear the queue
+{"type": "move", "richtung": "vor", "meter": 1.5}          drive exactly this far, "vor" | "zurueck" |
+                                                          "links" | "rechts" (lidar measures, up to 5 m)
+{"type": "turn", "grad": 90}                              turn on the spot, + = left (counter-
+                                                          clockwise), - = right
+{"type": "speech", "text": "robi folgen"}                 handle text as if it had been spoken
+                                                          into the microphone (test, --mock)
+{"type": "goto", "x": 2.5, "y": -1.0, "winkel": 90}       drive to a point on the map
+                                                          (m in the map frame; winkel optional,
+                                                          degrees, heading at the goal)
+{"type": "goto_cancel"}                                   cancel the goal drive
+{"type": "map_pose", "x": 1.0, "y": 0.5, "winkel": 0}     "I am standing here": search the pose
+                                                          in the map there (winkel optional)
+{"type": "map_load", "name": "wohnung"}                   load a saved map to drive
+                                                          in it
+{"type": "ping"}                                          keep the connection alive
 
-Vom Roboter an die App
-----------------------
-{"type": "limits", "max_vx":…, "max_vy":…, "max_omega":…}  einmalig beim Verbinden
+From the robot to the app
+-------------------------
+{"type": "limits", "max_vx":…, "max_vy":…, "max_omega":…}  once when connecting
 {"type": "state",  "vx":…, "vy":…, "omega":…, "driver":…, "connected":…}
-                   (mit Lidar zusätzlich "autonomie": {"aktiv":…, "zustand":…,
+                   (with lidar additionally "autonomie": {"aktiv":…, "zustand":…,
                     "hindernisse": […], "personen": […], …};
-                    mit Kamera-Pose zusätzlich "interaktion": {"aktiv":…,
+                    with camera pose additionally "interaktion": {"aktiv":…,
                     "modus":…, "text":…, "person":…, "geste":…, …};
-                    mit Stimme zusätzlich "stimme": {"verfuegbar":…,
+                    with voice additionally "stimme": {"verfuegbar":…,
                     "spricht":…, "text":…};
-                    mit Mikrofon zusätzlich "sprache": {"verfuegbar":…,
+                    with microphone additionally "sprache": {"verfuegbar":…,
                     "geweckt":…, "gehoert":…, "befehl":…};
-                    mit geladener Karte zusätzlich "karte": {"name":…,
+                    with a loaded map additionally "karte": {"name":…,
                     "live":…, "pose": {"x","y","winkel"}|null, "sicher":…,
                     "text":…, "fahrt": {"aktiv","art","ziel","rest_m","grund"}})
-{"type": "vitals", "bpm":…, "motion":…}                   weitergereichte ESP-Daten
+{"type": "vitals", "bpm":…, "motion":…}                   forwarded ESP data
 {"type": "alert",  "level": "info"|"warning"|"emergency", "text": "…"}
-{"type": "error",  "text": "…"}                           ungültige Nachricht o.Ä.
+{"type": "error",  "text": "…"}                           invalid message or similar
 {"type": "collision", "enabled":…, "distance":…, "verfuegbar":…, "blockiert":…}
 {"type": "pong"}
 """
@@ -78,16 +78,16 @@ from typing import Any
 
 
 class ProtocolError(ValueError):
-    """Eine eingehende Nachricht ist unbrauchbar."""
+    """An incoming message is unusable."""
 
 
 @dataclass(frozen=True)
 class DriveCommand:
-    """Ein Fahrbefehl in Roboter-Koordinaten.
+    """A drive command in robot coordinates.
 
-    vx    vorwärts positiv, m/s
-    vy    links positiv, m/s  (nur mit Mecanum-Rädern möglich)
-    omega gegen den Uhrzeigersinn positiv, rad/s
+    vx    forward positive, m/s
+    vy    left positive, m/s  (only possible with mecanum wheels)
+    omega counter-clockwise positive, rad/s
     """
 
     vx: float = 0.0
@@ -112,15 +112,15 @@ class DriveCommand:
 STOP = DriveCommand()
 
 
-# --- Nachrichten an die App bauen ---------------------------------------------
-# Kleine Hilfsfunktionen, damit die Feldnamen nur an einer Stelle stehen.
+# --- Building messages for the app --------------------------------------------
+# Small helpers so that the field names live in one place only.
 
 
 def limits_message(max_vx: float, max_vy: float, max_omega: float) -> dict[str, Any]:
-    """Die geltenden Obergrenzen, direkt nach dem Verbinden.
+    """The current upper limits, sent right after connecting.
 
-    Damit muss die App sie nicht kennen: es gibt genau eine Quelle
-    (``config.py``), und niemand kann vergessen, den Browser nachzuziehen.
+    That way the app does not need to know them: there is exactly one source
+    (``config.py``), and nobody can forget to update the browser.
     """
     return {
         "type": "limits",
@@ -136,13 +136,13 @@ def state_message(
     connected: bool,
     pose: tuple[float, float, float] | None = None,
     homing: bool = False,
-    pose_gemessen: bool = False,
+    pose_measured: bool = False,
     collision: dict[str, Any] | None = None,
-    autonomie: dict[str, Any] | None = None,
-    interaktion: dict[str, Any] | None = None,
-    stimme: dict[str, Any] | None = None,
-    sprache: dict[str, Any] | None = None,
-    karte: dict[str, Any] | None = None,
+    autonomy: dict[str, Any] | None = None,
+    interaction: dict[str, Any] | None = None,
+    voice: dict[str, Any] | None = None,
+    speech: dict[str, Any] | None = None,
+    occ_map: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     msg: dict[str, Any] = {
         "type": "state",
@@ -153,32 +153,32 @@ def state_message(
     }
     if collision is not None:
         msg["collision"] = collision
-    if autonomie is not None:
-        msg["autonomie"] = autonomie
-    if interaktion is not None:
-        msg["interaktion"] = interaktion
-    if stimme is not None:
-        msg["stimme"] = stimme
-    if sprache is not None:
-        msg["sprache"] = sprache
-    if karte is not None:
-        msg["karte"] = karte
+    if autonomy is not None:
+        msg["autonomie"] = autonomy
+    if interaction is not None:
+        msg["interaktion"] = interaction
+    if voice is not None:
+        msg["stimme"] = voice
+    if speech is not None:
+        msg["sprache"] = speech
+    if occ_map is not None:
+        msg["karte"] = occ_map
     if pose is not None:
-        x, y, winkel = pose
+        x, y, angle = pose
         msg["pose"] = {
             "x": round(x, 3),
             "y": round(y, 3),
-            "winkel": round(winkel, 1),
-            # Falsch heißt: nur aus den Fahrbefehlen gerechnet, also
-            # deutlich ungenauer. Das gehört in die Anzeige.
-            "gemessen": pose_gemessen,
+            "winkel": round(angle, 1),
+            # False means: computed only from the drive commands, so
+            # considerably less accurate. That belongs in the display.
+            "gemessen": pose_measured,
         }
     return msg
 
 
-def collision_message(zustand: dict[str, Any]) -> dict[str, Any]:
-    """Aktuelle Einstellung der Kollisionsvermeidung."""
-    return {"type": "collision", **zustand}
+def collision_message(state: dict[str, Any]) -> dict[str, Any]:
+    """Current setting of the collision avoidance."""
+    return {"type": "collision", **state}
 
 
 def vitals_message(bpm: float | None, motion: bool | None) -> dict[str, Any]:

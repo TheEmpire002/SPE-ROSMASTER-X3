@@ -1,92 +1,81 @@
-# Hinweise für KI-Assistenten und neue Mitwirkende
+# Notes for AI assistants and new contributors
 
-Hilfsroboter auf einem Yahboom ROSMASTER X3 (Raspberry Pi 5, Mecanum-Räder,
-RPLIDAR A1, Orbbec-Kamera). Reines Python, kein ROS. Ein FastAPI-Server auf
-dem Pi ist der einzige Ein- und Ausgang; Web-App und ESP32 sprechen ihn per
-WebSocket an.
+Helper robot on a Yahboom ROSMASTER X3 (Raspberry Pi 5, mecanum wheels,
+RPLIDAR A1, Orbbec camera). Pure Python, no ROS. A FastAPI server on the Pi
+is the only way in and out; the web app and the ESP32 talk to it over
+WebSocket.
 
-## Offene Aufgabe für die nächste KI: Code auf Englisch umstellen
+## Read first
 
-Wunsch des Teams (04.11.2026): **Der gesamte Code soll auf Englisch
-umgearbeitet werden**, also Bezeichner, Kommentare, Docstrings und
-Log-Meldungen. Sobald das erledigt ist, gilt die Sprachregel unten
-(„Sprache: Deutsch“) nicht mehr und wird hier angepasst.
+- [`docs/api.md`](docs/api.md): **the robot's interface.** Driving, lidar,
+  camera, homing, message format, conventions. Anyone who only builds a user
+  interface or a client needs nothing else.
+- [`docs/architecture.md`](docs/architecture.md): structure and modules
+- [`docs/decisions.md`](docs/decisions.md): why things are the way they
+  are (please read before larger refactorings)
+- [`docs/hardware.md`](docs/hardware.md): devices, ports, pitfalls on the Pi
 
-- Vorher mit dem Nutzer klären, ob auch `docs/`, das Projekttagebuch,
-  die Texte der Web-App und die Commit-Nachrichten englisch werden.
-- **`protocol.py` ist der Vertrag.** Nachrichten- und Feldnamen (z. B.
-  `ziel_id`, `state.sprache`, `pause`) benutzen Web-App und ESP32. Entweder
-  so lassen oder Server, Web-App, ESP32 und `docs/api.md` gemeinsam
-  umstellen und die alten Namen eine Weile weiter annehmen. Dasselbe gilt
-  für gespeicherte Einstellungen (`settings.py`): Alte Schlüssel müssen
-  beim Laden noch verstanden werden.
-- In Etappen, Modul für Modul. Nach jeder Etappe `python scripts/alle_tests.py`
-  und `python scripts/smoke_test.py` gegen den Mock-Server.
-- Erst beginnen, wenn die offenen Branches (z. B. `dev/improve-mapping`,
-  `zustandserkennung`) in `main` sind. Sonst gibt es Konflikte in fast
-  jeder Datei.
-
-## Zuerst lesen
-
-- [`docs/api.md`](docs/api.md): **die Schnittstelle des Roboters.** Fahren,
-  Lidar, Kamera, Heimfahrt, Nachrichtenformat, Konventionen. Wer nur eine
-  Oberfläche oder einen Client baut, braucht nichts anderes.
-- [`docs/architektur.md`](docs/architektur.md): Aufbau und Module
-- [`docs/entscheidungen.md`](docs/entscheidungen.md): warum etwas so ist,
-  wie es ist (bitte vor größeren Umbauten lesen)
-- [`docs/hardware.md`](docs/hardware.md): Geräte, Ports, Stolperfallen am Pi
-
-## Starten
+## Starting
 
 ```bash
-python main.py --mock     # auf dem eigenen Rechner, alles simuliert
-python main.py            # auf dem Roboter
+python main.py --mock     # on your own computer, everything simulated
+python main.py            # on the robot
 ```
 
-Die Simulation deckt Antrieb, Lidar (gedachter Raum) und Kamera (Testbild)
-ab. Alle Endpunkte verhalten sich wie am Roboter.
+The simulation covers the drive, the lidar (an imaginary room) and the camera
+(test image). All endpoints behave as they do on the robot.
 
-Tests: `python scripts/alle_tests.py` startet alle Testskripte parallel
-und zeigt nur Fehlschläge ausführlich (Filter: `... alle_tests.py ziel`).
-Dazu `python scripts/smoke_test.py` gegen einen laufenden Mock-Server.
-Für Claude Code liegen passende Subagents in `.claude/agents/`.
+Tests: `python scripts/run_tests.py` runs all test scripts in parallel and
+shows details only for failures (filter: `... run_tests.py target`).
+In addition, `python scripts/smoke_test.py` against a running mock server.
+Matching subagents for Claude Code are in `.claude/agents/`.
 
-## Regeln für Änderungen
+## Rules for changes
 
-- **`protocol.py` ist der Vertrag.** Bestehende Nachrichten und Feldnamen
-  nicht umbenennen oder umdeuten, sondern neue ergänzen. Neue Befehle in
-  `protocol.py`, `api/server.py` (`_handle`) und `docs/api.md` eintragen.
-- **Fahrbefehle nur über `SafetyWatchdog.submit()`**, nie direkt an den
-  Treiber. Sonst greifen Tempolimit und Totmannschaltung nicht.
-- **Einstellungen gehören nach `config.py`**, nicht als Zahlen in den Code.
-- **Konventionen:** `vx` vorwärts, `vy` links, `omega` gegen den
-  Uhrzeigersinn; Lidar-Winkel 0° = vorn, 90° = links. Details in
-  `docs/api.md`.
-- **Sprache:** Code-Kommentare, Bezeichner, Log-Meldungen, Doku und
-  Commit-Nachrichten sind auf **Deutsch**. Kommentare erklären das *Warum*.
-- **Hardware-Code muss Ausfälle überstehen.** USB-Geräte melden sich am X3
-  gelegentlich ab und wieder an (Spannungseinbruch). Treiber und Sensoren
-  verbinden sich selbst neu; neue Hardware-Anbindungen sollten das ebenso
-  tun und dabei nie einen fahrenden Roboter zurücklassen.
+- **`protocol.py` is the contract.** Do not rename or reinterpret existing
+  messages and field names; add new ones instead. Register new commands in
+  `protocol.py`, `api/server.py` (`_handle`) and `docs/api.md`.
+- **Drive commands only via `SafetyWatchdog.submit()`**, never directly to
+  the driver. Otherwise the speed limit and the dead man's switch do not
+  apply.
+- **Settings belong in `config.py`**, not as numbers in the code.
+- **Conventions:** `vx` forward, `vy` left, `omega` counter-clockwise; lidar
+  angle 0° = front, 90° = left. Details in `docs/api.md`.
+- **Language:**
+  - Code (identifiers, comments, docstrings, log messages), tests, docs and
+    commit messages are in **English**. Comments explain the *why*.
+  - Everything users see stays **German**: the web app, the `/map` page,
+    alert texts, the `"text"`/`"grund"`/`"hinweis"` fields of the state,
+    diagnostics texts, settings labels; also the robot's spoken sentences and
+    the speech commands (German Vosk model).
+  - Protocol/API names (WebSocket message types, JSON field names and
+    values, HTTP URLs) stay unchanged even when they are German: they are
+    the contract with the web app and the ESP.
+- **Hardware code must survive dropouts.** USB devices on the X3 occasionally
+  disconnect and reconnect (voltage dip). Drivers and sensors reconnect on
+  their own; new hardware integrations should do the same and must never
+  leave a robot driving.
 
-## Am Roboter
+## On the robot
 
-- Board und Lidar hängen beide an USB-Seriell. Der Lidar hat den festen
-  Pfad `/dev/rplidar`, das Board `/dev/myserial` (udev-Regeln von Yahboom);
-  fehlt der, sucht der Treiber unter `/dev/serial/by-id/`.
-- Nur **ein** Programm darf gleichzeitig an Board bzw. Lidar. ROS2-Knoten
-  (`sllidar_node`, `yahboomcar_bringup`) und alte Server-Instanzen vorher
-  beenden: `pkill -f rosmaster_assist; sudo pkill -f sllidar_node`.
-- Diagnose ohne Log-Suche: die Seite `/diagnose` (alles auf einen Blick),
-  einzeln `/lidar/status`, `/camera/status`, `/tiefe/status`, `/stimme/status` (Lautsprecher)
-  und `/sprache/status` (Mikrofon).
-- Vor Tests `python scripts/check_hardware.py`: Es warnt bei neuen
-  USB-Überlast-Meldungen und wenn der Pi gerade installiert oder kompiliert.
-  Während `apt`/`dpkg` laufen, nicht fahren (Hitze → USB-Ausfälle).
+- Board and lidar are both on USB serial. The lidar has the fixed path
+  `/dev/rplidar`, the board `/dev/myserial` (udev rules from Yahboom); if the
+  latter is missing, the driver searches `/dev/serial/by-id/`.
+- Only **one** program may use the board or the lidar at a time. Stop ROS2
+  nodes (`sllidar_node`, `yahboomcar_bringup`) and old server instances
+  first: `pkill -f rosmaster_assist; sudo pkill -f sllidar_node`.
+- Diagnostics without digging through logs: the `/diagnose` page (everything
+  at a glance), individually `/lidar/status`, `/camera/status`,
+  `/tiefe/status`, `/stimme/status` (speaker) and `/sprache/status`
+  (microphone).
+- Before tests, run `python scripts/check_hardware.py`: it warns about new
+  USB over-current messages and when the Pi is currently installing or
+  compiling. Do not drive while `apt`/`dpkg` are running (heat → USB
+  dropouts).
 
-## Dokumentieren
+## Documenting
 
-Jeder Arbeitsschritt kommt zusätzlich ins Projekttagebuch
-[`Marlon/PROJEKTDOKU.md`](Marlon/PROJEKTDOKU.md): was, warum, Ergebnis,
-Probleme. Es ist die Grundlage für Abschlussbericht und Präsentation.
-Technische Details gehören weiterhin nach `docs/`.
+Every work step also goes into the project log
+[`Marlon/PROJECT_LOG.md`](Marlon/PROJECT_LOG.md): what, why, result,
+problems. It is the basis for the final report and the presentation.
+Technical details still belong in `docs/`.

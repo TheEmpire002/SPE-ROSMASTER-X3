@@ -157,8 +157,8 @@ class ROSMapBridge:
     def start(self) -> None:
         """Start the in-container subscriber. Safe to call more than once."""
         with self._lock:
-            # Jeder Start gehört zu einer neuen Karte; die alte darf weder
-            # angezeigt noch versehentlich gespeichert werden.
+            # Every start belongs to a new map; the old one must neither be
+            # displayed nor saved by accident.
             self._latest_map = None
             self._last_error = None
             if self._process is not None and self._process.poll() is None:

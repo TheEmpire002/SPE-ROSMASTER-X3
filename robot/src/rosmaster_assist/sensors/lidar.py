@@ -1,13 +1,12 @@
-"""RPLIDAR A1 auslesen.
+"""Reading the RPLIDAR A1.
 
-Liefert Rundum-Abstandsmessungen: pro Umdrehung einige hundert Punkte aus
-Winkel und Entfernung. Daraus wird die Ortung gespeist (siehe
-``navigation/scan_matching.py``) und die Hinderniskontrolle während der
-Heimfahrt.
+Delivers all-round distance measurements: a few hundred points of angle and
+distance per revolution. They feed the localization (see
+``navigation/scan_matching.py``) and the obstacle check during homing.
 
-Wie bei Antrieb und Kamera gibt es einen Simulations-Zwilling: ``MockLidar``
-tastet einen gedachten Raum ab und erlaubt damit, Ortung und Heimfahrt ohne
-Hardware zu entwickeln und zu prüfen.
+As with the drive and the camera there is a simulated twin: ``MockLidar``
+scans an imaginary room, so localization and homing can be developed and
+tested without hardware.
 """
 
 from __future__ import annotations
@@ -24,63 +23,63 @@ log = logging.getLogger(__name__)
 
 
 class Scan:
-    """Eine Umdrehung: Winkel in Grad, Entfernungen in Metern.
+    """One revolution: angles in degrees, distances in metres.
 
-    Die Punkte liegen im Roboterkoordinatensystem: 0° ist vorn, der Winkel
-    wächst gegen den Uhrzeigersinn -- dieselbe Konvention wie beim Antrieb,
-    damit man nicht ständig umrechnen muss.
+    The points are in the robot frame: 0° is the front, the angle grows
+    counter-clockwise -- the same convention as the drive, so there is no
+    constant converting back and forth.
     """
 
-    __slots__ = ("winkel", "entfernungen", "zeit", "dauer", "wahre_pose")
+    __slots__ = ("angle", "ranges", "timestamp", "duration", "true_pose")
 
-    #: Angenommene Dauer einer Umdrehung, bis eine gemessene vorliegt
-    #: (RPLIDAR A1 am X3: 7,5 Umdrehungen/s gemessen).
-    DAUER_STANDARD_S = 1.0 / 7.5
+    #: Assumed duration of one revolution until a measured one is available
+    #: (RPLIDAR A1 on the X3: 7.5 revolutions/s measured).
+    DEFAULT_DURATION_S = 1.0 / 7.5
 
-    def __init__(self, winkel: list[float], entfernungen: list[float]) -> None:
-        self.winkel = winkel
-        self.entfernungen = entfernungen
-        # Zeitpunkt, zu dem die Umdrehung fertig war -- der erste Punkt ist
-        # dann schon eine ganze Umdrehung alt.
-        self.zeit = time.monotonic()
-        self.dauer = self.DAUER_STANDARD_S
-        # Nur in der Simulation: wo der Roboter bei dieser Runde wirklich
-        # stand. Damit baut die simulierte Kartierung eine Karte ohne Drift,
-        # wie es slam_toolbox mit Schleifenschluss am Roboter tut.
-        self.wahre_pose: tuple[float, float, float] | None = None
+    def __init__(self, angle: list[float], ranges: list[float]) -> None:
+        self.angle = angle
+        self.ranges = ranges
+        # Time at which the revolution was complete -- the first point is
+        # already a whole revolution old by then.
+        self.timestamp = time.monotonic()
+        self.duration = self.DEFAULT_DURATION_S
+        # Simulation only: where the robot really stood during this
+        # revolution. This lets the simulated mapping build a map without
+        # drift, as slam_toolbox does with loop closure on the robot.
+        self.true_pose: tuple[float, float, float] | None = None
 
     @property
-    def zeit_mitte(self) -> float:
-        """Mittlerer Aufnahmezeitpunkt der Umdrehung.
+    def mid_time(self) -> float:
+        """Mean capture time of the revolution.
 
-        Für Rechnungen mit der Eigenbewegung (Odometrie-Rückblick) genauer
-        als `zeit`: im Mittel ist ein Punkt eine halbe Umdrehung älter als
-        das Ende der Runde, bei 0,3 m/s rund 2 cm.
+        More accurate than `timestamp` for calculations involving the robot's
+        own motion (odometry lookback): on average a point is half a
+        revolution older than the end of the revolution, about 2 cm at 0.3 m/s.
         """
-        return self.zeit - self.dauer / 2.0
+        return self.timestamp - self.duration / 2.0
 
     def __len__(self) -> int:
-        return len(self.winkel)
+        return len(self.angle)
 
-    def punkte(self):
-        """Als Nx2-Array kartesischer Punkte (x vorwärts, y links)."""
+    def points(self):
+        """As an Nx2 array of Cartesian points (x forward, y left)."""
         import numpy as np
 
-        a = np.radians(np.asarray(self.winkel, dtype=float))
-        r = np.asarray(self.entfernungen, dtype=float)
+        a = np.radians(np.asarray(self.angle, dtype=float))
+        r = np.asarray(self.ranges, dtype=float)
         return np.column_stack((r * np.cos(a), r * np.sin(a)))
 
-    def min_abstand(self, richtung_grad: float, oeffnung_grad: float) -> float:
-        """Kleinste Entfernung in einem Kreisausschnitt.
+    def min_distance(self, direction_deg: float, aperture_deg: float) -> float:
+        """Smallest distance within a circular sector.
 
-        Für die Hinderniskontrolle: "was ist das Nächste in Fahrtrichtung".
+        For the obstacle check: "what is closest in the driving direction".
         """
-        kleinster = float("inf")
-        for w, r in zip(self.winkel, self.entfernungen):
-            diff = abs((w - richtung_grad + 180.0) % 360.0 - 180.0)
-            if diff <= oeffnung_grad and r < kleinster:
-                kleinster = r
-        return kleinster
+        smallest = float("inf")
+        for w, r in zip(self.angle, self.ranges):
+            diff = abs((w - direction_deg + 180.0) % 360.0 - 180.0)
+            if diff <= aperture_deg and r < smallest:
+                smallest = r
+        return smallest
 
 
 class LidarBase(ABC):
@@ -103,7 +102,7 @@ class LidarBase(ABC):
             try:
                 self._close()
             except Exception:
-                log.debug("Aufräumen nach Fehlschlag misslungen", exc_info=True)
+                log.debug("Cleanup after failure failed", exc_info=True)
             raise
         self._opened = True
 
@@ -113,9 +112,9 @@ class LidarBase(ABC):
         try:
             self._close()
         finally:
-            # Auch wenn das Schließen scheitert (Gerät schon weg): sonst
-            # hielte open() den Lidar für offen und täte beim Neuversuch
-            # nichts.
+            # Even if closing fails (device already gone): otherwise open()
+            # would consider the lidar open and do nothing on the next
+            # attempt.
             self._opened = False
 
     @abstractmethod
@@ -126,10 +125,10 @@ class LidarBase(ABC):
 
     @abstractmethod
     def read(self) -> Scan | None:
-        """Nächste vollständige Umdrehung. Darf blockieren."""
+        """Next complete revolution. May block."""
 
 
-# --- Echte Hardware ---------------------------------------------------------------
+# --- Real hardware ----------------------------------------------------------------
 
 
 class RPLidar(LidarBase):
@@ -144,7 +143,7 @@ class RPLidar(LidarBase):
 
     def _open(self) -> None:
         try:
-            from rplidar import RPLidar as Treiber
+            from rplidar import RPLidar as Driver
         except ImportError as exc:
             raise RuntimeError(
                 "Paket fehlt -- robot/.venv/bin/pip install rplidar-roboticia"
@@ -155,51 +154,51 @@ class RPLidar(LidarBase):
         if not os.path.exists(self._port):
             raise RuntimeError(f"{self._port} existiert nicht -- Lidar eingesteckt?")
 
-        from ..serial_ports import wer_haelt
+        from ..serial_ports import who_holds
 
-        andere = wer_haelt(self._port)
-        if andere:
-            # Zwei Leser am selben Lidar bekommen beide nur Bruchstücke --
-            # das sieht dann aus wie ein defektes Gerät.
-            log.error("Ein anderes Programm hat den Lidar %s offen:", self._port)
-            for zeile in andere:
-                log.error("    %s", zeile)
-            log.error("Beenden mit: kill <PID>  (ROS2: sudo pkill -f sllidar_node)")
+        others = who_holds(self._port)
+        if others:
+            # Two readers on the same lidar both get only fragments --
+            # which then looks like a broken device.
+            log.error("Another program has the lidar %s open:", self._port)
+            for line in others:
+                log.error("    %s", line)
+            log.error("Stop it with: kill <PID>  (ROS2: sudo pkill -f sllidar_node)")
 
-        self._lidar = Treiber(self._port, baudrate=config.LIDAR_BAUDRATE, timeout=3)
+        self._lidar = Driver(self._port, baudrate=config.LIDAR_BAUDRATE, timeout=3)
 
-        # Lief der Lidar noch vom letzten Programm (abgestürzt, ROS2, ein
-        # früherer Lauf), sendet er ungefragt weiter Messdaten. Dann liest
-        # get_info() mitten in diesem Strom und scheitert mit "Incorrect
-        # descriptor starting bytes". Also erst anhalten und den Puffer
-        # leeren -- und ein paar Versuche zugestehen.
-        letzter_fehler: Exception | None = None
+        # If the lidar is still running from the previous program (crashed,
+        # ROS2, an earlier run), it keeps sending measurements unasked. Then
+        # get_info() reads in the middle of that stream and fails with
+        # "Incorrect descriptor starting bytes". So stop it first and clear
+        # the buffer -- and allow a few attempts.
+        last_error: Exception | None = None
         for _ in range(3):
             try:
                 self._lidar.stop()
                 time.sleep(0.2)
-                # Heißt je nach Paketversion unterschiedlich.
-                leeren = getattr(self._lidar, "clean_input", None) or getattr(
+                # Named differently depending on the package version.
+                clear = getattr(self._lidar, "clean_input", None) or getattr(
                     self._lidar, "clear_input", None
                 )
-                if leeren is not None:
-                    leeren()
+                if clear is not None:
+                    clear()
                 info = self._lidar.get_info()
-                zustand = self._lidar.get_health()
+                state = self._lidar.get_health()
                 break
             except Exception as exc:
-                letzter_fehler = exc
+                last_error = exc
                 time.sleep(0.5)
         else:
-            raise RuntimeError(f"Lidar antwortet nicht sauber: {letzter_fehler}")
+            raise RuntimeError(f"Lidar antwortet nicht sauber: {last_error}")
 
-        log.info("RPLIDAR verbunden: %s, Zustand %s", info, zustand[0])
-        if zustand[0] == "Error":
-            raise RuntimeError(f"Lidar meldet Fehler: {zustand}")
+        log.info("RPLIDAR connected: %s, health %s", info, state[0])
+        if state[0] == "Error":
+            raise RuntimeError(f"Lidar meldet Fehler: {state}")
 
-        # iter_scans liefert fertige Umdrehungen statt Einzelpunkte.
-        # min_len niedrig halten: bei 5,5 Umdrehungen/s sind ~180 Punkte
-        # pro Runde normal, und ein zu hoher Wert lässt es nie anlaufen.
+        # iter_scans delivers complete revolutions instead of single points.
+        # Keep min_len low: at 5.5 revolutions/s ~180 points per revolution
+        # are normal, and too high a value means it never gets going.
         self._scans = self._lidar.iter_scans(min_len=60)
 
     def _close(self) -> None:
@@ -210,7 +209,7 @@ class RPLidar(LidarBase):
             self._lidar.stop_motor()
             self._lidar.disconnect()
         except Exception:
-            log.exception("Lidar ließ sich nicht sauber schließen")
+            log.exception("Lidar could not be closed cleanly")
         finally:
             self._lidar = None
             self._scans = None
@@ -219,61 +218,60 @@ class RPLidar(LidarBase):
         if self._scans is None:
             return None
 
-        roh = next(self._scans)  # Liste aus (Güte, Winkel in Grad, Abstand in mm)
-        winkel, entfernungen = [], []
-        for _guete, grad, mm in roh:
+        raw = next(self._scans)  # list of (quality, angle in degrees, distance in mm)
+        angle, ranges = [], []
+        for _quality, deg, mm in raw:
             meter = mm / 1000.0
             if not (config.LIDAR_MIN_M <= meter <= config.LIDAR_MAX_M):
                 continue
-            # Der Treiber zählt im Uhrzeigersinn, unser Antrieb dagegen.
-            # Ohne diese Drehung wäre die ganze Karte gespiegelt. Dazu die
-            # Einbaulage, damit 0° wirklich vorn ist.
-            winkel.append((-grad + config.LIDAR_ANGLE_OFFSET_DEG) % 360.0)
-            entfernungen.append(meter)
+            # The driver counts clockwise, our drive counter-clockwise.
+            # Without this flip the whole map would be mirrored. Plus the
+            # mounting offset, so that 0° really is the front.
+            angle.append((-deg + config.LIDAR_ANGLE_OFFSET_DEG) % 360.0)
+            ranges.append(meter)
 
-        return Scan(winkel, entfernungen) if winkel else None
+        return Scan(angle, ranges) if angle else None
 
 
 # --- Simulation ---------------------------------------------------------------------
 
 
 class MockLidar(LidarBase):
-    """Tastet einen gedachten rechteckigen Raum ab.
+    """Scans an imaginary rectangular room.
 
-    Fragt beim Antrieb nach, wo der Roboter *wirklich* steht, und berechnet
-    daraus, was ein Lidar sähe. Damit lässt sich die Ortung am Schreibtisch
-    prüfen -- einschließlich der Frage, ob sie einen Odometriefehler
-    tatsächlich korrigiert.
+    Asks the drive where the robot *really* is and computes what a lidar
+    would see from there. This lets the localization be tested at the desk
+    -- including whether it actually corrects an odometry error.
     """
 
     name = "mock"
     label = "Simulierter Lidar"
 
-    #: Raum in Metern, Startpunkt des Roboters liegt bei (0, 0).
-    RAUM = (-3.0, 5.0, -3.0, 3.0)  # x_min, x_max, y_min, y_max
-    #: Ein Möbelstück, damit der Raum nicht symmetrisch ist -- sonst wäre
-    #: die Ausrichtung mehrdeutig und der Abgleich könnte jede Drehung finden.
-    SAEULE = (2.0, 1.2, 0.35)  # x, y, Radius
-    #: Nur mit MOCK_ZWISCHENWAND: Zwischenwand mit Tür (y 1,4 bis 2,3 m),
-    #: also zwei Zimmer statt einem, für die Weiterfahrt der Kartierfahrt --
-    #: dazu ein Schrank links und ein Sofa rechts. Ohne Möbel wären zwei
-    #: leere Rechtecke für jede Ortung gleich (um 180° gedreht oder um 4 m
-    #: verschoben); echte Zimmer sind das nie.
-    ZWISCHENWAND = (
+    #: Room in metres, the robot's starting point is at (0, 0).
+    ROOM = (-3.0, 5.0, -3.0, 3.0)  # x_min, x_max, y_min, y_max
+    #: A piece of furniture so the room is not symmetric -- otherwise the
+    #: orientation would be ambiguous and the matching could find any rotation.
+    PILLAR = (2.0, 1.2, 0.35)  # x, y, radius
+    #: Only with MOCK_APARTMENT: a partition wall with a door (y 1.4 to 2.3 m),
+    #: i.e. two rooms instead of one, for continuing the mapping drive --
+    #: plus a cupboard on the left and a sofa on the right. Without furniture
+    #: two empty rectangles would look the same to any localization (rotated
+    #: by 180° or shifted by 4 m); real rooms never are.
+    APARTMENT_WALLS = (
         (1.0, -3.0, 1.0, 1.4), (1.0, 2.3, 1.0, 3.0),
-        # Schrank in der Ecke links oben
+        # cupboard in the top-left corner
         (-3.0, 2.0, -2.4, 2.0), (-2.4, 2.0, -2.4, 3.0),
-        # Sofa an der Wand rechts unten
+        # sofa against the wall at the bottom right
         (3.0, -3.0, 3.0, -2.2), (3.0, -2.2, 4.6, -2.2), (4.6, -2.2, 4.6, -3.0),
     )
-    SCHRITT_GRAD = 1.0
+    STEP_DEG = 1.0
 
-    def __init__(self, pose_quelle=None) -> None:
+    def __init__(self, true_pose_source=None) -> None:
         super().__init__()
-        self._pose_quelle = pose_quelle
+        self._pose_source = true_pose_source
 
     def _open(self) -> None:
-        log.info("Lidar: Simulation (keine echte Hardware)")
+        log.info("Lidar: simulation (no real hardware)")
 
     def _close(self) -> None:
         pass
@@ -281,103 +279,103 @@ class MockLidar(LidarBase):
     def read(self) -> Scan | None:
         if not self.opened:
             return None
-        time.sleep(0.18)  # ~5,5 Umdrehungen/s wie beim echten A1
+        time.sleep(0.18)  # ~5.5 revolutions/s like the real A1
 
         x, y, theta = (0.0, 0.0, 0.0)
-        if self._pose_quelle is not None:
-            x, y, theta = self._pose_quelle()
+        if self._pose_source is not None:
+            x, y, theta = self._pose_source()
 
-        winkel, entfernungen = [], []
-        schritte = int(360 / self.SCHRITT_GRAD)
-        for i in range(schritte):
-            a_robot = i * self.SCHRITT_GRAD
-            a_welt = math.radians(a_robot) + theta
-            r = self._strahl(x, y, a_welt)
+        angle, ranges = [], []
+        steps = int(360 / self.STEP_DEG)
+        for i in range(steps):
+            a_robot = i * self.STEP_DEG
+            a_world = math.radians(a_robot) + theta
+            r = self._ray(x, y, a_world)
             if config.LIDAR_MIN_M <= r <= config.LIDAR_MAX_M:
-                winkel.append(a_robot)
-                entfernungen.append(r)
-        scan = Scan(winkel, entfernungen)
-        scan.wahre_pose = (x, y, theta)
+                angle.append(a_robot)
+                ranges.append(r)
+        scan = Scan(angle, ranges)
+        scan.true_pose = (x, y, theta)
         return scan
 
-    def _strahl(self, x: float, y: float, richtung: float) -> float:
-        """Entfernung bis zur nächsten Wand oder zur Säule."""
-        dx, dy = math.cos(richtung), math.sin(richtung)
-        x_min, x_max, y_min, y_max = self.RAUM
+    def _ray(self, x: float, y: float, direction: float) -> float:
+        """Distance to the nearest wall or to the pillar."""
+        dx, dy = math.cos(direction), math.sin(direction)
+        x_min, x_max, y_min, y_max = self.ROOM
 
-        treffer = float("inf")
-        for grenze, d, start in ((x_min, dx, x), (x_max, dx, x), (y_min, dy, y), (y_max, dy, y)):
+        hits = float("inf")
+        for limit, d, start in ((x_min, dx, x), (x_max, dx, x), (y_min, dy, y), (y_max, dy, y)):
             if abs(d) < 1e-9:
                 continue
-            t = (grenze - start) / d
+            t = (limit - start) / d
             if t <= 0:
                 continue
             px, py = x + dx * t, y + dy * t
-            # Nur zählen, wenn der Schnittpunkt auf der Wand liegt und nicht
-            # auf deren gedachter Verlängerung.
+            # Only count it if the intersection lies on the wall itself and
+            # not on its imaginary extension.
             if x_min - 1e-6 <= px <= x_max + 1e-6 and y_min - 1e-6 <= py <= y_max + 1e-6:
-                treffer = min(treffer, t)
+                hits = min(hits, t)
 
-        t_saeule = self._saeule_treffen(x, y, dx, dy)
-        if t_saeule is not None:
-            treffer = min(treffer, t_saeule)
-        if config.MOCK_ZWISCHENWAND:
-            for wand in self.ZWISCHENWAND:
-                t_wand = _strecke_treffen(x, y, dx, dy, wand)
-                if t_wand is not None:
-                    treffer = min(treffer, t_wand)
-        return treffer
+        t_pillar = self._hit_pillar(x, y, dx, dy)
+        if t_pillar is not None:
+            hits = min(hits, t_pillar)
+        if config.MOCK_APARTMENT:
+            for wall in self.APARTMENT_WALLS:
+                t_wall = _hit_segment(x, y, dx, dy, wall)
+                if t_wall is not None:
+                    hits = min(hits, t_wall)
+        return hits
 
-    def _saeule_treffen(self, x, y, dx, dy) -> float | None:
-        cx, cy, radius = self.SAEULE
+    def _hit_pillar(self, x, y, dx, dy) -> float | None:
+        cx, cy, radius = self.PILLAR
         mx, my = x - cx, y - cy
         b = 2 * (mx * dx + my * dy)
         c = mx * mx + my * my - radius * radius
-        diskriminante = b * b - 4 * c
-        if diskriminante < 0:
+        discriminant = b * b - 4 * c
+        if discriminant < 0:
             return None
-        wurzel = math.sqrt(diskriminante)
-        for t in sorted(((-b - wurzel) / 2, (-b + wurzel) / 2)):
+        root = math.sqrt(discriminant)
+        for t in sorted(((-b - root) / 2, (-b + root) / 2)):
             if t > 0:
                 return t
         return None
 
 
-def _strecke_treffen(x, y, dx, dy, strecke) -> float | None:
-    """Entfernung entlang des Strahls bis zur Strecke (x1, y1, x2, y2), sonst None."""
-    x1, y1, x2, y2 = strecke
+def _hit_segment(x, y, dx, dy, segment) -> float | None:
+    """Distance along the ray to the segment (x1, y1, x2, y2), otherwise None."""
+    x1, y1, x2, y2 = segment
     ex, ey = x2 - x1, y2 - y1
-    nenner = dx * ey - dy * ex
-    if abs(nenner) < 1e-12:
+    denom = dx * ey - dy * ex
+    if abs(denom) < 1e-12:
         return None
-    t = ((x1 - x) * ey - (y1 - y) * ex) / nenner
-    u = ((x1 - x) * dy - (y1 - y) * dx) / nenner
+    t = ((x1 - x) * ey - (y1 - y) * ex) / denom
+    u = ((x1 - x) * dy - (y1 - y) * dx) / denom
     return t if t > 0 and 0.0 <= u <= 1.0 else None
 
 
-# --- Auswahl und Hintergrundbetrieb -----------------------------------------------------
+# --- Selection and background thread ----------------------------------------------------
 
 
-def create_lidar(use_mock: bool = False, pose_quelle=None) -> LidarBase:
-    """Auf dem Roboter immer den echten Lidar, im Mock-Modus die Simulation.
+def create_lidar(use_mock: bool = False, true_pose_source=None) -> LidarBase:
+    """On the robot always the real lidar, in mock mode the simulation.
 
-    Bewusst kein Ausweichen auf die Simulation, wenn der echte Lidar beim
-    Start nicht aufgeht: ein erfundener Raum wäre schlimmer als gar keiner.
-    Die App zeigte Wände, die es nicht gibt, und die Ortung gliche gegen sie
-    ab. Stattdessen probiert ``LidarService`` im Hintergrund weiter, bis der
-    echte Lidar antwortet.
+    Deliberately no fallback to the simulation when the real lidar does not
+    open at startup: an invented room would be worse than none at all. The
+    app would show walls that do not exist, and the localization would match
+    against them. Instead ``LidarService`` keeps trying in the background
+    until the real lidar answers.
     """
     if use_mock:
-        ersatz = MockLidar(pose_quelle)
-        ersatz.open()
-        return ersatz
+        fallback = MockLidar(true_pose_source)
+        fallback.open()
+        return fallback
 
     lidar = RPLidar()
     try:
         lidar.open()
     except Exception as exc:
-        log.error("Lidar: %s nicht nutzbar -- %s", lidar.label, exc)
-        log.error("Versuche es im Hintergrund weiter. Zustand: /lidar/status")
+        log.error("Lidar: %s not usable -- %s", lidar.label, exc)
+        log.error("Retrying in the background. Status: /lidar/status")
         try:
             lidar.close()
         except Exception:
@@ -386,7 +384,7 @@ def create_lidar(use_mock: bool = False, pose_quelle=None) -> LidarBase:
 
 
 class LidarService:
-    """Liest fortlaufend im Hintergrund und hält die letzte Umdrehung bereit."""
+    """Reads continuously in the background and keeps the latest revolution ready."""
 
     def __init__(self, lidar: LidarBase) -> None:
         self._lidar = lidar
@@ -394,19 +392,19 @@ class LidarService:
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
-        self._runden = 0
-        self._letzter_fehler: str | None = None
-        self._neuverbindungen = 0
-        # Für die Schonfrist beim Neu-Verbinden (siehe _neu_oeffnen).
-        self._verbunden_seit: float | None = None
-        self._letzte_wartezeit = config.RECONNECT_MIN_S
+        self._recent_scans = 0
+        self._latest_error: str | None = None
+        self._reconnects = 0
+        # For the grace period when reconnecting (see _reopen).
+        self._connected_since: float | None = None
+        self._last_wait = config.RECONNECT_MIN_S
 
     @property
     def label(self) -> str:
         return self._lidar.label
 
     @property
-    def ist_simulation(self) -> bool:
+    def is_simulation(self) -> bool:
         return self._lidar.name == "mock"
 
     def latest(self) -> Scan | None:
@@ -416,17 +414,17 @@ class LidarService:
     def status(self) -> dict:
         with self._lock:
             scan = self._scan
-            runden = self._runden
-            fehler = self._letzter_fehler
+            passes = self._recent_scans
+            error = self._latest_error
         return {
             "lidar": self._lidar.label,
             "geoeffnet": self._lidar.opened,
             "thread_laeuft": self._thread is not None and self._thread.is_alive(),
-            "umdrehungen": runden,
+            "umdrehungen": passes,
             "punkte_letzte_runde": len(scan) if scan else 0,
-            "letzte_runde_vor_s": round(time.monotonic() - scan.zeit, 1) if scan else None,
-            "letzter_fehler": fehler,
-            "neu_verbunden": self._neuverbindungen,
+            "letzte_runde_vor_s": round(time.monotonic() - scan.timestamp, 1) if scan else None,
+            "letzter_fehler": error,
+            "neu_verbunden": self._reconnects,
         }
 
     def start(self) -> None:
@@ -435,11 +433,11 @@ class LidarService:
         try:
             self._lidar.open()
         except Exception as exc:
-            # Kein Abbruch: der Lese-Thread startet trotzdem und probiert
-            # weiter. Sonst bliebe der Lidar bis zum Neustart des Servers
-            # tot, nur weil er beim Hochfahren einen Moment nicht wollte.
-            log.error("Lidar lässt sich noch nicht öffnen -- %s", exc)
-            self._letzter_fehler = f"{type(exc).__name__}: {exc}"
+            # No abort: the reader thread starts anyway and keeps trying.
+            # Otherwise the lidar would stay dead until the server restarts,
+            # just because it refused for a moment during startup.
+            log.error("Lidar cannot be opened yet -- %s", exc)
+            self._latest_error = f"{type(exc).__name__}: {exc}"
         self._stop.clear()
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
@@ -447,89 +445,89 @@ class LidarService:
     def stop(self) -> None:
         self._stop.set()
         if self._thread is not None:
-            # Großzügig warten: read() blockiert bis zur nächsten Umdrehung.
+            # Wait generously: read() blocks until the next revolution.
             self._thread.join(timeout=3.0)
             self._thread = None
         self._lidar.close()
 
     def _loop(self) -> None:
-        fehler = 0
+        error = 0
         while not self._stop.is_set():
             if not self._lidar.opened:
-                self._neu_oeffnen()
+                self._reopen()
                 continue
             try:
                 scan = self._lidar.read()
                 if scan is not None:
                     with self._lock:
-                        # Umdrehungsdauer aus dem Abstand zur Vorgängerrunde,
-                        # nur wenn plausibel (nach Aussetzern ist er riesig).
+                        # Revolution duration from the gap to the previous one,
+                        # only if plausible (after dropouts it is huge).
                         if self._scan is not None:
-                            dauer = scan.zeit - self._scan.zeit
-                            if 0.05 < dauer < 0.5:
-                                scan.dauer = dauer
+                            duration = scan.timestamp - self._scan.timestamp
+                            if 0.05 < duration < 0.5:
+                                scan.duration = duration
                         self._scan = scan
-                        self._runden += 1
-                        self._letzter_fehler = None
-                    fehler = 0
+                        self._recent_scans += 1
+                        self._latest_error = None
+                    error = 0
             except Exception as exc:
-                fehler += 1
+                error += 1
                 with self._lock:
-                    self._letzter_fehler = f"{type(exc).__name__}: {exc}"
-                if fehler <= 3:
-                    log.exception("Lidar liefert nichts (%d. Versuch)", fehler)
-                # Kurz warten, sonst dreht die Schleife bei dauerhaftem
-                # Fehler mit voller Last.
+                    self._latest_error = f"{type(exc).__name__}: {exc}"
+                if error <= 3:
+                    log.exception("Lidar delivers nothing (attempt %d)", error)
+                # Wait briefly, otherwise the loop spins at full load on a
+                # persistent error.
                 self._stop.wait(0.5)
-                # Weiter am selben Gerät zu lesen ist danach zwecklos: der
-                # Datenstrom des Treibers ist nach der ersten Ausnahme
-                # erschöpft, und nach einem USB-Aussetzer gibt es das
-                # geöffnete Gerät gar nicht mehr.
-                if fehler >= 3:
-                    self._neu_oeffnen()
-                    fehler = 0
+                # Reading on from the same device is pointless after that: the
+                # driver's data stream is exhausted after the first exception,
+                # and after a USB dropout the opened device no longer exists
+                # at all.
+                if error >= 3:
+                    self._reopen()
+                    error = 0
 
-    def _neu_oeffnen(self) -> None:
-        """Schließen und erneut öffnen, bis es klappt oder beendet wird."""
-        log.warning("Lidar antwortet nicht mehr -- öffne ihn neu")
+    def _reopen(self) -> None:
+        """Close and reopen until it works or the service is stopped."""
+        log.warning("Lidar no longer responding -- reopening it")
         try:
             self._lidar.close()
         except Exception:
-            log.debug("Lidar schließen misslungen", exc_info=True)
+            log.debug("Closing the lidar failed", exc_info=True)
 
-        # Fällt der Lidar kurz nach dem letzten Neu-Verbinden wieder aus, war
-        # vermutlich sein eigener Motoranlauf der Auslöser: Der zieht Strom,
-        # die USB-Versorgung bricht ein, alles meldet sich ab. Am 28.10. hielt
-        # das eine Dauerschleife am Laufen, weil die Wartezeit nach jedem
-        # Erfolg wieder bei 1 s begann. Deshalb dann weiter verdoppeln.
-        jetzt = time.monotonic()
-        if (self._verbunden_seit is not None
-                and jetzt - self._verbunden_seit < config.LIDAR_STABIL_S):
-            wartezeit = min(self._letzte_wartezeit * 2, config.RECONNECT_MAX_S)
+        # If the lidar drops out again shortly after the last reconnect, its
+        # own motor start-up was probably the trigger: it draws current, the
+        # USB supply dips, everything disconnects. On 28.10. this kept an
+        # endless loop going because the wait time restarted at 1 s after
+        # every success. So keep doubling in that case.
+        now = time.monotonic()
+        if (self._connected_since is not None
+                and now - self._connected_since < config.LIDAR_STABLE_S):
+            wait_time = min(self._last_wait * 2, config.RECONNECT_MAX_S)
             log.warning(
-                "Lidar fiel %.0f s nach dem Neu-Verbinden wieder aus -- "
-                "warte %.0f s, damit der Motoranlauf keine Dauerschleife auslöst",
-                jetzt - self._verbunden_seit, wartezeit,
+                "Lidar dropped out again %.0f s after reconnecting -- "
+                "waiting %.0f s so the motor start-up does not cause an endless loop",
+                now - self._connected_since, wait_time,
             )
         else:
-            wartezeit = config.RECONNECT_MIN_S
-        self._verbunden_seit = None
+            wait_time = config.RECONNECT_MIN_S
+        self._connected_since = None
 
-        while not self._stop.wait(wartezeit):
+        while not self._stop.wait(wait_time):
             try:
                 self._lidar.open()
             except Exception as exc:
                 with self._lock:
-                    self._letzter_fehler = f"Neu öffnen: {type(exc).__name__}: {exc}"
+                    self._latest_error = f"Neu öffnen: {type(exc).__name__}: {exc}"
                 log.warning(
-                    "Lidar noch nicht erreichbar (%s) -- nächster Versuch in %.0f s",
+                    "Lidar not reachable yet (%s) -- next attempt in %.0f s",
                     exc,
-                    min(wartezeit * 2, config.RECONNECT_MAX_S),
+                    min(wait_time * 2, config.RECONNECT_MAX_S),
                 )
-                wartezeit = min(wartezeit * 2, config.RECONNECT_MAX_S)
+                wait_time = min(wait_time * 2, config.RECONNECT_MAX_S)
                 continue
-            self._neuverbindungen += 1
-            self._verbunden_seit = time.monotonic()
-            self._letzte_wartezeit = wartezeit
-            log.warning("Lidar wieder verbunden")
+            self._reconnects += 1
+            self._connected_since = time.monotonic()
+            self._last_wait = wait_time
+            log.warning("Lidar reconnected")
             return

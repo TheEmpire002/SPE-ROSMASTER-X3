@@ -27,7 +27,7 @@
 
 <main id="diagnose">
 
-  <!-- Gesamtzustand: das Erste, was man sieht. -->
+  <!-- Overall state: the first thing you see. -->
   <section id="diag-gesamt" class="panel wide-panel diag-gesamt unbekannt">
     <div class="diag-ampel" aria-hidden="true"></div>
     <div class="diag-gesamt-text">
@@ -40,7 +40,7 @@
     </div>
   </section>
 
-  <!-- Probleme mit Erklärung und "Was tun". -->
+  <!-- Problems with explanation and "what to do". -->
   <section class="panel wide-panel">
     <h2>Probleme</h2>
     <p id="diag-keine-probleme" class="diag-leer" hidden>
@@ -72,8 +72,8 @@
     <p class="diag-fussnote" id="diag-quellen"></p>
   </section>
 
-  <!-- Abstürze & Hänger: Was überlebt einen Absturz? Laufprotokoll, Hänger,
-       Speicher und USB-Überlast -- seit der Fehlersuche vom 29.10. -->
+  <!-- Crashes & hangs: what survives a crash? Run log, hangs, memory
+       and USB over-current -- since the troubleshooting on 29.10. -->
   <section class="panel wide-panel">
     <h2>Abstürze &amp; Hänger</h2>
     <div id="diag-vorher" class="diag-vorher" hidden>
@@ -96,8 +96,8 @@
     <p class="diag-fussnote" id="diag-absturz-ordner"></p>
   </section>
 
-  <!-- Feste Befunde der Fehlersuche am 29.10. -- damit das Team sie hier
-       findet und nicht nur im Projekttagebuch. -->
+  <!-- Fixed findings of the troubleshooting on 29.10. -- so the team finds
+       them here and not only in the project log. -->
   <section class="panel wide-panel diag-befunde">
     <h2>Befunde der Fehlersuche (29.10.)</h2>
     <p>
@@ -143,7 +143,7 @@
     </ol>
   </section>
 
-  <!-- Zeitleiste: was ist wann passiert -- zum Zusammenhänge erkennen. -->
+  <!-- Timeline: what happened when -- to spot connections. -->
   <section class="panel wide-panel">
     <h2>Zeitleiste</h2>
     <div class="diag-filter">
@@ -153,7 +153,7 @@
     <ol id="diag-ereignisse" class="diag-ereignisse"></ol>
   </section>
 
-  <!-- Server-Log für die, die es genau wissen wollen. -->
+  <!-- Server log for those who want the details. -->
   <section class="panel wide-panel">
     <h2>Server-Log</h2>
     <div class="diag-filter">

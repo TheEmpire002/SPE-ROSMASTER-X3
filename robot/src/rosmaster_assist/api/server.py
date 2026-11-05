@@ -1,8 +1,8 @@
-"""WebSocket-Server -- der einzige Ein- und Ausgang des Roboters.
+"""WebSocket server -- the robot's only input and output.
 
-App und ESP32 verbinden sich beide auf `/ws` und sprechen das Protokoll aus
-`protocol.py`. Zusätzlich liefert der Server die Web-App unter `/` aus, damit
-man nur eine Adresse im Browser braucht.
+App and ESP32 both connect to `/ws` and speak the protocol from
+`protocol.py`. In addition the server serves the web app under `/`, so only
+one address is needed in the browser.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import (
     HTMLResponse,
@@ -29,17 +29,17 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 
 from .. import config, settings
-from ..aufzeichnung import Fahrtenschreiber
-from ..diagnose import Diagnose, LogPuffer
+from ..recording import Recorder
+from ..diagnostics import Diagnostics, LogBuffer
 from ..drive.base import DriveBase
-from ..audio.mukke import Mukke, MukkeFehler
-from ..interaktion import sprache as sp
-from ..interaktion import verhalten as vh
-from ..interaktion.sprache import Spracherkennung
-from ..interaktion.stimme import Stimme
+from ..audio.mukke import Mukke, MukkeError
+from ..interaction import speech as sp
+from ..interaction import behavior as vh
+from ..interaction.speech import SpeechRecognition
+from ..interaction.voice import Voice
 from ..mapping.manager import MappingManager
 from ..mapping.web import create_mapping_router
-from ..interaktion.verhalten import Interaktion
+from ..interaction.behavior import Interaction
 from ..protocol import (
     DriveCommand,
     ProtocolError,
@@ -50,67 +50,67 @@ from ..protocol import (
     state_message,
     vitals_message,
 )
-from ..navigation import Erkunder, Hinderniserkennung, Homing, Localizer, Manoever, Odometry
-from ..navigation import manoever as mv
-from ..navigation.explorer import KARTE
-from ..navigation.kartenortung import Kartenortung
-from ..navigation.kartierfahrt import Kartierfahrt
-from ..navigation.hindernisgedaechtnis import Hindernisgedaechtnis
-from ..navigation.pfadplanung import HintergrundPlaner
-from ..navigation.scan_odometrie import ScanOdometrie
-from .kartensteuerung import Kartensteuerung
-from ..safety import CollisionGuard, Fahrschutz, SafetyWatchdog
+from ..navigation import Explorer, ObstacleDetection, Homing, Localizer, Maneuver, Odometry
+from ..navigation import maneuver as mv
+from ..navigation.explorer import MAP
+from ..navigation.map_localization import MapLocalization
+from ..navigation.mapping_drive import MappingDrive
+from ..navigation.obstacle_memory import ObstacleMemory
+from ..navigation.path_planning import BackgroundPlanner
+from ..navigation.scan_odometry import ScanOdometry
+from .map_control import MapControl
+from ..safety import CollisionGuard, DriveGuard, SafetyWatchdog
 from ..sensors.camera import CameraService, create_cameras
 from ..sensors.lidar import LidarService, create_lidar
-from ..sensors.personen import Personenerkennung
-from ..sensors.pose import SKELETT, Posenerkennung
-from ..sensors.tiefe import create_tiefe
-from ..sensors import tiefe_anzeige
+from ..sensors.people import PersonDetection
+from ..sensors.pose import SKELETON, PoseDetection
+from ..sensors.depth import create_depth
+from ..sensors import depth_view
 
 log = logging.getLogger(__name__)
 
-# robot/src/rosmaster_assist/api/server.py -> Projektwurzel -> webapp/
+# robot/src/rosmaster_assist/api/server.py -> project root -> webapp/
 WEBAPP_DIR = Path(__file__).resolve().parents[4] / "webapp"
 
-# Die Web-App vor jeder Verwendung beim Roboter nachfragen lassen (bei
-# unveränderter Datei nur eine kurze 304-Antwort). Ohne diese Angabe darf
-# der Browser Dateien nach eigenem Ermessen weiterverwenden -- nach einem
-# Update passten dann eine neue index.html und eine alte app.js nicht
-# zusammen, das Skript brach ab, und die App blieb auf "getrennt".
-_KEIN_CACHE = {"Cache-Control": "no-cache"}
+# Make the browser revalidate the web app with the robot before every use
+# (for an unchanged file just a short 304 response). Without this header the
+# browser may keep reusing files at its own discretion -- after an update a
+# new index.html and an old app.js then did not fit together, the script
+# aborted, and the app stayed on "getrennt" (disconnected).
+_NO_CACHE = {"Cache-Control": "no-cache"}
 
 
-class _OhneVeraltetenCache(StaticFiles):
+class _NoStaleCache(StaticFiles):
     async def get_response(self, path, scope):
-        antwort = await super().get_response(path, scope)
-        antwort.headers.update(_KEIN_CACHE)
-        return antwort
+        response = await super().get_response(path, scope)
+        response.headers.update(_NO_CACHE)
+        return response
 
 
-def _seite(name: str) -> HTMLResponse:
-    """Eine HTML-Seite der Web-App, Skripte und Styles mit Versionsnummer.
+def _page(name: str) -> HTMLResponse:
+    """An HTML page of the web app, with version numbers on scripts and styles.
 
-    no-cache allein reicht nicht: eine Kopie, die der Browser noch von vor
-    dieser Einstellung hat, verwendet er ungefragt weiter. Mit ``?v=...``
-    ist jede geänderte Datei für ihn eine neue Adresse -- eine alte app.js
-    zur neuen index.html (Skript bricht ab, App bleibt auf "getrennt")
-    kann es dann nicht mehr geben.
+    no-cache alone is not enough: a copy the browser still has from before
+    this header was set is reused without asking. With ``?v=...`` every
+    changed file is a new address for it -- an old app.js with a new
+    index.html (script aborts, app stays on "getrennt") can then no longer
+    happen.
     """
-    def version(treffer: re.Match) -> str:
-        pfad = WEBAPP_DIR / treffer.group(2)
+    def version(hits: re.Match) -> str:
+        path = WEBAPP_DIR / hits.group(2)
         try:
-            v = int(pfad.stat().st_mtime)
+            v = int(path.stat().st_mtime)
         except OSError:
-            return treffer.group(0)
-        return f'{treffer.group(1)}{treffer.group(2)}?v={v}"'
+            return hits.group(0)
+        return f'{hits.group(1)}{hits.group(2)}?v={v}"'
 
     html = (WEBAPP_DIR / name).read_text(encoding="utf-8")
     html = re.sub(r'(/static/)([\w./-]+\.(?:js|css))"', version, html)
-    return HTMLResponse(html, headers=_KEIN_CACHE)
+    return HTMLResponse(html, headers=_NO_CACHE)
 
 
 class ConnectionHub:
-    """Hält alle offenen Verbindungen und verteilt Nachrichten an sie."""
+    """Holds all open connections and distributes messages to them."""
 
     def __init__(self) -> None:
         self._clients: set[WebSocket] = set()
@@ -119,418 +119,420 @@ class ConnectionHub:
     async def add(self, ws: WebSocket) -> None:
         async with self._lock:
             self._clients.add(ws)
-        log.info("Client verbunden (%d aktiv)", len(self._clients))
+        log.info("Client connected (%d active)", len(self._clients))
 
     async def remove(self, ws: WebSocket) -> None:
         async with self._lock:
             self._clients.discard(ws)
-        log.info("Client getrennt (%d aktiv)", len(self._clients))
+        log.info("Client disconnected (%d active)", len(self._clients))
 
     async def broadcast(self, message: dict[str, Any]) -> None:
-        """An alle senden. Tote oder hängende Verbindungen werden aussortiert.
+        """Send to everyone. Dead or hanging connections are weeded out.
 
-        Parallel und mit Zeitlimit: Ein Handy mit schlechtem WLAN hielt
-        vorher die Statusschleife und damit alle anderen Clients auf -- die
-        App fror ein, und es sah aus wie ein Absturz.
+        In parallel and with a timeout: a phone with poor Wi-Fi used to hold
+        up the status loop and thereby all other clients -- the app froze,
+        and it looked like a crash.
         """
         async with self._lock:
             targets = list(self._clients)
         if not targets:
             return
 
-        async def senden(ws: WebSocket) -> WebSocket | None:
+        async def send_to(ws: WebSocket) -> WebSocket | None:
             try:
-                await asyncio.wait_for(ws.send_json(message), config.WS_SENDE_TIMEOUT_S)
+                await asyncio.wait_for(ws.send_json(message), config.WS_SEND_TIMEOUT_S)
                 return None
             except Exception:
                 return ws
 
-        for ws in await asyncio.gather(*(senden(ws) for ws in targets)):
+        for ws in await asyncio.gather(*(send_to(ws) for ws in targets)):
             if ws is not None:
                 await self.remove(ws)
-                # Schließen, damit auch die Empfangsschleife dieses Clients
-                # endet (und bei null Clients angehalten wird).
-                asyncio.create_task(_schliessen(ws))
+                # Close it so that this client's receive loop ends too (and
+                # the robot is stopped when there are zero clients).
+                asyncio.create_task(_close(ws))
 
     @property
     def count(self) -> int:
         return len(self._clients)
 
 
-async def _schliessen(ws: WebSocket) -> None:
+async def _close(ws: WebSocket) -> None:
     try:
         await asyncio.wait_for(ws.close(), 2.0)
     except Exception:
         pass
 
 
-_fehler_zuletzt: dict[str, float] = {}
+_error_times: dict[str, float] = {}
 
 
-def _schleifenfehler(name: str) -> None:
-    """Fehler in einer Dauerschleife loggen -- gedrosselt -- und weitermachen.
+def _loop_error(name: str) -> None:
+    """Log an error in a long-running loop -- throttled -- and carry on.
 
-    Nur in einem except-Block aufrufen. Früher beendete der erste Fehler die
-    Schleife für immer (etwa keine Statusmeldungen mehr), ohne dass es
-    jemand merkte.
+    Only call inside an except block. The first error used to end the loop
+    for good (e.g. no more status messages) without anyone noticing.
     """
-    jetzt = time.monotonic()
-    if jetzt - _fehler_zuletzt.get(name, -1e9) >= config.SCHLEIFENFEHLER_LOG_S:
-        _fehler_zuletzt[name] = jetzt
-        log.exception("Fehler in %s -- läuft weiter", name)
+    now = time.monotonic()
+    if now - _error_times.get(name, -1e9) >= config.LOOP_ERROR_LOG_S:
+        _error_times[name] = now
+        log.exception("Error in %s -- continuing", name)
 
 
 def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
-    """Baut die Server-Anwendung um einen Antrieb herum."""
+    """Builds the server application around a driver."""
 
-    # Zuerst: einige Dienste lesen ihre Werte nur beim Anlegen (etwa der
-    # Startzustand des Hindernisstopps).
-    settings.laden()
+    # First: some services read their values only when created (e.g. the
+    # initial state of the obstacle stop).
+    settings.load()
 
     watchdog = SafetyWatchdog(driver)
     odometry = Odometry(driver)
     hub = ConnectionHub()
-    kameras: dict[str, CameraService] = (
+    cameras: dict[str, CameraService] = (
         {name: CameraService(k) for name, k in create_cameras(use_mock_camera).items()}
         if config.CAMERA_ENABLED
         else {}
     )
-    # Die Standardkamera antwortet unter den Endpunkten ohne Kameranamen
-    # (/camera/stream usw.) -- so laufen Clients, die nur eine Kamera
-    # kennen, unverändert weiter.
-    camera = kameras.get(config.CAMERA_DEFAULT) or next(iter(kameras.values()), None)
+    # The default camera answers on the endpoints without a camera name
+    # (/camera/stream etc.) -- so clients that only know one camera keep
+    # working unchanged.
+    camera = cameras.get(config.CAMERA_DEFAULT) or next(iter(cameras.values()), None)
 
-    # Der simulierte Lidar braucht die wahre Position, um den gedachten Raum
-    # abzutasten. Die kennt nur der Mock-Antrieb -- die echte Hardware
-    # natürlich nicht, die misst einfach.
-    pose_quelle = getattr(driver, "wahre_pose", None)
+    # The simulated lidar needs the true position to scan the imaginary
+    # room. Only the mock driver knows it -- the real hardware of course
+    # does not, it simply measures.
+    true_pose_source = getattr(driver, "true_pose", None)
     lidar = (
-        LidarService(create_lidar(use_mock_camera, pose_quelle))
+        LidarService(create_lidar(use_mock_camera, true_pose_source))
         if config.LIDAR_ENABLED
         else None
     )
     localizer = Localizer(odometry, lidar)
-    # Lidar-Odometrie für Kartierung, Kartierfahrt und Ortung in der Karte:
-    # Die Blickrichtung kommt aus dem Lidar, weil die IMU am X3 keine
-    # liefert. Sie läuft nur, solange kartiert wird oder eine Karte geladen
-    # ist (MappingManager bzw. Kartenortung melden sich an).
-    scan_odometrie = ScanOdometrie(lidar, odometry)
-    # Lage in der Karte (E12) und Wege durch sie: für die Weiterfahrt beim
-    # Kartieren und für Fahrten zu einem Punkt auf der Karte.
-    ortung = Kartenortung(scan_odometrie)
-    planer = HintergrundPlaner()
-    homing = Homing(watchdog, odometry, localizer, ortung=ortung, planer=planer)
-    # Tiefenkamera (Astra) für das, was unter der Lidar-Ebene liegt:
-    # Stuhlbeine, Tischkanten. Ihr Gedächtnis rechnet die Punkte mit der
-    # eigenen Bewegung nach -- mit der Lidar-Odometrie, wenn sie läuft,
-    # sonst mit der Odometrie.
-    tiefe = create_tiefe(use_mock_camera)
+    # Lidar odometry for mapping, the mapping drive and localization in the
+    # map: the heading comes from the lidar because the IMU on the X3 does
+    # not deliver one. It only runs while mapping or while a map is loaded
+    # (MappingManager or MapLocalization subscribe to it).
+    scan_odometry = ScanOdometry(lidar, odometry)
+    # Pose in the map (E12) and paths through it: for continuing while
+    # mapping and for drives to a point on the map.
+    localization = MapLocalization(scan_odometry)
+    planner = BackgroundPlanner()
+    homing = Homing(watchdog, odometry, localizer, localization=localization, planner=planner)
+    # Depth camera (Astra) for what lies below the lidar plane: chair legs,
+    # table edges. Its memory moves the points along with the robot's own
+    # motion -- using the lidar odometry when it runs, otherwise the
+    # odometry.
+    depth = create_depth(use_mock_camera)
 
-    def lage_quelle():
-        so = scan_odometrie
-        if so.laeuft:
-            alter = so.alter()
+    def pose_source():
+        so = scan_odometry
+        if so.running:
+            age = so.age()
             p = so.pose()
-            if p is not None and alter is not None and alter < 1.0:
+            if p is not None and age is not None and age < 1.0:
                 return "lidar", p
-        x, y, grad = odometry.pose()
-        return "rad", (x, y, math.radians(grad))
+        x, y, deg = odometry.pose()
+        return "rad", (x, y, math.radians(deg))
 
-    hindernisse = Hindernisgedaechtnis(tiefe, lage_quelle)
-    # Fahrschutz: prüft jeden autonomen Befehl über die Grundfläche des
-    # Roboters (im Watchdog, quelle="autonom") und die Handsteuerung, wenn
-    # der Hindernisstopp an ist. Ohne Lidar gibt es ihn nicht -- dann
-    # fahren nur Heimfahrt (blind wie bisher) und Hand.
-    fahrschutz = (
-        Fahrschutz(lidar, zusatz=hindernisse) if lidar is not None else None
+    obstacles = ObstacleMemory(depth, pose_source)
+    # Drive guard: checks every autonomous command against the robot's
+    # footprint (in the watchdog, source="autonom") and manual control when
+    # the obstacle stop is on. Without lidar it does not exist -- then only
+    # homing (blind as before) and manual control drive.
+    drive_guard = (
+        DriveGuard(lidar, extra=obstacles) if lidar is not None else None
     )
-    watchdog.fahrschutz = fahrschutz
-    guard = CollisionGuard(localizer, fahrschutz)
-    erkennung = Hinderniserkennung()
-    # Personenerkennung und Posenerkennung (Gesten, Folgen) schauen beide
-    # durch die Personenkamera (C270), siehe docs/interaktion.md.
-    personen_kamera = kameras.get(config.PERSON_CAMERA, camera)
-    personen = Personenerkennung(personen_kamera)
-    erkunder = Erkunder(
-        watchdog, lidar, erkennung, personen, odometry=odometry,
-        kartierfahrt=Kartierfahrt(scan_odometrie, ortung=ortung, planer=planer),
-        hindernisse=hindernisse, tiefe=tiefe,
+    watchdog.drive_guard = drive_guard
+    guard = CollisionGuard(localizer, drive_guard)
+    detection = ObstacleDetection()
+    # Person detection and pose detection (gestures, follow) both look
+    # through the person camera (C270), see docs/interaction.md.
+    person_camera = cameras.get(config.PERSON_CAMERA, camera)
+    people = PersonDetection(person_camera)
+    explorer = Explorer(
+        watchdog, lidar, detection, people, odometry=odometry,
+        mapping_drive=MappingDrive(scan_odometry, localization=localization, planner=planner),
+        obstacles=obstacles, depth=depth,
     )
-    manoever = Manoever(watchdog, driver, lidar)
-    pose = Posenerkennung(personen_kamera, mock=use_mock_camera)
+    maneuver = Maneuver(watchdog, driver, lidar)
+    pose = PoseDetection(person_camera, mock=use_mock_camera)
     mukke = Mukke()
-    # Stimme und Musik teilen sich den Lautsprecher: Solange der Roboter
-    # spricht, pausiert die Musik und läuft danach an derselben Stelle weiter.
-    stimme = Stimme(
-        mock=use_mock_camera, vor_sprechen=mukke.unterbrechen, nach_sprechen=mukke.fortsetzen
+    # Voice and music share the speaker: while the robot speaks, the music
+    # pauses and afterwards resumes at the same position.
+    voice = Voice(
+        mock=use_mock_camera, before_speaking=mukke.interrupt, after_speech=mukke.resume
     )
-    # Der Antrieb wird gefragt, damit die Interaktion ohne Board gar nicht
-    # erst losfährt (und nach dem Neuverbinden nicht von selbst).
-    interaktion = Interaktion(
-        watchdog, lidar, pose, stimme, antrieb=lambda: driver.connected, odometry=odometry
+    # The driver is asked so that the interaction does not even start
+    # driving without the board (and not by itself after reconnecting).
+    interaction = Interaction(
+        watchdog, lidar, pose, voice, drive_connected=lambda: driver.connected, odometry=odometry
     )
-    # Bekommt die Stimme, um wegzuhören, solange der Roboter selbst spricht
-    # (sonst versteht er sich selbst), und MUKKE: Bei laufender Musik gilt
-    # nur Stopp und "Musik aus", sonst wird der Gesang zu Befehlen.
-    sprache = Spracherkennung(mock=use_mock_camera, stimme=stimme, mukke=mukke)
+    # Gets the voice so it can stop listening while the robot itself speaks
+    # (otherwise it would understand itself), and MUKKE: while music plays
+    # only stop and "Musik aus" count, otherwise the singing turns into
+    # commands.
+    speech = SpeechRecognition(mock=use_mock_camera, voice=voice, mukke=mukke)
 
-    # Die Diagnoseseite zeigt auch die Server-Meldungen. Ein alter Puffer
-    # (create_app ein zweites Mal, etwa in Tests) wird ersetzt, sonst
-    # käme jede Zeile doppelt an.
-    paket_log = logging.getLogger("rosmaster_assist")
-    for h in [h for h in paket_log.handlers if isinstance(h, LogPuffer)]:
-        paket_log.removeHandler(h)
-    log_puffer = LogPuffer(config.DIAGNOSE_LOG_ZEILEN)
-    paket_log.addHandler(log_puffer)
-    diagnose = Diagnose(
-        driver, watchdog, lidar, kameras, pose, log_puffer, mock=use_mock_camera
+    # The diagnostics page also shows the server messages. An old buffer
+    # (create_app called a second time, e.g. in tests) is replaced, otherwise
+    # every line would arrive twice.
+    package_log = logging.getLogger("rosmaster_assist")
+    for h in [h for h in package_log.handlers if isinstance(h, LogBuffer)]:
+        package_log.removeHandler(h)
+    log_buffer = LogBuffer(config.DIAG_LOG_LINES)
+    package_log.addHandler(log_buffer)
+    diagnostics = Diagnostics(
+        driver, watchdog, lidar, cameras, pose, log_buffer, mock=use_mock_camera
     )
-    diagnose.absturz_einrichten()
+    diagnostics.setup_crash_handling()
 
-    # Fahrtenschreiber: hält die letzte Minute im Speicher, gespeichert wird
-    # nur auf Knopfdruck (siehe aufzeichnung.py).
-    aufzeichnung = Fahrtenschreiber() if config.AUFZEICHNUNG_AKTIV else None
-    if aufzeichnung is not None:
-        aufzeichnung.kopf = {
+    # Recorder: keeps the last minute in memory, saving only happens at the
+    # push of a button (see recording.py).
+    recording = Recorder() if config.RECORDING_ACTIVE else None
+    if recording is not None:
+        recording.header = {
             "antrieb": driver.name, "mock": bool(use_mock_camera), "lidar": lidar is not None,
         }
-        watchdog.aufzeichnung = aufzeichnung
+        watchdog.recording = recording
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         try:
             driver.connect()
         except Exception:
-            # Ohne Board trotzdem starten: Diagnose und App sollen zeigen,
-            # was los ist; die Verbindungsüberwachung versucht es weiter.
-            log.exception("Antrieb beim Start nicht verbindbar -- versuche es weiter")
+            # Start anyway without the board: diagnostics and app should show
+            # what is going on; the connection monitor keeps trying.
+            log.exception("Driver could not be connected at startup -- will keep trying")
         if driver.name == "mock":
-            log.warning("Antrieb: SIMULATION — die Motoren bleiben stehen")
+            log.warning("Driver: SIMULATION — the motors stay still")
         else:
-            log.warning("Antrieb: %s — der Roboter kann sich bewegen", driver.name)
+            log.warning("Driver: %s — the robot can move", driver.name)
         watchdog.start()
-        for kamera in kameras.values():
-            kamera.start()
-        personen.start()
-        pose.start()  # rechnet erst, wenn die Interaktion läuft
-        if tiefe is not None:
-            tiefe.start()  # Kamera bleibt aus, bis eine Fahrt sie braucht
-        stimme.start()
-        # Hörbarer Selbsttest: Wer den Roboter einschaltet, weiß sofort,
-        # ob der Lautsprecher geht.
-        stimme.sagen("Ich bin bereit.")
-        sprache.start()  # lädt das Modell im eigenen Thread, blockiert nicht
+        for camera in cameras.values():
+            camera.start()
+        people.start()
+        pose.start()  # only computes once the interaction runs
+        if depth is not None:
+            depth.start()  # camera stays off until a drive needs it
+        voice.start()
+        # Audible self-test: whoever switches on the robot knows right away
+        # whether the speaker works.
+        voice.say("Ich bin bereit.")
+        speech.start()  # loads the model in its own thread, does not block
         if lidar is not None:
             lidar.start()
-            # Dem Lidar eine Umdrehung Zeit geben, dann den Startpunkt
-            # einmessen. Ohne Referenz gäbe es bis zum ersten "set_home"
-            # keine Korrektur -- und den Knopf drückt erfahrungsgemäß
-            # niemand, bevor etwas schiefgeht.
-            diagnose.task_ueberwachen(
-                asyncio.create_task(_referenz_nachholen(localizer, odometry)),
-                "Startpunkt einmessen", endlos=False,
+            # Give the lidar one revolution, then calibrate the start.
+            # Without a reference there would be no correction until the
+            # first "set_home" -- and experience shows nobody presses the
+            # button before something goes wrong.
+            diagnostics.watch_task(
+                asyncio.create_task(_catch_up_reference(localizer, odometry)),
+                "Startpunkt einmessen", endless=False,
             )
-        diagnose.start()
-        asyncio.get_running_loop().set_exception_handler(diagnose.loop_fehler)
+        diagnostics.start()
+        asyncio.get_running_loop().set_exception_handler(diagnostics.loop_error)
 
         status_task = asyncio.create_task(
             _status_loop(
                 hub, watchdog, driver, odometry, homing, localizer, guard,
-                erkunder, erkennung, lidar, personen, interaktion, stimme, sprache, manoever,
-                karten=karten,
+                explorer, detection, lidar, people, interaction, voice, speech, maneuver,
+                map_control=map_control,
             )
         )
-        sprach_task = asyncio.create_task(_sprach_loop())
+        speech_task = asyncio.create_task(_speech_loop())
         odo_task = asyncio.create_task(_odometry_loop(watchdog, odometry))
         match_task = asyncio.create_task(_match_loop(localizer))
         hw_task = asyncio.create_task(
-            _hardware_loop(hub, watchdog, driver, homing, erkunder, interaktion, manoever,
-                           karten=karten)
+            _hardware_loop(hub, watchdog, driver, homing, explorer, interaction, maneuver,
+                           map_control=map_control)
         )
-        puls_task = asyncio.create_task(_puls_loop(diagnose))
-        karten_task = asyncio.create_task(karten.takt_schleife(_schleifenfehler))
+        pulse_task = asyncio.create_task(_pulse_loop(diagnostics))
+        map_task = asyncio.create_task(map_control.tick_loop(_loop_error))
         for task, name in [
-            (status_task, "Statusmeldungen"), (sprach_task, "Sprachbefehle"),
+            (status_task, "Statusmeldungen"), (speech_task, "Sprachbefehle"),
             (odo_task, "Positionsverfolgung"), (hw_task, "Verbindungsüberwachung"),
-            (puls_task, "Puls"), (karten_task, "Ortung in der Karte"),
+            (pulse_task, "Puls"), (map_task, "Ortung in der Karte"),
         ]:
-            diagnose.task_ueberwachen(task, name)
-        aufz_task = None
-        if aufzeichnung is not None:
-            aufz_task = asyncio.create_task(
-                _aufzeichnung_loop(
-                    aufzeichnung, watchdog, odometry, lidar, erkunder, interaktion, homing
+            diagnostics.watch_task(task, name)
+        rec_task = None
+        if recording is not None:
+            rec_task = asyncio.create_task(
+                _recording_loop(
+                    recording, watchdog, odometry, lidar, explorer, interaction, homing
                 )
             )
-            diagnose.task_ueberwachen(aufz_task, "Fahrtenschreiber")
-        # Der Abgleich endet ohne Lidar von selbst -- nur Fehler melden.
-        diagnose.task_ueberwachen(match_task, "Lidar-Abgleich", endlos=False)
+            diagnostics.watch_task(rec_task, "Recorder")
+        # Without lidar the matching ends by itself -- only report errors.
+        diagnostics.watch_task(match_task, "Lidar-Abgleich", endless=False)
         try:
             yield
         finally:
-            # Zuerst festhalten, dass dies ein gewolltes Ende ist: Hängt das
-            # Aufräumen und wird der Prozess dann abgeschossen, soll das
-            # nicht als Absturz zählen.
-            diagnose.sauber_beendet()
-            puls_task.cancel()
-            if aufz_task is not None:
-                aufz_task.cancel()
-            # Reihenfolge ist wichtig: erst Statusmeldungen beenden, dann
-            # Watchdog (der hält an), dann die Hardware trennen.
+            # First record that this is an intended shutdown: if cleanup
+            # hangs and the process is then killed, that should not count
+            # as a crash.
+            diagnostics.mark_clean_exit()
+            pulse_task.cancel()
+            if rec_task is not None:
+                rec_task.cancel()
+            # Order matters: first end status messages, then the watchdog
+            # (which stops the robot), then disconnect the hardware.
             status_task.cancel()
             odo_task.cancel()
             match_task.cancel()
             hw_task.cancel()
-            sprach_task.cancel()
-            karten_task.cancel()
-            homing.abbrechen("Server wird beendet")
-            erkunder.abbrechen("Server wird beendet")
-            manoever.abbrechen("Server wird beendet")
-            interaktion.abbrechen("Server wird beendet")
+            speech_task.cancel()
+            map_task.cancel()
+            homing.cancel("Server wird beendet")
+            explorer.cancel("Server wird beendet")
+            maneuver.cancel("Server wird beendet")
+            interaction.cancel("Server wird beendet")
             await watchdog.shutdown()
-            # Erst nach dem Anhalten: Das Beenden im Container kann dauern,
-            # und ein Fehler darin (Docker schon weg, auf dem Laptop gar
-            # nicht da) darf das Trennen der Hardware nicht verhindern.
+            # Only after stopping: shutting down the container can take a
+            # while, and an error in it (Docker already gone, or not present
+            # at all on the laptop) must not prevent disconnecting the
+            # hardware.
             try:
                 mapping_manager.stop()
             except Exception:
-                log.exception("Mapping ließ sich beim Beenden nicht sauber stoppen")
-            ortung.entladen()
-            personen.stop()
+                log.exception("Mapping could not be stopped cleanly on shutdown")
+            localization.unload()
+            people.stop()
             pose.stop()
-            mukke.stoppen()
-            sprache.stop()
-            stimme.stop()
-            for kamera in kameras.values():
-                kamera.stop()
-            if tiefe is not None:
-                tiefe.stop()
+            mukke.stop()
+            speech.stop()
+            voice.stop()
+            for camera in cameras.values():
+                camera.stop()
+            if depth is not None:
+                depth.stop()
             if lidar is not None:
                 lidar.stop()
-            # Vor dem Trennen beenden, sonst meldete sie das Abschalten
-            # noch als "Antrieb verloren".
-            diagnose.stop()
+            # Stop it before disconnecting, otherwise it would still report
+            # the shutdown as "driver lost".
+            diagnostics.stop()
             driver.disconnect()
 
     app = FastAPI(title="ROSMASTER X3 Hilfsroboter", lifespan=lifespan)
-    # Andere Oberflächen sollen die HTTP-Endpunkte aus dem Browser abrufen
-    # können, auch wenn sie nicht von diesem Server ausgeliefert werden
-    # (siehe docs/api.md). Eine Anmeldung gibt es ohnehin nicht -- wer im
-    # WLAN ist, kann den Roboter steuern.
+    # Other front ends should be able to call the HTTP endpoints from the
+    # browser even if they are not served by this server (see docs/api.md).
+    # There is no login anyway -- whoever is on the Wi-Fi can control the
+    # robot.
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"])
 
-    # Bekommt Lidar und Lidar-Odometrie, um sie in ROS einzuspeisen:
-    # slam_toolbox im Container braucht /scan und TF, und beides hält
-    # dieser Server. In der Simulation entsteht die Karte in Python.
+    # Gets the lidar and lidar odometry to feed them into ROS: slam_toolbox
+    # in the container needs /scan and TF, and this server holds both. In
+    # the simulation the map is built in Python.
     mapping_manager = MappingManager(
-        lidar=lidar, scan_odometrie=scan_odometrie, ortung=ortung,
-        simulation=lidar is not None and lidar.ist_simulation,
+        lidar=lidar, scan_odometry=scan_odometry, localization=localization,
+        simulation=lidar is not None and lidar.is_simulation,
     )
     app.state.mapping_manager = mapping_manager
-    if config.SPRACHE_AUS_BEIM_MAPPEN:
-        sprache.pause_setzen(lambda: "Mapping läuft" if mapping_manager.aktiv else None)
+    if config.SPEECH_OFF_WHILE_MAPPING:
+        speech.set_pause(lambda: "Mapping läuft" if mapping_manager.active else None)
 
-    # Kartierfahrt, Karte laden, Lage zeigen, Fahrt zum Ziel -- für /map und
-    # die App. Die Kartierfahrt ist ein Modus des Erkunders; so gelten
-    # Not-Stopp, Eingreifen von Hand und Verbindungsverlust ohne Extrawege.
-    karten = Kartensteuerung(
-        mapping_manager=mapping_manager, ortung=ortung, erkunder=erkunder, homing=homing,
-        interaktion=interaktion, manoever=manoever, watchdog=watchdog, driver=driver, hub=hub,
+    # Mapping drive, loading a map, showing the pose, goal drive -- for /map
+    # and the app. The mapping drive is a mode of the explorer; that way
+    # emergency stop, manual intervention and connection loss apply without
+    # extra code paths.
+    map_control = MapControl(
+        mapping_manager=mapping_manager, localization=localization, explorer=explorer, homing=homing,
+        interaction=interaction, maneuver=maneuver, watchdog=watchdog, driver=driver, hub=hub,
     )
-    app.state.karten = karten
-    app.include_router(create_mapping_router(mapping_manager, karten))
+    app.state.map_control = map_control
+    app.include_router(create_mapping_router(mapping_manager, map_control))
 
     @app.websocket("/ws")
     async def websocket_endpoint(ws: WebSocket) -> None:
         await ws.accept()
         await hub.add(ws)
-        # Zuerst die Grenzwerte: die App rechnet ihre Reglerstellung darauf
-        # um und muss sie deshalb kennen, bevor der erste Befehl rausgeht.
+        # Limits first: the app scales its slider positions to them and
+        # therefore has to know them before the first command goes out.
         await ws.send_json(
             limits_message(config.MAX_SPEED_X, config.MAX_SPEED_Y, config.MAX_SPEED_OMEGA)
         )
-        # Der Server hält die Einstellung, nicht der Browser: sonst hätte
-        # jeder Tab seine eigene Vorstellung davon, was gerade gilt.
-        await ws.send_json(collision_message(guard.zustand()))
+        # The server holds the setting, not the browser: otherwise every tab
+        # would have its own idea of what currently applies.
+        await ws.send_json(collision_message(guard.state()))
         try:
             while True:
                 msg = await ws.receive_json()
                 try:
                     reply = await _handle(
                         msg, watchdog, driver, hub, odometry, homing, localizer, guard,
-                        erkunder, interaktion, stimme, sprache, aufzeichnung,
-                        manoever=manoever, absender=ws, karten=karten,
+                        explorer, interaction, voice, speech, recording,
+                        maneuver=maneuver, sender=ws, map_control=map_control,
                     )
                 except Exception:
-                    # Früher trennte ein fehlerhafter Befehl die Verbindung --
-                    # der Roboter hielt an, und es wirkte wie ein Absturz.
-                    typ = msg.get("type") if isinstance(msg, dict) else None
-                    log.exception("Befehl %r fehlgeschlagen", typ)
-                    reply = alert_message("warning", f"Befehl {typ!r} fehlgeschlagen (siehe /diagnose)")
+                    # A faulty command used to drop the connection -- the
+                    # robot stopped, and it looked like a crash.
+                    kind = msg.get("type") if isinstance(msg, dict) else None
+                    log.exception("Command %r failed", kind)
+                    reply = alert_message("warning", f"Befehl {kind!r} fehlgeschlagen (siehe /diagnose)")
                 if reply is not None:
                     await ws.send_json(reply)
         except WebSocketDisconnect:
             pass
         except Exception:
-            log.exception("Fehler in der Verbindung")
+            log.exception("Error in the connection")
         finally:
             await hub.remove(ws)
-            # Letzter Client weg? Dann hat niemand mehr die Kontrolle.
+            # Last client gone? Then nobody is in control any more.
             if hub.count == 0:
-                # Ausnahme: Kartierfahrt und Fahrt nach Karte. Sie laufen
-                # lange und werden oft von /map aus beobachtet; ist auch die
-                # zu, halten sie erst nach einer Frist an -- ein Handy, dessen
-                # Bildschirm ausgeht, soll sie nicht beenden (Kartensteuerung).
-                mit_karte = erkunder.modus == KARTE or homing.nach_karte
-                log.warning("Kein Client mehr verbunden -- halte an"
-                            + (" (Fahrt mit Karte erst nach einer Frist)" if mit_karte else ""))
-                if not mit_karte:
-                    homing.abbrechen("Verbindung verloren")
-                    erkunder.abbrechen("Verbindung verloren")
-                manoever.abbrechen("Verbindung verloren")
-                interaktion.abbrechen("Verbindung verloren")
-                if mit_karte:
-                    karten.zuschauer_pruefen("Verbindung verloren")
+                # Exception: mapping drive and map-based drives. They run for
+                # a long time and are often watched from /map; if that is
+                # closed too, they only stop after a deadline -- a phone whose
+                # screen turns off should not end them (MapControl).
+                with_map = explorer.mode == MAP or homing.by_map
+                log.warning("No client connected any more -- stopping"
+                            + (" (map-based drive only after a deadline)" if with_map else ""))
+                if not with_map:
+                    homing.cancel("Verbindung verloren")
+                    explorer.cancel("Verbindung verloren")
+                maneuver.cancel("Verbindung verloren")
+                interaction.cancel("Verbindung verloren")
+                if with_map:
+                    map_control.check_watchers("Verbindung verloren")
                 else:
                     watchdog.stop()
 
-    # --- Kamera ---
+    # --- Camera ---
     #
-    # MJPEG: eine nie endende HTTP-Antwort aus aneinandergehängten Bildern.
-    # Der Browser zeigt das direkt in einem <img> an -- ohne JavaScript und
-    # ohne zusätzliche Bibliothek.
+    # MJPEG: a never-ending HTTP response of concatenated images. The
+    # browser shows it directly in an <img> -- without JavaScript and
+    # without an extra library.
 
-    GRENZE = "frame"
+    BOUNDARY = "frame"
 
     def _stream(camera: CameraService | None):
         if camera is None:
             return Response("Kamera abgeschaltet", status_code=503)
 
-        async def bilder():
-            zuletzt = None
+        async def images():
+            last = None
             while True:
                 frame = camera.latest()
-                # Dasselbe Bild nicht doppelt schicken: spart bei einer
-                # langsamen Kamera spürbar Bandbreite.
-                if frame is not None and frame is not zuletzt:
+                # Do not send the same image twice: with a slow camera this
+                # saves noticeable bandwidth.
+                if frame is not None and frame is not last:
                     data, mime = frame
-                    zuletzt = frame
+                    last = frame
                     yield (
-                        f"--{GRENZE}\r\nContent-Type: {mime}\r\n"
+                        f"--{BOUNDARY}\r\nContent-Type: {mime}\r\n"
                         f"Content-Length: {len(data)}\r\n\r\n".encode()
                         + data
                         + b"\r\n"
                     )
-                # Doppelt so oft nachsehen wie Bilder kommen: sonst liegt
-                # jedes neue Bild im Mittel eine halbe Periode herum. Jedes
-                # Mal neu gelesen, weil die Bildrate verstellbar ist.
+                # Check twice as often as images arrive: otherwise every new
+                # image sits around for half a period on average. Read anew
+                # each time because the frame rate is adjustable.
                 await asyncio.sleep(0.5 / max(1, config.CAMERA_FPS))
 
         return StreamingResponse(
-            bilder(),
-            media_type=f"multipart/x-mixed-replace; boundary={GRENZE}",
-            # Ohne das puffern manche Proxys den Stream, bis nichts mehr
-            # ankommt -- das Bild bliebe dann einfach schwarz.
+            images(),
+            media_type=f"multipart/x-mixed-replace; boundary={BOUNDARY}",
+            # Without this some proxies buffer the stream until nothing
+            # arrives any more -- the image would then simply stay black.
             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
         )
 
@@ -543,13 +545,13 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         data, mime = frame
         return Response(data, media_type=mime, headers={"Cache-Control": "no-store"})
 
-    def _unbekannt(name: str):
+    def _unknown(name: str):
         return Response(
-            f"Keine Kamera {name!r} -- vorhanden: {', '.join(kameras) or 'keine'}",
+            f"Keine Kamera {name!r} -- vorhanden: {', '.join(cameras) or 'keine'}",
             status_code=404,
         )
 
-    # Ohne Kameranamen: die Standardkamera (config.CAMERA_DEFAULT).
+    # Without a camera name: the default camera (config.CAMERA_DEFAULT).
 
     @app.get("/camera/stream")
     async def camera_stream():
@@ -557,10 +559,10 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
 
     @app.get("/camera/status")
     async def camera_status():
-        """Warum kommt ein Bild -- oder warum nicht.
+        """Why an image arrives -- or why not.
 
-        Im Browser aufrufbar, damit die Frage beantwortbar ist, ohne auf
-        dem Roboter im Log zu suchen.
+        Callable from the browser, so the question can be answered without
+        searching the log on the robot.
         """
         if camera is None:
             return {"kamera": None, "hinweis": "CAMERA_ENABLED ist False"}
@@ -568,99 +570,99 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
 
     @app.get("/camera/snapshot")
     async def camera_snapshot():
-        """Ein einzelnes Bild -- nützlich zum Testen per curl."""
+        """A single image -- useful for testing with curl."""
         return _snapshot(camera)
 
-    # Mit Kameranamen: jede Kamera einzeln.
+    # With a camera name: each camera individually.
 
     @app.get("/cameras")
-    async def cameras_liste():
-        """Alle Kameras mit Rolle, Zustand und Adressen ihrer Bilder."""
+    async def cameras_list():
+        """All cameras with role, state and the addresses of their images."""
         return {
             "standard": camera.name if camera is not None else None,
-            "personen": personen.status().get("kamera"),
-            # Ansichten der Tiefenkamera -- eigene Liste, weil sie keine Kameras
-            # mit Rolle und Einstellungen sind (Einstellungsseite listet "kameras").
+            "personen": people.status().get("kamera"),
+            # Views of the depth camera -- a separate list because they are not
+            # cameras with role and settings (the settings page lists "kameras").
             "tiefe": [
                 {"name": "tiefe", "kamera": "Tiefe", "basis": "/tiefe"},
                 {"name": "tiefe-ueber", "kamera": "Tiefe + Farbbild", "basis": "/tiefe/ueberlagert"},
-            ] if tiefe is not None else [],
+            ] if depth is not None else [],
             "kameras": [
                 {
                     **k.status(),
                     "stream": f"/camera/{name}/stream",
                     "snapshot": f"/camera/{name}/snapshot",
                 }
-                for name, k in kameras.items()
+                for name, k in cameras.items()
             ],
         }
 
     @app.get("/camera/{name}/stream")
     async def camera_stream_name(name: str):
-        if name not in kameras:
-            return _unbekannt(name)
-        return _stream(kameras[name])
+        if name not in cameras:
+            return _unknown(name)
+        return _stream(cameras[name])
 
     @app.get("/camera/{name}/snapshot")
     async def camera_snapshot_name(name: str):
-        if name not in kameras:
-            return _unbekannt(name)
-        return _snapshot(kameras[name])
+        if name not in cameras:
+            return _unknown(name)
+        return _snapshot(cameras[name])
 
     @app.get("/camera/{name}/status")
     async def camera_status_name(name: str):
-        if name not in kameras:
-            return _unbekannt(name)
-        return kameras[name].status()
+        if name not in cameras:
+            return _unknown(name)
+        return cameras[name].status()
 
     # --- Lidar ---
 
     @app.get("/lidar/status")
     async def lidar_status():
-        """Was der Lidar tut und ob die Ortung damit arbeitet."""
+        """What the lidar is doing and whether localization works with it."""
         if lidar is None:
             return {"lidar": None, "hinweis": "LIDAR_ENABLED ist False"}
         return {**lidar.status(), "ortung": localizer.status()}
 
-    # --- Tiefenkamera ---
+    # --- Depth camera ---
 
     @app.get("/tiefe/status")
-    async def tiefe_status():
-        """Tiefenkamera und Hindernisgedächtnis (Stuhlbeine, Phantome)."""
+    async def depth_status():
+        """Depth camera and obstacle memory (chair legs, phantoms)."""
         return {
-            "kamera": tiefe.status() if tiefe is not None else None,
-            "hinweis": None if tiefe is not None else (
+            "kamera": depth.status() if depth is not None else None,
+            "hinweis": None if depth is not None else (
                 "Simulation" if use_mock_camera else
-                "aus (TIEFE_AKTIV) oder OpenNI2 fehlt, siehe scripts/orbbec_einrichten.sh"
+                "aus (DEPTH_ACTIVE) oder OpenNI2 fehlt, siehe scripts/setup_orbbec.sh"
             ),
-            "gedaechtnis": hindernisse.status(),
-            "fortschritt_aktiv": config.FORTSCHRITT_AKTIV,
+            "gedaechtnis": obstacles.status(),
+            "fortschritt_aktiv": config.PROGRESS_ACTIVE,
         }
 
     @app.post("/tiefe/test")
-    async def tiefe_test():
-        """Kamera für 20 s einschalten -- um Bodenerkennung und Einbaulage im
-        Stand zu prüfen. Sonst läuft sie nur während autonomer Fahrten."""
-        if tiefe is None:
+    async def depth_test():
+        """Switch the camera on for 20 s -- to check floor detection and mounting
+        position while standing. Otherwise it only runs during autonomous drives."""
+        if depth is None:
             return {"ok": False, "hinweis": "keine Tiefenkamera"}
-        tiefe.aktivieren("test", True)
-        asyncio.get_running_loop().call_later(20.0, tiefe.aktivieren, "test", False)
+        depth.activate("test", True)
+        asyncio.get_running_loop().call_later(20.0, depth.activate, "test", False)
         return {"ok": True, "hinweis": "an für 20 s, dann /tiefe/status abfragen"}
 
-    # Tiefenbild zum Ansehen (sensors/tiefe_anzeige.py): allein oder über dem
-    # Farbbild der Orbbec. Wer zusieht, schaltet die Kamera ein.
+    # Depth image for viewing (sensors/depth_view.py): alone or over the
+    # Orbbec's color image. Whoever watches switches the camera on.
 
-    def _tiefe_jpeg(bild, ueber: bool) -> bytes:
-        hintergrund = fov = None
-        if ueber:
-            farbkamera = kameras.get(config.TIEFE_UEBER_KAMERA)
-            frame = farbkamera.latest() if farbkamera is not None else None
-            hintergrund = frame[0] if frame is not None else None
-            fov = config.CAMERA_ROLES.get(config.TIEFE_UEBER_KAMERA, {}).get("fov_deg")
-        return tiefe_anzeige.zeichnen(bild, tiefe.hfov, hintergrund, fov)
+    def _depth_jpeg(image, overlay: bool) -> bytes:
+        background = fov = None
+        if overlay:
+            color_camera = cameras.get(config.DEPTH_OVERLAY_CAMERA)
+            frame = color_camera.latest() if color_camera is not None else None
+            background = frame[0] if frame is not None else None
+            fov = config.CAMERA_ROLES.get(config.DEPTH_OVERLAY_CAMERA, {}).get("fov_deg")
+        return depth_view.draw(image, depth.hfov, background, fov)
 
-    def _tiefe_anzeige_fehlt():
-        if tiefe is None:
+    def _depth_view_missing():
+        if depth is None:
             return Response("Keine Tiefenkamera (siehe /tiefe/status)", status_code=503)
         try:
             import cv2  # noqa: F401
@@ -669,567 +671,567 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                             status_code=503)
         return None
 
-    zuschauer = iter(range(1, 1_000_000_000))
+    watcher_ids = iter(range(1, 1_000_000_000))
 
-    def _tiefe_stream(ueber: bool):
-        fehlt = _tiefe_anzeige_fehlt()
-        if fehlt is not None:
-            return fehlt
-        # Jeder Zuschauer meldet sich einzeln an: Schließt einer das Bild,
-        # bleibt die Kamera für die anderen an.
-        wer = f"anzeige-{next(zuschauer)}"
+    def _depth_stream(overlay: bool):
+        missing = _depth_view_missing()
+        if missing is not None:
+            return missing
+        # Every watcher subscribes individually: if one closes the image,
+        # the camera stays on for the others.
+        who = f"anzeige-{next(watcher_ids)}"
 
-        async def bilder():
-            tiefe.aktivieren(wer, True)
-            zuletzt = None
+        async def images():
+            depth.activate(who, True)
+            last = None
             try:
                 while True:
-                    b = tiefe.bild()
-                    if b is not None and b.roh is not None and b.zeit != zuletzt:
-                        zuletzt = b.zeit
-                        data = await asyncio.to_thread(_tiefe_jpeg, b, ueber)
+                    b = depth.image()
+                    if b is not None and b.raw is not None and b.timestamp != last:
+                        last = b.timestamp
+                        data = await asyncio.to_thread(_depth_jpeg, b, overlay)
                         yield (
-                            f"--{GRENZE}\r\nContent-Type: image/jpeg\r\n"
+                            f"--{BOUNDARY}\r\nContent-Type: image/jpeg\r\n"
                             f"Content-Length: {len(data)}\r\n\r\n".encode() + data + b"\r\n"
                         )
                     await asyncio.sleep(0.05)
             finally:
-                tiefe.aktivieren(wer, False)
+                depth.activate(who, False)
 
         return StreamingResponse(
-            bilder(),
-            media_type=f"multipart/x-mixed-replace; boundary={GRENZE}",
+            images(),
+            media_type=f"multipart/x-mixed-replace; boundary={BOUNDARY}",
             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
         )
 
-    einzelbild_aus: list = []  # Zeitgeber, der die Kamera nach Einzelbildern abschaltet
+    snapshot_off_timers: list = []  # timer that switches the camera off after snapshots
 
-    async def _tiefe_snapshot(ueber: bool):
-        fehlt = _tiefe_anzeige_fehlt()
-        if fehlt is not None:
-            return fehlt
-        # Einzelbilder (Safari) kommen in kurzer Folge: Die Kamera bleibt an,
-        # bis 10 s lang keins mehr abgeholt wurde.
-        tiefe.aktivieren("anzeige-einzelbild", True)
-        for alt in einzelbild_aus:
-            alt.cancel()
-        einzelbild_aus[:] = [asyncio.get_running_loop().call_later(
-            10.0, tiefe.aktivieren, "anzeige-einzelbild", False)]
-        frist = time.monotonic() + 3.0  # Einschalten dauert etwa 1-2 s
-        b = tiefe.bild()
-        while (b is None or b.roh is None) and time.monotonic() < frist:
+    async def _depth_snapshot(overlay: bool):
+        missing = _depth_view_missing()
+        if missing is not None:
+            return missing
+        # Snapshots (Safari) come in quick succession: the camera stays on
+        # until none has been fetched for 10 s.
+        depth.activate("anzeige-einzelbild", True)
+        for old in snapshot_off_timers:
+            old.cancel()
+        snapshot_off_timers[:] = [asyncio.get_running_loop().call_later(
+            10.0, depth.activate, "anzeige-einzelbild", False)]
+        deadline = time.monotonic() + 3.0  # switching on takes about 1-2 s
+        b = depth.image()
+        while (b is None or b.raw is None) and time.monotonic() < deadline:
             await asyncio.sleep(0.1)
-            b = tiefe.bild()
-        if b is None or b.roh is None:
+            b = depth.image()
+        if b is None or b.raw is None:
             return Response("Noch kein Tiefenbild", status_code=503)
-        data = await asyncio.to_thread(_tiefe_jpeg, b, ueber)
+        data = await asyncio.to_thread(_depth_jpeg, b, overlay)
         return Response(data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
     @app.get("/tiefe/stream")
-    async def tiefe_stream():
-        """Tiefenbild als MJPEG: rot nah, blau fern, magenta Hindernis."""
-        return _tiefe_stream(False)
+    async def depth_stream():
+        """Depth image as MJPEG: red near, blue far, magenta obstacle."""
+        return _depth_stream(False)
 
     @app.get("/tiefe/snapshot")
-    async def tiefe_snapshot():
-        return await _tiefe_snapshot(False)
+    async def depth_snapshot():
+        return await _depth_snapshot(False)
 
     @app.get("/tiefe/ueberlagert/stream")
-    async def tiefe_ueberlagert_stream():
-        """Dasselbe halbdurchsichtig über dem Farbbild der Orbbec."""
-        return _tiefe_stream(True)
+    async def depth_overlay_stream():
+        """The same, semi-transparent over the Orbbec's color image."""
+        return _depth_stream(True)
 
     @app.get("/tiefe/ueberlagert/snapshot")
-    async def tiefe_ueberlagert_snapshot():
-        return await _tiefe_snapshot(True)
+    async def depth_overlay_snapshot():
+        return await _depth_snapshot(True)
 
     @app.get("/lidar/scan")
     async def lidar_scan():
-        """Die letzte Umdrehung als Rohdaten -- für die Anzeige in der App."""
+        """The last revolution as raw data -- for display in the app."""
         if lidar is None:
             return {"punkte": [], "hinweis": "kein Lidar"}
         scan = lidar.latest()
-        if scan is None or time.monotonic() - scan.zeit > 3.0:
-            # Der App sagen, warum nichts kommt -- "keine Daten" allein
-            # lässt einen raten, ob der Lidar, die App oder das WLAN hakt.
+        if scan is None or time.monotonic() - scan.timestamp > 3.0:
+            # Tell the app why nothing arrives -- "no data" alone leaves one
+            # guessing whether the lidar, the app or the Wi-Fi is at fault.
             st = lidar.status()
-            grund = st["letzter_fehler"] or (
+            reason = st["letzter_fehler"] or (
                 "wartet auf erste Umdrehung" if st["geoeffnet"] else "nicht geöffnet"
             )
-            return {"punkte": [], "hinweis": f"Lidar: {grund}"}
-        # Gerundet übertragen: zwei Nachkommastellen bei Metern sind ein
-        # Zentimeter, feiner braucht es die Anzeige nicht -- und es
-        # halbiert die Datenmenge.
+            return {"punkte": [], "hinweis": f"Lidar: {reason}"}
+        # Transmit rounded: two decimal places in meters are one
+        # centimeter, the display needs nothing finer -- and it halves the
+        # amount of data.
         return {
             "punkte": [
-                [round(w, 1), round(r, 2)] for w, r in zip(scan.winkel, scan.entfernungen)
+                [round(w, 1), round(r, 2)] for w, r in zip(scan.angle, scan.ranges)
             ],
-            "alter_s": round(time.monotonic() - scan.zeit, 2),
+            "alter_s": round(time.monotonic() - scan.timestamp, 2),
         }
 
-    # --- Autonomes Fahren ---
+    # --- Autonomous driving ---
 
     @app.get("/autonomie/status")
-    async def autonomie_status():
-        """Erkunder, erkannte Hindernisse und Personenerkennung auf einen Blick."""
-        return _autonomie(erkunder, erkennung, lidar, personen)
+    async def autonomy_status():
+        """Explorer, detected obstacles and person detection at a glance."""
+        return _autonomy(explorer, detection, lidar, people)
 
-    # --- Einstellungen ---
+    # --- Settings ---
     #
-    # Lesen per GET wie alles andere; Ändern per POST, weil es Zustand auf
-    # dem Roboter verändert (und gespeichert wird). Das CORS-Setup oben
-    # erlaubt nur GET -- ändern kann also nur, wer die Seite vom Roboter
-    # selbst geladen hat, nicht jede beliebige Webseite im Browser.
+    # Read via GET like everything else; change via POST because it changes
+    # state on the robot (and is saved). The CORS setup above only allows
+    # GET -- so only someone who loaded the page from the robot itself can
+    # change settings, not any arbitrary web page in the browser.
 
-    async def _einstellungen_wirken(geaendert: list[str]) -> None:
-        """Was nicht von selbst bei der nächsten Verwendung greift, anstoßen."""
-        if any(k.startswith("MAX_SPEED_") for k in geaendert):
-            # Die App rechnet ihre Regler auf die Grenzen um.
+    async def _apply_settings(changed: list[str]) -> None:
+        """Trigger whatever does not take effect by itself on next use."""
+        if any(k.startswith("MAX_SPEED_") for k in changed):
+            # The app scales its sliders to the limits.
             await hub.broadcast(
                 limits_message(config.MAX_SPEED_X, config.MAX_SPEED_Y, config.MAX_SPEED_OMEGA)
             )
-        if "COLLISION_ENABLED" in geaendert or "COLLISION_DISTANCE_M" in geaendert:
-            # Der Wächter hält seinen Zustand selbst (der Schalter in der
-            # App ändert ihn ohne config) -- deshalb ausdrücklich übergeben.
-            guard.einstellen(
-                config.COLLISION_ENABLED if "COLLISION_ENABLED" in geaendert else None,
-                config.COLLISION_DISTANCE_M if "COLLISION_DISTANCE_M" in geaendert else None,
+        if "COLLISION_ENABLED" in changed or "COLLISION_DISTANCE_M" in changed:
+            # The guard holds its own state (the switch in the app changes
+            # it without config) -- so pass it explicitly.
+            guard.configure(
+                config.COLLISION_ENABLED if "COLLISION_ENABLED" in changed else None,
+                config.COLLISION_DISTANCE_M if "COLLISION_DISTANCE_M" in changed else None,
             )
-            await hub.broadcast(collision_message(guard.zustand()))
-        if "CAMERA_RESOLUTION" in geaendert:
-            for kamera in kameras.values():
-                kamera.neu_oeffnen()
-        if "LAUTSTAERKE" in geaendert:
-            # Die Stimme liest den Wert bei jedem Satz, mpv muss man es sagen.
-            await asyncio.to_thread(mukke.lautstaerke_anwenden)
+            await hub.broadcast(collision_message(guard.state()))
+        if "CAMERA_RESOLUTION" in changed:
+            for camera in cameras.values():
+                camera.reopen()
+        if "VOLUME" in changed:
+            # The voice reads the value for every sentence, mpv has to be told.
+            await asyncio.to_thread(mukke.apply_volume)
 
-    async def _einstellungen_antwort(geaendert: list[str]) -> dict[str, Any]:
-        await _einstellungen_wirken(geaendert)
-        neustart = settings.neustart_noetig(geaendert)
-        if geaendert:
-            text = f"Einstellungen geändert: {', '.join(geaendert)}"
-            if neustart:
+    async def _settings_reply(changed: list[str]) -> dict[str, Any]:
+        await _apply_settings(changed)
+        restart = settings.restart_needed(changed)
+        if changed:
+            text = f"Einstellungen geändert: {', '.join(changed)}"
+            if restart:
                 text += " (wirkt nach Neustart)"
             await hub.broadcast(alert_message("info", text))
-        return {**settings.liste(), "geaendert": geaendert, "neustart_noetig": neustart}
+        return {**settings.entries(), "geaendert": changed, "neustart_noetig": restart}
 
     @app.get("/settings")
-    async def settings_lesen():
-        """Alle verstellbaren Einstellungen nach Blöcken, mit Grenzen."""
-        return settings.liste()
+    async def settings_get():
+        """All adjustable settings by block, with limits."""
+        return settings.entries()
 
     @app.post("/settings")
-    async def settings_setzen(request: Request):
-        """Body: {"KEY": wert, ...}. Alle oder keiner werden übernommen."""
+    async def settings_set(request: Request):
+        """Body: {"KEY": value, ...}. All or none are applied."""
         try:
-            neu = await request.json()
+            new = await request.json()
         except ValueError:
             return JSONResponse({"fehler": "JSON erwartet"}, status_code=400)
-        if not isinstance(neu, dict):
+        if not isinstance(new, dict):
             return JSONResponse({"fehler": "Objekt {KEY: wert} erwartet"}, status_code=400)
         try:
-            geaendert = settings.setzen(neu)
-        except settings.EinstellungsFehler as exc:
+            changed = settings.apply(new)
+        except settings.SettingError as exc:
             return JSONResponse({"fehler": str(exc)}, status_code=400)
-        return await _einstellungen_antwort(geaendert)
+        return await _settings_reply(changed)
 
     @app.post("/settings/reset")
-    async def settings_zuruecksetzen(request: Request):
-        """Body: {"keys": [...]} für einzelne, leer oder {} für alle."""
+    async def settings_reset(request: Request):
+        """Body: {"keys": [...]} for individual ones, empty or {} for all."""
         try:
-            daten = await request.json()
+            data = await request.json()
         except ValueError:
-            daten = {}
-        keys = daten.get("keys") if isinstance(daten, dict) else None
+            data = {}
+        keys = data.get("keys") if isinstance(data, dict) else None
         try:
-            geaendert = settings.zuruecksetzen(keys)
-        except settings.EinstellungsFehler as exc:
+            changed = settings.reset(keys)
+        except settings.SettingError as exc:
             return JSONResponse({"fehler": str(exc)}, status_code=400)
-        return await _einstellungen_antwort(geaendert)
+        return await _settings_reply(changed)
 
-    # --- Interaktion ---
+    # --- Interaction ---
 
     @app.get("/interaktion/status")
-    async def interaktion_status():
-        """Modus, verfolgte Person, letzte Geste und ob die Posenerkennung läuft."""
-        return {**interaktion.zustand(), "pose": pose.status()}
+    async def interaction_status():
+        """Mode, tracked person, last gesture and whether pose detection runs."""
+        return {**interaction.state(), "pose": pose.status()}
 
     @app.get("/manoever/status")
-    async def manoever_status():
-        """Genauer Fahrbefehl: was läuft, wie weit er laut Lidar ist, wie es endete."""
-        return {"verfuegbar": manoever.verfuegbar, **manoever.zustand()}
+    async def maneuver_status():
+        """Exact drive command: what runs, how far along it is per lidar, how it ended."""
+        return {"verfuegbar": maneuver.available, **maneuver.state()}
 
     @app.get("/interaktion/pose")
-    async def interaktion_pose():
-        """Erkannte Körperpunkte zum Einblenden über dem Kamerabild.
+    async def interaction_pose():
+        """Detected body keypoints for overlaying on the camera image.
 
-        Leer, solange die Interaktion aus ist -- dann rechnet der Hailo nicht.
+        Empty while the interaction is off -- then the Hailo does not compute.
         """
-        # Das Aussehensmerkmal (Farbhistogramm) bleibt im Roboter -- die App
-        # braucht es nicht, und es bläht jede Antwort auf. Dazu kommen die
-        # Track-ID (nur intern) und ob er dieser Person gerade folgt.
-        personen = interaktion.personen_mit_id(pose.personen())
-        return {"personen": personen, "skelett": SKELETT}
+        # The appearance feature (color histogram) stays in the robot -- the
+        # app does not need it, and it bloats every response. Added are the
+        # track ID (internal only) and whether it is following this person.
+        people = interaction.people_with_id(pose.people())
+        return {"personen": people, "skelett": SKELETON}
 
-    # --- Fahrtenschreiber ---
+    # --- Recorder ---
 
     @app.get("/aufzeichnung/status")
-    async def aufzeichnung_status():
-        """Füllstand des Puffers und zuletzt gespeicherte Datei."""
-        if aufzeichnung is None:
+    async def recording_status():
+        """Buffer fill level and last saved file."""
+        if recording is None:
             return {"aktiv": False}
-        return aufzeichnung.status()
+        return recording.status()
 
     @app.get("/aufzeichnung/liste")
-    async def aufzeichnung_liste():
-        """Gespeicherte Fahrten, neueste zuerst."""
-        if aufzeichnung is None:
+    async def recording_list():
+        """Saved drives, newest first."""
+        if recording is None:
             return {"dateien": []}
-        return {"dateien": await asyncio.to_thread(aufzeichnung.liste)}
+        return {"dateien": await asyncio.to_thread(recording.entries)}
 
     @app.get("/aufzeichnung/datei/{name}")
-    async def aufzeichnung_datei(name: str):
-        """Eine gespeicherte Fahrt herunterladen (zum Abspielen am Rechner)."""
-        pfad = aufzeichnung.datei(name) if aufzeichnung is not None else None
-        if pfad is None:
+    async def recording_file(name: str):
+        """Download a saved drive (for replay on a computer)."""
+        path = recording.file(name) if recording is not None else None
+        if path is None:
             return JSONResponse({"fehler": "keine solche Aufzeichnung"}, status_code=404)
-        daten = await asyncio.to_thread(pfad.read_bytes)
+        data = await asyncio.to_thread(path.read_bytes)
         return Response(
-            daten,
+            data,
             media_type="application/gzip",
-            headers={"Content-Disposition": f'attachment; filename="{pfad.name}"'},
+            headers={"Content-Disposition": f'attachment; filename="{path.name}"'},
         )
 
-    # --- Diagnose ---
+    # --- Diagnostics ---
 
     @app.get("/diagnose/status")
-    async def diagnose_status():
-        """Gesamtzustand, Probleme mit Lösungsvorschlag, Messwerte, Zeitleiste."""
-        return diagnose.status()
+    async def diagnostics_status():
+        """Overall state, problems with suggested fixes, readings, timeline."""
+        return diagnostics.status()
 
     @app.get("/diagnose/protokoll")
-    async def diagnose_protokoll(nach: int = 0):
-        """Server-Log ab Zeile ``nach`` (exklusiv), damit nur Neues kommt."""
-        zeilen, letzte_id = log_puffer.zeilen(nach)
-        return {"zeilen": zeilen, "letzte_id": letzte_id}
+    async def diagnostics_log(after: int = Query(0, alias="nach")):
+        """Server log after line ``nach`` (exclusive), so only new lines come."""
+        lines, last_id = log_buffer.lines(after)
+        return {"zeilen": lines, "letzte_id": last_id}
 
     @app.post("/diagnose/quittieren")
-    async def diagnose_quittieren(request: Request):
-        """Body: {"id": "..."} für ein Problem oder {"alle": true}."""
+    async def diagnostics_acknowledge(request: Request):
+        """Body: {"id": "..."} for one problem or {"alle": true}."""
         try:
-            daten = await request.json()
+            data = await request.json()
         except ValueError:
-            daten = None
-        if not isinstance(daten, dict) or not (daten.get("alle") or daten.get("id")):
+            data = None
+        if not isinstance(data, dict) or not (data.get("alle") or data.get("id")):
             return JSONResponse({"fehler": '{"id": ...} oder {"alle": true} erwartet'},
                                 status_code=400)
-        n = diagnose.quittieren(None if daten.get("alle") else str(daten["id"]))
+        n = diagnostics.acknowledge(None if data.get("alle") else str(data["id"]))
         return {"quittiert": n}
 
-    # --- Musik ("MUKKE") ---
+    # --- Music ("MUKKE") ---
     #
-    # HTTP wie die Einstellungen: Ändern per POST, damit fremde Webseiten
-    # (CORS erlaubt ihnen nur GET) nichts auf dem Lautsprecher abspielen.
+    # HTTP like the settings: changes via POST, so that foreign web pages
+    # (CORS only allows them GET) cannot play anything on the speaker.
 
     async def _mukke_json(request: Request) -> dict:
         try:
-            daten = await request.json()
+            data = await request.json()
         except ValueError:
             return {}
-        return daten if isinstance(daten, dict) else {}
+        return data if isinstance(data, dict) else {}
 
-    async def _mukke(aktion) -> Any:
-        """Aktion ausführen, Fehler als 400, sonst den neuen Zustand."""
+    async def _mukke(action) -> Any:
+        """Run the action; errors as 400, otherwise the new state."""
         try:
-            # mpv starten und per Socket fragen dauert kurz -- nicht in der
-            # Ereignisschleife, sonst stockt die Steuerung.
-            await asyncio.to_thread(aktion)
-        except MukkeFehler as exc:
+            # Starting mpv and querying it over its socket takes a moment --
+            # not in the event loop, otherwise control would stutter.
+            await asyncio.to_thread(action)
+        except MukkeError as exc:
             return JSONResponse({"fehler": str(exc)}, status_code=400)
         return await asyncio.to_thread(mukke.status)
 
     @app.get("/mukke/status")
     async def mukke_status():
-        """Läuft etwas, welcher Titel, Lautstärke, und ob mpv/yt-dlp da sind."""
+        """Whether something plays, which title, volume, and whether mpv/yt-dlp exist."""
         return await asyncio.to_thread(mukke.status)
 
     @app.post("/mukke/play")
     async def mukke_play(request: Request):
-        """Body: {"url": "https://youtu.be/..."}. Ersetzt, was gerade läuft."""
+        """Body: {"url": "https://youtu.be/..."}. Replaces whatever is playing."""
         url = (await _mukke_json(request)).get("url", "")
-        antwort = await _mukke(lambda: mukke.abspielen(url))
-        if not isinstance(antwort, JSONResponse):
+        response = await _mukke(lambda: mukke.play(url))
+        if not isinstance(response, JSONResponse):
             await hub.broadcast(alert_message("info", "MUKKE: spielt ab"))
-        return antwort
+        return response
 
     @app.post("/mukke/stop")
     async def mukke_stop():
-        return await _mukke(mukke.stoppen)
+        return await _mukke(mukke.stop)
 
     @app.post("/mukke/pause")
     async def mukke_pause():
-        """Pause an/aus."""
-        return await _mukke(mukke.pause_umschalten)
+        """Toggle pause."""
+        return await _mukke(mukke.toggle_pause)
 
     @app.post("/mukke/volume")
     async def mukke_volume(request: Request):
         """Body: {"lautstaerke": 0..100}."""
-        wert = (await _mukke_json(request)).get("lautstaerke")
-        return await _mukke(lambda: mukke.lautstaerke_setzen(wert))
+        value = (await _mukke_json(request)).get("lautstaerke")
+        return await _mukke(lambda: mukke.set_volume(value))
 
-    # --- Stimme ---
+    # --- Voice ---
 
     @app.get("/stimme/status")
-    async def stimme_status():
-        """Welche Sprachausgabe läuft (Piper, espeak-ng, nur Text), letzter Satz, Fehler."""
-        return stimme.status()
+    async def voice_status():
+        """Which speech output runs (Piper, espeak-ng, text only), last sentence, errors."""
+        return voice.status()
 
-    # --- Sprachbefehle ---
+    # --- Speech commands ---
 
     @app.get("/sprache/status")
-    async def sprache_status():
-        """Mikrofon, Modell, Weckwort, zuletzt Gehörtes und erkannte Befehle."""
-        return sprache.status()
+    async def speech_status():
+        """Microphone, model, wake word, last heard text and recognized commands."""
+        return speech.status()
 
     @app.get("/sprache/live")
-    async def sprache_live():
-        """Mitlesen: Pegel, Zwischentext und die letzten Sätze samt Urteil."""
-        return sprache.live()
+    async def speech_live():
+        """Live view: level, partial text and the last sentences with verdict."""
+        return speech.live()
 
     @app.websocket("/sprache/ton")
-    async def sprache_ton(ws: WebSocket) -> None:
-        """Mithören: Rohton vom Mikrofon als Binär-Nachrichten (16 bit, mono).
+    async def speech_sound(ws: WebSocket) -> None:
+        """Listen in: raw audio from the microphone as binary messages (16 bit, mono).
 
-        Vorher und bei jedem Wechsel der Abtastrate kommt eine Textnachricht
-        {"rate": Hz}, ohne Ton zusätzlich jede Sekunde als Lebenszeichen.
-        Gelesen wird nur, solange jemand verbunden ist.
+        Before that and on every change of sample rate a text message
+        {"rate": Hz} is sent; without audio also every second as a heartbeat.
+        Audio is only read while someone is connected.
         """
         await ws.accept()
-        abo = sprache.ton_abonnieren()
-        rate: int | None = -1  # -1: noch nichts gemeldet, die erste Meldung kommt immer
+        subscription = speech.sound_subscribe()
+        rate: int | None = -1  # -1: nothing reported yet, the first report always goes out
         try:
             while True:
-                if sprache.ton_rate != rate:
-                    rate = sprache.ton_rate
+                if speech.sound_rate != rate:
+                    rate = speech.sound_rate
                     await ws.send_json({"rate": rate})
                 try:
-                    # Blockierendes Warten im Thread, damit der Event-Loop frei bleibt.
-                    daten = await asyncio.to_thread(abo.get, True, 1.0)
+                    # Blocking wait in a thread so the event loop stays free.
+                    data = await asyncio.to_thread(subscription.get, True, 1.0)
                 except queue.Empty:
-                    # Mikrofon gerade weg (USB) oder Simulation. Trotzdem ein
-                    # Lebenszeichen: Daran merkt die App, dass die Verbindung
-                    # steht, und verbindet sonst selbst neu.
+                    # Microphone currently gone (USB) or simulation. Still send
+                    # a heartbeat: that is how the app knows the connection is
+                    # up; otherwise it reconnects by itself.
                     await ws.send_json({"rate": rate})
                     continue
-                await ws.send_bytes(daten)
+                await ws.send_bytes(data)
         except (WebSocketDisconnect, RuntimeError):
-            pass  # Browser zu oder Seite verlassen
+            pass  # browser closed or page left
         finally:
-            sprache.ton_abmelden(abo)
+            speech.sound_unsubscribe(subscription)
 
     @app.websocket("/sprache/durchsage")
-    async def sprache_durchsage(ws: WebSocket) -> None:
-        """Durchsage: Ton aus der App live über den Lautsprecher des Roboters.
+    async def speech_announcement(ws: WebSocket) -> None:
+        """Announcement: audio from the app live over the robot's speaker.
 
-        Erst eine Textnachricht {"rate": Hz}, dann Rohton als Binärnachrichten
-        (16 bit little-endian, mono). Antwort {"bereit": bool, "grund": ...}.
+        First a text message {"rate": Hz}, then raw audio as binary messages
+        (16 bit little-endian, mono). Reply {"bereit": bool, "grund": ...}.
         """
         await ws.accept()
         rate = 16000
-        durchsage = None
-        neu_ab: float | None = None  # nach einem Lautsprecher-Fehler erst ab dann
-        bereit = stimme is not None and stimme.verfuegbar
-        await ws.send_json({"bereit": bereit, "grund": None if bereit else "kein Lautsprecher"})
+        announcement = None
+        retry_at: float | None = None  # after a speaker error, only from this time on
+        ready = voice is not None and voice.available
+        await ws.send_json({"bereit": ready, "grund": None if ready else "kein Lautsprecher"})
         try:
             while True:
-                nachricht = await ws.receive()
-                if nachricht["type"] == "websocket.disconnect":
+                message = await ws.receive()
+                if message["type"] == "websocket.disconnect":
                     break
-                if nachricht.get("text"):
+                if message.get("text"):
                     try:
-                        rate = max(8000, min(48000, int(json.loads(nachricht["text"]).get("rate", rate))))
+                        rate = max(8000, min(48000, int(json.loads(message["text"]).get("rate", rate))))
                     except (ValueError, TypeError, AttributeError):
                         pass
                     continue
-                daten = nachricht.get("bytes")
-                if not daten or not bereit:
+                data = message.get("bytes")
+                if not data or not ready:
                     continue
-                # Nach einer Sprechpause oder einem Stopp ist die alte Durchsage
-                # vorbei; dann einfach eine neue beginnen. Ging der Lautsprecher
-                # nicht, erst nach einer Pause wieder versuchen -- sonst startete
-                # jedes Tonpaket ein neues aplay.
-                if durchsage is None or durchsage.vorbei:
-                    if durchsage is not None and durchsage.fehlgeschlagen:
-                        if neu_ab is None:
-                            neu_ab = time.monotonic() + config.DURCHSAGE_PAUSE_S
+                # After a pause in speaking or a stop the old announcement is
+                # over; then simply begin a new one. If the speaker failed, only
+                # retry after a pause -- otherwise every audio packet would
+                # start a new aplay.
+                if announcement is None or announcement.finished:
+                    if announcement is not None and announcement.failed:
+                        if retry_at is None:
+                            retry_at = time.monotonic() + config.ANNOUNCE_PAUSE_S
                             await ws.send_json({"bereit": False, "grund": "Lautsprecher geht gerade nicht"})
-                        if time.monotonic() < neu_ab:
+                        if time.monotonic() < retry_at:
                             continue
-                    neu_ab = None
-                    durchsage = stimme.durchsage(rate)
+                    retry_at = None
+                    announcement = voice.announcement(rate)
                     await ws.send_json({"bereit": True, "grund": None})
-                durchsage.rein(daten)
+                announcement.feed(data)
         except (WebSocketDisconnect, RuntimeError):
             pass
         finally:
-            if durchsage is not None:
-                durchsage.ende()
+            if announcement is not None:
+                announcement.end()
 
-    async def _sprach_loop() -> None:
-        """Erkannte Sprachbefehle abholen und ausführen.
+    async def _speech_loop() -> None:
+        """Fetch and execute recognized speech commands.
 
-        Die Erkennung läuft im eigenen Thread; gefahren wird aber nur hier
-        im Event-Loop -- über dieselben Wege wie mit den Knöpfen der App.
+        Recognition runs in its own thread; driving, however, only happens
+        here in the event loop -- along the same paths as the app's buttons.
         """
-        antwort_um: float | None = None
+        answered_at: float | None = None
         while True:
             await asyncio.sleep(0.1)
-            if antwort_um is not None and time.monotonic() >= antwort_um:
-                antwort_um = None
-                # Kam in der Pause schon der Befehl, ist das Fenster verbraucht
-                # und das "Ja?" überflüssig.
-                if sprache.geweckt and config.SPRACHE_WECK_ANTWORT:
-                    stimme.sagen(config.SPRACHE_WECK_ANTWORT)
-            for eintrag in sprache.befehle_abholen():
-                if eintrag["befehl"] == sp.WECKEN:
-                    antwort_um = time.monotonic() + config.SPRACHE_WECK_ANTWORT_NACH_S
+            if answered_at is not None and time.monotonic() >= answered_at:
+                answered_at = None
+                # If the command already came during the pause, the window is
+                # consumed and the "Ja?" is unnecessary.
+                if speech.awake and config.SPEECH_WAKE_REPLY:
+                    voice.say(config.SPEECH_WAKE_REPLY)
+            for entry in speech.fetch_commands():
+                if entry["befehl"] == sp.WAKE:
+                    answered_at = time.monotonic() + config.SPEECH_WAKE_REPLY_AFTER_S
                     continue
                 try:
-                    await _sprachbefehl(eintrag["befehl"], eintrag["text"], eintrag.get("wie"))
-                except Exception:  # ein kaputter Befehl darf das Ohr nicht abschalten
-                    log.exception("Sprachbefehl %s fehlgeschlagen", eintrag["befehl"])
+                    await _speech_command(entry["befehl"], entry["text"], entry.get("wie"))
+                except Exception:  # a broken command must not switch off the ear
+                    log.exception("Speech command %s failed", entry["befehl"])
 
-    async def _befehlen(typ: str, **felder: Any) -> bool:
-        """App-Befehl ausführen. False, wenn er mit einer Warnung abgelehnt wurde."""
-        antwort = await _handle(
-            {"type": typ, **felder}, watchdog, driver, hub, odometry, homing, localizer, guard,
-            erkunder, interaktion, stimme, sprache, manoever=manoever, karten=karten,
+    async def _issue_command(kind: str, **fields: Any) -> bool:
+        """Execute an app command. False if it was refused with a warning."""
+        response = await _handle(
+            {"type": kind, **fields}, watchdog, driver, hub, odometry, homing, localizer, guard,
+            explorer, interaction, voice, speech, maneuver=maneuver, map_control=map_control,
         )
-        if antwort is None:
+        if response is None:
             return True
-        await hub.broadcast(antwort)
-        if antwort.get("level") == "warning":
-            # Wer spricht, schaut nicht unbedingt auf die App.
-            stimme.sagen("Das geht gerade nicht.")
+        await hub.broadcast(response)
+        if response.get("level") == "warning":
+            # Whoever speaks is not necessarily looking at the app.
+            voice.say("Das geht gerade nicht.")
             return False
         return True
 
-    async def _interaktion_mit(modus: str, text: str, satz: str) -> None:
-        """Herkommen/Weggehen per Sprache; schaltet die Interaktion nötigenfalls ein."""
-        if interaktion.aktiv:
-            interaktion.wechseln_zu(modus, text, sagen=satz)
+    async def _interaction_with(mode: str, text: str, sentence: str) -> None:
+        """Come here/go away by speech; switches the interaction on if needed."""
+        if interaction.active:
+            interaction.switch_to(mode, text, say=sentence)
             return
-        if not interaktion.verfuegbar:
-            await _befehlen("interaction_start")  # liefert die passende Warnung
+        if not interaction.available:
+            await _issue_command("interaction_start")  # yields the matching warning
             return
-        homing.abbrechen("Interaktion gestartet")
-        erkunder.abbrechen("Interaktion gestartet")
-        manoever.abbrechen("Interaktion gestartet")
-        if interaktion.start(modus):
+        homing.cancel("Interaktion gestartet")
+        explorer.cancel("Interaktion gestartet")
+        maneuver.cancel("Interaktion gestartet")
+        if interaction.start(mode):
             await hub.broadcast(alert_message("info", f"Interaktion an -- {text}"))
 
-    async def _sprachbefehl(befehl: str, text: str, wie: dict | None = None) -> None:
+    async def _speech_command(command: str, text: str, details: dict | None = None) -> None:
         await hub.broadcast(alert_message("info", f"Sprachbefehl: {text}"))
-        if befehl == sp.STOPP:
-            if interaktion.aktiv:
-                # Anhalten, aber weiter zuhören und zuschauen: "Robi, folgen"
-                # soll danach gleich wieder gehen.
-                homing.abbrechen("Not-Stopp")
-                erkunder.abbrechen("Not-Stopp")
-                manoever.abbrechen("Not-Stopp")
-                interaktion.wechseln_zu(vh.BEREIT, "angehalten (per Sprache)")
+        if command == sp.STOP:
+            if interaction.active:
+                # Stop, but keep listening and watching: "Robi, folgen"
+                # should work again right afterwards.
+                homing.cancel("Not-Stopp")
+                explorer.cancel("Not-Stopp")
+                maneuver.cancel("Not-Stopp")
+                interaction.switch_to(vh.READY, "angehalten (per Sprache)")
                 watchdog.stop()
-                stimme.sagen("Okay, ich halte an.", vorrang=True)
+                voice.say("Okay, ich halte an.", priority=True)
             else:
-                await _befehlen("stop")
-        elif befehl == sp.FOLGEN:
-            await _befehlen("follow")
-        elif befehl == sp.HERKOMMEN:
-            await _interaktion_mit(vh.HERKOMMEN, "kommt her (per Sprache)", "Ich komme.")
-        elif befehl == sp.WEGGEHEN:
-            await _interaktion_mit(vh.WEGGEHEN, "nimmt Abstand (per Sprache)", "Ich fahre zurück.")
-        elif befehl == sp.START:
-            if interaktion.aktiv:
-                stimme.sagen("Ja? Ich bin da.")
+                await _issue_command("stop")
+        elif command == sp.FOLLOW:
+            await _issue_command("follow")
+        elif command == sp.COME_HERE:
+            await _interaction_with(vh.COME_HERE, "kommt her (per Sprache)", "Ich komme.")
+        elif command == sp.GO_AWAY:
+            await _interaction_with(vh.GO_AWAY, "nimmt Abstand (per Sprache)", "Ich fahre zurück.")
+        elif command == sp.START:
+            if interaction.active:
+                voice.say("Ja? Ich bin da.")
             else:
-                await _befehlen("interaction_start")
-        elif befehl == sp.MANOEVER and wie:
+                await _issue_command("interaction_start")
+        elif command == sp.MANEUVER and details:
             # "Robi, fahr zwei Meter vor" / "Robi, dreh dich um neunzig Grad"
-            typ = "turn" if wie["art"] == mv.DREHEN else "move"
-            felder = {"grad": wie["wert"]} if typ == "turn" else {"richtung": wie["art"], "meter": wie["wert"]}
-            if await _befehlen(typ, **felder) and manoever.aktiv:
-                if typ == "turn":
-                    stimme.sagen(f"Ich drehe mich um {abs(wie['wert']):g} Grad "
-                                 f"{'nach links' if wie['wert'] > 0 else 'nach rechts'}.")
+            kind = "turn" if details["art"] == mv.TURN else "move"
+            fields = {"grad": details["wert"]} if kind == "turn" else {"richtung": details["art"], "meter": details["wert"]}
+            if await _issue_command(kind, **fields) and maneuver.active:
+                if kind == "turn":
+                    voice.say(f"Ich drehe mich um {abs(details['wert']):g} Grad "
+                                 f"{'nach links' if details['wert'] > 0 else 'nach rechts'}.")
                 else:
-                    stimme.sagen(f"Ich fahre {_meter_sagen(wie['wert'])} "
-                                 f"{mv._RICHTUNG_TEXT[wie['art']]}.")
-        elif befehl == sp.AUS:
-            homing.abbrechen("vom Nutzer beendet")
-            erkunder.abbrechen("vom Nutzer beendet")
-            manoever.abbrechen("vom Nutzer beendet")
-            await _befehlen("interaction_stop")
-            stimme.sagen("Gute Nacht.")
-        elif befehl == sp.NACH_HAUSE:
-            if await _befehlen("home") and homing.aktiv:
-                stimme.sagen("Ich fahre nach Hause.")
-        elif befehl == sp.ERKUNDEN:
-            if await _befehlen("explore") and erkunder.aktiv:
-                stimme.sagen("Ich schaue mich mal um.")
-        elif befehl == sp.MUSIK_AUS:
+                    voice.say(f"Ich fahre {_say_meters(details['wert'])} "
+                                 f"{mv._DIRECTION_TEXT[details['art']]}.")
+        elif command == sp.OFF:
+            homing.cancel("vom Nutzer beendet")
+            explorer.cancel("vom Nutzer beendet")
+            maneuver.cancel("vom Nutzer beendet")
+            await _issue_command("interaction_stop")
+            voice.say("Gute Nacht.")
+        elif command == sp.GO_HOME:
+            if await _issue_command("home") and homing.active:
+                voice.say("Ich fahre nach Hause.")
+        elif command == sp.EXPLORE:
+            if await _issue_command("explore") and explorer.active:
+                voice.say("Ich schaue mich mal um.")
+        elif command == sp.MUSIC_OFF:
             try:
-                await asyncio.to_thread(mukke.stoppen)
-            except MukkeFehler as exc:
+                await asyncio.to_thread(mukke.stop)
+            except MukkeError as exc:
                 await hub.broadcast(alert_message("warning", str(exc)))
-            stimme.sagen("Musik ist aus.")
-        elif befehl in (sp.LADADA, sp.BEATBOX):
-            # Erst beim Befehl nachschlagen: so gilt eine geänderte config.
+            voice.say("Musik ist aus.")
+        elif command in (sp.LADADA, sp.BEATBOX):
+            # Look it up only at command time: that way a changed config applies.
             url = {
-                sp.LADADA: config.SPRACHE_LADADA_URL,
-                sp.BEATBOX: config.SPRACHE_BEATBOX_URL,
-            }[befehl]
-            # Nichts ansagen: Die Stimme würde das Lied gleich wieder
-            # unterbrechen.
-            laufend = await asyncio.to_thread(mukke.status)
-            if laufend["laeuft"] and laufend["url"] == url:
-                # Das Mikrofon hört das Lied mit -- singt es selbst "la la
-                # la", finge es sonst immer wieder von vorn an.
+                sp.LADADA: config.SPEECH_LADADA_URL,
+                sp.BEATBOX: config.SPEECH_BEATBOX_URL,
+            }[command]
+            # Do not announce anything: the voice would interrupt the song
+            # right away.
+            playing = await asyncio.to_thread(mukke.status)
+            if playing["laeuft"] and playing["url"] == url:
+                # The microphone hears the song too -- if it sings "la la la"
+                # itself, it would otherwise start over again and again.
                 return
             try:
-                await asyncio.to_thread(mukke.abspielen, url)
-            except MukkeFehler as exc:
+                await asyncio.to_thread(mukke.play, url)
+            except MukkeError as exc:
                 await hub.broadcast(alert_message("warning", str(exc)))
-                stimme.sagen("Das geht gerade nicht.")
+                voice.say("Das geht gerade nicht.")
 
-    # Die Web-App direkt mitausliefern, damit eine Adresse genügt.
+    # Serve the web app directly so one address is enough.
     if WEBAPP_DIR.is_dir():
-        app.mount("/static", _OhneVeraltetenCache(directory=WEBAPP_DIR), name="static")
+        app.mount("/static", _NoStaleCache(directory=WEBAPP_DIR), name="static")
 
         @app.get("/")
         async def index() -> HTMLResponse:
-            return _seite("index.html")
+            return _page("index.html")
 
         @app.get("/einstellungen")
-        async def einstellungen_seite() -> HTMLResponse:
-            return _seite("einstellungen.html")
+        async def settings_page() -> HTMLResponse:
+            return _page("einstellungen.html")
 
-        # /logs als Zweitname -- danach sucht man, wenn etwas schiefgeht.
+        # /logs as a second name -- that is what people look for when something goes wrong.
         @app.get("/diagnose")
         @app.get("/logs")
-        async def diagnose_seite() -> HTMLResponse:
-            return _seite("diagnose.html")
+        async def diagnostics_page() -> HTMLResponse:
+            return _page("diagnose.html")
     else:
-        log.warning("webapp/ nicht gefunden unter %s -- nur /ws verfügbar", WEBAPP_DIR)
+        log.warning("webapp/ not found at %s -- only /ws available", WEBAPP_DIR)
 
     return app
 
 
-# Welche Verbindung zuletzt wirklich gelenkt hat und wann (monotonic).
-_lenker: dict[str, Any] = {"wer": None, "zeit": 0.0}
+# Which connection last actually steered, and when (monotonic).
+_pilot: dict[str, Any] = {"wer": None, "zeit": 0.0}
 
 
-def _meter_sagen(meter: float) -> str:
-    """Strecke so, wie man sie sagt ("einen halben Meter", "30 Zentimeter")."""
+def _say_meters(meter: float) -> str:
+    """Distance the way it is spoken ("einen halben Meter", "30 Zentimeter")."""
     if abs(meter - 1.0) < 1e-6:
         return "einen Meter"
     if abs(meter - 0.5) < 1e-6:
@@ -1248,19 +1250,19 @@ async def _handle(
     homing: Homing,
     localizer: Localizer,
     guard: CollisionGuard,
-    erkunder: Erkunder | None = None,
-    interaktion: Interaktion | None = None,
-    stimme: Stimme | None = None,
-    sprache: Spracherkennung | None = None,
-    aufzeichnung: Fahrtenschreiber | None = None,
-    manoever: Manoever | None = None,
-    absender: object | None = None,
-    karten: Kartensteuerung | None = None,
+    explorer: Explorer | None = None,
+    interaction: Interaction | None = None,
+    voice: Voice | None = None,
+    speech: SpeechRecognition | None = None,
+    recording: Recorder | None = None,
+    maneuver: Maneuver | None = None,
+    sender: object | None = None,
+    map_control: MapControl | None = None,
 ) -> dict[str, Any] | None:
-    """Eine eingehende Nachricht verarbeiten.
+    """Process an incoming message.
 
-    Gibt die Antwort an den Absender zurück, oder None wenn keine nötig ist.
-    ``absender`` ist die Verbindung, von der sie kam (für den Fahrvorrang).
+    Returns the reply to the sender, or None if none is needed.
+    ``sender`` is the connection it came from (for drive priority).
     """
     kind = msg.get("type")
 
@@ -1270,292 +1272,293 @@ async def _handle(
         except ProtocolError as exc:
             return error_message(str(exc))
 
-        # Fahrvorrang: Wer gerade lenkt, wird nicht von den Leerlauf-Nullen
-        # einer zweiten offenen App ausgebremst (siehe DRIVE_VORRANG_S).
-        if absender is not None:
-            jetzt = time.monotonic()
+        # Drive priority: whoever is steering is not slowed down by the idle
+        # zeros of a second open app (see DRIVE_PRIORITY_S).
+        if sender is not None:
+            now = time.monotonic()
             if not cmd.is_stop():
-                _lenker["wer"], _lenker["zeit"] = absender, jetzt
+                _pilot["wer"], _pilot["zeit"] = sender, now
             elif (
-                _lenker["wer"] not in (None, absender)
-                and jetzt - _lenker["zeit"] < config.DRIVE_VORRANG_S
+                _pilot["wer"] not in (None, sender)
+                and now - _pilot["zeit"] < config.DRIVE_PRIORITY_S
             ):
                 return None
 
-        # Der Mensch hat Vorrang. Die App sendet auch im Stillstand weiter,
-        # deshalb bricht nur eine tatsächliche Eingabe ab -- sonst wäre die
-        # Heimfahrt sofort wieder beendet.
-        if homing.aktiv and not cmd.is_stop():
-            homing.abbrechen("von Hand übersteuert")
+        # The human has priority. The app keeps sending even at standstill,
+        # so only an actual input cancels -- otherwise homing would end
+        # immediately.
+        if homing.active and not cmd.is_stop():
+            homing.cancel("von Hand übersteuert")
             await hub.broadcast(alert_message("info", "Heimfahrt abgebrochen"))
-        elif homing.aktiv:
-            return None  # Leerlauf-Nachrichten ignorieren, Heimfahrt steuert
+        elif homing.active:
+            return None  # ignore idle messages, homing is steering
 
-        # Beim autonomen Fahren genauso: Eingreifen beendet es, die
-        # Leerlauf-Nullen der App dürfen es nicht ausbremsen.
-        if erkunder is not None and erkunder.aktiv:
+        # Same for autonomous driving: intervening ends it, the app's idle
+        # zeros must not slow it down.
+        if explorer is not None and explorer.active:
             if cmd.is_stop():
                 return None
-            # Die Meldung mit Grund schickt _status_loop.
-            erkunder.abbrechen("von Hand übersteuert")
+            # _status_loop sends the message with the reason.
+            explorer.cancel("von Hand übersteuert")
 
-        # Interaktion ebenso: wer von Hand lenkt, will nicht, dass der
-        # Roboter gleichzeitig einer Person folgt.
-        if interaktion is not None and interaktion.aktiv:
+        # Interaction too: whoever steers by hand does not want the robot
+        # to follow a person at the same time.
+        if interaction is not None and interaction.active:
             if cmd.is_stop():
                 return None
-            interaktion.abbrechen("von Hand übersteuert")
+            interaction.cancel("von Hand übersteuert")
 
-        # Genauer Fahrbefehl ("2 Meter vor") ebenso.
-        if manoever is not None and manoever.aktiv:
+        # Exact drive command ("2 Meter vor") likewise.
+        if maneuver is not None and maneuver.active:
             if cmd.is_stop():
                 return None
-            manoever.abbrechen("von Hand übersteuert")
+            maneuver.cancel("von Hand übersteuert")
 
-        erlaubt, hindernis = guard.pruefen(cmd)
-        if hindernis is not None and guard.melden():
+        allowed, obstacle = guard.check(cmd)
+        if obstacle is not None and guard.report():
             await hub.broadcast(
                 alert_message(
-                    "warning", f"Hindernis in {hindernis:.2f} m -- Fahrt gesperrt"
+                    "warning", f"Hindernis in {obstacle:.2f} m -- Fahrt gesperrt"
                 )
             )
-        watchdog.submit(erlaubt)
-        return None  # Status geht ohnehin im Takt raus
+        watchdog.submit(allowed)
+        return None  # status goes out on the tick anyway
 
     if kind == "collision":
-        guard.einstellen(msg.get("enabled"), msg.get("distance"))
-        await hub.broadcast(collision_message(guard.zustand()))
+        guard.configure(msg.get("enabled"), msg.get("distance"))
+        await hub.broadcast(collision_message(guard.state()))
         return None
 
     if kind == "stop":
-        homing.abbrechen("Not-Stopp")
-        if karten is not None:
-            # Auch ein wartendes Weiterfahren nach einem USB-Reset verwerfen.
-            karten.stoppen("Not-Stopp")
-        if erkunder is not None:
-            erkunder.abbrechen("Not-Stopp")
-        if interaktion is not None:
-            interaktion.abbrechen("Not-Stopp")
-        if manoever is not None:
-            manoever.abbrechen("Not-Stopp")
+        homing.cancel("Not-Stopp")
+        if map_control is not None:
+            # Also discard a pending resume after a USB reset.
+            map_control.stop("Not-Stopp")
+        if explorer is not None:
+            explorer.cancel("Not-Stopp")
+        if interaction is not None:
+            interaction.cancel("Not-Stopp")
+        if maneuver is not None:
+            maneuver.cancel("Not-Stopp")
         watchdog.stop()
-        if stimme is not None:
-            # Vorrang: alles, was noch in der Schlange stand, ist überholt.
-            stimme.sagen("Halt.", vorrang=True)
+        if voice is not None:
+            # Priority: everything still in the queue is obsolete.
+            voice.say("Halt.", priority=True)
         return None
 
     if kind in ("move", "turn"):
-        if manoever is None:
+        if maneuver is None:
             return alert_message("warning", "Genaue Fahrbefehle gehen hier nicht")
         if kind == "turn":
-            art, wert = mv.DREHEN, msg.get("grad")
+            category, value = mv.TURN, msg.get("grad")
         else:
-            art, wert = str(msg.get("richtung", mv.VOR)), msg.get("meter")
-        # Nur ein Programm lenkt: Heimfahrt, Erkunder und Interaktion weichen.
-        homing.abbrechen("Fahrbefehl gestartet")
-        if erkunder is not None:
-            erkunder.abbrechen("Fahrbefehl gestartet")
-        if interaktion is not None:
-            interaktion.abbrechen("Fahrbefehl gestartet")
-        fehler = manoever.start(art, wert)
-        if fehler is not None:
-            return alert_message("warning", fehler)
-        await hub.broadcast(alert_message("info", f"Fahrbefehl: {mv.beschreiben(art, float(wert))}"))
+            category, value = str(msg.get("richtung", mv.FORWARD)), msg.get("meter")
+        # Only one program steers: homing, explorer and interaction give way.
+        homing.cancel("Fahrbefehl gestartet")
+        if explorer is not None:
+            explorer.cancel("Fahrbefehl gestartet")
+        if interaction is not None:
+            interaction.cancel("Fahrbefehl gestartet")
+        error = maneuver.start(category, value)
+        if error is not None:
+            return alert_message("warning", error)
+        await hub.broadcast(alert_message("info", f"Fahrbefehl: {mv.describe(category, float(value))}"))
         return None
 
     if kind == "explore":
-        if erkunder is None or not erkunder.verfuegbar:
+        if explorer is None or not explorer.available:
             return alert_message("warning", "Autonomes Fahren geht nur mit Lidar")
-        if erkunder.aktiv:
+        if explorer.active:
             return None
-        homing.abbrechen("autonomes Fahren gestartet")
-        if interaktion is not None:
-            interaktion.abbrechen("autonomes Fahren gestartet")
-        if manoever is not None:
-            manoever.abbrechen("autonomes Fahren gestartet")
-        if erkunder.start():
+        homing.cancel("autonomes Fahren gestartet")
+        if interaction is not None:
+            interaction.cancel("autonomes Fahren gestartet")
+        if maneuver is not None:
+            maneuver.cancel("autonomes Fahren gestartet")
+        if explorer.start():
             await hub.broadcast(alert_message("info", "Autonomes Fahren gestartet"))
         return None
 
     if kind == "explore_stop":
-        if erkunder is not None:
-            erkunder.abbrechen("vom Nutzer beendet")  # Meldung kommt aus _status_loop
+        if explorer is not None:
+            explorer.cancel("vom Nutzer beendet")  # message comes from _status_loop
         watchdog.stop()
         return None
 
     if kind in ("interaction_start", "follow"):
-        if interaktion is None or not interaktion.verfuegbar:
+        if interaction is None or not interaction.available:
             return alert_message(
                 "warning",
                 "Interaktion geht nur mit Lidar und Posenerkennung (siehe /interaktion/status)",
             )
-        if not interaktion.aktiv:
-            # Nur ein Programm lenkt: Erkunder und Heimfahrt weichen.
-            homing.abbrechen("Interaktion gestartet")
-            if erkunder is not None:
-                erkunder.abbrechen("Interaktion gestartet")
-            if manoever is not None:
-                manoever.abbrechen("Interaktion gestartet")
+        if not interaction.active:
+            # Only one program steers: explorer and homing give way.
+            homing.cancel("Interaktion gestartet")
+            if explorer is not None:
+                explorer.cancel("Interaktion gestartet")
+            if maneuver is not None:
+                maneuver.cancel("Interaktion gestartet")
         if kind == "follow":
-            war_aktiv = interaktion.aktiv
-            ziel_id = msg.get("ziel_id")
-            if isinstance(ziel_id, bool) or not isinstance(ziel_id, (int, type(None))):
+            was_active = interaction.active
+            target_id = msg.get("ziel_id")
+            if isinstance(target_id, bool) or not isinstance(target_id, (int, type(None))):
                 return alert_message("warning", "ziel_id muss eine Zahl sein")
-            if interaktion.folgen(ziel_id) and not war_aktiv:
+            if interaction.follow(target_id) and not was_active:
                 await hub.broadcast(alert_message("info", "Interaktion an -- folge dir"))
-        elif interaktion.start():
+        elif interaction.start():
             await hub.broadcast(
                 alert_message("info", "Interaktion an -- ich reagiere auf Handzeichen")
             )
         return None
 
     if kind == "follow_stop":
-        if interaktion is not None:
-            interaktion.folgen_stop()
+        if interaction is not None:
+            interaction.follow_stop()
         return None
 
     if kind in ("follow_pause", "follow_resume"):
-        # Pause hält an, das Ziel bleibt gemerkt -- anders als follow_stop.
-        if interaktion is not None:
+        # Pause stops, the target stays remembered -- unlike follow_stop.
+        if interaction is not None:
             if kind == "follow_pause":
-                interaktion.pausieren()
+                interaction.pause()
             else:
-                interaktion.fortsetzen()
+                interaction.resume()
         return None
 
     if kind == "record_save":
-        if aufzeichnung is None:
+        if recording is None:
             return alert_message("warning", "Fahrtenschreiber ist ausgeschaltet")
-        notiz = msg.get("notiz", "")
-        if not isinstance(notiz, str):
-            notiz = ""
-        # gzip und SD-Karte brauchen einige hundert Millisekunden -- nicht in
-        # der Ereignisschleife, sonst stockt der Watchdog-Takt.
-        pfad = await asyncio.to_thread(aufzeichnung.speichern, notiz)
-        return alert_message("info", f"Fahrt gespeichert: {pfad.name}")
+        note = msg.get("notiz", "")
+        if not isinstance(note, str):
+            note = ""
+        # gzip and the SD card take a few hundred milliseconds -- not in the
+        # event loop, otherwise the watchdog tick would stutter.
+        path = await asyncio.to_thread(recording.save, note)
+        return alert_message("info", f"Fahrt gespeichert: {path.name}")
 
     if kind == "interaction_stop":
-        if interaktion is not None:
-            interaktion.abbrechen("vom Nutzer beendet")  # Meldung kommt aus _status_loop
+        if interaction is not None:
+            interaction.cancel("vom Nutzer beendet")  # message comes from _status_loop
         watchdog.stop()
         return None
 
     if kind == "home":
-        nach_karte = homing.karte_bereit
-        if not odometry.misst_tatsaechlich and not nach_karte:
-            log.warning("Heimfahrt ohne Bewegungsmessung -- Position ist geschätzt")
-        abstand = odometry.distanz_zum_start()
-        if erkunder is not None:
-            erkunder.abbrechen("Heimfahrt gestartet")
-        if interaktion is not None:
-            interaktion.abbrechen("Heimfahrt gestartet")
-        if manoever is not None:
-            manoever.abbrechen("Heimfahrt gestartet")
+        by_map = homing.map_ready
+        if not odometry.actually_measuring and not by_map:
+            log.warning("Homing without motion measurement -- position is estimated")
+        distance = odometry.distance_to_start()
+        if explorer is not None:
+            explorer.cancel("Heimfahrt gestartet")
+        if interaction is not None:
+            interaction.cancel("Heimfahrt gestartet")
+        if maneuver is not None:
+            maneuver.cancel("Heimfahrt gestartet")
         if homing.start():
             text = (
                 "Heimfahrt nach Karte gestartet (zum Ausgangspunkt der Karte)"
-                if nach_karte else f"Heimfahrt gestartet ({abstand:.2f} m)"
+                if by_map else f"Heimfahrt gestartet ({distance:.2f} m)"
             )
             await hub.broadcast(alert_message("info", text))
         return None
 
     if kind == "goto":
-        if karten is None:
+        if map_control is None:
             return alert_message("warning", "Fahrt zum Ziel geht hier nicht")
-        fehler = karten.ziel(msg.get("x"), msg.get("y"), msg.get("winkel"))
-        if fehler:
-            return alert_message("warning", fehler)
-        return None  # Meldung kommt aus der Kartensteuerung
+        error = map_control.target(msg.get("x"), msg.get("y"), msg.get("winkel"))
+        if error:
+            return alert_message("warning", error)
+        return None  # message comes from MapControl
 
     if kind == "goto_cancel":
-        homing.abbrechen("vom Nutzer abgebrochen")
+        homing.cancel("vom Nutzer abgebrochen")
         watchdog.stop()
         return None
 
     if kind == "map_pose":
-        if karten is None:
+        if map_control is None:
             return alert_message("warning", "Keine Karte eingerichtet")
-        fehler = karten.lage_setzen(msg.get("x"), msg.get("y"), msg.get("winkel"))
-        if fehler:
-            return alert_message("warning", fehler)
+        error = map_control.set_pose(msg.get("x"), msg.get("y"), msg.get("winkel"))
+        if error:
+            return alert_message("warning", error)
         return alert_message("info", "Suche die Lage an der gezeigten Stelle")
 
     if kind == "map_load":
-        if karten is None:
+        if map_control is None:
             return alert_message("warning", "Keine Karte eingerichtet")
         name = msg.get("name")
         if not isinstance(name, str) or not name:
             return alert_message("warning", "map_load braucht einen Kartennamen (name)")
         try:
-            info = await asyncio.to_thread(karten.laden, name)
+            info = await asyncio.to_thread(map_control.load, name)
         except (ValueError, RuntimeError, OSError) as exc:
             return alert_message("warning", f"Karte nicht geladen: {exc}")
         return alert_message("info", f"Karte „{info['name']}“ geladen -- suche die eigene Lage")
 
     if kind == "home_cancel":
-        homing.abbrechen("vom Nutzer abgebrochen")
+        homing.cancel("vom Nutzer abgebrochen")
         watchdog.stop()
         await hub.broadcast(alert_message("info", "Heimfahrt abgebrochen"))
         return None
 
     if kind == "set_home":
-        homing.abbrechen("Startpunkt wurde verschoben")
-        if erkunder is not None:
-            erkunder.abbrechen("Startpunkt wurde verschoben")
-        if interaktion is not None:
-            interaktion.abbrechen("Startpunkt wurde verschoben")
-        if manoever is not None:
-            manoever.abbrechen("Startpunkt wurde verschoben")
-        # Nur in der Simulation vorhanden: dort muss auch die gedachte
-        # Wirklichkeit auf den Startpunkt zurück, sonst stünde der Roboter
-        # außerhalb des simulierten Raums.
-        nullen = getattr(driver, "wahre_pose_nullen", None)
-        if nullen is not None:
-            nullen()
+        homing.cancel("Startpunkt wurde verschoben")
+        if explorer is not None:
+            explorer.cancel("Startpunkt wurde verschoben")
+        if interaction is not None:
+            interaction.cancel("Startpunkt wurde verschoben")
+        if maneuver is not None:
+            maneuver.cancel("Startpunkt wurde verschoben")
+        # Only present in the simulation: there the imaginary reality also
+        # has to go back to the start, otherwise the robot would be outside
+        # the simulated room.
+        zero = getattr(driver, "reset_true_pose", None)
+        if zero is not None:
+            zero()
         odometry.reset()
-        # Die alte Referenzaufnahme gehört zum alten Startpunkt und würde
-        # die Position sonst dorthin zurückziehen.
-        eingemessen = localizer.referenz_aufnehmen()
+        # The old reference scan belongs to the old start and would
+        # otherwise pull the position back there.
+        calibrated = localizer.capture_reference()
         text = (
             "Startpunkt gesetzt und per Lidar eingemessen"
-            if eingemessen
+            if calibrated
             else "Startpunkt gesetzt (ohne Lidar -- Position wird nur geschätzt)"
         )
-        # Mit Karte: Hier ist auch das Ziel der Heimfahrt nach Karte.
-        if karten is not None and karten.start_hier():
+        # With a map: this is also the goal of map-based homing.
+        if map_control is not None and map_control.start_here():
             text += ", auch in der Karte"
         await hub.broadcast(alert_message("info", text))
         return None
 
     if kind == "say":
-        if stimme is None:
+        if voice is None:
             return alert_message("warning", "Keine Sprachausgabe")
         text = msg.get("text")
         if not isinstance(text, str) or not text.strip():
             return error_message("say braucht ein Feld text")
-        stimme.sagen(text, vorrang=bool(msg.get("vorrang", False)))
-        if not stimme.verfuegbar:
+        voice.say(text, priority=bool(msg.get("vorrang", False)))
+        if not voice.available:
             return alert_message(
                 "warning", "Kein Lautsprecher oder keine Sprachsynthese (siehe /stimme/status)"
             )
         return None
 
     if kind == "say_stop":
-        if stimme is not None:
-            stimme.verstummen()
+        if voice is not None:
+            voice.mute()
         return None
 
     if kind == "speech":
-        # Wie ins Mikrofon gesprochen: zum Ausprobieren ohne Mikrofon und
-        # in --mock. Ausgeführt wird im _sprach_loop, wie beim echten Hören.
-        if sprache is None:
+        # As if spoken into the microphone: for trying things out without a
+        # microphone and in --mock. Executed in _speech_loop, as with real
+        # hearing.
+        if speech is None:
             return alert_message("warning", "Keine Spracherkennung")
         text = msg.get("text")
         if not isinstance(text, str) or not text.strip():
             return error_message("speech braucht ein Feld text")
-        if sprache.hoeren(text) is None:
+        if speech.hear(text) is None:
             return alert_message(
-                "info", f"Kein Befehl erkannt in {text!r} (Weckwort: {config.SPRACHE_WECKWORT})"
+                "info", f"Kein Befehl erkannt in {text!r} (Weckwort: {config.SPEECH_WAKE_WORD})"
             )
         return None
 
@@ -1567,57 +1570,57 @@ async def _handle(
         return None
 
     if kind == "vitals":
-        # Vom ESP: an alle Clients weiterreichen, damit die App sie anzeigt.
-        # Bewusst ohne Bewertung -- siehe docs/entscheidungen.md, E3.
+        # From the ESP: pass on to all clients so the app displays them.
+        # Deliberately without evaluation -- see docs/decisions.md, E3.
         await hub.broadcast(vitals_message(msg.get("bpm"), msg.get("motion")))
         return None
 
     if kind == "box":
-        # TODO: box/ implementieren, sobald die Mechanik steht.
+        # TODO: implement box/ once the mechanics are in place.
         return alert_message("info", "Box ist noch nicht angebaut")
 
     return error_message(f"Unbekannter Nachrichtentyp: {kind!r}")
 
 
-async def _referenz_nachholen(
-    localizer: Localizer, odometry: Odometry, versuche: int = 120
+async def _catch_up_reference(
+    localizer: Localizer, odometry: Odometry, attempts: int = 120
 ) -> None:
-    """Nimmt die Referenzaufnahme, sobald der Lidar die erste Runde hat.
+    """Takes the reference scan as soon as the lidar has its first revolution.
 
-    Großzügige Frist: der Lidar kann beim Hochfahren etwas brauchen, bis er
-    sauber antwortet. Eingemessen wird aber nur, solange der Roboter noch am
-    Startpunkt steht -- eine Aufnahme von woanders als "Startpunkt" zu
-    speichern, würde jede spätere Heimfahrt an die falsche Stelle führen.
+    Generous deadline: at boot the lidar can take a while until it answers
+    cleanly. Calibration only happens while the robot is still at the start
+    -- saving a scan from somewhere else as the "start" would lead every
+    later homing to the wrong place.
     """
-    for _ in range(versuche):
+    for _ in range(attempts):
         await asyncio.sleep(1.0)
-        if localizer.hat_referenz:
-            return  # inzwischen per "set_home" gesetzt
-        x, y, _winkel = odometry.pose()
+        if localizer.has_reference:
+            return  # set via "set_home" in the meantime
+        x, y, _angle = odometry.pose()
         if math.hypot(x, y) > 0.05:
             break
-        if localizer.referenz_aufnehmen():
+        if localizer.capture_reference():
             return
     log.warning(
-        "Startpunkt konnte nicht eingemessen werden -- Ortung ohne "
-        "Lidar-Korrektur, bis \"Startpunkt hier setzen\" gedrückt wird"
+        "Start could not be calibrated -- localization without "
+        "lidar correction until \"Startpunkt hier setzen\" is pressed"
     )
 
 
 async def _match_loop(localizer: Localizer) -> None:
-    """Gleicht die Position regelmäßig mit der Referenzaufnahme ab."""
-    if not localizer.verfuegbar:
+    """Regularly matches the position against the reference scan."""
+    if not localizer.available:
         return
     while True:
-        # Jedes Mal neu lesen: auf der Einstellungsseite verstellbar.
+        # Read anew each time: adjustable on the settings page.
         await asyncio.sleep(1.0 / max(0.1, config.MATCH_HZ))
         try:
-            # Der Abgleich rechnet mit einigen hundert Punkten und würde
-            # die Ereignisschleife sonst kurz blockieren -- das macht sich
-            # in ruckelnder Steuerung bemerkbar.
-            await asyncio.to_thread(localizer.abgleichen)
+            # The matching computes with a few hundred points and would
+            # otherwise briefly block the event loop -- which shows up as
+            # jerky control.
+            await asyncio.to_thread(localizer.match_scan)
         except Exception:
-            _schleifenfehler("Lidar-Abgleich")
+            _loop_error("Lidar-Abgleich")
 
 
 async def _hardware_loop(
@@ -1625,43 +1628,43 @@ async def _hardware_loop(
     watchdog: SafetyWatchdog,
     driver: DriveBase,
     homing: Homing,
-    erkunder: Erkunder | None = None,
-    interaktion: Interaktion | None = None,
-    manoever: Manoever | None = None,
-    karten: Kartensteuerung | None = None,
+    explorer: Explorer | None = None,
+    interaction: Interaction | None = None,
+    maneuver: Maneuver | None = None,
+    map_control: MapControl | None = None,
 ) -> None:
-    """Hält die Verbindung zum Antrieb am Leben.
+    """Keeps the connection to the driver alive.
 
-    Nach einem USB-Aussetzer baut der Treiber sie selbst neu auf; hier wird
-    dafür gesorgt, dass bis dahin nichts weiterfährt und die App es erfährt.
+    After a USB dropout the driver re-establishes it by itself; this makes
+    sure nothing keeps driving until then and that the app finds out.
     """
-    verbunden = driver.connected
+    connected = driver.connected
     while True:
         await asyncio.sleep(config.RECONNECT_CHECK_S)
         try:
-            # Neu verbinden kann eine Weile dauern -- nicht in der
-            # Ereignisschleife, sonst stockt die Steuerung.
-            await asyncio.to_thread(driver.ueberwachen)
+            # Reconnecting can take a while -- not in the event loop,
+            # otherwise control would stutter.
+            await asyncio.to_thread(driver.monitor)
 
-            jetzt = driver.connected
-            if jetzt == verbunden:
+            now = driver.connected
+            if now == connected:
                 continue
-            verbunden = jetzt
-            if not jetzt:
-                homing.abbrechen("Verbindung zum Antrieb verloren")
-                if karten is not None:
-                    # Merkt sich die laufende Kartierfahrt, um nach dem
-                    # Neuverbinden weiterzufahren (MAP_FAHRT_WIEDER_S).
-                    karten.antrieb_weg()
-                if erkunder is not None:
-                    erkunder.abbrechen("Verbindung zum Antrieb verloren")
-                if manoever is not None:
-                    manoever.abbrechen("Verbindung zum Antrieb verloren")
-                if interaktion is not None:
-                    # Nicht beenden, nur anhalten: Die Gestensteuerung bleibt
-                    # an und ist nach dem Neuverbinden sofort wieder bereit.
-                    # Früher war sie nach jedem USB-Reset aus.
-                    interaktion.antrieb_verloren()
+            connected = now
+            if not now:
+                homing.cancel("Verbindung zum Antrieb verloren")
+                if map_control is not None:
+                    # Remembers the running mapping drive in order to resume
+                    # after reconnecting (MAPPING_DRIVE_RESUME_S).
+                    map_control.drive_gone()
+                if explorer is not None:
+                    explorer.cancel("Verbindung zum Antrieb verloren")
+                if maneuver is not None:
+                    maneuver.cancel("Verbindung zum Antrieb verloren")
+                if interaction is not None:
+                    # Do not end it, only stop: gesture control stays on and
+                    # is ready again right after reconnecting. It used to be
+                    # off after every USB reset.
+                    interaction.drive_lost()
                 watchdog.stop()
                 await hub.broadcast(
                     alert_message(
@@ -1673,77 +1676,79 @@ async def _hardware_loop(
                 )
             else:
                 await hub.broadcast(alert_message("info", "Antrieb wieder verbunden"))
-                if karten is not None:
-                    karten.antrieb_wieder()
+                if map_control is not None:
+                    map_control.drive_back()
         except Exception:
-            # Früher war hier Schluss: kein Neuverbinden mehr bis zum Neustart.
-            _schleifenfehler("Verbindungsüberwachung")
+            # This used to be the end: no more reconnecting until a restart.
+            _loop_error("Verbindungsüberwachung")
 
 
 async def _odometry_loop(watchdog: SafetyWatchdog, odometry: Odometry) -> None:
-    """Schreibt die Position fort.
+    """Keeps updating the position.
 
-    Muss dauerhaft laufen, nicht nur während der Heimfahrt: sonst wüsste der
-    Roboter beim Druck auf den Home-Knopf nicht, wo er inzwischen steht.
+    Must run permanently, not only during homing: otherwise, when the home
+    button is pressed, the robot would not know where it is by now.
     """
-    takt = 1.0 / max(1, config.ODOMETRY_HZ)
+    tick = 1.0 / max(1, config.ODOMETRY_HZ)
     while True:
-        await asyncio.sleep(takt)
+        await asyncio.sleep(tick)
         try:
             odometry.update(watchdog.current_command)
         except Exception:
-            _schleifenfehler("Positionsverfolgung")
+            _loop_error("Positionsverfolgung")
 
 
-async def _aufzeichnung_loop(
-    aufzeichnung: Fahrtenschreiber,
+async def _recording_loop(
+    recording: Recorder,
     watchdog: SafetyWatchdog,
     odometry: Odometry,
     lidar: LidarService | None,
-    erkunder: Erkunder,
-    interaktion: Interaktion,
+    explorer: Explorer,
+    interaction: Interaction,
     homing: Homing,
 ) -> None:
-    """Füttert den Fahrtenschreiber mit Scans, Eigenbewegung und Zuständen.
+    """Feeds the recorder with scans, ego-motion and states.
 
-    Im Odometrie-Takt, damit jeder Fahrbefehl einen Odometrie-Wert in der
-    Nähe hat. Fahrbefehle selbst kommen direkt aus dem Watchdog.
+    At the odometry tick, so that every drive command has an odometry value
+    nearby. Drive commands themselves come directly from the watchdog.
     """
-    takt = 1.0 / max(1, config.ODOMETRY_HZ)
+    tick = 1.0 / max(1, config.ODOMETRY_HZ)
     while True:
-        await asyncio.sleep(takt)
+        await asyncio.sleep(tick)
         try:
             if lidar is not None:
-                aufzeichnung.scan(lidar.latest())
-            aufzeichnung.odo(
-                odometry.geschwindigkeit(), odometry.pose(),
-                watchdog.current_command, odometry.misst_tatsaechlich,
+                recording.scan(lidar.latest())
+            recording.odo(
+                odometry.velocity(), odometry.pose(),
+                watchdog.current_command, odometry.actually_measuring,
             )
-            e = erkunder.zustand()
-            i = interaktion.zustand()
-            aufzeichnung.zustand(
-                erkunder=e.get("zustand"),
-                erkunder_text=e.get("text"),
-                erkunder_grund=e.get("grund"),
-                interaktion=i.get("modus") if interaktion.aktiv else None,
-                heimfahrt=bool(homing.aktiv),
-            )
+            e = explorer.state()
+            i = interaction.state()
+            # Explicit string keys: they are the field names of the
+            # recording file and must stay readable for old recordings.
+            recording.state(**{
+                "erkunder": e.get("zustand"),
+                "erkunder_text": e.get("text"),
+                "erkunder_grund": e.get("grund"),
+                "interaktion": i.get("modus") if interaction.active else None,
+                "heimfahrt": bool(homing.active),
+            })
         except Exception:
-            _schleifenfehler("Fahrtenschreiber")
+            _loop_error("Recorder")
 
 
-async def _puls_loop(diagnose: Diagnose) -> None:
-    """Lebenszeichen der Ereignisschleife für die Diagnose.
+async def _pulse_loop(diagnostics: Diagnostics) -> None:
+    """Heartbeat of the event loop for diagnostics.
 
-    Wacht das sleep deutlich zu spät auf, war die Schleife blockiert (Hänger).
-    Bleibt der Puls ganz aus, schreibt die Diagnose aus ihrem eigenen Thread
-    auf, wo die Schleife hängt.
+    If the sleep wakes up clearly too late, the loop was blocked (a hang).
+    If the pulse stops entirely, diagnostics records from its own thread
+    where the loop is stuck.
     """
-    takt = config.DIAGNOSE_PULS_S
+    tick = config.DIAG_PULSE_S
     while True:
-        vorher = time.monotonic()
-        await asyncio.sleep(takt)
-        diagnose.puls(max(0.0, time.monotonic() - vorher - takt))
+        previous = time.monotonic()
+        await asyncio.sleep(tick)
+        diagnostics.pulse(max(0.0, time.monotonic() - previous - tick))
 
 
 async def _status_loop(
@@ -1754,71 +1759,71 @@ async def _status_loop(
     homing: Homing,
     localizer: Localizer,
     guard: CollisionGuard,
-    erkunder: Erkunder | None = None,
-    erkennung: Hinderniserkennung | None = None,
+    explorer: Explorer | None = None,
+    detection: ObstacleDetection | None = None,
     lidar: LidarService | None = None,
-    personen: Personenerkennung | None = None,
-    interaktion: Interaktion | None = None,
-    stimme: Stimme | None = None,
-    sprache: Spracherkennung | None = None,
-    manoever: Manoever | None = None,
-    karten: Kartensteuerung | None = None,
+    people: PersonDetection | None = None,
+    interaction: Interaction | None = None,
+    voice: Voice | None = None,
+    speech: SpeechRecognition | None = None,
+    maneuver: Maneuver | None = None,
+    map_control: MapControl | None = None,
 ) -> None:
-    """Schickt regelmäßig den Zustand an alle Clients."""
-    zuletzt_aktiv = False
-    zuletzt_erkundet = False
-    zuletzt_interagiert = False
-    zuletzt_manoever = 0
+    """Regularly sends the state to all clients."""
+    last_active = False
+    last_explored = False
+    last_interacted = False
+    last_maneuver = 0
     while True:
         await asyncio.sleep(config.STATUS_INTERVAL_S)
         try:
-            # Das Ende der Heimfahrt melden -- sie beendet sich selbst,
-            # ohne dass jemand danach fragt.
-            if zuletzt_aktiv and not homing.aktiv and homing.letzter_grund:
+            # Report the end of homing -- it ends by itself without anyone
+            # asking.
+            if last_active and not homing.active and homing.last_reason:
                 await hub.broadcast(
-                    alert_message("info", f"{homing.bezeichnung}: {homing.letzter_grund}")
+                    alert_message("info", f"{homing.label}: {homing.last_reason}")
                 )
-            zuletzt_aktiv = homing.aktiv
+            last_active = homing.active
 
-            # Ebenso das Ende des autonomen Fahrens (Lidar weg, festgefahren).
-            if erkunder is not None:
-                if zuletzt_erkundet and not erkunder.aktiv and erkunder.letzter_grund:
+            # Likewise the end of autonomous driving (lidar gone, stuck).
+            if explorer is not None:
+                if last_explored and not explorer.active and explorer.last_reason:
                     await hub.broadcast(
                         alert_message(
-                            "info", f"Autonomes Fahren beendet: {erkunder.letzter_grund}"
+                            "info", f"Autonomes Fahren beendet: {explorer.last_reason}"
                         )
                     )
-                zuletzt_erkundet = erkunder.aktiv
+                last_explored = explorer.active
 
-            # Interaktion: erkannte Gesten und Moduswechsel als Hinweis,
-            # dazu das Ende (z. B. Lidar weg).
-            if interaktion is not None:
-                for text in interaktion.meldungen_abholen():
+            # Interaction: recognized gestures and mode changes as a notice,
+            # plus the end (e.g. lidar gone).
+            if interaction is not None:
+                for text in interaction.fetch_messages():
                     await hub.broadcast(alert_message("info", text))
-                if zuletzt_interagiert and not interaktion.aktiv and interaktion.letzter_grund:
+                if last_interacted and not interaction.active and interaction.last_reason:
                     await hub.broadcast(
-                        alert_message("info", f"Interaktion beendet: {interaktion.letzter_grund}")
+                        alert_message("info", f"Interaktion beendet: {interaction.last_reason}")
                     )
-                zuletzt_interagiert = interaktion.aktiv
+                last_interacted = interaction.active
 
-            # Genaue Fahrbefehle: Ende melden, und wenn es nicht geklappt
-            # hat, auch sagen (per Sprache gestartet, schaut keiner auf die App).
-            # Über den Zähler, nicht über "aktiv": "zu wenig Platz" ist
-            # schneller vorbei als ein Takt dieser Schleife.
-            if manoever is not None and manoever.beendet != zuletzt_manoever:
-                zuletzt_manoever = manoever.beendet
-                if manoever.letzter_grund:
+            # Exact drive commands: report the end, and if it did not work,
+            # also say so (started by speech, nobody is looking at the app).
+            # Via the counter, not via "active": "zu wenig Platz" is over
+            # faster than one tick of this loop.
+            if maneuver is not None and maneuver.finished != last_maneuver:
+                last_maneuver = maneuver.finished
+                if maneuver.last_reason:
                     await hub.broadcast(alert_message(
-                        "info" if manoever.erfolgreich else "warning",
-                        f"Fahrbefehl: {manoever.letzter_grund}",
+                        "info" if maneuver.succeeded else "warning",
+                        f"Fahrbefehl: {maneuver.last_reason}",
                     ))
-                    if not manoever.erfolgreich and stimme is not None:
-                        stimme.sagen(manoever.ansage or "Das hat nicht ganz geklappt.")
+                    if not maneuver.succeeded and voice is not None:
+                        voice.say(maneuver.announcement or "Das hat nicht ganz geklappt.")
 
             if hub.count:
-                autonomie = (
-                    _autonomie(erkunder, erkennung, lidar, personen)
-                    if erkunder is not None and erkennung is not None
+                autonomy = (
+                    _autonomy(explorer, detection, lidar, people)
+                    if explorer is not None and detection is not None
                     else None
                 )
                 await hub.broadcast(
@@ -1827,43 +1832,43 @@ async def _status_loop(
                         driver.name,
                         driver.connected,
                         pose=odometry.pose(),
-                        homing=homing.aktiv,
-                        pose_gemessen=odometry.misst_tatsaechlich,
-                        collision=guard.zustand(),
-                        autonomie=autonomie,
-                        interaktion=interaktion.zustand() if interaktion is not None else None,
-                        stimme=stimme.zustand() if stimme is not None else None,
-                        sprache=sprache.zustand() if sprache is not None else None,
-                        karte=karten.zustand_kurz() if karten is not None else None,
+                        homing=homing.active,
+                        pose_measured=odometry.actually_measuring,
+                        collision=guard.state(),
+                        autonomy=autonomy,
+                        interaction=interaction.state() if interaction is not None else None,
+                        voice=voice.state() if voice is not None else None,
+                        speech=speech.state() if speech is not None else None,
+                        occ_map=map_control.state_brief() if map_control is not None else None,
                     )
                 )
         except Exception:
-            # Früher endeten damit die Statusmeldungen für immer: Die App
-            # zeigte eingefrorene Werte, es sah aus wie ein Absturz.
-            _schleifenfehler("Statusmeldungen")
+            # This used to end the status messages for good: the app showed
+            # frozen values, it looked like a crash.
+            _loop_error("Statusmeldungen")
 
 
-def _autonomie(
-    erkunder: Erkunder,
-    erkennung: Hinderniserkennung,
+def _autonomy(
+    explorer: Explorer,
+    detection: ObstacleDetection,
     lidar: LidarService | None,
-    personen: Personenerkennung | None,
+    people: PersonDetection | None,
 ) -> dict[str, Any]:
-    """Zustand für state.autonomie und /autonomie/status.
+    """State for state.autonomie and /autonomie/status.
 
-    Die Hindernisse kommen auch ohne laufende Erkundung mit -- so sieht man
-    schon vor dem Start, was der Roboter erkennt.
+    The obstacles are included even without exploration running -- so one
+    can see before the start what the robot detects.
     """
     scan = lidar.latest() if lidar is not None else None
-    if scan is not None and time.monotonic() - scan.zeit > 3.0:
-        scan = None  # alte Runde nicht als aktuelle Lage ausgeben
-    winkel = personen.winkelbereiche() if personen is not None else []
-    hindernisse = erkennung.aktuell(scan, winkel) if scan is not None else []
+    if scan is not None and time.monotonic() - scan.timestamp > 3.0:
+        scan = None  # do not output an old scan as the current situation
+    angle = people.angle_ranges() if people is not None else []
+    obstacles = detection.current(scan, angle) if scan is not None else []
     return {
-        **erkunder.zustand(),
-        # Die nächsten genügen für Anzeige und Liste; alle würden die
-        # Statusnachricht in vollen Räumen unnötig aufblähen.
-        "hindernisse": [h.als_dict() for h in hindernisse[:12]],
-        "personen": personen.boxen() if personen is not None else [],
-        "personenerkennung": personen.status() if personen is not None else None,
+        **explorer.state(),
+        # The nearest ones are enough for display and list; all of them
+        # would needlessly bloat the status message in cluttered rooms.
+        "hindernisse": [h.as_dict() for h in obstacles[:12]],
+        "personen": people.boxes() if people is not None else [],
+        "personenerkennung": people.status() if people is not None else None,
     }

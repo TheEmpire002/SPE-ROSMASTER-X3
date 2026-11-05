@@ -1,15 +1,14 @@
-"""Transportbox auf dem Roboter.
+"""Transport box on the robot.
 
-Noch leer. Geplant: ``actuator.py`` zum Öffnen und Schließen des Deckels.
+Still empty. Planned: ``actuator.py`` for opening and closing the lid.
 
-Angesteuert wird vermutlich ein Servo am Expansion Board:
+It will probably be driven by a servo on the expansion board:
 
-    bot.set_pwm_servo(kanal, winkel)
+    bot.set_pwm_servo(channel, angle)
 
-Der Nachrichtentyp ``{"type": "box", "action": "open"}`` ist im Protokoll
-bereits vorgesehen; ``api/server.py`` antwortet darauf aktuell nur mit einem
-Hinweis.
+The message type ``{"type": "box", "action": "open"}`` is already reserved in
+the protocol; ``api/server.py`` currently only answers it with a notice.
 
-Zu klären, bevor es losgeht: Servo oder Getriebemotor, welcher Kanal, und was
-passiert, wenn beim Schließen etwas im Weg ist.
+To clarify before starting: servo or gear motor, which channel, and what
+happens if something is in the way while closing.
 """

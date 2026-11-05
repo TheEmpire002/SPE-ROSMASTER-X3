@@ -1,22 +1,22 @@
-"""Musik von YouTube auf dem USB-Lautsprecher ("MUKKE" in der App).
+"""Music from YouTube on the USB speaker ("MUKKE" in the app).
 
-Erst fragt ``yt-dlp`` (als Python-Bibliothek) YouTube nach der direkten
-Adresse der Tonspur, dann spielt ``mpv`` als eigener Prozess sie ab, nur
-den Ton -- wir müssen weder herunterladen noch dekodieren. Gesteuert wird
-mpv über seine IPC-Schnittstelle (ein Unix-Socket, JSON pro Zeile): Pause,
-Lautstärke, Titel abfragen.
+First ``yt-dlp`` (as a Python library) asks YouTube for the direct address
+of the audio track, then ``mpv`` plays it as a separate process, audio
+only -- we neither have to download nor decode. mpv is controlled via its
+IPC interface (a Unix socket, one JSON per line): pause, volume, query the
+title.
 
-Ein eigener Prozess statt einer Python-Bibliothek, weil:
-- ein hängender oder abstürzender Player den Server nicht mitreißt,
-- mpv Netzwerkaussetzer, Puffern und Formatwechsel schon alles kann,
-- Stoppen einfach "Prozess beenden" ist.
+A separate process instead of a Python library, because:
+- a hanging or crashing player does not take the server down with it,
+- mpv already handles network dropouts, buffering and format changes,
+- stopping is simply "terminate the process".
 
-Spricht die Stimme (interaktion/stimme.py), räumt MUKKE den Lautsprecher
-und spielt danach an derselben Stelle weiter -- beide zugleich gehen
-nicht, das Gerät lässt sich nur einmal öffnen.
+When the voice speaks (interaction/voice.py), MUKKE frees the speaker and
+afterwards continues at the same position -- both at once is not possible,
+the device can only be opened once.
 
-Fehlt mpv oder yt-dlp, meldet ``status()`` das, und alles andere läuft
-weiter.
+If mpv or yt-dlp is missing, ``status()`` reports it and everything else
+keeps running.
 """
 
 from __future__ import annotations
@@ -38,19 +38,18 @@ from .. import config
 
 log = logging.getLogger(__name__)
 
-#: Nur diese Adressen werden abgespielt. Ohne Prüfung ließe sich über das
-#: Feld in der App jede Datei auf dem Pi oder jede beliebige Quelle an mpv
-#: übergeben.
-ERLAUBTE_HOSTS = {
+#: Only these addresses are played. Without this check, the field in the
+#: app could pass any file on the Pi or any arbitrary source to mpv.
+ALLOWED_HOSTS = {
     "youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be",
 }
 
 
-class MukkeFehler(ValueError):
-    """Text geht so an die App."""
+class MukkeError(ValueError):
+    """The text goes to the app as is."""
 
 
-def _yt_dlp_da() -> bool:
+def _yt_dlp_available() -> bool:
     try:
         import yt_dlp  # noqa: F401
     except ImportError:
@@ -58,40 +57,41 @@ def _yt_dlp_da() -> bool:
     return True
 
 
-def _tonspur_finden(url: str) -> tuple[str, str | None, dict[str, str]]:
-    """Fragt yt-dlp nach der direkten Adresse der Tonspur.
+def _find_audio_track(url: str) -> tuple[str, str | None, dict[str, str]]:
+    """Asks yt-dlp for the direct address of the audio track.
 
-    Selbst gefragt statt mpv das über sein ytdl-Skript machen zu lassen:
-    das findet yt-dlp in der venv oft nicht, und scheitert es, sagt mpv nur
-    "Failed to recognize file format". So steht der echte Grund in der App.
+    We ask ourselves instead of letting mpv do it via its ytdl script: that
+    script often does not find yt-dlp in the venv, and if it fails, mpv only
+    says "Failed to recognize file format". This way the real reason shows
+    up in the app.
     """
     import yt_dlp
 
-    optionen = {
+    options = {
         "format": "bestaudio/best",
         "quiet": True,
         "no_warnings": True,
-        "noplaylist": True,  # Link aus einer Playlist: nur dieses Lied
-        "logger": _StillerLogger(),
+        "noplaylist": True,  # link from a playlist: only this song
+        "logger": _QuietLogger(),
     }
     try:
-        with yt_dlp.YoutubeDL(optionen) as ydl:
+        with yt_dlp.YoutubeDL(options) as ydl:
             info = ydl.extract_info(url, download=False)
-    except Exception as exc:  # DownloadError, aber auch Netzwerkfehler
+    except Exception as exc:  # DownloadError, but also network errors
         text = re.sub(r"\x1b\[[0-9;]*m", "", str(exc)).replace("ERROR: ", "").strip()
-        raise MukkeFehler(f"YouTube: {text[:300]}") from None
+        raise MukkeError(f"YouTube: {text[:300]}") from None
 
-    # Bei Playlists trotz noplaylist manchmal ein Eintrag darunter.
+    # With playlists there is sometimes an entry below despite noplaylist.
     if info.get("entries"):
         info = next((e for e in info["entries"] if e), info)
-    quelle = info.get("url")
-    if not quelle:
-        raise MukkeFehler("YouTube: keine abspielbare Tonspur gefunden")
-    return quelle, info.get("title"), dict(info.get("http_headers") or {})
+    source = info.get("url")
+    if not source:
+        raise MukkeError("YouTube: keine abspielbare Tonspur gefunden")
+    return source, info.get("title"), dict(info.get("http_headers") or {})
 
 
-class _StillerLogger:
-    """yt-dlp soll nicht ins Server-Log schreiben -- Fehler kommen als Ausnahme."""
+class _QuietLogger:
+    """yt-dlp must not write to the server log -- errors come as exceptions."""
 
     def debug(self, msg: str) -> None:
         pass
@@ -106,11 +106,11 @@ class _StillerLogger:
         log.debug("yt-dlp: %s", msg)
 
 
-def link_pruefen(url: str) -> str:
+def check_link(url: str) -> str:
     url = (url or "").strip()
-    teile = urlparse(url)
-    if teile.scheme not in ("http", "https") or (teile.hostname or "").lower() not in ERLAUBTE_HOSTS:
-        raise MukkeFehler("Bitte einen YouTube-Link einfügen (youtube.com oder youtu.be)")
+    parts = urlparse(url)
+    if parts.scheme not in ("http", "https") or (parts.hostname or "").lower() not in ALLOWED_HOSTS:
+        raise MukkeError("Bitte einen YouTube-Link einfügen (youtube.com oder youtu.be)")
     return url
 
 
@@ -119,151 +119,151 @@ class Mukke:
         self._lock = threading.Lock()
         self._proc: subprocess.Popen | None = None
         self._url: str | None = None
-        self._titel: str | None = None
-        self._fehler: str | None = None
-        self._lautstaerke = int(config.MUKKE_LAUTSTAERKE)
-        # Letzte Ausgabezeilen von mpv: damit "spielt nicht" eine Ursache hat.
-        self._ausgabe: collections.deque[str] = collections.deque(maxlen=20)
-        # Womit mpv zuletzt gestartet wurde, und -- solange die Stimme
-        # spricht -- wo es weitergehen soll (siehe unterbrechen()).
-        self._gestartet: dict | None = None
-        self._unterbrochen: dict | None = None
+        self._title: str | None = None
+        self._error: str | None = None
+        self._volume = int(config.MUKKE_VOLUME)
+        # Last output lines of mpv: so that "does not play" has a cause.
+        self._output: collections.deque[str] = collections.deque(maxlen=20)
+        # What mpv was last started with, and -- while the voice is
+        # speaking -- where it should continue (see interrupt()).
+        self._started: dict | None = None
+        self._interrupted: dict | None = None
         self._socket = os.path.join(tempfile.gettempdir(), f"rosmaster-mukke-{os.getpid()}.sock")
 
-    # --- Zustand --------------------------------------------------------------------
+    # --- State ----------------------------------------------------------------------
 
-    def fehlt(self) -> str | None:
-        """Was zum Abspielen fehlt, oder None."""
+    def missing(self) -> str | None:
+        """What is missing for playback, or None."""
         if not config.MUKKE_ENABLED:
             return "abgeschaltet (config.MUKKE_ENABLED)"
         if shutil.which("mpv") is None:
             return "mpv fehlt -- sudo apt install mpv"
-        if not _yt_dlp_da():
+        if not _yt_dlp_available():
             return "yt-dlp fehlt -- robot/.venv/bin/pip install -U yt-dlp"
         if not hasattr(socket, "AF_UNIX"):
             return "nur auf Linux"
         return None
 
     @property
-    def laeuft(self) -> bool:
+    def running(self) -> bool:
         return self._proc is not None and self._proc.poll() is None
 
     def status(self) -> dict:
         with self._lock:
-            laeuft = self.laeuft
-            # Ist mpv von selbst beendet (Lied zu Ende, Link kaputt), den
-            # Grund aus seiner Ausgabe holen.
-            if self._proc is not None and not laeuft and self._fehler is None:
+            running = self.running
+            # If mpv exited by itself (song finished, broken link), get the
+            # reason from its output.
+            if self._proc is not None and not running and self._error is None:
                 code = self._proc.returncode
                 if code not in (0, None, -15):
-                    self._fehler = self._letzte_meldung() or f"mpv beendet mit Code {code}"
-            pausiert = bool(self._ipc(["get_property", "pause"])) if laeuft else False
-            if self._unterbrochen is not None:
-                # Die Stimme spricht gerade -- für die App läuft das Lied weiter.
-                laeuft, pausiert = True, self._unterbrochen["pausiert"]
-            if laeuft and not self._titel:
-                titel = self._ipc(["get_property", "media-title"])
-                # Bis yt-dlp fertig ist, nennt mpv nur die Adresse.
-                if isinstance(titel, str) and not titel.startswith("http") and "watch?" not in titel:
-                    self._titel = titel
+                    self._error = self._last_message() or f"mpv beendet mit Code {code}"
+            paused = bool(self._ipc(["get_property", "pause"])) if running else False
+            if self._interrupted is not None:
+                # The voice is speaking right now -- for the app the song keeps playing.
+                running, paused = True, self._interrupted["pausiert"]
+            if running and not self._title:
+                title = self._ipc(["get_property", "media-title"])
+                # Until yt-dlp is done, mpv only reports the address.
+                if isinstance(title, str) and not title.startswith("http") and "watch?" not in title:
+                    self._title = title
             return {
-                "verfuegbar": self.fehlt() is None,
-                "hinweis": self.fehlt(),
-                "laeuft": laeuft,
-                "pausiert": pausiert,
+                "verfuegbar": self.missing() is None,
+                "hinweis": self.missing(),
+                "laeuft": running,
+                "pausiert": paused,
                 "url": self._url,
-                "titel": self._titel,
-                "lautstaerke": self._lautstaerke,
-                "fehler": self._fehler,
+                "titel": self._title,
+                "lautstaerke": self._volume,
+                "fehler": self._error,
             }
 
-    # --- Steuerung ------------------------------------------------------------------
+    # --- Control --------------------------------------------------------------------
 
-    def abspielen(self, url: str) -> None:
-        url = link_pruefen(url)
-        fehlt = self.fehlt()
-        if fehlt:
-            raise MukkeFehler(f"Abspielen geht nicht: {fehlt}")
+    def play(self, url: str) -> None:
+        url = check_link(url)
+        missing = self.missing()
+        if missing:
+            raise MukkeError(f"Abspielen geht nicht: {missing}")
 
-        # Außerhalb der Sperre: das Nachfragen bei YouTube dauert Sekunden,
-        # und so lange soll /mukke/status nicht hängen.
-        quelle, titel, kopfzeilen = _tonspur_finden(url)
+        # Outside the lock: asking YouTube takes seconds, and /mukke/status
+        # must not hang that long.
+        source, title, headers = _find_audio_track(url)
 
         with self._lock:
-            self._beenden()
-            self._unterbrochen = None
-            self._url, self._titel, self._fehler = url, titel, None
-            self._starten(quelle, titel, kopfzeilen)
-        log.info("MUKKE: spiele %s", url)
+            self._shutdown()
+            self._interrupted = None
+            self._url, self._title, self._error = url, title, None
+            self._start(source, title, headers)
+        log.info("MUKKE: playing %s", url)
 
-    def unterbrechen(self) -> None:
-        """Lautsprecher freigeben, solange die Stimme spricht.
+    def interrupt(self) -> None:
+        """Free the speaker while the voice is speaking.
 
-        Pausieren allein reicht nicht: mpv hält das ALSA-Gerät auch in der
-        Pause offen, und aplay bekäme "Device or resource busy". Deshalb
-        mpv beenden und Stelle merken; ``fortsetzen()`` startet dort neu.
+        Pausing alone is not enough: mpv keeps the ALSA device open even when
+        paused, and aplay would get "Device or resource busy". So terminate
+        mpv and remember the position; ``resume()`` restarts there.
         """
         with self._lock:
-            if not self.laeuft or self._gestartet is None:
+            if not self.running or self._started is None:
                 return
-            stelle = self._ipc(["get_property", "time-pos"])
-            self._unterbrochen = {
-                **self._gestartet,
-                "start": float(stelle) if isinstance(stelle, (int, float)) else None,
+            position = self._ipc(["get_property", "time-pos"])
+            self._interrupted = {
+                **self._started,
+                "start": float(position) if isinstance(position, (int, float)) else None,
                 "pausiert": bool(self._ipc(["get_property", "pause"])),
             }
-            self._beenden(leise=True)
+            self._shutdown(quiet=True)
 
-    def fortsetzen(self) -> None:
-        """Nach dem Sprechen an der gemerkten Stelle weiterspielen."""
+    def resume(self) -> None:
+        """After speaking, continue playing at the remembered position."""
         with self._lock:
-            weiter, self._unterbrochen = self._unterbrochen, None
-            if weiter is None or self.laeuft:
+            resumed, self._interrupted = self._interrupted, None
+            if resumed is None or self.running:
                 return
-            self._starten(**weiter)
+            self._start(**resumed)
 
-    def _starten(
+    def _start(
         self,
-        quelle: str,
-        titel: str | None,
-        kopfzeilen: dict[str, str],
+        source: str,
+        title: str | None,
+        headers: dict[str, str],
         start: float | None = None,
-        pausiert: bool = False,
+        paused: bool = False,
     ) -> None:
-        """mpv mit der Tonspur starten. Nur mit gehaltener Sperre aufrufen."""
-        self._ausgabe.clear()
-        self._gestartet = {"quelle": quelle, "titel": titel, "kopfzeilen": kopfzeilen}
-        befehl = [
+        """Start mpv with the audio track. Only call while holding the lock."""
+        self._output.clear()
+        self._started = {"quelle": source, "titel": title, "kopfzeilen": headers}
+        command = [
             "mpv",
             "--no-video",
             "--input-terminal=no",
             "--msg-level=all=warn",
-            # Die Tonspur haben wir schon -- mpv soll nicht selbst noch
-            # einmal bei YouTube nachfragen.
+            # We already have the audio track -- mpv must not ask YouTube
+            # again by itself.
             "--ytdl=no",
             f"--audio-device={config.MUKKE_AUDIO_DEVICE}",
-            f"--volume={self._wirksam()}",
+            f"--volume={self._effective_volume()}",
             f"--input-ipc-server={self._socket}",
         ]
-        if titel:
-            befehl.append(f"--force-media-title={titel}")
-        # YouTube liefert die Tonspur nur mit demselben User-Agent, mit
-        # dem yt-dlp gefragt hat. Einzeln übergeben statt als
-        # --http-header-fields: dort trennt mpv an Kommas, und die
-        # stecken in anderen Kopfzeilen (Accept) drin.
-        if kopfzeilen.get("User-Agent"):
-            befehl.append(f"--user-agent={kopfzeilen['User-Agent']}")
-        if kopfzeilen.get("Referer"):
-            befehl.append(f"--referrer={kopfzeilen['Referer']}")
+        if title:
+            command.append(f"--force-media-title={title}")
+        # YouTube only delivers the audio track with the same User-Agent
+        # that yt-dlp asked with. Passed individually instead of as
+        # --http-header-fields: there mpv splits at commas, and those
+        # occur in other headers (Accept).
+        if headers.get("User-Agent"):
+            command.append(f"--user-agent={headers['User-Agent']}")
+        if headers.get("Referer"):
+            command.append(f"--referrer={headers['Referer']}")
         if start:
-            befehl.append(f"--start={start:.1f}")
-        if pausiert:
-            befehl.append("--pause")
-        # "--" davor: eine Adresse, die mit "-" beginnt, wäre sonst eine
-        # mpv-Option.
-        befehl += ["--", quelle]
+            command.append(f"--start={start:.1f}")
+        if paused:
+            command.append("--pause")
+        # "--" in front: an address starting with "-" would otherwise be an
+        # mpv option.
+        command += ["--", source]
         self._proc = subprocess.Popen(
-            befehl,
+            command,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -271,47 +271,47 @@ class Mukke:
             errors="replace",
         )
         threading.Thread(
-            target=self._mitlesen, args=(self._proc,), name="mukke-ausgabe", daemon=True
+            target=self._tail_output, args=(self._proc,), name="mukke-ausgabe", daemon=True
         ).start()
 
-    def stoppen(self) -> None:
+    def stop(self) -> None:
         with self._lock:
-            self._beenden()
-            self._unterbrochen = self._gestartet = None
-            self._url = self._titel = None
+            self._shutdown()
+            self._interrupted = self._started = None
+            self._url = self._title = None
 
-    def pause_umschalten(self) -> None:
+    def toggle_pause(self) -> None:
         with self._lock:
-            if self.laeuft:
+            if self.running:
                 self._ipc(["cycle", "pause"])
-            elif self._unterbrochen is not None:
-                # Während die Stimme spricht: gilt dann beim Fortsetzen.
-                self._unterbrochen["pausiert"] = not self._unterbrochen["pausiert"]
+            elif self._interrupted is not None:
+                # While the voice is speaking: takes effect on resume.
+                self._interrupted["pausiert"] = not self._interrupted["pausiert"]
 
-    def lautstaerke_setzen(self, wert: float) -> None:
+    def set_volume(self, value: float) -> None:
         try:
-            wert = int(round(float(wert)))
+            value = int(round(float(value)))
         except (TypeError, ValueError):
-            raise MukkeFehler("Lautstärke als Zahl 0..100 erwartet") from None
+            raise MukkeError("Lautstärke als Zahl 0..100 erwartet") from None
         with self._lock:
-            self._lautstaerke = max(0, min(100, wert))
-            if self.laeuft:
-                self._ipc(["set_property", "volume", self._wirksam()])
+            self._volume = max(0, min(100, value))
+            if self.running:
+                self._ipc(["set_property", "volume", self._effective_volume()])
 
-    def lautstaerke_anwenden(self) -> None:
-        """Nach einer Änderung der Gesamtlautstärke (config.LAUTSTAERKE)."""
+    def apply_volume(self) -> None:
+        """After a change of the overall volume (config.VOLUME)."""
         with self._lock:
-            if self.laeuft:
-                self._ipc(["set_property", "volume", self._wirksam()])
+            if self.running:
+                self._ipc(["set_property", "volume", self._effective_volume()])
 
-    # --- intern ---------------------------------------------------------------------
+    # --- internal -------------------------------------------------------------------
 
-    def _wirksam(self) -> int:
-        """Was mpv bekommt: der Musik-Regler als Anteil der Gesamtlautstärke."""
-        gesamt = max(0.0, min(100.0, float(config.LAUTSTAERKE)))
-        return round(self._lautstaerke * gesamt / 100.0)
+    def _effective_volume(self) -> int:
+        """What mpv gets: the music slider as a share of the overall volume."""
+        overall = max(0.0, min(100.0, float(config.VOLUME)))
+        return round(self._volume * overall / 100.0)
 
-    def _beenden(self, leise: bool = False) -> None:
+    def _shutdown(self, quiet: bool = False) -> None:
         proc, self._proc = self._proc, None
         if proc is None or proc.poll() is not None:
             return
@@ -320,50 +320,50 @@ class Mukke:
             proc.wait(timeout=2.0)
         except subprocess.TimeoutExpired:
             proc.kill()
-        if not leise:
-            log.info("MUKKE: gestoppt")
+        if not quiet:
+            log.info("MUKKE: stopped")
 
-    def _mitlesen(self, proc: subprocess.Popen) -> None:
-        # Ohne Mitlesen liefe der Ausgabepuffer voll, und mpv bliebe stehen.
-        for zeile in proc.stdout:
-            zeile = zeile.strip()
-            if zeile:
-                self._ausgabe.append(zeile)
-                log.debug("mpv: %s", zeile)
+    def _tail_output(self, proc: subprocess.Popen) -> None:
+        # Without reading along, the output buffer would fill up and mpv would stall.
+        for line in proc.stdout:
+            line = line.strip()
+            if line:
+                self._output.append(line)
+                log.debug("mpv: %s", line)
 
-    def _letzte_meldung(self) -> str | None:
-        for zeile in reversed(self._ausgabe):
-            if "error" in zeile.lower() or "fehler" in zeile.lower() or "failed" in zeile.lower():
-                return zeile[-200:]
-        return self._ausgabe[-1][-200:] if self._ausgabe else None
+    def _last_message(self) -> str | None:
+        for line in reversed(self._output):
+            if "error" in line.lower() or "fehler" in line.lower() or "failed" in line.lower():
+                return line[-200:]
+        return self._output[-1][-200:] if self._output else None
 
-    def _ipc(self, befehl: list):
-        """Ein Befehl an mpv, Antwort ("data") oder None.
+    def _ipc(self, command: list):
+        """One command to mpv, response ("data") or None.
 
-        Kurze Frist: mpv antwortet sofort, solange es läuft. Hängt es, soll
-        die App nicht mit hängen.
+        Short deadline: mpv answers immediately as long as it is running. If
+        it hangs, the app must not hang with it.
         """
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
                 s.settimeout(0.5)
                 s.connect(self._socket)
-                s.sendall((json.dumps({"command": befehl, "request_id": 1}) + "\n").encode())
-                puffer = b""
-                frist = time.monotonic() + 0.5
-                while time.monotonic() < frist:
-                    stueck = s.recv(4096)
-                    if not stueck:
+                s.sendall((json.dumps({"command": command, "request_id": 1}) + "\n").encode())
+                buffer = b""
+                deadline = time.monotonic() + 0.5
+                while time.monotonic() < deadline:
+                    chunk = s.recv(4096)
+                    if not chunk:
                         break
-                    puffer += stueck
-                    # mpv schickt auch unaufgefordert Ereignisse -- die
-                    # Antwort ist die Zeile mit unserer request_id.
-                    for zeile in puffer.split(b"\n"):
+                    buffer += chunk
+                    # mpv also sends unsolicited events -- the response
+                    # is the line with our request_id.
+                    for line in buffer.split(b"\n"):
                         try:
-                            antwort = json.loads(zeile)
+                            response = json.loads(line)
                         except ValueError:
                             continue
-                        if antwort.get("request_id") == 1:
-                            return antwort.get("data")
+                        if response.get("request_id") == 1:
+                            return response.get("data")
         except (OSError, ValueError):
             return None
         return None

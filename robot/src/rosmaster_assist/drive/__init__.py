@@ -1,4 +1,4 @@
-"""Antrieb: Schnittstelle, echter Treiber, Mock."""
+"""Drive: interface, real driver, mock."""
 
 from .base import DriveBase
 from .mock_driver import MockDriver
@@ -7,10 +7,10 @@ __all__ = ["DriveBase", "MockDriver", "create_driver"]
 
 
 def create_driver(use_mock: bool) -> DriveBase:
-    """Liefert den passenden Treiber.
+    """Returns the matching driver.
 
-    Der echte Treiber wird erst hier importiert, damit `Rosmaster_Lib` auf
-    Entwicklungsrechnern gar nicht installiert sein muss.
+    The real driver is only imported here so that `Rosmaster_Lib` does not
+    have to be installed on development machines at all.
     """
     if use_mock:
         return MockDriver()

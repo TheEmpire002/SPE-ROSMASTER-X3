@@ -1,19 +1,19 @@
-"""Mitrechnen, wo der Roboter steht.
+"""Keeping track of where the robot is.
 
-Verfahren: Koppelnavigation. Es gibt keinen Sensor, der die Position
-verrät -- sie wird laufend aus Geschwindigkeit und Blickrichtung
-aufsummiert, ausgehend vom Startpunkt.
+Method: dead reckoning. There is no sensor that reveals the position --
+it is continuously summed up from velocity and heading, starting from the
+starting point.
 
-**Das driftet, und zwar unvermeidlich.** Jeder Messfehler und jedes
-durchdrehende Rad geht dauerhaft in die Summe ein und wird nie wieder
-korrigiert. Mecanum-Räder rutschen bauartbedingt viel, besonders beim
-Drehen und auf glattem Boden. In einem Zimmer sind einige Dezimeter normal.
+**This drifts, unavoidably.** Every measurement error and every spinning
+wheel enters the sum permanently and is never corrected again. Mecanum
+wheels slip a lot by design, especially when turning and on smooth floors.
+Within a room, a few decimeters are normal.
 
-Für den Home-Button reicht das. Wer Zentimeter braucht, kommt um eine
-äußere Referenz nicht herum -- Lidar und SLAM.
+That is enough for the home button. Anyone who needs centimeters cannot get
+around an external reference -- lidar and SLAM.
 
-Koordinaten: x zeigt in die anfängliche Blickrichtung, y nach links,
-Winkel gegen den Uhrzeigersinn. Startpunkt ist (0, 0) mit Winkel 0.
+Coordinates: x points in the initial heading, y to the left, angles
+counterclockwise. The starting point is (0, 0) with angle 0.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ log = logging.getLogger(__name__)
 
 
 class Odometry:
-    """Schreibt die Position aus den Bewegungsdaten fort."""
+    """Updates the position from the motion data."""
 
     def __init__(self, driver: DriveBase) -> None:
         self._driver = driver
@@ -40,276 +40,276 @@ class Odometry:
 
         self.x = 0.0
         self.y = 0.0
-        self.theta = 0.0  # Bogenmaß
+        self.theta = 0.0  # radians
 
-        self._letzte_zeit: float | None = None
-        # Rohwert der IMU beim Nullen -- der Winkel wird relativ dazu geführt,
-        # weil die IMU ihren eigenen Nullpunkt hat.
-        self._imu_referenz: float | None = None
-        self._imu_versatz = 0.0
-        self._gemessen = False
-        # Kurzer Rückblick für den Lidar-Abgleich: (Zeit, x, y, Winkel).
-        # Zwei Sekunden reichen -- eine Lidar-Umdrehung dauert 0,2 s.
-        self._verlauf: deque = deque(maxlen=120)
+        self._last_time: float | None = None
+        # Raw IMU value at zeroing -- the angle is tracked relative to it,
+        # because the IMU has its own zero point.
+        self._imu_reference: float | None = None
+        self._imu_offset = 0.0
+        self._measured = False
+        # Short look-back for the lidar alignment: (time, x, y, angle).
+        # Two seconds are enough -- one lidar revolution takes 0.2 s.
+        self._history: deque = deque(maxlen=120)
 
-        # Stirbt der Empfangs-Thread der Bibliothek (etwa durch einen
-        # Portkonflikt), liefert sie weiterhin Werte -- nämlich Nullen.
-        # Das wäre schlimmer als gar keine Messung: die Position bliebe
-        # stehen, und die Heimfahrt führte ins Leere, ohne zu warnen.
-        self._stillstand_trotz_befehl = 0.0
-        self._messung_verworfen = False
+        # If the library's receive thread dies (e.g. due to a port
+        # conflict), it keeps delivering values -- namely zeros. That would
+        # be worse than no measurement at all: the position would freeze,
+        # and the homing drive would lead nowhere without any warning.
+        self._stall_despite_command = 0.0
+        self._measurement_rejected = False
 
-        # Plausibilitätsprüfung der IMU: steht ihr Winkel still, obwohl das
-        # Board eine deutliche Drehrate meldet, ist sie unbrauchbar (am X3
-        # liefert sie dauerhaft 0). Dann bis zum Neustart nur noch die
-        # Drehrate aufsummieren.
-        self._imu_starr_s = 0.0
-        self._imu_letzter: float | None = None
-        self._imu_verworfen = False
-        # Zuletzt verwendete Drehrate (rad/s), für Personen-Tracker und
-        # Festfahr-Erkennung: dort zählt die Eigendrehung, nicht der Winkel.
+        # Plausibility check of the IMU: if its angle stands still although
+        # the board reports a clear turn rate, it is unusable (on the X3 it
+        # constantly delivers 0). Then only sum up the turn rate until the
+        # next restart.
+        self._imu_frozen_s = 0.0
+        self._imu_last: float | None = None
+        self._imu_rejected = False
+        # Last used turn rate (rad/s), for the person tracker and stuck
+        # detection: what counts there is the self-rotation, not the angle.
         self._omega = 0.0
         self._v = (0.0, 0.0)
 
-    # --- Abfrage -------------------------------------------------------------
+    # --- Queries -------------------------------------------------------------
 
     def pose(self) -> tuple[float, float, float]:
-        """(x, y, Winkel in Grad)."""
+        """(x, y, angle in degrees)."""
         with self._lock:
             return self.x, self.y, math.degrees(self.theta)
 
     @property
-    def misst_tatsaechlich(self) -> bool:
-        """Ob echte Messwerte eingehen oder nur die Befehle gerechnet werden."""
-        return self._gemessen
+    def actually_measuring(self) -> bool:
+        """Whether real measurements come in or only the commands are integrated."""
+        return self._measured
 
     @property
-    def imu_verworfen(self) -> bool:
-        """Ob die IMU als unbrauchbar erkannt wurde (für /diagnose)."""
-        return self._imu_verworfen
+    def imu_rejected(self) -> bool:
+        """Whether the IMU was detected as unusable (for /diagnose)."""
+        return self._imu_rejected
 
-    def geschwindigkeit(self) -> tuple[float, float, float]:
-        """Zuletzt verwendete Eigenbewegung (vx, vy, omega) im Roboterrahmen."""
+    def velocity(self) -> tuple[float, float, float]:
+        """Last used ego-motion (vx, vy, omega) in the robot frame."""
         with self._lock:
             return self._v[0], self._v[1], self._omega
 
-    def distanz_zum_start(self) -> float:
+    def distance_to_start(self) -> float:
         with self._lock:
             return math.hypot(self.x, self.y)
 
-    def pose_bei(self, zeitpunkt: float) -> tuple[float, float, float] | None:
-        """Wo der Roboter zu einem früheren Zeitpunkt stand (x, y, Bogenmaß).
+    def pose_at(self, instant: float) -> tuple[float, float, float] | None:
+        """Where the robot was at an earlier point in time (x, y, radians).
 
-        Nötig für den Lidar-Abgleich: eine Aufnahme ist beim Auswerten
-        bereits ein paar Zehntelsekunden alt. Ohne diesen Rückblick würde
-        die Korrektur den Roboter auf eine Stelle ziehen, die er längst
-        verlassen hat -- bei 0,3 m/s sind das schon mehrere Zentimeter.
+        Needed for the lidar alignment: a scan is already a few tenths of a
+        second old when it is evaluated. Without this look-back the
+        correction would pull the robot to a spot it left long ago -- at
+        0.3 m/s that is already several centimeters.
         """
         with self._lock:
-            if not self._verlauf:
+            if not self._history:
                 return None
-            # Rückwärts suchen: der gesuchte Zeitpunkt liegt fast immer
-            # am Ende des Verlaufs.
-            bester = self._verlauf[0]
-            for eintrag in reversed(self._verlauf):
-                if eintrag[0] <= zeitpunkt:
-                    bester = eintrag
+            # Search backwards: the requested time is almost always at the
+            # end of the history.
+            best = self._history[0]
+            for entry in reversed(self._history):
+                if entry[0] <= instant:
+                    best = entry
                     break
-            return bester[1], bester[2], bester[3]
+            return best[1], best[2], best[3]
 
-    def korrigieren(self, x: float, y: float, theta: float, gewicht: float) -> None:
-        """Position Richtung eines gemessenen Werts ziehen.
+    def correct(self, x: float, y: float, theta: float, weight: float) -> None:
+        """Pull the position towards a measured value.
 
-        Kommt vom Lidar-Abgleich. Bewusst nicht hart überschreiben: ein
-        einzelner Fehlabgleich würde die Position sonst verreißen und die
-        Heimfahrt in die Irre schicken. Über mehrere Durchgänge nähert sich
-        die Schätzung dem gemessenen Wert an.
+        Comes from the lidar alignment. Deliberately not a hard overwrite: a
+        single mismatch would otherwise throw the position off and send the
+        homing drive astray. Over several passes the estimate converges to
+        the measured value.
         """
-        gewicht = max(0.0, min(1.0, gewicht))
+        weight = max(0.0, min(1.0, weight))
         with self._lock:
-            dx = (x - self.x) * gewicht
-            dy = (y - self.y) * gewicht
-            # Winkel nicht einfach mitteln: zwischen 179° und -179° liegt
-            # ein Grad, nicht 358. Über die Differenz gehen.
-            dtheta = _normalisieren(theta - self.theta) * gewicht
+            dx = (x - self.x) * weight
+            dy = (y - self.y) * weight
+            # Do not simply average angles: between 179° and -179° there is
+            # one degree, not 358. Go via the difference.
+            dtheta = _normalize(theta - self.theta) * weight
 
             self.x += dx
             self.y += dy
-            self.theta = _normalisieren(self.theta + dtheta)
+            self.theta = _normalize(self.theta + dtheta)
 
-            # Den Verlauf mitverschieben. Sonst stünden dort Positionen aus
-            # der Zeit vor der Korrektur, und die Latenzrechnung im
-            # Lidar-Abgleich würde die Korrektur selbst für zurückgelegte
-            # Strecke halten -- die Position schaukelt sich dann mit jedem
-            # Durchgang weiter auf, statt sich einzupendeln.
-            self._verlauf = deque(
-                ((t, vx + dx, vy + dy, _normalisieren(vt + dtheta))
-                 for t, vx, vy, vt in self._verlauf),
-                maxlen=self._verlauf.maxlen,
+            # Shift the history along. Otherwise it would hold positions from
+            # before the correction, and the latency compensation in the lidar
+            # alignment would mistake the correction itself for distance
+            # travelled -- the position then builds up further with every
+            # pass instead of settling.
+            self._history = deque(
+                ((t, vx + dx, vy + dy, _normalize(vt + dtheta))
+                 for t, vx, vy, vt in self._history),
+                maxlen=self._history.maxlen,
             )
 
-            # Nach einer Korrektur ist der IMU-Bezug nicht mehr stimmig --
-            # er wird beim nächsten Schritt neu gesetzt.
-            if self._imu_referenz is not None:
-                self._imu_referenz = None
+            # After a correction the IMU reference is no longer consistent --
+            # it is reset on the next step.
+            if self._imu_reference is not None:
+                self._imu_reference = None
 
-    # --- Nullen --------------------------------------------------------------
+    # --- Zeroing -------------------------------------------------------------
 
     def reset(self) -> None:
-        """Hier ist jetzt der Startpunkt.
+        """This is now the starting point.
 
-        Setzt auch den IMU-Bezug neu, damit der Winkel wieder bei null
-        beginnt -- sonst zeigte der Roboter nach dem Nullen in eine
-        Richtung, die es nie gab.
+        Also resets the IMU reference so the angle starts at zero again --
+        otherwise, after zeroing, the robot would point in a direction that
+        never existed.
         """
         with self._lock:
             self.x = 0.0
             self.y = 0.0
             self.theta = 0.0
-            self._imu_referenz = None
-            self._imu_versatz = 0.0
-            self._letzte_zeit = None
-            # Der Messung eine neue Chance geben -- vielleicht wurde der
-            # Portkonflikt inzwischen behoben.
-            self._stillstand_trotz_befehl = 0.0
-            self._messung_verworfen = False
-            self._verlauf.clear()
-        log.info("Startpunkt neu gesetzt")
+            self._imu_reference = None
+            self._imu_offset = 0.0
+            self._last_time = None
+            # Give the measurement a new chance -- maybe the port conflict
+            # has been resolved in the meantime.
+            self._stall_despite_command = 0.0
+            self._measurement_rejected = False
+            self._history.clear()
+        log.info("Starting point reset")
 
-    # --- Fortschreiben --------------------------------------------------------
+    # --- Updating ------------------------------------------------------------
 
-    def update(self, befohlen: DriveCommand) -> None:
-        """Einen Zeitschritt rechnen. Regelmäßig aufrufen."""
-        jetzt = time.monotonic()
-        if self._letzte_zeit is None:
-            self._letzte_zeit = jetzt
+    def update(self, commanded: DriveCommand) -> None:
+        """Compute one time step. Call regularly."""
+        now = time.monotonic()
+        if self._last_time is None:
+            self._last_time = now
             return
 
-        dt = jetzt - self._letzte_zeit
-        self._letzte_zeit = jetzt
-        # Nach einer Pause (Server hing, Rechner im Ruhezustand) wäre der
-        # Schritt riesig und würde die Position verreißen.
+        dt = now - self._last_time
+        self._last_time = now
+        # After a pause (server hung, computer asleep) the step would be
+        # huge and throw the position off.
         if dt <= 0 or dt > 1.0:
             return
 
-        gemessen = self._pruefen(self._driver.read_motion(), befohlen, dt)
-        self._gemessen = gemessen is not None
-        vx, vy, omega = gemessen if gemessen is not None else (
-            befohlen.vx,
-            befohlen.vy,
-            befohlen.omega,
+        measured = self._check(self._driver.read_motion(), commanded, dt)
+        self._measured = measured is not None
+        vx, vy, omega = measured if measured is not None else (
+            commanded.vx,
+            commanded.vy,
+            commanded.omega,
         )
 
         with self._lock:
             self._omega = omega
             self._v = (vx, vy)
-            neuer_winkel = self._winkel_bestimmen(omega, dt)
+            new_angle = self._determine_angle(omega, dt)
 
-            # In der Mitte des Zeitschritts auswerten: bei gleichzeitigem
-            # Fahren und Drehen ist das deutlich genauer, als Anfangs- oder
-            # Endwinkel zu nehmen.
-            mittel = (self.theta + neuer_winkel) / 2.0
-            self.x += (vx * math.cos(mittel) - vy * math.sin(mittel)) * dt
-            self.y += (vx * math.sin(mittel) + vy * math.cos(mittel)) * dt
-            self.theta = neuer_winkel
-            self._verlauf.append((jetzt, self.x, self.y, self.theta))
+            # Evaluate at the middle of the time step: when driving and
+            # turning at the same time, this is much more accurate than taking
+            # the start or end angle.
+            avg = (self.theta + new_angle) / 2.0
+            self.x += (vx * math.cos(avg) - vy * math.sin(avg)) * dt
+            self.y += (vx * math.sin(avg) + vy * math.cos(avg)) * dt
+            self.theta = new_angle
+            self._history.append((now, self.x, self.y, self.theta))
 
-    #: So lange darf gemeldeter Stillstand trotz Fahrbefehl andauern, bevor
-    #: die Messung als unbrauchbar gilt. Großzügig, weil Motoren anlaufen
-    #: müssen und der Roboter kurz blockieren kann.
-    STILLSTAND_GRENZE_S = 3.0
+    #: How long reported standstill despite a drive command may last before
+    #: the measurement counts as unusable. Generous, because motors need to
+    #: spin up and the robot can be blocked briefly.
+    STANDSTILL_LIMIT_S = 3.0
 
-    def _pruefen(
-        self, gemessen: tuple[float, float, float] | None, befohlen: DriveCommand, dt: float
+    def _check(
+        self, measured: tuple[float, float, float] | None, commanded: DriveCommand, dt: float
     ) -> tuple[float, float, float] | None:
-        """Verwirft Messwerte, die offensichtlich nicht stimmen können.
+        """Discards measurements that obviously cannot be right.
 
-        Meldet die Bibliothek beharrlich Stillstand, obwohl gefahren werden
-        soll, ist ihr Empfangs-Thread vermutlich gestorben. Dann ist es
-        besser, mit den Befehlen zu rechnen: ungenau, aber nicht falsch.
+        If the library persistently reports standstill although the robot is
+        supposed to drive, its receive thread has probably died. Then it is
+        better to integrate the commands: inaccurate, but not wrong.
         """
-        if gemessen is None:
+        if measured is None:
             return None
 
-        if self._messung_verworfen:
+        if self._measurement_rejected:
             return None
 
-        bewegt_sich = any(abs(v) > 1e-6 for v in gemessen)
-        soll_fahren = not befohlen.is_stop()
+        is_moving = any(abs(v) > 1e-6 for v in measured)
+        should_drive = not commanded.is_stop()
 
-        if soll_fahren and not bewegt_sich:
-            self._stillstand_trotz_befehl += dt
-            if self._stillstand_trotz_befehl > self.STILLSTAND_GRENZE_S:
-                self._messung_verworfen = True
+        if should_drive and not is_moving:
+            self._stall_despite_command += dt
+            if self._stall_despite_command > self.STANDSTILL_LIMIT_S:
+                self._measurement_rejected = True
                 log.warning(
-                    "Bewegungsmessung meldet seit %.0f s Stillstand trotz "
-                    "Fahrbefehl -- vermutlich ist der Empfangs-Thread tot. "
-                    "Es wird ab jetzt mit den Fahrbefehlen gerechnet "
-                    "(ungenauer). Ursache: siehe docs/hardware.md, Portkonflikt.",
-                    self._stillstand_trotz_befehl,
+                    "Motion measurement has reported standstill for %.0f s despite "
+                    "a drive command -- the receive thread is probably dead. "
+                    "From now on the drive commands are integrated instead "
+                    "(less accurate). Cause: see docs/hardware.md, port conflict.",
+                    self._stall_despite_command,
                 )
                 return None
         else:
-            self._stillstand_trotz_befehl = 0.0
+            self._stall_despite_command = 0.0
 
-        return gemessen
+        return measured
 
-    def _winkel_bestimmen(self, omega: float, dt: float) -> float:
-        """Blickrichtung aus der Drehrate, wahlweise aus der IMU.
+    def _determine_angle(self, omega: float, dt: float) -> float:
+        """Heading from the turn rate, optionally from the IMU.
 
-        Standard ist das Aufsummieren der gemessenen Drehrate: die IMU-Lage
-        des X3 liefert dauerhaft 0 (Sensor-Check 28.10.), und ein Winkel,
-        der beim Drehen stillsteht, ist schlimmer als einer, der langsam
-        driftet. Die Drift fängt der Lidar-Abgleich wieder ein.
+        The default is summing up the measured turn rate: the IMU attitude of
+        the X3 constantly delivers 0 (sensor check 28.10.), and an angle that
+        stands still while turning is worse than one that drifts slowly. The
+        lidar alignment catches the drift again.
         """
-        summiert = _normalisieren(self.theta + omega * dt)
-        if not config.ODOM_IMU_WINKEL or self._imu_verworfen:
-            return summiert
+        summed = _normalize(self.theta + omega * dt)
+        if not config.ODOM_IMU_HEADING or self._imu_rejected:
+            return summed
 
         imu = self._driver.read_heading()
         if imu is None:
-            return summiert
+            return summed
 
-        if not self._imu_plausibel(imu, omega, dt):
-            return summiert
+        if not self._imu_plausible(imu, omega, dt):
+            return summed
 
-        if self._imu_referenz is None:
-            # Neuer Bezugspunkt. Der aktuelle Winkel wird als Versatz
-            # gemerkt, sonst ginge eine Korrektur vom Lidar beim nächsten
-            # Schritt wieder verloren -- die IMU würde ihren eigenen
-            # Nullpunkt durchsetzen.
-            self._imu_referenz = imu
-            self._imu_versatz = self.theta
+        if self._imu_reference is None:
+            # New reference point. The current angle is remembered as an
+            # offset, otherwise a correction from the lidar would be lost
+            # again on the next step -- the IMU would impose its own zero
+            # point.
+            self._imu_reference = imu
+            self._imu_offset = self.theta
             return self.theta
 
-        # Die Differenz bilden und nicht die Rohwerte vergleichen: sonst
-        # springt der Winkel beim Übergang von +180° auf -180° um eine
-        # halbe Umdrehung.
-        seit_bezug = _normalisieren(math.radians(imu - self._imu_referenz))
-        return _normalisieren(self._imu_versatz + seit_bezug)
+        # Take the difference instead of comparing raw values: otherwise
+        # the angle jumps by half a revolution at the transition from +180°
+        # to -180°.
+        since_ref = _normalize(math.radians(imu - self._imu_reference))
+        return _normalize(self._imu_offset + since_ref)
 
-    def _imu_plausibel(self, imu: float, omega: float, dt: float) -> bool:
-        """Verwirft die IMU, wenn ihr Winkel beim Drehen stillsteht."""
-        letzter, self._imu_letzter = self._imu_letzter, imu
-        if letzter is None or abs(omega) < config.ODOM_IMU_PRUEF_OMEGA:
-            self._imu_starr_s = 0.0
+    def _imu_plausible(self, imu: float, omega: float, dt: float) -> bool:
+        """Rejects the IMU if its angle stands still while turning."""
+        last, self._imu_last = self._imu_last, imu
+        if last is None or abs(omega) < config.ODOM_IMU_CHECK_OMEGA:
+            self._imu_frozen_s = 0.0
             return True
-        if abs(imu - letzter) > 1e-3:
-            self._imu_starr_s = 0.0
+        if abs(imu - last) > 1e-3:
+            self._imu_frozen_s = 0.0
             return True
-        self._imu_starr_s += dt
-        if self._imu_starr_s > config.ODOM_IMU_PRUEF_S:
-            self._imu_verworfen = True
-            self._imu_referenz = None
+        self._imu_frozen_s += dt
+        if self._imu_frozen_s > config.ODOM_IMU_CHECK_S:
+            self._imu_rejected = True
+            self._imu_reference = None
             log.warning(
-                "IMU-Winkel steht seit %.1f s still, obwohl der Roboter sich "
-                "dreht (%.2f rad/s) -- IMU wird ignoriert, Winkel kommt ab "
-                "jetzt aus der Drehrate.", self._imu_starr_s, omega,
+                "IMU angle has been frozen for %.1f s although the robot is "
+                "turning (%.2f rad/s) -- ignoring the IMU, the angle comes from "
+                "the turn rate from now on.", self._imu_frozen_s, omega,
             )
             return False
         return True
 
 
-def _normalisieren(winkel: float) -> float:
-    """Auf -pi..+pi bringen."""
-    return math.atan2(math.sin(winkel), math.cos(winkel))
+def _normalize(angle: float) -> float:
+    """Wrap to -pi..+pi."""
+    return math.atan2(math.sin(angle), math.cos(angle))

@@ -1,1489 +1,1553 @@
-"""Zentrale Einstellungen.
+"""Central settings.
 
-Alle Werte, die man beim Ausprobieren verstellen will, stehen hier -- nicht
-verstreut im Code. Wer am Fahrverhalten schraubt, muss nur diese Datei öffnen.
+Every value you might want to adjust while experimenting lives here -- not
+scattered across the code. Anyone tuning the driving behavior only needs to
+open this file.
 """
 
 import os
 from pathlib import Path
 
-# --- Serielle Verbindung zum Expansion Board ---------------------------------
+# --- Serial connection to the expansion board --------------------------------
 
-# Je nach Image heißt die Schnittstelle anders. Welche bei euch stimmt, zeigt
-# `python scripts/check_hardware.py`. None = Rosmaster_Lib sucht selbst.
+# The port name differs depending on the image. Which one is right for you is
+# shown by `python scripts/check_hardware.py`. None = Rosmaster_Lib searches
+# by itself.
 SERIAL_PORT: str | None = None
 
-# Rückkanal vom Expansion Board (Akkuspannung, IMU, Encoder).
+# Back channel from the expansion board (battery voltage, IMU, encoders).
 #
-# Dafür startet Rosmaster_Lib einen Thread, der dauerhaft vom seriellen Port
-# liest. Liest ein zweites Programm am selben Port mit, stirbt dieser Thread
-# mit "device reports readiness to read but returned no data". Fahren
-# funktioniert weiterhin -- nur die Messwerte fehlen.
+# For this, Rosmaster_Lib starts a thread that continuously reads from the
+# serial port. If a second program reads from the same port, this thread dies
+# with "device reports readiness to read but returned no data". Driving
+# still works -- only the readings are missing.
 #
-# Wer den Konflikt nicht sofort beseitigen kann, schaltet das hier ab: aktuell
-# nutzen wir die Daten noch nirgends. Die richtige Lösung bleibt, das zweite
-# Programm zu beenden (siehe docs/hardware.md).
+# If you cannot resolve the conflict right away, switch this off: we do not
+# use the data anywhere yet. The proper fix remains to stop the second
+# program (see docs/hardware.md).
 TELEMETRY_ENABLED = True
 
-# --- Wiederverbinden nach USB-Aussetzern ------------------------------------
+# --- Reconnecting after USB dropouts ------------------------------------------
 
-# Bricht die 5-V-Versorgung am USB-Hub kurz ein (schwacher Akku, Motoren und
-# Kamera ziehen gleichzeitig an), melden sich Board, Lidar und Kamera ab und
-# kurz darauf unter neuen Nummern wieder an. Der Server bemerkt das und
-# verbindet neu -- der Roboter steht so lange.
+# If the 5 V supply on the USB hub dips briefly (weak battery, motors and
+# camera drawing current at the same time), board, lidar and camera
+# disconnect and shortly afterwards reappear under new numbers. The server
+# notices this and reconnects -- the robot stands still meanwhile.
 
-# Wie oft nachgesehen wird, ob die Verbindung zum Board noch steht.
+# How often to check whether the connection to the board is still up.
 RECONNECT_CHECK_S = 1.0
 
-# Abstand der Neuversuche: beginnt kurz und verdoppelt sich bis zum
-# Höchstwert, solange das Gerät nicht wieder auftaucht.
+# Interval between retries: starts short and doubles up to the maximum as
+# long as the device does not reappear.
 RECONNECT_MIN_S = 1.0
 RECONNECT_MAX_S = 30.0
 
-# Fällt der Lidar innerhalb dieser Zeit nach dem Neu-Verbinden wieder aus,
-# beginnt die Wartezeit nicht von vorn, sondern wächst weiter. Sonst startet
-# sein Motor alle paar Sekunden neu und hält die USB-Ausfälle am Laufen.
-LIDAR_STABIL_S = 60.0
+# If the lidar drops out again within this time after reconnecting, the wait
+# does not start over but keeps growing. Otherwise its motor restarts every
+# few seconds and keeps the USB dropouts going.
+LIDAR_STABLE_S = 60.0
 
-# Kommt so lange kein neues Kamerabild, wird die Kamera neu geöffnet.
-# Die Wartezeit dazwischen wächst bei jedem Fehlschlag: ist das Anlaufen der
-# Kamera selbst der Auslöser des Spannungseinbruchs, würde ein schnelles
-# Wiederholen den ganzen Hub im Takt neu starten.
+# If no new camera frame arrives for this long, the camera is reopened.
+# The wait in between grows with every failure: if starting up the camera is
+# itself what triggers the voltage dip, retrying quickly would restart the
+# whole hub over and over.
 CAMERA_REOPEN_S = 5.0
 CAMERA_REOPEN_MAX_S = 120.0
 
-# --- Fahren ------------------------------------------------------------------
+# --- Driving -------------------------------------------------------------------
 
-# Obergrenzen. Der Watchdog begrenzt jeden eingehenden Befehl darauf, egal was
-# die App schickt. Die App holt sich diese Werte beim Verbinden ab -- sie sind
-# also nur hier einzustellen, nicht zusätzlich im Browser.
+# Upper limits. The watchdog clamps every incoming command to these, no
+# matter what the app sends. The app fetches these values when it connects
+# -- so they only need to be set here, not additionally in the browser.
 #
-# ACHTUNG: Das Fahrgestell schafft rund 1 m/s, und das Expansion Board kappt
-# intern auf seinen eigenen Bereich. Werte darüber ändern am tatsächlichen
-# Tempo nichts -- die App zeigt dann mehr an, als der Roboter fährt.
-MAX_SPEED_X = 1.0      # m/s  vorwärts / rückwärts
-MAX_SPEED_Y = 1.0      # m/s  seitwärts (Mecanum)
-MAX_SPEED_OMEGA = 3.0  # rad/s  drehen
+# NOTE: The chassis manages about 1 m/s, and the expansion board clamps
+# internally to its own range. Values above that do not change the actual
+# speed -- the app then shows more than the robot actually drives.
+MAX_SPEED_X = 1.0      # m/s  forward / backward
+MAX_SPEED_Y = 1.0      # m/s  sideways (mecanum)
+MAX_SPEED_OMEGA = 3.0  # rad/s  turning
 
-# Zusätzliche Obergrenze für alles, was der Roboter selbst entscheidet
-# (Folgen, Erkunden, Heimfahrt). Die einzelnen Modi haben eigene, meist
-# niedrigere Werte -- diese Grenze fängt nur Rechenfehler ab, damit kein
-# autonomer Modus je schneller fährt, als der Lidar Hindernisse rechtzeitig
-# sieht (7,5 Umdrehungen/s, plus Bremsweg). Die Handsteuerung ist davon
-# ausgenommen; für sie gelten MAX_SPEED_*.
-AUTONOM_MAX_SPEED = 0.35        # m/s   vx und vy
-AUTONOM_MAX_OMEGA = 1.2         # rad/s
+# Additional upper limit for everything the robot decides by itself
+# (following, exploring, homing). The individual modes have their own,
+# usually lower values -- this limit only catches calculation errors, so
+# that no autonomous mode ever drives faster than the lidar can see
+# obstacles in time (7.5 revolutions/s, plus braking distance). Manual
+# control is exempt; MAX_SPEED_* applies to it.
+AUTONOMOUS_MAX_SPEED = 0.35        # m/s   vx and vy
+AUTONOMOUS_MAX_OMEGA = 1.2         # rad/s
 
-# Akku fast leer: autonome Modi fahren langsamer. Unter Last bricht die
-# Spannung zusätzlich ein, und genau dann setzt sich am X3 der USB-Hub
-# zurück -- mit halbem Tempo zieht der Antrieb deutlich weniger Strom.
-# Faktor auf AUTONOM_MAX_SPEED, sobald der Akku unter AKKU_WARN_V liegt.
-AUTONOM_AKKU_FAKTOR = 0.5
+# Battery almost empty: autonomous modes drive slower. Under load the
+# voltage dips further, and that is exactly when the USB hub on the X3
+# resets -- at half speed the drive draws much less current.
+# Factor on AUTONOMOUS_MAX_SPEED once the battery is below BATTERY_WARN_V.
+AUTONOMOUS_BATTERY_FACTOR = 0.5
 
-# Letzte Bremse für alle autonomen Befehle im Watchdog: der Fahrschutz
-# (safety/fahrschutz.py, Werte FAHRSCHUTZ_* weiter unten). Die Modi halten
-# selbst früher an; das hier fängt ab, was sie übersehen. Bis 03.11. war das
-# AutonomSchutz (Streifen in Fahrtrichtung, ohne Drehung), siehe E10.
-AUTONOM_SCHUTZ_AKTIV = True
+# Last brake for all autonomous commands in the watchdog: the drive guard
+# (safety/drive_guard.py, values GUARD_* further down). The modes stop
+# earlier on their own; this catches what they miss. Until 03.11. this was
+# AutonomSchutz (a strip in the direction of travel, without rotation), see
+# E10.
+AUTONOMOUS_GUARD_ACTIVE = True
 
-# --- Sicherheit ---------------------------------------------------------------
+# --- Safety ----------------------------------------------------------------------
 
-# Kommt innerhalb dieser Zeit kein neuer Fahrbefehl, hält der Roboter an.
-# Schützt vor WLAN-Abriss, geschlossenem Browser-Tab und App-Abstürzen.
-# Zu kurz = ruckeliges Fahren, zu lang = Roboter fährt unkontrolliert weiter.
+# If no new drive command arrives within this time, the robot stops.
+# Protects against WiFi loss, a closed browser tab and app crashes.
+# Too short = jerky driving, too long = robot keeps driving uncontrolled.
 COMMAND_TIMEOUT_S = 0.5
 
-# Fahrvorrang bei mehreren offenen Apps: Jede App schickt auch im Stillstand
-# zehnmal pro Sekunde "vx=0". Lenkt eine, kamen die Nullen der anderen
-# dazwischen, und er fuhr stotternd mit halbem Tempo (03.11., zwei Geräte,
-# fiel erst nach dem Folgen auf, weil die Interaktion Nullen ohnehin
-# verwirft). So lange (s) nach dem letzten echten Fahrbefehl zählen Nullen
-# nur von dem Gerät, das gerade lenkt. "stop" wirkt immer, von jedem Gerät.
-DRIVE_VORRANG_S = 0.5
+# Drive priority with several open apps: every app sends "vx=0" ten times
+# per second even when idle. While one was steering, the zeros of the other
+# came in between, and it drove stuttering at half speed (03.11., two
+# devices; only noticed after following, because the interaction discards
+# zeros anyway). For this long (s) after the last real drive command, zeros
+# only count from the device that is currently steering. "stop" always
+# works, from any device.
+DRIVE_PRIORITY_S = 0.5
 
-# Takt, in dem der Watchdog prüft. Muss deutlich kleiner als das Timeout sein.
+# Interval at which the watchdog checks. Must be well below the timeout.
 WATCHDOG_INTERVAL_S = 0.1
 
-# Anfahr- und Bremsrampe. Ohne sie springt jeder Fahrbefehl ungebremst auf die
-# Motoren: bei Folgen und Gesten wechselt der Befehl im 20-Hz-Takt zwischen
-# Fahren und Halten, die Motoren ziehen jedes Mal einen Stromstoß, die
-# Spannung bricht ein und der USB-Hub setzt sich zurück (siehe Sensor-Check
-# 28.10.: Resets nur unter Motorlast). Die Rampe begrenzt, wie schnell sich
-# vx/vy/omega pro Sekunde ändern dürfen.
+# Acceleration and braking ramp. Without it, every drive command hits the
+# motors unramped: when following and with gestures the command switches
+# between driving and holding at 20 Hz, the motors draw a current surge each
+# time, the voltage dips and the USB hub resets (see sensor check 28.10.:
+# resets only under motor load). The ramp limits how fast vx/vy/omega may
+# change per second.
 #
-# Bremsen darf schneller sein als Anfahren -- Anhalten vor einem Hindernis ist
-# wichtiger als sanftes Anfahren. watchdog.stop() (Not-Stopp, Timeout,
-# Abbruch) umgeht die Rampe immer und steht sofort.
-RAMPE_AKTIV = True
-RAMPE_ANFAHREN_XY = 0.8       # m/s²   0 -> 0,3 m/s in knapp 0,4 s
-RAMPE_BREMSEN_XY = 2.0        # m/s²   0,3 m/s -> 0 in 0,15 s (rund 2 cm Weg)
-RAMPE_ANFAHREN_OMEGA = 3.0    # rad/s²
-RAMPE_BREMSEN_OMEGA = 6.0     # rad/s²
-# Längster Zeitschritt, den die Rampe auf einmal macht. Nach einer Pause
-# (Roboter stand, erster Befehl seit Langem) würde sonst die ganze Pause als
-# "Zeit zum Beschleunigen" zählen und der Befehl doch wieder springen.
-RAMPE_DT_MAX_S = 0.1
+# Braking may be faster than accelerating -- stopping in front of an
+# obstacle matters more than a smooth start. watchdog.stop() (emergency
+# stop, timeout, abort) always bypasses the ramp and stops immediately.
+RAMP_ACTIVE = True
+RAMP_ACCEL_XY = 0.8       # m/s²   0 -> 0.3 m/s in just under 0.4 s
+RAMP_BRAKE_XY = 2.0        # m/s²   0.3 m/s -> 0 in 0.15 s (about 2 cm distance)
+RAMP_ACCEL_OMEGA = 3.0    # rad/s²
+RAMP_BRAKE_OMEGA = 6.0     # rad/s²
+# Longest time step the ramp takes at once. After a pause (robot was
+# standing, first command in a long time) the whole pause would otherwise
+# count as "time to accelerate" and the command would jump after all.
+RAMP_DT_MAX_S = 0.1
 
 # --- Server --------------------------------------------------------------------
 
-# 0.0.0.0 = aus dem ganzen WLAN erreichbar (nötig, damit das Handy rankommt).
+# 0.0.0.0 = reachable from the whole WiFi (needed so the phone can connect).
 HOST = "0.0.0.0"
 PORT = 8000
 
-# Zusätzlich dieselbe App über HTTPS (0 = aus). Browser geben das Mikrofon
-# nur auf sicheren Seiten frei, also nicht unter http://10.42.0.62:8000 --
-# für die Durchsage vom Handy braucht es https://10.42.0.62:8443. Das
-# Zertifikat erzeugt der Server beim ersten Start selbst (openssl); der
-# Browser warnt einmal, weil es niemand beglaubigt hat.
+# Additionally the same app over HTTPS (0 = off). Browsers only allow the
+# microphone on secure pages, so not under http://10.42.0.62:8000 -- the
+# announcement from the phone needs https://10.42.0.62:8443. The server
+# creates the certificate itself on first start (openssl); the browser warns
+# once because nobody has signed it.
 HTTPS_PORT = 8443
-HTTPS_ORDNER = "~/.rosmaster/https"
+HTTPS_FOLDER = "~/.rosmaster/https"
 
-# Takt, in dem der Roboter von sich aus Statusmeldungen an die App schickt.
+# Interval at which the robot sends status messages to the app on its own.
 STATUS_INTERVAL_S = 0.5
 
-# So lange wartet der Server beim Beenden (Strg+C) auf offene Verbindungen.
-# Der Kamera-Stream endet von selbst nie: Ohne Grenze wartete uvicorn am
-# 28.10. ewig darauf, und das Aufräumen (Motoren aus, Lidar stoppen) lief
-# gar nicht erst an.
+# How long the server waits for open connections when shutting down
+# (Ctrl+C). The camera stream never ends by itself: without a limit, uvicorn
+# waited forever on 28.10., and the cleanup (motors off, stop lidar) never
+# even started.
 SHUTDOWN_TIMEOUT_S = 3
 
 # --- Lidar ---------------------------------------------------------------------
 
 LIDAR_ENABLED = True
 
-# Fester Gerätepfad aus der udev-Regel. Nicht /dev/ttyUSB0 verwenden: das
-# Expansion Board hängt am selben Bus und die Nummern können tauschen.
+# Fixed device path from the udev rule. Do not use /dev/ttyUSB0: the
+# expansion board is on the same bus and the numbers can swap.
 LIDAR_PORT = "/dev/rplidar"
 LIDAR_BAUDRATE = 115200
 
-# Einbaulage: um wie viel Grad die 0°-Richtung des Lidars von "vorn" (Kamera)
-# abweicht. Am X3 ist er um 90° gedreht montiert -- ohne Korrektur lag in der
-# App vorn links, und Hindernisstopp wie Ortung schauten in die falsche
-# Richtung. Prüfen: Hand vor die Kamera halten, sie muss in der App oben
-# erscheinen. Liegt sie stattdessen unten, 180 addieren.
+# Mounting orientation: by how many degrees the lidar's 0° direction deviates
+# from "front" (camera). On the X3 it is mounted rotated by 90° -- without
+# correction, front appeared on the left in the app, and both the obstacle
+# stop and localization looked in the wrong direction. To check: hold a hand
+# in front of the camera, it must appear at the top in the app. If it appears
+# at the bottom instead, add 180.
 LIDAR_ANGLE_OFFSET_DEG = -90.0
 
-# Messpunkte außerhalb dieser Grenzen werden verworfen. Zu nah sind meist
-# Teile des Roboters selbst, zu weit ist Rauschen.
+# Points outside these limits are discarded. Too close is usually parts of
+# the robot itself, too far is noise.
 LIDAR_MIN_M = 0.15
 LIDAR_MAX_M = 8.0
 
-# --- Lidar-gestützte Ortung -----------------------------------------------------
+# --- Lidar-based localization -------------------------------------------------
 
-# Nur in dieser Entfernung zum Startpunkt wird mit der Referenzaufnahme
-# verglichen. Weiter weg überlappt zu wenig, und ein Fehlabgleich wäre
-# schlimmer als gar keine Korrektur.
+# Only within this distance of the starting point is the scan compared with
+# the reference scan. Further away there is too little overlap, and a
+# mismatch would be worse than no correction at all.
 MATCH_RADIUS_M = 4.0
 
-# Mittlerer Restabstand nach dem Abgleich, bis zu dem das Ergebnis
-# übernommen wird. Darüber gilt der Abgleich als misslungen.
+# Mean residual distance after matching up to which the result is accepted.
+# Above that, the match counts as failed.
 MATCH_MAX_RESIDUAL_M = 0.18
 
-# Wie stark eine Korrektur je Durchgang einfließt (0..1). Niedrig, damit
-# ein einzelner Fehlabgleich die Position nicht verreißt.
+# How strongly a correction is applied per pass (0..1). Low, so that a
+# single mismatch does not throw off the position.
 MATCH_TRUST = 0.55
 
-# Takt des Abgleichs. Öfter bringt wenig -- der Lidar dreht sich nur
-# rund fünfmal pro Sekunde.
+# Matching rate. More often brings little -- the lidar only spins about five
+# times per second.
 MATCH_HZ = 4.0
 
-# --- Kartierung (SLAM im ROS-Container) -----------------------------------------
+# --- Mapping (SLAM in the ROS container) ----------------------------------------
 
-# Die Karte baut slam_toolbox in ROS2 Foxy im Docker-Container. Lidar und
-# Board hält aber unser Server; er speist Scans und Position in den
-# Container ein (mapping/einspeisung.py, Begründung: E8). Die Umgebungs-
-# variablen ROSMAP_* aus mapping/manager.py überschreiben die ersten Werte.
+# The map is built by slam_toolbox in ROS2 Foxy in the Docker container. But
+# our server holds the lidar and the board; it feeds scans and pose into the
+# container (mapping/scan_feed.py, rationale: E8). The environment variables
+# ROSMAP_* from mapping/manager.py override the first values.
 MAP_CONTAINER = "x3"
 MAP_ROS_SETUP = "/opt/ros/foxy/setup.bash"
 MAP_SCAN_TOPIC = "/scan"
 
-# So oft (Hz) geht die Position an ROS. slam_toolbox braucht zu jedem Scan
-# die Position zu genau diesem Zeitpunkt; dichter als die Lidar-Umdrehung
-# (5,5 Hz) muss sie deshalb sein.
+# How often (Hz) the pose is sent to ROS. slam_toolbox needs the pose at
+# exactly the time of each scan; so it must be denser than the lidar
+# revolution (5.5 Hz).
 MAP_FEED_HZ = 20.0
 
-# Winkelraster des eingespeisten Scans: so viele Strahlen pro Umdrehung.
-# slam_toolbox legt die Strahlzahl beim ersten Scan fest und verwirft jeden
-# späteren mit anderer Zahl. Der A1 liefert aber jedes Mal etwas anders
-# viele Punkte -- deshalb wird auf ein festes Raster gelegt.
-MAP_SCAN_STRAHLEN = 360
+# Angular grid of the fed scan: this many beams per revolution.
+# slam_toolbox fixes the beam count at the first scan and discards every
+# later one with a different count. But the A1 delivers a slightly different
+# number of points every time -- hence the fixed grid.
+MAP_SCAN_BEAMS = 360
 
-# Springt die Radposition zwischen zwei Lidar-Umdrehungen weiter als das,
-# war es kein Fahren, sondern ein Neusetzen des Startpunkts. SLAM bekommt
-# den Sprung nicht zu sehen -- es hielte ihn für echte Bewegung und zerrisse
-# die Karte.
-MAP_SPRUNG_M = 0.3
+# If the wheel pose jumps further than this between two lidar revolutions,
+# it was not driving but a reset of the starting point. SLAM does not get to
+# see the jump -- it would take it for real motion and tear the map apart.
+MAP_JUMP_M = 0.3
 
-# Lidar-Odometrie (navigation/scan_odometrie.py): Die Blickrichtung kommt
-# aus dem Abgleich aufeinanderfolgender Aufnahmen, weil die IMU am X3
-# keinen Kurswinkel liefert. Bis zu diesem mittleren Restabstand gilt ein
-# Abgleich als gelungen; zwei Aufnahmen kurz nacheinander passen meist auf
+# Lidar odometry (navigation/scan_odometry.py): the heading comes from
+# matching consecutive scans, because the IMU on the X3 does not provide a
+# heading angle. Up to this mean residual distance a match counts as
+# successful; two scans taken shortly after each other usually match to
 # 2-4 cm.
-MAP_ICP_MAX_RESIDUUM_M = 0.08
-# Nach so viel Bewegung wird die Bezugsaufnahme erneuert. Größer: weniger
-# Drift, aber die Aufnahmen überlappen schlechter.
-MAP_BEZUG_M = 0.25
-MAP_BEZUG_GRAD = 10.0
+MAP_ICP_MAX_RESIDUAL_M = 0.08
+# After this much motion the reference scan is renewed. Larger: less drift,
+# but the scans overlap less well.
+MAP_REF_M = 0.25
+MAP_REF_DEG = 10.0
 
-# --- Kartierfahrt (navigation/kartierfahrt.py) ---
+# --- Mapping drive (navigation/mapping_drive.py) ---
 #
-# Beim Kartieren fährt er wie ein Saugroboter: einmal mit der Wand rechts
-# rundherum, dann Bahnen parallel zur Wand. Gemächlich, damit SLAM jede
-# Stelle aus mehreren Aufnahmen kennt.
+# When mapping it drives like a robot vacuum: once around with the wall on
+# the right, then lanes parallel to the wall. Leisurely, so that SLAM knows
+# every spot from several scans.
 
-# Tempo auf Bahnen und an der Wand (m/s), seitwärts beim Versatz, Drehen.
-MAP_FAHRT_TEMPO = 0.15
-MAP_FAHRT_SEITE_TEMPO = 0.12
-MAP_FAHRT_DREH_TEMPO = 0.5  # rad/s; darunter laufen die Motoren nicht sicher an
+# Speed on lanes and along the wall (m/s), sideways when shifting, turning.
+MAPPING_DRIVE_SPEED = 0.15
+MAPPING_DRIVE_SIDE_SPEED = 0.12
+MAPPING_DRIVE_TURN_SPEED = 0.5  # rad/s; below this the motors do not start reliably
 
-# Abstand von der Lidar-Mitte zur Wand bei der Randfahrt. Halbe
-# Roboterbreite (0,12 m) plus Luft für Lenkfehler.
-MAP_FAHRT_WANDABSTAND_M = 0.40
+# Distance from the lidar center to the wall during the wall-following lap.
+# Half the robot width (0.12 m) plus room for steering errors.
+MAPPING_DRIVE_WALL_DISTANCE_M = 0.40
 
-# Abstand der Bahnen. Der Lidar sieht viele Meter weit, für die Karte
-# müssen die Bahnen also nicht dicht liegen wie beim Saugen -- nur so dicht,
-# dass er hinter Möbel schaut.
-MAP_FAHRT_BAHNABSTAND_M = 0.8
+# Spacing of the lanes. The lidar sees many meters, so for the map the lanes
+# do not need to be as dense as when vacuuming -- only dense enough that it
+# looks behind furniture.
+MAPPING_DRIVE_LANE_SPACING_M = 0.8
 
-# Halbe Roboterlänge plus Rand: so breit muss es seitlich frei sein, wenn er
-# zur nächsten Bahn rutscht.
-MAP_FAHRT_HALBE_LAENGE_M = 0.22
+# Half the robot length plus margin: this much room must be free to the side
+# when it slides over to the next lane.
+MAPPING_DRIVE_HALF_LENGTH_M = 0.22
 
-# Randfahrt fertig, wenn er wieder so nah am Anfang ist, nachdem er
-# mindestens MAP_FAHRT_RUNDE_MIN_M gefahren ist ...
-MAP_FAHRT_RUNDE_M = 0.6
-MAP_FAHRT_RUNDE_MIN_M = 3.0
-# Ist die Runde kürzer, war es keine Wand, sondern ein Hindernis mitten im
-# Raum (Säule, Sofa, Tisch): Er verlässt es und sucht die Wand. Ein Zimmer
-# von 2 x 2 m hat schon 8 m Umfang, an der Wand entlang gefahren gut 5.
-MAP_FAHRT_INSEL_M = 5.0
-# ... spätestens aber nach so vielen Sekunden (offene Türen, verwinkelte
-# Räume: dann kommt er vielleicht nie zurück).
-MAP_FAHRT_RAND_MAX_S = 300.0
+# Wall-following lap is done when it is this close to the start again, after
+# having driven at least MAPPING_DRIVE_LAP_MIN_M ...
+MAPPING_DRIVE_LAP_M = 0.6
+MAPPING_DRIVE_LAP_MIN_M = 3.0
+# If the lap is shorter, it was not a wall but an obstacle in the middle of
+# the room (pillar, sofa, table): it leaves it and looks for the wall. A
+# 2 x 2 m room already has an 8 m perimeter, a good 5 m when driven along the
+# wall.
+MAPPING_DRIVE_ISLAND_M = 5.0
+# ... but at the latest after this many seconds (open doors, angled rooms:
+# then it might never come back).
+MAPPING_DRIVE_WALL_FOLLOW_MAX_S = 300.0
 
-# Höchstdauer der ganzen Kartierfahrt (s), danach hält er an. Mit dem
-# Weiterfahren in andere Räume (MAP_LUECKE_*) dauert eine Wohnung länger
-# als ein Zimmer.
-MAP_FAHRT_MAX_S = 3600.0
+# Maximum duration of the whole mapping drive (s), after which it stops.
+# With continuing into other rooms (FRONTIER_*) an apartment takes longer
+# than a single room.
+MAPPING_DRIVE_MAX_S = 3600.0
 
-# Ist das erste Zimmer abgefahren (oder kommt er dort nicht weiter), hört
-# er nicht auf, sondern fährt die nächste Stelle an, an der die Karte ins
-# Unbekannte übergeht -- offene Türen, Flure, Schatten hinter Möbeln. Erst
-# wenn keine solche Stelle mehr erreichbar ist, ist die Karte fertig.
-MAP_LUECKE_AKTIV = True
-# Kleinere Übergänge ins Unbekannte (m) sind Messlücken, keine Durchgänge.
-MAP_LUECKE_MIN_M = 0.4
-# So nah (m) an eine angefahrene Stelle kommt keine neue Lücke mehr in
-# Frage: Was nach dem Hinfahren noch unbekannt ist, sieht er von dort
-# nicht (Spiegel, Glas, zu weit weg).
-MAP_LUECKE_ERLEDIGT_M = 0.8
-# Ankunft an der Lücke: so nah (m) heranfahren genügt, der Lidar sieht
-# von dort weit hinein.
-MAP_LUECKE_NAH_M = 0.5
-# So viele Lücken in Folge darf er verfehlen (blockiert, kein Weg), bevor
-# die Kartierfahrt endet.
-MAP_LUECKE_MAX_FEHLER = 6
-# Am Ende zum Ausgangspunkt der Karte zurückfahren -- dort steht er dann
-# für die nächste Fahrt mit dieser Karte richtig.
-MAP_FAHRT_ZURUECK = True
+# Once the first room is covered (or it cannot get any further there), it
+# does not stop but heads for the next spot where the map turns into the
+# unknown -- open doors, hallways, shadows behind furniture. Only when no
+# such spot is reachable anymore is the map finished.
+FRONTIER_ACTIVE = True
+# Smaller transitions into the unknown (m) are measurement gaps, not
+# passages.
+FRONTIER_MIN_M = 0.4
+# A new frontier this close (m) to a spot already visited is no longer a
+# candidate: what is still unknown after driving there cannot be seen from
+# there (mirror, glass, too far away).
+FRONTIER_DONE_M = 0.8
+# Arriving at the frontier: getting this close (m) is enough, the lidar sees
+# far into it from there.
+FRONTIER_NEAR_M = 0.5
+# This many frontiers in a row may be missed (blocked, no path) before the
+# mapping drive ends.
+FRONTIER_MAX_ERRORS = 6
+# At the end, drive back to the map's starting point -- it is then
+# positioned correctly for the next drive with this map.
+MAPPING_DRIVE_RETURN = True
 
-# Beim Kartieren länger auf den Lidar warten als beim Zufallsfahren (s):
-# Der A1 meldet sich am X3 bei Spannungseinbrüchen ab und wieder an, und
-# eine lange Kartierfahrt soll daran nicht enden.
-MAP_FAHRT_LIDAR_WARTEN_S = 30.0
-# Fällt der Antrieb während der Kartierfahrt aus (USB-Reset), hält er an
-# und fährt nach dem Neuverbinden weiter, wenn das binnen so vieler
-# Sekunden geschieht. SLAM und Karte laufen währenddessen weiter.
-MAP_FAHRT_WIEDER_S = 60.0
-# Schließen alle Seiten (/map und App), wartet er so lange (s), bevor er
-# anhält: Ein Handy, dessen Bildschirm kurz ausgeht, soll die Fahrt nicht
-# beenden. Danach gilt wieder: Ohne Zuschauer fährt er nicht.
-MAP_ZUSCHAUER_WARTEN_S = 20.0
+# Wait longer for the lidar when mapping than when driving randomly (s): on
+# the X3 the A1 disconnects and reconnects during voltage dips, and a long
+# mapping drive should not end because of that.
+MAPPING_DRIVE_LIDAR_WAIT_S = 30.0
+# If the drive fails during the mapping drive (USB reset), it stops and
+# continues after reconnecting, provided that happens within this many
+# seconds. SLAM and the map keep running in the meantime.
+MAPPING_DRIVE_RESUME_S = 60.0
+# If all pages (/map and app) close, it waits this long (s) before
+# stopping: a phone whose screen briefly turns off should not end the drive.
+# After that the rule applies again: without a watcher it does not drive.
+MAP_WATCHER_WAIT_S = 20.0
 
-# --- Karte nutzen: Ortung, Planung, Fahrt zum Ziel ------------------------------
+# --- Using the map: localization, planning, driving to a goal -------------------
 #
-# Ist eine Karte da (beim Kartieren live, danach gespeichert), weiß der
-# Roboter, wo er in ihr steht, und fährt auf Wunsch zu einem Punkt auf der
-# Karte (Begründung: E12 in docs/entscheidungen.md).
+# Once a map exists (live while mapping, saved afterwards), the robot knows
+# where it is in it and, on request, drives to a point on the map
+# (rationale: E12 in docs/decisions.md).
 
-# So oft (Hz) wird die Lidar-Aufnahme auf die Karte gelegt.
-KARTE_ORTUNG_HZ = 4.0
-# Bis zu dieser Entfernung (m) zählt ein Kartenpunkt als getroffen. Das
-# Abstandsfeld der Karte endet bei KARTE_ABSTAND_MAX_M.
-KARTE_TREFFER_M = 0.15
-KARTE_ABSTAND_MAX_M = 1.0
-# Mindestanteil getroffener Punkte, damit ein Abgleich zählt. Möbel, die
-# verrückt wurden, und Menschen treffen nichts -- deshalb nicht 100 %.
-KARTE_MIN_ANTEIL = 0.45
-# Mehr als so weit (m, Grad) darf ein Abgleich die Lage nicht versetzen,
-# sonst hat er wahrscheinlich eine falsche, ähnliche Stelle gefunden.
-KARTE_MAX_SPRUNG_M = 0.4
-KARTE_MAX_SPRUNG_GRAD = 20.0
-# Gewicht eines gelungenen Abgleichs (0..1). Kleiner: ruhiger, folgt aber
-# langsamer.
-KARTE_VERTRAUEN = 0.5
-# So lange (s) ohne gelungenen Abgleich gilt die Lage als unsicher. Fahrten
-# zum Ziel halten dann an.
-KARTE_SICHER_S = 4.0
-# Suche nach der eigenen Lage (nach dem Laden einer Karte, nach dem
-# Hochheben): so weit (m) um den Hinweis herum, in diesem Raster.
-KARTE_SUCH_RADIUS_M = 1.5
-KARTE_SUCH_RASTER_M = 0.1
-KARTE_SUCH_GRAD = 5.0
-# Mindestanteil getroffener Punkte, damit eine Suche zählt: Sucht er von
-# selbst (nach dem Laden, nach dem Hochheben), muss es ein klarer Treffer
-# sein -- rechteckige Zimmer sehen sich ähnlich, eine falsche Lage wäre
-# schlimmer als keine. Hat jemand auf der Karte gezeigt, wo er steht, reicht
-# weniger.
-KARTE_SUCH_MIN_ANTEIL = 0.8
-KARTE_HINWEIS_MIN_ANTEIL = 0.6
-# Passt eine deutlich andere Lage (weiter als so viele m bzw. Grad) fast
-# genauso gut (bis auf so viel Anteil), ist die Suche mehrdeutig: dann
-# lieber nachfragen.
-KARTE_MEHRDEUTIG_M = 0.5
-KARTE_MEHRDEUTIG_GRAD = 30.0
-KARTE_MEHRDEUTIG_ANTEIL = 0.05
+# How often (Hz) the lidar scan is matched against the map.
+NAV_LOCALIZATION_HZ = 4.0
+# Up to this distance (m) a map point counts as hit. The map's distance
+# field ends at NAV_DISTANCE_MAX_M.
+NAV_HIT_M = 0.15
+NAV_DISTANCE_MAX_M = 1.0
+# Minimum share of points hit for a match to count. Furniture that was moved
+# and people hit nothing -- hence not 100 %.
+NAV_MIN_SHARE = 0.45
+# A match may not shift the pose by more than this (m, degrees), otherwise
+# it has probably found a wrong, similar spot.
+NAV_MAX_JUMP_M = 0.4
+NAV_MAX_JUMP_DEG = 20.0
+# Weight of a successful match (0..1). Smaller: calmer, but follows more
+# slowly.
+NAV_TRUST = 0.5
+# After this long (s) without a successful match the pose counts as
+# uncertain. Drives to a goal then stop.
+NAV_CONFIDENT_S = 4.0
+# Searching for its own pose (after loading a map, after being lifted):
+# this far (m) around the hint, on this grid.
+NAV_SEARCH_RADIUS_M = 1.5
+NAV_SEARCH_GRID_M = 0.1
+NAV_SEARCH_DEG = 5.0
+# Minimum share of points hit for a search to count: when it searches on its
+# own (after loading, after being lifted), it must be a clear hit --
+# rectangular rooms look alike, a wrong pose would be worse than none. If
+# someone has shown on the map where it is, less is enough.
+NAV_SEARCH_MIN_SHARE = 0.8
+NAV_HINT_MIN_SHARE = 0.6
+# If a clearly different pose (further than this many m or degrees) fits
+# almost as well (within this share), the search is ambiguous: better ask
+# back then.
+NAV_AMBIGUOUS_M = 0.5
+NAV_AMBIGUOUS_DEG = 30.0
+NAV_AMBIGUOUS_SHARE = 0.05
 
-# Pfadplanung: auf einem gröberen Raster (m) als die Karte, das reicht für
-# Wege und rechnet am Pi in Sekundenbruchteilen.
-KARTE_PLAN_AUFLOESUNG_M = 0.1
-# Näher (m, ab Lidar-Mitte) führt kein Weg an einer Wand vorbei: halbe
-# Roboterdiagonale (0,21 m) plus Rand. Ein Durchgang braucht also 0,5 m.
-KARTE_SICHERHEIT_M = 0.25
-# Bis zu diesem Abstand (m) kostet die Nähe zur Wand extra -- Wege laufen
-# so durch die Türmitte und nicht an der Kante entlang.
-KARTE_WUNSCH_ABSTAND_M = 0.5
-KARTE_WANDKOSTEN = 3.0
-# Liegt das Ziel in einer Wand oder zu nah daran, wird es bis so weit (m)
-# auf die nächste befahrbare Stelle verschoben.
-KARTE_ZIEL_FANG_M = 0.6
+# Path planning: on a coarser grid (m) than the map; that is enough for
+# paths and computes on the Pi in fractions of a second.
+NAV_PLAN_RESOLUTION_M = 0.1
+# No path passes a wall closer than this (m, from the lidar center): half
+# the robot diagonal (0.21 m) plus margin. A passage therefore needs 0.5 m.
+NAV_SAFETY_M = 0.25
+# Up to this distance (m) being close to a wall costs extra -- so paths run
+# through the middle of a door and not along its edge.
+NAV_PREFERRED_DISTANCE_M = 0.5
+NAV_WALL_COST = 3.0
+# If the goal lies in a wall or too close to one, it is moved up to this far
+# (m) to the nearest drivable spot.
+NAV_GOAL_SNAP_M = 0.6
 
-# Fahrt entlang des Weges.
-KARTE_FAHRT_TEMPO = 0.25
-KARTE_DREH_MAX = 0.6  # rad/s, zum Ausrichten in Fahrtrichtung
-# Wegpunkt erreicht, wenn er so nah (m) ist; Ziel erreicht bei
-# KARTE_ZIEL_TOLERANZ_M.
-KARTE_WEGPUNKT_M = 0.3
-KARTE_ZIEL_TOLERANZ_M = 0.15
-KARTE_ZIEL_GRAD = 8.0
-# Weiter als das (m) vom Weg abgekommen: neu planen.
-KARTE_ABWEICHUNG_M = 0.7
-# Ist der Weg so lange (s) versperrt, plant er drumherum neu; die
-# versperrte Stelle gilt dabei für KARTE_SPERRE_S als Wand.
-KARTE_BLOCKIERT_S = 3.0
-KARTE_SPERRE_S = 60.0
-KARTE_SPERRE_RADIUS_M = 0.3
-# So oft in Folge neu planen, dann aufgeben.
-KARTE_MAX_NEUPLANUNG = 5
-# Höchstdauer einer Fahrt zum Ziel: so viele Sekunden je Meter Weg, aber
-# mindestens KARTE_FAHRT_MIN_S.
-KARTE_FAHRT_S_JE_M = 12.0
-KARTE_FAHRT_MIN_S = 60.0
+# Driving along the path.
+NAV_DRIVE_SPEED = 0.25
+NAV_TURN_MAX = 0.6  # rad/s, for aligning with the direction of travel
+# Waypoint reached when it is this close (m); goal reached at
+# NAV_GOAL_TOLERANCE_M.
+NAV_WAYPOINT_M = 0.3
+NAV_GOAL_TOLERANCE_M = 0.15
+NAV_GOAL_DEG = 8.0
+# Strayed further than this (m) from the path: replan.
+NAV_DEVIATION_M = 0.7
+# If the path is blocked for this long (s), it replans around it; the
+# blocked spot counts as a wall for NAV_BLOCK_S.
+NAV_BLOCKED_S = 3.0
+NAV_BLOCK_S = 60.0
+NAV_BLOCK_RADIUS_M = 0.3
+# Replan this many times in a row, then give up.
+NAV_MAX_REPLANS = 5
+# Maximum duration of a drive to a goal: this many seconds per meter of
+# path, but at least NAV_DRIVE_MIN_S.
+NAV_DRIVE_S_PER_M = 12.0
+NAV_DRIVE_MIN_S = 60.0
 
-# Gespeicherte Spur in der Anzeige: ein Punkt je so viel Meter, höchstens
-# so viele Punkte.
-KARTE_SPUR_M = 0.1
-KARTE_SPUR_MAX = 3000
+# Stored trail in the display: one point per this many meters, at most this
+# many points.
+NAV_TRAIL_M = 0.1
+NAV_TRAIL_MAX = 3000
 
-# Kartierung in der Simulation (--mock): kein Docker, kein slam_toolbox.
-# Die Karte entsteht dann in Python aus dem simulierten Lidar, damit die
-# Seite /map und alles, was die Karte nutzt, am Schreibtisch läuft.
-MAP_SIM_AUFLOESUNG_M = 0.05
+# Mapping in the simulation (--mock): no Docker, no slam_toolbox. The map is
+# then built in Python from the simulated lidar, so that the /map page and
+# everything that uses the map works at the desk.
+MAP_SIM_RESOLUTION_M = 0.05
 MAP_SIM_HZ = 2.0
-# Gedachte Wohnung statt eines Zimmers: eine Zwischenwand mit Tür. Für die
-# Weiterfahrt in den Nachbarraum (--mock, Tests). Einschalten ohne die
-# Datei zu ändern: ROSMASTER_MOCK_WOHNUNG=1 python main.py --mock
-MOCK_ZWISCHENWAND = os.environ.get("ROSMASTER_MOCK_WOHNUNG") == "1"
+# Imaginary apartment instead of a single room: a partition wall with a
+# door. For continuing into the neighboring room (--mock, tests). Switch on
+# without changing the file: ROSMASTER_MOCK_WOHNUNG=1 python main.py --mock
+MOCK_APARTMENT = os.environ.get("ROSMASTER_MOCK_WOHNUNG") == "1"
 
-# Kommt so lange (s) nach dem Start keine Karte, meldet die Seite das
-# zusammen mit dem SLAM-Protokoll. slam_toolbox veröffentlicht die Karte
-# alle 5 s; die erste sollte also nach wenigen Sekunden da sein.
-MAP_ERSTE_KARTE_S = 20.0
+# If no map arrives this long (s) after starting, the page reports it along
+# with the SLAM log. slam_toolbox publishes the map every 5 s; so the first
+# one should be there after a few seconds.
+MAP_FIRST_MAP_S = 20.0
 
-# So viele letzte Zeilen des SLAM-Protokolls zeigt die Seite.
-MAP_LOG_ZEILEN = 15
+# The page shows this many last lines of the SLAM log.
+MAP_LOG_LINES = 15
 
-# --- Kollisionsvermeidung bei manueller Steuerung -------------------------------
+# --- Collision avoidance during manual control ----------------------------------
 
-# Standardmäßig aus: wer von Hand steuert, sieht den Roboter meistens und
-# will nicht bevormundet werden. In der App zuschaltbar.
+# Off by default: whoever steers by hand usually sees the robot and does not
+# want to be patronized. Can be switched on in the app.
 COLLISION_ENABLED = False
 
-# Mindestabstand in Fahrtrichtung, gemessen ab Lidar-Mitte wie bisher. In
-# der App per Regler verstellbar. Geprüft wird über den Fahrschutz (unten):
-# Die Roboterkante hält rundum (Abstand - ROBOTER_VORN_M) Luft, vorn also
-# genau diesen Abstand ab Lidar-Mitte.
+# Minimum distance in the direction of travel, measured from the lidar
+# center as before. Adjustable with a slider in the app. Checked via the
+# drive guard (below): the robot's edge keeps (distance - ROBOT_FRONT_M)
+# clearance all around, i.e. exactly this distance from the lidar center at
+# the front.
 COLLISION_DISTANCE_M = 0.35
 
-# Grenzen des Reglers. Unter 15 cm sieht der Lidar nichts Verlässliches
-# mehr, über 1,5 m wäre in einem Zimmer fast immer etwas im Weg.
+# Slider limits. Below 15 cm the lidar sees nothing reliable anymore; above
+# 1.5 m something would almost always be in the way in a room.
 COLLISION_MIN_M = 0.15
 COLLISION_MAX_M = 1.5
 
-# --- Fahrschutz: Kollisionsprüfung über die Grundfläche (safety/fahrschutz.py) ---
+# --- Drive guard: collision check using the footprint (safety/drive_guard.py) ---
 #
-# Gilt für alles, was selbst fährt (quelle="autonom": Erkunder,
-# Kartierfahrt, Heimfahrt, Interaktion, genaue Fahrbefehle), und für die
-# Handsteuerung, wenn dort der Hindernisstopp an ist. Für jeden Befehl wird
-# vorausgerechnet, wo die Grundfläche hinfährt -- auch im Bogen und beim
-# Drehen; ragt ein Lidar-Punkt hinein, bremst er rechtzeitig.
+# Applies to everything that drives by itself (quelle="autonom": explorer,
+# mapping drive, homing, interaction, precise drive commands), and to manual
+# control when the obstacle stop is on there. For every command it predicts
+# where the footprint will go -- also on arcs and when turning; if a lidar
+# point lies inside, it brakes in time.
 
-# Grundfläche, gemessen ab Lidar-Mitte. Vorn ragt der X3 ~0,15 m über, die
-# Breite ist 0,245 m. Hinten ist geschätzt -- am Roboter nachmessen. Die
-# einzige Stelle dafür: Die Bogenplanung (AUSWEICH_*) nutzt dieselben Werte,
-# sonst bremste der Fahrschutz Bögen, die der Planer für sicher hält.
-ROBOTER_VORN_M = 0.15
-ROBOTER_HINTEN_M = 0.17
-ROBOTER_HALBE_BREITE_M = 0.125
+# Footprint, measured from the lidar center. The X3 protrudes ~0.15 m at
+# the front, the width is 0.245 m. The rear is estimated -- measure it on
+# the robot. This is the only place for it: arc planning (AVOID_*) uses the
+# same values, otherwise the drive guard would brake arcs the planner
+# considers safe.
+ROBOT_FRONT_M = 0.15
+ROBOT_REAR_M = 0.17
+ROBOT_HALF_WIDTH_M = 0.125
 
-# So viel Luft hält die Roboterkante beim selbstständigen Fahren mindestens.
-# Muss kleiner sein als AUSWEICH_RAND_M (Planer): Die Sicherheitsschicht
-# ist die innere Grenze. Gleich groß, und jedes Rauschen im Scan würgte
-# geplante Bögen ab.
-FAHRSCHUTZ_RAND_M = 0.04
+# Minimum clearance the robot's edge keeps when driving autonomously.
+# Must be smaller than AVOID_MARGIN_M (planner): the safety layer is the
+# inner limit. With equal values, every bit of noise in the scan would choke
+# planned arcs.
+GUARD_MARGIN_M = 0.04
 
-# Vom Befehl bis zur Wirkung vergehen am X3 ~0,22 s (Sensor-Check 28.10.);
-# dazu kommt das Alter des Scans. Solange fährt er ungebremst weiter.
-FAHRSCHUTZ_REAKTION_S = 0.25
+# On the X3 ~0.22 s pass from command to effect (sensor check 28.10.); plus
+# the age of the scan. During that time it keeps driving without braking.
+GUARD_REACTION_S = 0.25
 
-# Verzögerung, mit der beim Bremsen gerechnet wird. Bewusst unter der
-# Bremsrampe (RAMPE_BREMSEN_XY): Mecanum-Räder rutschen beim Bremsen.
-FAHRSCHUTZ_BREMSEN = 1.0       # m/s²
-FAHRSCHUTZ_BREMSEN_DREH = 3.0  # rad/s²
+# Deceleration assumed for braking. Deliberately below the braking ramp
+# (RAMP_BRAKE_XY): mecanum wheels slip when braking.
+GUARD_BRAKE = 1.0       # m/s²
+GUARD_BRAKE_TURN = 3.0  # rad/s²
 
-# Älter darf der Scan nicht sein, sonst steht er (blind fährt er nicht).
-FAHRSCHUTZ_SCAN_MAX_S = 0.5
+# The scan must not be older than this, otherwise it stands still (it does
+# not drive blind).
+GUARD_SCAN_MAX_S = 0.5
 
-# Unter diesem Anteil des Tempos hält er ganz an: So langsam setzen die
-# Motoren es am Boden nicht mehr um.
-FAHRSCHUTZ_MIN_ANTEIL = 0.2
+# Below this share of the speed it stops completely: the motors no longer
+# translate such slow speeds into motion on the floor.
+GUARD_MIN_SHARE = 0.2
 
-# Kommt eine autonome Fahrt so lange (s) wegen des Fahrschutzes nicht
-# weiter, gibt sie auf, statt ewig vor dem Hindernis zu stehen.
-FAHRSCHUTZ_FEST_S = 10.0
+# If an autonomous drive cannot proceed for this long (s) because of the
+# drive guard, it gives up instead of standing in front of the obstacle
+# forever.
+GUARD_STUCK_S = 10.0
 
-# Die Hindernisse aus der Tiefenkamera (samt Gedächtnis, unten) gehen in den
-# Fahrschutz ein -- er bremst dann auch vor Stuhlfüßen und Kabelkanälen,
-# die unter der Lidar-Ebene liegen.
-FAHRSCHUTZ_MIT_TIEFE = True
+# The obstacles from the depth camera (including the memory, below) feed
+# into the drive guard -- it then also brakes for chair legs and cable
+# ducts that lie below the lidar plane.
+GUARD_WITH_DEPTH = True
 
-# --- Tiefenkamera (Orbbec Astra, sensors/tiefe.py) -----------------------------
+# --- Depth camera (Orbbec Astra, sensors/depth.py) -------------------------------
 #
-# Der Lidar sieht nur in seiner Ebene (~17 cm über dem Boden). Darunter --
-# Stuhlfüße, Kufen, Kabelkanäle, Bettgestell -- fährt er auf und bleibt
-# hängen. Die Tiefenkamera sieht nach vorn alles zwischen Boden und
-# Roboteroberkante. Angesprochen über Orbbecs OpenNI2-Build (liegt im
-# Yahboom-Container, siehe scripts/orbbec_einrichten.sh), ohne ROS.
+# The lidar only sees in its own plane (~17 cm above the floor). Below that
+# -- chair legs, skids, cable ducts, bed frames -- it runs into things and
+# gets stuck. The depth camera sees everything ahead between the floor and
+# the top of the robot. Accessed via Orbbec's OpenNI2 build (located in the
+# Yahboom container, see scripts/setup_orbbec.sh), without ROS.
 
-TIEFE_AKTIV = True
-# Ordner mit libOpenNI2.so und OpenNI2/Drivers/liborbbec.so.
-TIEFE_OPENNI_PFAD = "~/orbbec_openni2"
-# 320x240 reicht für Hindernisse und spart Rechenzeit und USB-Bandbreite.
-TIEFE_BREITE = 320
-TIEFE_HOEHE_PX = 240
-# So oft (Hz) wird ein Bild ausgewertet; die Kamera liefert 30.
-TIEFE_HZ = 8.0
-# Einbau, gemessen ab Lidar-Mitte am Boden: Höhe der Kamera über dem Boden,
-# Abstand nach vorn, Neigung nach unten. Am Roboter nachmessen -- grobe Fehler
-# gleicht die Bodenerkennung aus, solange sie den Boden sieht.
-TIEFE_KAMERA_HOEHE_M = 0.22
-TIEFE_KAMERA_VOR_M = 0.05
-TIEFE_KAMERA_NEIGUNG_GRAD = 0.0
-# Ausgewertet wird nur dieser Bereich vor dem Roboter (m). Unter ~0,6 m misst
-# die Astra Pro gar nicht (Mindestreichweite), weiter weg wird sie ungenau,
-# und dort sieht der Lidar die Dinge ohnehin, bevor sie wichtig werden.
-TIEFE_MIN_M = 0.55
-TIEFE_MAX_M = 1.8
-# Als Hindernis zählt, was so hoch über dem erkannten Boden liegt (m). Unten
-# nicht unter ~4 cm, sonst wird jede Teppichkante und das Rauschen des
-# Bodens zum Hindernis; oben bis knapp über die Roboteroberkante.
-TIEFE_MIN_HOEHE_M = 0.04
-TIEFE_MAX_HOEHE_M = 0.40
-# Sieht die Kamera keinen Boden (dunkel, glänzend), zählen nur die
-# Einbauwerte. Dann vorsichtiger: höher ansetzen und nicht so weit schauen --
-# 2° falsche Neigung sind in 1,8 m schon 6 cm.
-TIEFE_OHNE_BODEN_ZUSCHLAG_M = 0.05
-TIEFE_OHNE_BODEN_MAX_M = 1.3
-# Rasterzelle (m) und Mindestzahl Punkte je Zelle: Einzelne Ausreißer im
-# Tiefenbild sollen kein Hindernis erzeugen, ein Stuhlfuß hat Dutzende.
-TIEFE_ZELLE_M = 0.05
-TIEFE_MIN_PUNKTE_ZELLE = 4
-# Älter darf ein Tiefenbild nicht sein, sonst gilt die Kamera als aus.
-TIEFE_MAX_ALTER_S = 1.0
-# Wartezeit (s) vor dem nächsten Verbindungsversuch nach einem Fehler.
-TIEFE_NEUVERSUCH_S = 5.0
+DEPTH_ACTIVE = True
+# Folder containing libOpenNI2.so and OpenNI2/Drivers/liborbbec.so.
+DEPTH_OPENNI_PATH = "~/orbbec_openni2"
+# 320x240 is enough for obstacles and saves computing time and USB bandwidth.
+DEPTH_WIDTH = 320
+DEPTH_HEIGHT_PX = 240
+# How often (Hz) a frame is evaluated; the camera delivers 30.
+DEPTH_HZ = 8.0
+# Mounting, measured from the lidar center on the floor: height of the
+# camera above the floor, forward offset, downward tilt. Measure on the
+# robot -- the floor detection compensates for rough errors as long as it
+# sees the floor.
+DEPTH_CAMERA_HEIGHT_M = 0.22
+DEPTH_CAMERA_FORWARD_M = 0.05
+DEPTH_CAMERA_TILT_DEG = 0.0
+# Only this range in front of the robot is evaluated (m). Below ~0.6 m the
+# Astra Pro does not measure at all (minimum range), further away it becomes
+# inaccurate, and there the lidar sees things anyway before they matter.
+DEPTH_MIN_M = 0.55
+DEPTH_MAX_M = 1.8
+# Anything this high above the detected floor counts as an obstacle (m). Not
+# below ~4 cm at the bottom, otherwise every carpet edge and the noise of the
+# floor becomes an obstacle; at the top up to just above the top of the
+# robot.
+DEPTH_MIN_HEIGHT_M = 0.04
+DEPTH_MAX_HEIGHT_M = 0.40
+# If the camera sees no floor (dark, shiny), only the mounting values count.
+# Then be more cautious: start higher and do not look as far -- 2° of wrong
+# tilt is already 6 cm at 1.8 m.
+DEPTH_NO_FLOOR_MARGIN_M = 0.05
+DEPTH_NO_FLOOR_MAX_M = 1.3
+# Grid cell (m) and minimum number of points per cell: single outliers in
+# the depth image should not create an obstacle, a chair leg has dozens.
+DEPTH_CELL_M = 0.05
+DEPTH_MIN_POINTS_PER_CELL = 4
+# A depth frame must not be older than this, otherwise the camera counts as
+# off.
+DEPTH_MAX_AGE_S = 1.0
+# Wait time (s) before the next connection attempt after an error.
+DEPTH_RETRY_S = 5.0
 
-# Gedächtnis (navigation/hindernisgedaechtnis.py): Unter 0,6 m ist die Kamera
-# blind -- genau dort, wo das Hindernis zählt. Was sie weiter vorn gesehen
-# hat, wird deshalb mit der eigenen Bewegung mitgeführt, bis er vorbei ist.
-# So lange (s) bleibt ein Punkt höchstens, und nur bis zu dieser Entfernung.
-TIEFE_GEDAECHTNIS_S = 30.0
-TIEFE_GEDAECHTNIS_M = 2.5
+# Memory (navigation/obstacle_memory.py): below 0.6 m the camera is blind
+# -- exactly where the obstacle matters. What it saw further ahead is
+# therefore carried along with the robot's own motion until it has passed.
+# A point stays for at most this long (s), and only up to this distance.
+DEPTH_MEMORY_S = 30.0
+DEPTH_MEMORY_M = 2.5
 
-# Anzeige (/tiefe/stream): Farbskala von nah (rot) bis fern (blau), in m.
-TIEFE_ANZEIGE_NAH_M = 0.5
-TIEFE_ANZEIGE_FERN_M = 3.0
-# Überlagert über dieses Farbbild (dieselbe Orbbec, Kamera daneben).
-TIEFE_UEBER_KAMERA = "orientierung"
-# Die beiden Kameras sitzen ~2,5 cm auseinander und haben verschiedene
-# Bildwinkel. Die Skalierung kommt aus den Bildwinkeln; was dann noch
-# daneben liegt, hier von Hand nachschieben (Pixel im Farbbild, + = rechts/unten)
-# und Zoom (1.0 = nur nach Bildwinkel).
-TIEFE_UEBER_VERSATZ_PX = (0, 0)
-TIEFE_UEBER_ZOOM = 1.0
-# Deckkraft der Tiefenfarben über dem Farbbild (0..1).
-TIEFE_UEBER_DECKKRAFT = 0.45
+# Display (/tiefe/stream): color scale from near (red) to far (blue), in m.
+DEPTH_VIEW_NEAR_M = 0.5
+DEPTH_VIEW_FAR_M = 3.0
+# Overlaid on this color image (same Orbbec, the camera next to it).
+DEPTH_OVERLAY_CAMERA = "orientierung"
+# The two cameras sit ~2.5 cm apart and have different fields of view. The
+# scaling comes from the fields of view; whatever is still off, shift it by
+# hand here (pixels in the color image, + = right/down) and zoom (1.0 =
+# field of view only).
+DEPTH_OVERLAY_SHIFT_PX = (0, 0)
+DEPTH_OVERLAY_ZOOM = 1.0
+# Opacity of the depth colors over the color image (0..1).
+DEPTH_OVERLAY_OPACITY = 0.45
 
-# --- Fortschrittswache (navigation/fortschritt.py) ------------------------------
+# --- Progress watch (navigation/progress.py) ------------------------------------
 #
-# Vergleicht, was gefahren wurde (Befehl nach Rampe und Fahrschutz), mit dem,
-# was der Lidar an Bewegung sieht (ICP zweier Aufnahmen). Dreht er die Räder,
-# kommt aber nicht vom Fleck, hängt er an etwas, das keiner sieht.
-FORTSCHRITT_AKTIV = True
-# Vergleichsfenster (s) und wie oft (s) eine Aufnahme gemerkt wird.
-FORTSCHRITT_FENSTER_S = 2.0
-FORTSCHRITT_TAKT_S = 0.5
-# Erst ab so viel befohlener Bewegung im Fenster wird geurteilt.
-FORTSCHRITT_MIN_WEG_M = 0.12
-FORTSCHRITT_MIN_DREH_GRAD = 25.0
-# Festgefahren, wenn laut Lidar weniger als dieser Anteil davon geschah.
-FORTSCHRITT_ANTEIL = 0.3
-# An die Stelle, an der er hing, kommt ein gedachtes Hindernis, damit er
-# nicht gleich wieder dort hineinfährt. So lange (s) bleibt es.
-FORTSCHRITT_PHANTOM_S = 30.0
-# So lange ohne neues Befreien, dann zählen die Versuche beim Kartieren neu
-# (beim Zufallsfahren übernimmt das EXPLORE_FREI_ZURUECK_S).
-FORTSCHRITT_ERHOLT_S = 15.0
+# Compares what was driven (command after ramp and drive guard) with the
+# motion the lidar sees (ICP of two scans). If it turns its wheels but does
+# not get anywhere, it is stuck on something nobody can see.
+PROGRESS_ACTIVE = True
+# Comparison window (s) and how often (s) a scan is remembered.
+PROGRESS_WINDOW_S = 2.0
+PROGRESS_TICK_S = 0.5
+# Only judged from this much commanded motion within the window onwards.
+PROGRESS_MIN_DIST_M = 0.12
+PROGRESS_MIN_TURN_DEG = 25.0
+# Stuck if, according to the lidar, less than this share of it happened.
+PROGRESS_SHARE = 0.3
+# An imaginary obstacle is placed where it got stuck, so that it does not
+# drive right back into it. It stays for this long (s).
+PROGRESS_PHANTOM_S = 30.0
+# After this long without a new recovery, the attempts are counted afresh
+# when mapping (when driving randomly, EXPLORE_FREE_RESET_S takes care of
+# this).
+PROGRESS_RECOVERED_S = 15.0
 
-# --- Heimfahrt ---------------------------------------------------------------------
+# --- Homing ------------------------------------------------------------------------
 
-# Takt, in dem die Position fortgeschrieben wird. Höher = genauer, aber die
-# Ungenauigkeit kommt ohnehin vom Radschlupf, nicht von diesem Takt.
+# Rate at which the pose is updated. Higher = more accurate, but the
+# inaccuracy comes from wheel slip anyway, not from this rate.
 ODOMETRY_HZ = 20
 
-# Blickrichtung aus der IMU-Lage des Boards nehmen? Aus: der Sensor-Check
-# vom 28.10. zeigt, dass get_imu_attitude_data() am X3 dauerhaft 0 liefert.
-# Damit fror der Winkel ein (theta blieb bei 0, nur der Lidar-Abgleich
-# bewegte ihn), und Heimfahrt, Erkunden und Ortung rechneten mit falscher
-# Richtung. Stattdessen wird die vom Board gemessene Drehrate aufsummiert.
-# Nur einschalten, wenn die IMU nachweislich einen echten Winkel meldet --
-# selbst dann wird sie verworfen, sobald sie beim Drehen stillsteht.
-ODOM_IMU_WINKEL = False
+# Take the heading from the board's IMU attitude? Off: the sensor check of
+# 28.10. shows that get_imu_attitude_data() permanently returns 0 on the X3.
+# That froze the angle (theta stayed at 0, only lidar matching moved it),
+# and homing, exploring and localization computed with the wrong direction.
+# Instead, the turn rate measured by the board is integrated.
+# Only switch on if the IMU demonstrably reports a real angle -- even then
+# it is discarded as soon as it stands still while turning.
+ODOM_IMU_HEADING = False
 
-# Ab dieser Drehrate (rad/s) muss sich ein IMU-Winkel sichtbar ändern; tut
-# er das über ODOM_IMU_PRUEF_S nicht, gilt die IMU als unbrauchbar.
-ODOM_IMU_PRUEF_OMEGA = 0.3
-ODOM_IMU_PRUEF_S = 1.0
+# Above this turn rate (rad/s) an IMU angle must change visibly; if it does
+# not do so over ODOM_IMU_CHECK_S, the IMU counts as unusable.
+ODOM_IMU_CHECK_OMEGA = 0.3
+ODOM_IMU_CHECK_S = 1.0
 
-# Tempo der automatischen Heimfahrt. Bewusst gemächlich: die Position stammt
-# aus der Koppelnavigation, und Umfahren (UMFAHREN_*) braucht Zeit zum Schauen.
+# Speed of automatic homing. Deliberately leisurely: the pose comes from
+# dead reckoning, and detouring (DETOUR_*) needs time to look.
 HOME_SPEED = 0.25        # m/s
 
-# Ab dieser Entfernung zum Startpunkt gilt die Fahrt als beendet. Kleiner
-# zu werden lohnt nicht -- die Koppelnavigation ist ungenauer als das.
+# Within this distance of the starting point the drive counts as finished.
+# Going smaller is not worth it -- dead reckoning is less accurate than that.
 HOME_TOLERANCE_M = 0.12
 
-# Auf den letzten Zentimetern langsamer werden, sonst schießt er übers Ziel.
+# Slow down over the last centimeters, otherwise it overshoots the goal.
 HOME_SLOWDOWN_M = 0.4
 
-# Notbremse: nach dieser Zeit bricht die Heimfahrt ab. Schützt davor, dass
-# der Roboter bei abgedrifteter Position endlos umherfährt.
+# Emergency brake: homing aborts after this time. Prevents the robot from
+# driving around endlessly with a drifted pose.
 HOME_TIMEOUT_S = 60.0
 
-# Abstand, der in Fahrtrichtung frei bleiben muss. Ist er es nicht, schiebt
-# er schräg vorbei (UMFAHREN_*); nur wenn HOME_AUSWEICH_WARTEN_S lang
-# nirgends Platz ist, hält er an und meldet es.
+# Distance that must stay free in the direction of travel. If it is not, it
+# slides past diagonally (DETOUR_*); only if there is no room anywhere for
+# HOME_DETOUR_WAIT_S does it stop and report it.
 HOME_STOP_DISTANCE_M = 0.45
 
-# Halber Öffnungswinkel des überwachten Bereichs, in Grad. Zu schmal
-# übersieht Tischbeine seitlich der Fahrlinie, zu breit hält wegen
-# Wänden an, an denen man problemlos vorbeifährt.
+# Half the opening angle of the monitored area, in degrees. Too narrow
+# misses table legs beside the driving line, too wide stops for walls that
+# could easily be passed.
 HOME_CONE_DEG = 35.0
 
-# --- Genaue Fahrbefehle ("2 Meter vor", "90 Grad drehen") -------------------------
-# Siehe navigation/manoever.py. Gemessen wird mit dem Lidar: Jede Aufnahme
-# wird auf eine vom Anfang gelegt, daraus folgt, wie weit er wirklich
-# gefahren bzw. gedreht ist. Räder und IMU liefern nur die Schätzung
-# zwischen zwei Aufnahmen (die IMU-Drehung ist am X3 unzuverlässig).
+# --- Precise drive commands ("2 Meter vor", "90 Grad drehen") ---------------------
+# See navigation/maneuver.py. Measured with the lidar: each scan is matched
+# against one from the start, which shows how far it has really driven or
+# turned. Wheels and IMU only provide the estimate between two scans (the
+# IMU rotation is unreliable on the X3).
 
-MANOEVER_SPEED = 0.20         # m/s  höchstens, beim Fahren
-MANOEVER_MIN_SPEED = 0.05     # m/s  darunter laufen die Motoren nicht sicher an
-MANOEVER_KP_V = 1.2           # (m/s)/m  Tempo je Meter Restweg
-MANOEVER_DREH = 0.6           # rad/s höchstens, beim Drehen
-# Unter 0,4 rad/s laufen die Motoren am Boden nicht zuverlässig an (Erkunder).
-MANOEVER_MIN_DREH = 0.4
-MANOEVER_KP_W = 1.5           # (rad/s)/rad
-# So lange (s) nach dem Losdrehen aus dem Stand zählt die befohlene Drehung
-# noch nicht. Sonst hielt die Schätzung kleine Nachbesserungen (1-2°) schon
-# nach einem Takt für erledigt -- die Rampe gab da erst 0,3 rad/s aus, die
-# Motoren liefen nicht an, und das Lidar maß im Stand denselben Rest wieder
-# (Bodentest 03.11.: dreimal vergeblich, dann "fast erledigt").
-MANOEVER_ANLAUF_S = 0.25
-# Fertig, wenn Restweg und Restwinkel darunter liegen ...
-MANOEVER_TOLERANZ_M = 0.03
-MANOEVER_TOLERANZ_GRAD = 2.0
-# ... und das auch eine Lidar-Aufnahme bestätigt, die im Stand entstand:
-# Im Fahren ist eine Umdrehung des A1 (0,18 s) verzerrt. So oft wird
-# höchstens nachgebessert.
-MANOEVER_NACHBESSERN = 3
-MANOEVER_RUHE_S = 0.3         # nach dem Anhalten so lange warten, dann messen
-# Möglichst alles gegen die Aufnahme vom Start abgleichen: Das Lidar sieht
-# rundum, nach einer Drehung also dieselben Wände. Jeder Wechsel der
-# Bezugsaufnahme bringt etwas Fehler mit (in der Simulation ~0,2° je
-# Wechsel, mit Wechsel alle 25° lag er nach 360° um 3,4° daneben).
-# Gewechselt wird nur, wenn der Abgleich schlechter wird -- er fährt aus dem
-# Raum, die alten Wände verschwinden: mittlerer Restabstand größer als ...
-MANOEVER_NEUER_BEZUG_RESIDUUM_M = 0.06
-# ... oder weniger als dieser Anteil der Punkte findet einen Partner.
-MANOEVER_NEUER_BEZUG_PAARE = 0.6
-# Im Fahren bis auf diesen Teil der Toleranz heran -- sonst hielt er knapp
-# innerhalb an (2,9 von 3 cm), und jede Ungenauigkeit kippte es nach außen.
-# Nicht viel kleiner: Mit einem Drittel (1 cm) lag das Ziel in der
-# Messgenauigkeit, und er besserte dreimal vergeblich nach.
-MANOEVER_ZIEL_ANTEIL = 0.5
-# So lange (s) darf der Abgleich am Stück scheitern, dann hält er an
-# (fremde Umgebung, Lidar weg) -- blind fahren wäre ungenau und unsicher.
-MANOEVER_BLIND_S = 2.0
-# Grenzen für einen Befehl.
-MANOEVER_MAX_M = 5.0
-MANOEVER_MAX_GRAD = 720.0
-# Drehen nur, wenn ringsum so viel Platz ist (Ecken schwenken aus), m ab
-# Lidar-Mitte. Nur noch Rückfall ohne Fahrschutz; sonst prüft der die
-# Grundfläche über den ganzen Winkel (FAHRSCHUTZ_RAND_M Luft).
-MANOEVER_DREH_FREI_M = 0.30
-# Sperrt der Fahrschutz so lange (s) am Stück, gibt der Befehl auf. Kurz,
-# denn wer "2 Meter vor" sagt, wartet auf eine Antwort.
-MANOEVER_GESPERRT_S = 1.5
-# Für den Abgleich höchstens so viele Lidar-Punkte (Rechenzeit am Pi).
-MANOEVER_MAX_PUNKTE = 300
+MANEUVER_SPEED = 0.20         # m/s  at most, when driving
+MANEUVER_MIN_SPEED = 0.05     # m/s  below this the motors do not start reliably
+MANEUVER_KP_V = 1.2           # (m/s)/m  speed per meter of remaining distance
+MANEUVER_TURN = 0.6           # rad/s at most, when turning
+# Below 0.4 rad/s the motors do not start reliably on the floor (explorer).
+MANEUVER_MIN_TURN = 0.4
+MANEUVER_KP_W = 1.5           # (rad/s)/rad
+# For this long (s) after starting to turn from standstill, the commanded
+# rotation does not count yet. Otherwise the estimate considered small
+# corrections (1-2°) done after a single tick -- the ramp was only putting
+# out 0.3 rad/s at that point, the motors did not start, and the lidar
+# measured the same remainder again while standing (floor test 03.11.: three
+# times in vain, then "fast erledigt").
+MANEUVER_STARTUP_S = 0.25
+# Done when remaining distance and remaining angle are below these ...
+MANEUVER_TOLERANCE_M = 0.03
+MANEUVER_TOLERANCE_DEG = 2.0
+# ... and a lidar scan taken while standing confirms it as well: while
+# driving, one revolution of the A1 (0.18 s) is distorted. At most this many
+# corrections.
+MANEUVER_MAX_CORRECTIONS = 3
+MANEUVER_SETTLE_S = 0.3         # after stopping wait this long, then measure
+# Match as much as possible against the scan from the start: the lidar sees
+# all around, so after a turn it sees the same walls. Every change of the
+# reference scan brings some error (in the simulation ~0.2° per change; with
+# a change every 25° it was off by 3.4° after 360°).
+# The reference is only changed when matching gets worse -- it drives out of
+# the room, the old walls disappear: mean residual distance larger than ...
+MANEUVER_NEW_REF_RESIDUAL_M = 0.06
+# ... or less than this share of the points finds a partner.
+MANEUVER_NEW_REF_PAIRS = 0.6
+# While driving, get within this fraction of the tolerance -- otherwise it
+# stopped just inside (2.9 of 3 cm), and any inaccuracy tipped it outside.
+# Not much smaller: with one third (1 cm) the goal was within the
+# measurement accuracy, and it corrected three times in vain.
+MANEUVER_GOAL_SHARE = 0.5
+# Matching may fail continuously for this long (s), then it stops
+# (unfamiliar surroundings, lidar gone) -- driving blind would be inaccurate
+# and unsafe.
+MANEUVER_BLIND_S = 2.0
+# Limits for one command.
+MANEUVER_MAX_M = 5.0
+MANEUVER_MAX_DEG = 720.0
+# Only turn if there is this much room all around (corners swing out), m
+# from the lidar center. Only a fallback without the drive guard now;
+# otherwise the guard checks the footprint over the whole angle
+# (GUARD_MARGIN_M clearance).
+MANEUVER_TURN_FREE_M = 0.30
+# If the drive guard blocks continuously for this long (s), the command
+# gives up. Short, because whoever says "2 Meter vor" is waiting for an
+# answer.
+MANEUVER_BLOCKED_S = 1.5
+# At most this many lidar points for matching (computing time on the Pi).
+MANEUVER_MAX_POINTS = 300
 
-# --- Kamera ---------------------------------------------------------------------
+# --- Camera ---------------------------------------------------------------------
 
 CAMERA_ENABLED = True
 
-# Welche USB-Kamera wofür da ist. Es laufen immer alle gefundenen Kameras;
-# hier wird nur festgelegt, welche welchen Namen trägt und wer ihr Bild
-# auswertet.
+# Which USB camera is there for what. All cameras found always run; this
+# only defines which one carries which name and who evaluates its image.
 #
-# Gefunden wird jede über ihre USB-Kennung wie in `lsusb` -- "vvvv" passt auf
-# jedes Modell des Herstellers, "vvvv:pppp" nur auf genau eines. Nicht über
-# /dev/videoN: die Nummern vertauschen sich nach Neustart oder
-# Neu-Einstecken, und die Personenerkennung bekäme still das falsche Bild.
+# Each one is found by its USB ID as in `lsusb` -- "vvvv" matches every
+# model of the manufacturer, "vvvv:pppp" only exactly one. Not via
+# /dev/videoN: the numbers swap after a reboot or replugging, and person
+# detection would silently get the wrong image.
 #
-# Eine Rolle, deren Kamera fehlt, wird im Hintergrund weiter gesucht --
-# meldet sich die Kamera nach einem USB-Aussetzer wieder, läuft sie weiter.
-# Weitere USB-Kameras ohne Rolle laufen zusätzlich als "usb1", "usb2", ...
+# A role whose camera is missing keeps being searched for in the background
+# -- if the camera reappears after a USB dropout, it continues running.
+# Additional USB cameras without a role also run as "usb1", "usb2", ...
 #
-# fov_deg: horizontaler Bildwinkel bei 640x480 laut Datenblatt. Damit wird
-# eine Person im Bild einer Richtung im Lidar zugeordnet -- bei Bedarf
-# nachmessen.
+# fov_deg: horizontal field of view at 640x480 according to the data sheet.
+# This is used to map a person in the image to a direction in the lidar --
+# measure it if needed.
 #
-# flip: Einbaulage ausgleichen. None, "horizontal" (links/rechts spiegeln),
-# "vertikal" (oben/unten) oder "180" (beides = auf dem Kopf). Gedreht wird
-# auf dem Roboter, bevor irgendwer das Bild sieht -- auch die Personen- und
-# Posenerkennung. Auf der Einstellungsseite verstellbar.
+# flip: compensates the mounting orientation. None, "horizontal" (mirror
+# left/right), "vertikal" (top/bottom) or "180" (both = upside down). The
+# image is rotated on the robot before anyone sees it -- including person
+# and pose detection. Adjustable on the settings page.
 CAMERA_ROLES = {
-    # Orbbec-Tiefenkamera, Farbkanal. Für Orientierung und Fahren. Der
-    # Tiefenkanal (2bc5:060f) ist kein Videogerät und braucht das Orbbec-SDK.
+    # Orbbec depth camera, color channel. For orientation and driving. The
+    # depth channel (2bc5:060f) is not a video device and needs the Orbbec SDK.
     "orientierung": {"usb_id": "2bc5", "label": "Orbbec (Farbbild)", "fov_deg": 66.0,
                      "flip": None},
-    # Logitech C270: Personenerkennung. Hängt falsch herum (29.10.2026).
+    # Logitech C270: person detection. Mounted the wrong way round (29.10.2026).
     "personen": {"usb_id": "046d", "label": "Logitech C270", "fov_deg": 45.0,
                  "flip": "horizontal"},
 }
 
-# Welche Kamera unter /camera/stream, /camera/snapshot und /camera/status
-# antwortet (die Endpunkte ohne Kameranamen) und in der App zuerst zu sehen
-# ist.
+# Which camera answers under /camera/stream, /camera/snapshot and
+# /camera/status (the endpoints without a camera name) and is shown first
+# in the app.
 CAMERA_DEFAULT = "orientierung"
 
 CAMERA_WIDTH = 640
 CAMERA_HEIGHT = 480
 
-# Bilder pro Sekunde im Stream. Höher kostet WLAN-Bandbreite und CPU; bei
-# ruckelndem Bild über WLAN eher hier heruntergehen als die Auflösung senken.
+# Frames per second in the stream. Higher costs WiFi bandwidth and CPU; with
+# a stuttering image over WiFi, rather go down here than lower the
+# resolution.
 CAMERA_FPS = 15
 
-# Was die Kameras selbst höchstens liefern: Logitech C270 und Orbbec
-# (Farbbild) schaffen bei 640x480 je 30 fps -- bei wenig Licht verlängert
-# die C270 die Belichtung und kommt nur noch auf ~15. Mit dieser Rate läuft
-# die Kamera; CAMERA_FPS drosselt nur das Abholen.
+# What the cameras themselves deliver at most: Logitech C270 and Orbbec
+# (color image) each manage 30 fps at 640x480 -- in low light the C270
+# lengthens the exposure and only reaches ~15. The camera runs at this rate;
+# CAMERA_FPS only throttles the fetching.
 CAMERA_MAX_FPS = 30
 
-# JPEG-Qualität 1..100. Darunter wird das Bild matschig, darüber groß.
+# JPEG quality 1..100. Below this the image gets mushy, above it gets large.
 CAMERA_QUALITY = 70
 
-# --- Autonomes Fahren (Erkunden) ------------------------------------------------
+# --- Autonomous driving (exploring) ----------------------------------------------
 #
-# Test 1: Der Roboter fährt zufällig umher und weicht dabei allem aus, was der
-# Lidar sieht. Die Werte stammen aus dem Sensor-Check vom 28.10.2026
-# (robot-protokolle/2026-10-28_sensorcheck): Der Befehl wird mit ~0,22 s
-# Verzögerung und nur zu 70-90 % umgesetzt -- deshalb gemächlich.
+# Test 1: the robot drives around randomly, avoiding everything the lidar
+# sees. The values come from the sensor check of 28.10.2026
+# (robot-protokolle/2026-10-28_sensorcheck): commands are executed with
+# ~0.22 s delay and only to 70-90 % -- hence the leisurely pace.
 
-# Reisetempo geradeaus. Mehr als 0,25 m/s lohnt im Zimmer nicht: Bei 7,5
-# Lidar-Umdrehungen pro Sekunde fährt er sonst zwischen zwei Scans 3-4 cm.
+# Cruising speed straight ahead. More than 0.25 m/s is not worth it in a
+# room: at 7.5 lidar revolutions per second it would otherwise travel 3-4 cm
+# between two scans.
 EXPLORE_SPEED = 0.20      # m/s
 
-# Drehrate beim Wenden auf der Stelle. Langsamer als 0,4 rad/s laufen die
-# Motoren am Boden nicht zuverlässig an.
+# Turn rate when turning on the spot. Below 0.4 rad/s the motors do not
+# start reliably on the floor.
 EXPLORE_TURN_SPEED = 0.6  # rad/s
 
-# Gemessen wird ab der Lidar-Mitte. Der X3 ragt nach vorn ~0,15 m darüber
-# hinaus -- 0,40 m lassen also ~25 cm Luft, genug für den Bremsweg bei
-# 0,2 m/s plus Verzögerung.
+# Measured from the lidar center. The X3 protrudes ~0.15 m beyond it at the
+# front -- so 0.40 m leaves ~25 cm clearance, enough for the braking
+# distance at 0.2 m/s plus delay.
 EXPLORE_STOP_M = 0.40
 
-# Ab hier vor einem Hindernis langsamer werden.
+# From here on, slow down in front of an obstacle.
 EXPLORE_SLOW_M = 0.90
 
-# So viel Platz muss vorn frei sein, damit er nach dem Drehen losfährt.
-# Größer als EXPLORE_STOP_M, sonst hält er gleich wieder an und pendelt.
+# This much room must be free ahead for it to start driving after turning.
+# Larger than EXPLORE_STOP_M, otherwise it stops again right away and
+# oscillates.
 EXPLORE_GO_M = 0.70
 
-# Halbe Breite des Fahrschlauchs: halbe Roboterbreite (0,245 m / 2) plus
-# Sicherheitsrand. Tischbeine knapp neben der Fahrlinie zählen so mit.
+# Half the width of the driving corridor: half the robot width
+# (0.245 m / 2) plus safety margin. This way table legs just beside the
+# driving line count too.
 EXPLORE_HALF_WIDTH_M = 0.20
 
-# Kommt seitlich etwas näher als das, schiebt ihn der Mecanum-Antrieb
-# sachte davon weg, statt anzuhalten.
+# If something comes closer than this from the side, the mecanum drive
+# gently moves the robot away from it instead of stopping.
 EXPLORE_SIDE_M = 0.30
 
-# Rückt etwas rundherum näher als das (Mensch tritt heran), bleibt er stehen,
-# statt sich in die Person hineinzudrehen.
-EXPLORE_NAH_M = 0.22
+# If something anywhere around comes closer than this (a person steps up),
+# it stays put instead of turning into the person.
+EXPLORE_NEAR_M = 0.22
 
-# Zufällige Richtungswechsel, damit er nicht immer dieselbe Bahn fährt:
-# frühestens/spätestens nach so vielen Sekunden Geradeausfahrt.
+# Random changes of direction so that it does not always drive the same
+# lane: at the earliest/latest after this many seconds of driving straight.
 EXPLORE_WANDER_MIN_S = 4.0
 EXPLORE_WANDER_MAX_S = 10.0
 
-# Am Boden dreht er nur ~75 % dessen, was befohlen wird (Sensor-Check:
-# 90° befohlen, 65° gedreht). Die Drehdauer wird damit verlängert. Gilt nur
-# noch als Rückfall, wenn das Board keine Drehrate liefert -- sonst dreht er
-# nach gemessenem Winkel (EXPLORE_DREH_*).
+# On the floor it only turns ~75 % of what is commanded (sensor check: 90°
+# commanded, 65° turned). The turn duration is extended accordingly. Only
+# applies as a fallback when the board provides no turn rate -- otherwise
+# it turns by measured angle (EXPLORE_TURN_*).
 EXPLORE_TURN_FACTOR = 1.3
 
-# Drehen nach Winkel: so viele Grad vor dem Ziel den Drehbefehl beenden.
-# Befehlsverzögerung und Bremsrampe drehen ihn noch ein Stück weiter.
-EXPLORE_DREH_VORHALT_GRAD = 8.0
+# Turning by angle: end the turn command this many degrees before the
+# target. Command delay and braking ramp turn it a bit further.
+EXPLORE_TURN_LEAD_DEG = 8.0
 
-# Obergrenze einer gemessenen Drehung als Vielfaches der rechnerischen
-# Dauer -- fängt ab, dass er sich nicht dreht (z. B. eingeklemmt).
-EXPLORE_DREH_ZEIT_FAKTOR = 2.0
+# Upper limit of a measured turn as a multiple of the calculated duration
+# -- catches the case where it does not turn (e.g. wedged in).
+EXPLORE_TURN_TIME_FACTOR = 2.0
 
-# Nach dem Drehen entscheidet er erst mit einer Lidar-Runde, die so lange
-# nach Drehende begonnen hat (der Roboter rollt noch kurz nach).
-EXPLORE_NACHLAUF_S = 0.25
+# After turning, it only decides using a lidar revolution that started this
+# long after the end of the turn (the robot still coasts briefly).
+EXPLORE_COAST_S = 0.25
 
-# Älter darf eine Lidar-Umdrehung nicht sein, sonst fährt er blind. Der
-# echte Lidar liefert alle ~0,13 s eine Runde.
+# A lidar revolution must not be older than this, otherwise it drives blind.
+# The real lidar delivers a revolution every ~0.13 s.
 EXPLORE_SCAN_MAX_AGE_S = 1.0
 
-# So lange auf frische Lidar-Daten warten, bevor die Fahrt endet.
+# Wait this long for fresh lidar data before the drive ends.
 EXPLORE_LIDAR_WAIT_S = 3.0
 
-# Steht ein Mensch so nah vor ihm, wartet er erst, statt sofort zu wenden --
-# vielleicht geht die Person ja weiter.
+# If a person stands this close in front of it, it waits first instead of
+# turning right away -- maybe the person walks on.
 EXPLORE_PERSON_WAIT_S = 2.0
 
-# Gesamtdauer einer Erkundung; 0 = bis jemand stoppt.
+# Total duration of an exploration; 0 = until someone stops it.
 EXPLORE_TIMEOUT_S = 0.0
 
-# Rückt etwas näher als EXPLORE_NAH_M, wartet er so lange (vielleicht ein
-# Mensch, der gleich weitergeht) und schiebt sich dann frei.
-EXPLORE_NAH_WARTEN_S = 3.0
+# If something comes closer than EXPLORE_NEAR_M, it waits this long (maybe a
+# person who is about to walk on) and then pushes itself free.
+EXPLORE_NEAR_WAIT_S = 3.0
 
-# Befreien: ohne Drehung in die freieste Richtung schieben (Mecanum). So
-# langsam, dass das Heck nichts anstößt, so lange, dass es etwas bringt.
-EXPLORE_BEFREIEN_SPEED = 0.08
-EXPLORE_BEFREIEN_S = 1.5
-# In der gewählten Richtung muss mindestens so viel frei sein (ab
-# Lidar-Mitte, der Roboter selbst reicht ~0,15 m nach vorn und hinten) ...
-EXPLORE_BEFREIEN_FREI_M = 0.45
-# ... und unter diesem Wert bricht er das Schieben ab.
-EXPLORE_BEFREIEN_STOP_M = 0.30
-# So viele Befreiungen in Folge ohne freie Fahrt dazwischen, dann gibt er auf.
-EXPLORE_BEFREIEN_MAX = 3
-# So lange muss er ungehindert geradeaus fahren, damit Fehlversuche und
-# Befreiungen wieder bei null beginnen.
-EXPLORE_FREI_ZURUECK_S = 3.0
+# Unsticking: slide in the freest direction without turning (mecanum). Slow
+# enough that the rear does not bump anything, long enough to make a
+# difference.
+EXPLORE_UNSTICK_SPEED = 0.08
+EXPLORE_UNSTICK_S = 1.5
+# At least this much must be free in the chosen direction (from the lidar
+# center; the robot itself extends ~0.15 m to the front and rear) ...
+EXPLORE_UNSTICK_FREE_M = 0.45
+# ... and below this value it aborts the sliding.
+EXPLORE_UNSTICK_STOP_M = 0.30
+# This many unsticking attempts in a row without free driving in between,
+# then it gives up.
+EXPLORE_UNSTICK_MAX = 3
+# It must drive straight unobstructed for this long for failed attempts and
+# unsticking attempts to start from zero again.
+EXPLORE_FREE_RESET_S = 3.0
 
-# Festfahr-Erkennung: Fährt er (Befehl vx mindestens EXPLORE_FEST_MIN_VX)
-# so lange, ohne dass das Board Bewegung meldet (unter EXPLORE_FEST_V_MS)
-# oder sich das Lidar-Bild rundum in höchstens einer Richtung um mehr als
-# EXPLORE_FEST_WEG_M (bzw. 2 % des Abstands, Messrauschen) ändert, steckt er
-# fest. Muss unter den 3 s der Odometrie bleiben, nach denen sie eine
-# Stillstand meldende Messung ganz verwirft.
-EXPLORE_FEST_S = 1.5
-EXPLORE_FEST_MIN_VX = 0.05
-EXPLORE_FEST_V_MS = 0.02
-EXPLORE_FEST_WEG_M = 0.03
+# Stuck detection: if it drives (command vx at least EXPLORE_STUCK_MIN_VX)
+# for this long while the board reports no motion (below
+# EXPLORE_STUCK_V_MS) or the lidar image all around changes by more than
+# EXPLORE_STUCK_DIST_M (or 2 % of the distance, measurement noise) in at
+# most one direction, it is stuck. Must stay below the 3 s of the
+# odometry, after which it discards a measurement reporting standstill
+# entirely.
+EXPLORE_STUCK_S = 1.5
+EXPLORE_STUCK_MIN_VX = 0.05
+EXPLORE_STUCK_V_MS = 0.02
+EXPLORE_STUCK_DIST_M = 0.03
 
-# --- Ausweichen (Erkunder, Schritt F2) -------------------------------------------
+# --- Avoidance (explorer, step F2) -----------------------------------------------
 #
-# Lokales Ausweichen ohne Karte: kurzes Gedächtnis für Punkte, die aus dem
-# Blickfeld rutschen, Bögen statt Wenden vor Hindernissen, Türen und Lücken
-# mittig anfahren, Hochheben erkennen. Siehe navigation/ausweichen.py.
+# Local avoidance without a map: short memory for points that slip out of
+# the field of view, arcs instead of turning in front of obstacles,
+# approaching doors and gaps through the middle, detecting being lifted. See
+# navigation/avoidance.py.
 
-# Kurzgedächtnis: Lidar-Punkte so lange und in diesem Umkreis behalten. Die
-# Lage wird aus der Board-Geschwindigkeit fortgeschrieben, die driftet --
-# deshalb nur wenige Sekunden und nur nahe Punkte.
-AUSWEICH_GEDAECHTNIS_S = 3.0
-AUSWEICH_GEDAECHTNIS_M = 1.0
-# Ein gemerkter Punkt fällt weg, wenn der Lidar jetzt in dieser Richtung um
-# so viel weiter sieht (das Ding ist weg oder war ein Messfehler).
-AUSWEICH_FREIRAEUMEN_M = 0.10
+# Short-term memory: keep lidar points for this long and within this
+# radius. The pose is extrapolated from the board velocity, which drifts --
+# hence only a few seconds and only nearby points.
+AVOID_MEMORY_S = 3.0
+AVOID_MEMORY_M = 1.0
+# A remembered point is dropped when the lidar now sees this much further in
+# that direction (the thing is gone or was a measurement error).
+AVOID_CLEAR_M = 0.10
 
-# Umriss des Roboters um die Lidar-Mitte (m) für die Bogenplanung: derselbe
-# wie beim Fahrschutz (ROBOTER_*), Heck am Roboter nachmessen.
-AUSWEICH_VORN_M = ROBOTER_VORN_M
-AUSWEICH_HINTEN_M = ROBOTER_HINTEN_M
-AUSWEICH_HALBE_BREITE_M = ROBOTER_HALBE_BREITE_M
+# Outline of the robot around the lidar center (m) for arc planning: the
+# same as for the drive guard (ROBOT_*); measure the rear on the robot.
+AVOID_FRONT_M = ROBOT_FRONT_M
+AVOID_REAR_M = ROBOT_REAR_M
+AVOID_HALF_WIDTH_M = ROBOT_HALF_WIDTH_M
 
-# Bogenplanung: so weit (s) und in diesen Schritten vorausrechnen. Ein Bogen
-# taugt nur, wenn der Umriss überall mindestens AUSWEICH_RAND_M Luft hat
-# (größer als FAHRSCHUTZ_RAND_M, siehe dort).
-AUSWEICH_HORIZONT_S = 1.2
-AUSWEICH_SCHRITT_S = 0.1
-AUSWEICH_RAND_M = 0.05
-# Kandidaten: Drehraten (rad/s) und seitliche Geschwindigkeiten (m/s).
-AUSWEICH_OMEGAS = (-0.6, -0.45, -0.3, -0.15, 0.0, 0.15, 0.3, 0.45, 0.6)
-AUSWEICH_VYS = (-0.08, 0.0, 0.08)
-# Gewichte der Bewertung: zurück auf den gewählten Kurs, Luft zum nächsten
-# Hindernis, Tempo, Weite in Fahrtrichtung am Ende des Bogens, ruhiges
-# Lenken (Sprünge in omega), seitliches Schieben nur wenn nötig. RUCK klein
-# halten, sonst wiegt er die Kurskorrektur immer auf und der Roboter lenkt
-# nie zurück; SEITLICH so, dass er neben Hindernissen (Türrahmen,
-# Stuhlbein) noch seitlich wegschiebt -- wie früher bei EXPLORE_SIDE_M.
-AUSWEICH_GEWICHT_KURS = 1.0
-AUSWEICH_GEWICHT_LUFT = 1.0
-AUSWEICH_GEWICHT_TEMPO = 0.5
-AUSWEICH_GEWICHT_WEITE = 1.5
-AUSWEICH_GEWICHT_RUCK = 0.2
-AUSWEICH_GEWICHT_SEITLICH = 0.25
-# Bis zu diesem Abstand (m) zählt mehr Luft bzw. Weite als besser.
-AUSWEICH_LUFT_GUT_M = 0.30
-AUSWEICH_WEITE_GUT_M = 2.0
+# Arc planning: predict this far ahead (s) in these steps. An arc is only
+# usable if the outline has at least AVOID_MARGIN_M clearance everywhere
+# (larger than GUARD_MARGIN_M, see there).
+AVOID_HORIZON_S = 1.2
+AVOID_STEP_S = 0.1
+AVOID_MARGIN_M = 0.05
+# Candidates: turn rates (rad/s) and sideways velocities (m/s).
+AVOID_OMEGAS = (-0.6, -0.45, -0.3, -0.15, 0.0, 0.15, 0.3, 0.45, 0.6)
+AVOID_VYS = (-0.08, 0.0, 0.08)
+# Scoring weights: back onto the chosen heading, clearance to the nearest
+# obstacle, speed, range in the direction of travel at the end of the arc,
+# smooth steering (jumps in omega), sideways sliding only when needed. Keep
+# JERK small, otherwise it always outweighs the heading correction and the
+# robot never steers back; SIDEWAYS such that it still slides sideways away
+# from obstacles next to it (door frame, chair leg) -- as EXPLORE_SIDE_M
+# used to do.
+AVOID_WEIGHT_HEADING = 1.0
+AVOID_WEIGHT_CLEARANCE = 1.0
+AVOID_WEIGHT_SPEED = 0.5
+AVOID_WEIGHT_RANGE = 1.5
+AVOID_WEIGHT_JERK = 0.2
+AVOID_WEIGHT_SIDEWAYS = 0.25
+# Up to this distance (m) more clearance or range counts as better.
+AVOID_CLEARANCE_GOOD_M = 0.30
+AVOID_RANGE_GOOD_M = 2.0
 
-# Lücken und Türen: Richtungen in diesem Raster (Grad) prüfen. Von einem
-# freien Bereich nimmt er die Mitte und Richtungen mit mindestens
-# AUSWEICH_LUECKE_RAND_GRAD Abstand zum Rand -- nicht knapp am Türrahmen.
-AUSWEICH_LUECKE_RASTER_GRAD = 2
-AUSWEICH_LUECKE_RAND_GRAD = 10
-# Ist etwas näher als das (Türrahmen, Engstelle), verschiebt er den
-# zufälligen Richtungswechsel, bis er hindurch ist.
-AUSWEICH_ENG_M = 0.45
+# Gaps and doors: check directions on this grid (degrees). Of a free area it
+# takes the middle and directions at least AVOID_GAP_EDGE_DEG away from the
+# edge -- not right next to the door frame.
+AVOID_GAP_GRID_DEG = 2
+AVOID_GAP_EDGE_DEG = 10
+# If something is closer than this (door frame, narrow spot), it postpones
+# the random change of direction until it is through.
+AVOID_NARROW_M = 0.45
 
-# Hochheben: Aufeinanderfolgende Runden (Eigenbewegung herausgerechnet) in
-# 10°-Sektoren vergleichen. Ändert sich ein Sektor um mehr als
-# AUSWEICH_HOCH_SPRUNG_M, zählt er als verändert. Ab AUSWEICH_HOCH_ANTEIL
-# veränderter Sektoren in AUSWEICH_HOCH_RUNDEN Runden hintereinander gilt
-# er als hochgehoben; wieder abgesetzt, wenn die Runden AUSWEICH_HOCH_RUHE_S
-# lang unter AUSWEICH_HOCH_RUHIG_ANTEIL bleiben. Ein Mensch dicht daneben
-# deckt nur ~4 von 36 Sektoren ab. Mit gemessener Lage vergleicht er über
-# AUSWEICH_HOCH_FENSTER_S statt von Runde zu Runde -- so fällt auch
-# langsames Tragen auf, das die Räder nicht melden.
-AUSWEICH_HOCH_SPRUNG_M = 0.30
-AUSWEICH_HOCH_ANTEIL = 0.5
-AUSWEICH_HOCH_RUNDEN = 2
-AUSWEICH_HOCH_RUHIG_ANTEIL = 0.15
-AUSWEICH_HOCH_RUHE_S = 2.0
-AUSWEICH_HOCH_FENSTER_S = 1.0
+# Lift: compare consecutive scans (own motion compensated) in 10° sectors.
+# If a sector changes by more than LIFT_JUMP_M, it counts as changed. From
+# LIFT_SHARE of changed sectors in LIFT_SCANS scans in a row it counts as
+# lifted; set down again when the scans stay below LIFT_STILL_SHARE for
+# LIFT_REST_S. A person standing close by covers only ~4 of 36 sectors.
+# With a measured pose it compares over LIFT_WINDOW_S instead of from scan
+# to scan -- so slow carrying, which the wheels do not report, is noticed
+# too.
+LIFT_JUMP_M = 0.30
+LIFT_SHARE = 0.5
+# Three scans in a row (~0.55 s), not two: a bump over a door sill or hard
+# braking tilts the lidar for about two scans and is not a lift. This holds
+# with a measured pose, where each scan is compared with the one from
+# LIFT_WINDOW_S ago and a lift shows in every scan. Without a measured pose
+# only consecutive scans can be compared; a steady tilt then only shows
+# while it changes, so two must do (LIFT_SCANS_UNMEASURED).
+LIFT_SCANS = 3
+LIFT_SCANS_UNMEASURED = 2
+LIFT_STILL_SHARE = 0.15
+LIFT_REST_S = 2.0
+LIFT_WINDOW_S = 1.0
 
-# Umfahren beim Folgen und auf der Heimfahrt (Schritt F3). Dort gibt es ein
-# Ziel; ist der Weg dorthin versperrt, schiebt er schräg daran vorbei
-# (ausweichen.richtung_waehlen). Frei sein müssen höchstens VORAUS_M plus
-# Stoppabstand -- weiter vorn sieht er es rechtzeitig wieder. Gesucht wird
-# bis MAX_GRAD neben der Zielrichtung im Raster RASTER_GRAD. Die zuletzt
-# gewählte Seite bekommt SEITE_GRAD Vorsprung (sonst Pendeln vor breiten
-# Hindernissen), und zum Rand des freien Bereichs hält er RAND_GRAD Abstand,
-# in schmalen Durchgängen nimmt er die Mitte.
-UMFAHREN_VORAUS_M = 0.8
-UMFAHREN_MAX_GRAD = 75.0
-UMFAHREN_RASTER_GRAD = 5.0
-UMFAHREN_SEITE_GRAD = 20.0
-UMFAHREN_RAND_GRAD = 10.0
+# Lift detection, rigid-fit check (navigation/avoidance.py). Before a scan
+# counts as "jumped", the old scan is aligned onto the new one. If a rigid
+# motion of the robot on the floor explains the change, it was the wheel
+# odometry that was wrong (rotation error, wheels spinning while stuck),
+# not a lift. A tilted lidar sees floor or ceiling and no longer fits;
+# being carried fits, but as a real displacement the wheels did not report.
+# Points closer than this (m) to the old scan after alignment count as fitting.
+LIFT_FIT_INLIER_M = 0.10
+# At least this share of points must fit for the change to count as rigid.
+LIFT_FIT_MIN_SHARE = 0.7
+# A real displacement (m, within LIFT_WINDOW_S) beyond what the
+# wheels reported counts as being carried.
+LIFT_CARRY_M = 0.25
+# A sector that has points in one scan and none in the other only counts as
+# changed if those points are closer than this (m). Far sectors often have
+# no echo (window, open door, black furniture) and would flicker.
+LIFT_NEAR_M = 3.0
 
-# Heimfahrt: So lange darf in keiner Richtung Platz sein, bevor sie aufgibt.
-# Kurz, damit ein vorbeigehender Mensch sie nicht beendet.
-HOME_AUSWEICH_WARTEN_S = 3.0
+# Detouring while following and during homing (step F3). There is a goal
+# there; if the way to it is blocked, it slides past diagonally
+# (avoidance.choose_direction). At most LOOKAHEAD_M plus the stop distance
+# must be free -- further ahead it will see it again in time. It searches
+# up to MAX_DEG beside the goal direction on a grid of GRID_DEG. The side
+# chosen last gets a head start of SIDE_DEG (otherwise it oscillates in
+# front of wide obstacles), and it keeps EDGE_DEG away from the edge of the
+# free area; in narrow passages it takes the middle.
+DETOUR_LOOKAHEAD_M = 0.8
+DETOUR_MAX_DEG = 75.0
+DETOUR_GRID_DEG = 5.0
+DETOUR_SIDE_DEG = 20.0
+DETOUR_EDGE_DEG = 10.0
 
-# --- Hinderniserkennung ----------------------------------------------------------
+# Homing: there may be no room in any direction for this long before it
+# gives up. Short, so that a person walking past does not end it.
+HOME_DETOUR_WAIT_S = 3.0
 
-# Springt der Abstand zwischen zwei Nachbarpunkten um mehr als das, beginnt
-# ein neues Objekt. Wächst mit der Entfernung, weil die Punkte dort weiter
-# auseinanderliegen (1° bei 3 m sind 5 cm).
+# --- Obstacle detection ------------------------------------------------------------
+
+# If the distance between two neighboring points jumps by more than this, a
+# new object begins. Grows with distance, because the points lie further
+# apart there (1° at 3 m is 5 cm).
 OBSTACLE_GAP_M = 0.10
 
-# Nur Objekte in diesem Umkreis werden benannt -- weiter weg sind es zu
-# wenige Punkte für eine sinnvolle Einordnung.
+# Only objects within this radius are named -- further away there are too
+# few points for a meaningful classification.
 OBSTACLE_RANGE_M = 3.0
 
-# Stuhl- und Tischbeine sind im Lidar dünne Punkthaufen (2-5 cm).
+# Chair and table legs are thin clusters of points in the lidar (2-5 cm).
 OBSTACLE_LEG_MAX_M = 0.07
 
-# Menschenbeine sind 8-20 cm breit (Knöchel bis Wade, mit Hose).
+# Human legs are 8-20 cm wide (ankle to calf, with trousers).
 OBSTACLE_HUMAN_LEG_MAX_M = 0.25
 
-# Ab dieser Länge und Geradheit gilt ein Objekt als Wand.
+# From this length and straightness on an object counts as a wall.
 OBSTACLE_WALL_MIN_M = 0.60
 
-# --- Personenerkennung (Kamera) ------------------------------------------------
+# --- Person detection (camera) ---------------------------------------------------
 
-# Nutzt den in OpenCV eingebauten HOG-Personendetektor -- braucht kein
-# Modell aus dem Netz. Fehlt OpenCV, läuft alles ohne Kamera-Erkennung.
+# Uses the HOG person detector built into OpenCV -- needs no model from the
+# internet. Without OpenCV, everything runs without camera detection.
 PERSON_DETECTION_ENABLED = True
 
-# Bilder pro Sekunde für die Erkennung. Ein Bild kostet auf dem Pi 5
-# ~0,1-0,2 s CPU; mehr würde Lidar und Steuerung ausbremsen.
+# Frames per second for detection. One frame costs ~0.1-0.2 s CPU on the
+# Pi 5; more would slow down the lidar and control.
 PERSON_DETECT_HZ = 2.0
 
-# Auf diese Breite verkleinert erkennen: schneller, und Personen im Zimmer
-# sind ohnehin groß im Bild.
+# Detect on images scaled down to this width: faster, and people in a room
+# are large in the image anyway.
 PERSON_DETECT_WIDTH = 320
 
-# Mindestgewicht des HOG-Detektors. Höher = weniger Fehlalarme, aber
-# Personen von der Seite werden eher übersehen.
+# Minimum weight of the HOG detector. Higher = fewer false alarms, but
+# people seen from the side are more likely to be missed.
 PERSON_MIN_SCORE = 0.5
 
-# Welche Kamera aus CAMERA_ROLES nach Personen sucht. Fehlt die Rolle in
-# CAMERA_ROLES, nimmt die Erkennung die Standardkamera.
+# Which camera from CAMERA_ROLES looks for people. If the role is missing
+# from CAMERA_ROLES, detection uses the default camera.
 PERSON_CAMERA = "personen"
 
-# Horizontaler Bildwinkel in Grad für Kameras ohne eigene Angabe in
-# CAMERA_ROLES (CSI-Kamera, zusätzliche USB-Kameras).
+# Horizontal field of view in degrees for cameras without their own entry in
+# CAMERA_ROLES (CSI camera, additional USB cameras).
 CAMERA_FOV_DEG = 60.0
 
-# --- Körperpose (Hailo-10H) ------------------------------------------------------
+# --- Body pose (Hailo-10H) ---------------------------------------------------------
 
-# Gesten brauchen die Körperpunkte (Schultern, Handgelenke ...), nicht nur
-# eine Box. Das Modell läuft auf dem AI HAT+ 2 und kostet die CPU fast
-# nichts -- wichtig, weil CPU-Lastsprünge am X3 USB-Resets auslösen.
+# Gestures need the body keypoints (shoulders, wrists ...), not just a box.
+# The model runs on the AI HAT+ 2 and costs the CPU almost nothing --
+# important, because CPU load spikes trigger USB resets on the X3.
 POSE_ENABLED = True
 
-# Mitgeliefert vom Hailo-Paket (hailo-models). Erwartet 640x640 RGB.
+# Shipped with the Hailo package (hailo-models). Expects 640x640 RGB.
 POSE_HEF = "/usr/share/hailo-models/yolov8s_pose_h10.hef"
 
-# Bilder pro Sekunde. Die Kamera liefert 15; für Winken braucht es ~10,
-# damit eine Auf-Ab-Bewegung mehrere Bilder umfasst.
+# Frames per second. The camera delivers 15; waving needs ~10 so that an
+# up-down motion spans several frames.
 POSE_HZ = 10.0
 
-# Mindestwert, ab dem ein Treffer als Person gilt (0..1).
+# Minimum score from which a detection counts as a person (0..1).
 POSE_MIN_SCORE = 0.5
 
-# Körperpunkte unter dieser Sicherheit zählen als "nicht gesehen" --
-# verdeckte Hände sollen keine Geste auslösen.
+# Keypoints below this confidence count as "not seen" -- hidden hands
+# should not trigger a gesture.
 POSE_KP_MIN_CONF = 0.4
 
-# Hailo beim Serverstart öffnen und offen lassen, statt ihn erst beim
-# Start der Gestensteuerung zu öffnen und danach wieder freizugeben. Das
-# Öffnen ist eine Lastspitze, die am X3 den USB-Hub zurücksetzen kann --
-# dann war das Board weg ("Keine Verbindung zum Antrieb"), genau in dem
-# Moment, in dem die Interaktion losgehen sollte. Beim Serverstart steht
-# der Roboter, und es passiert nur einmal. False gibt den Chip frei, wenn
-# die Interaktion aus ist (z. B. für hailo-apps).
-POSE_WARM_HALTEN = True
+# Open the Hailo at server start and keep it open, instead of opening it
+# only when gesture control starts and releasing it afterwards. Opening is
+# a load spike that can reset the USB hub on the X3 -- then the board was
+# gone ("Keine Verbindung zum Antrieb"), exactly at the moment the
+# interaction was supposed to start. At server start the robot is standing
+# still, and it only happens once. False releases the chip when the
+# interaction is off (e.g. for hailo-apps).
+POSE_KEEP_WARM = True
 
-# --- Gesten ------------------------------------------------------------------------
+# --- Gestures ----------------------------------------------------------------------
 
-# So weit reicht der Blick zurück, um Bewegungen (Winken, Wischen) zu sehen.
-GESTE_FENSTER_S = 1.5
+# How far back to look to see movements (waving, swiping).
+GESTURE_WINDOW_S = 1.5
 
-# Folgen (ein Arm über dem Kopf) muss so lange gehalten werden -- sonst
-# löst jedes Haare-Richten aus.
-GESTE_HALTEN_S = 1.0
+# Follow (one arm above the head) must be held this long -- otherwise
+# every hair adjustment triggers it.
+GESTURE_HOLD_S = 1.0
 
-# Stopp (beide Arme hoch) soll schnell wirken, deshalb kürzer.
-GESTE_STOPP_HALTEN_S = 0.4
+# Stop (both arms up) should act quickly, hence shorter.
+GESTURE_STOP_HOLD_S = 0.4
 
-# Anteil der Bilder im Haltezeitraum, die die Haltung zeigen müssen.
-# Nicht 100 %: einzelne Bilder mit verlorenem Handgelenk sind normal.
-GESTE_ANTEIL = 0.8
+# Share of frames in the hold period that must show the posture.
+# Not 100 %: single frames with a lost wrist are normal.
+GESTURE_SHARE = 0.8
 
-# Winken (Herkommen): Mindestzahl Richtungswechsel des Handgelenks im
-# Fenster und Mindesthub, gemessen in Schulterbreiten (so unabhängig vom
-# Abstand der Person).
-GESTE_WINK_WECHSEL = 2
-GESTE_WINK_HUB = 0.35
+# Waving (come here): minimum number of direction reversals of the wrist in
+# the window and minimum amplitude, measured in shoulder widths (thus
+# independent of the person's distance).
+GESTURE_WAVE_REVERSALS = 2
+GESTURE_WAVE_AMPLITUDE = 0.35
 
-# Wischen (Weggehen): so viele Schulterbreiten muss die Hand seitlich nach
-# außen wandern.
-GESTE_WISCH_STRECKE = 1.0
+# Swiping (go away): the hand must move outward sideways by this many
+# shoulder widths.
+GESTURE_SWIPE_DISTANCE = 1.0
 
-# Nach einer erkannten Geste so lange keine neue -- eine gehaltene Geste
-# soll nicht jede Sekunde neu auslösen.
-GESTE_PAUSE_S = 2.0
+# After a detected gesture, no new one for this long -- a held gesture
+# should not trigger again every second.
+GESTURE_PAUSE_S = 2.0
 
-# Entprellen der bewegten Gesten (Herkommen, Weggehen). Beim Gehen schwingen
-# die Arme mit, und von hinten oder im Laufen wechselt die Größe der Person
-# -- das sah der Erkennung zu oft nach Winken oder Wischen aus (beim Folgen
-# wechselte er ohne klares Zeichen). Deshalb zählen sie nur, wenn ...
+# Debouncing the moving gestures (come here, go away). When walking the
+# arms swing along, and from behind or while walking the person's size
+# changes -- to the detection that looked too often like waving or swiping
+# (while following it switched without a clear sign). So they only count
+# if ...
 #
-# ... die Person ungefähr am Platz steht: Größe (Schulterbreite) zwischen
-# Anfang und Ende des Fensters höchstens um diesen Faktor verschieden ...
-GESTE_RUHE_GROESSE = 1.2
-# ... und die Schultermitte höchstens so viele Schulterbreiten gewandert;
-GESTE_RUHE_WEG = 0.8
-# ... der Roboter selbst steht (eigene Fahrt und Drehung verwackeln das
-# Bild und verschieben die Person): Grenzen für den gerade gefahrenen
-# Befehl in m/s bzw. rad/s;
-GESTE_ROBOTER_RUHIG_V = 0.05
-GESTE_ROBOTER_RUHIG_W = 0.3
-# ... und die Geste in so vielen Auswertungen hintereinander erkannt wurde.
-GESTE_BESTAETIGEN = 2
-# Außerdem muss das Gesicht (Nase) in GESTE_ANTEIL der Bilder zu sehen
-# sein: Wer dem Roboter den Rücken zuwendet, gibt ihm kein Zeichen.
-# STOPP und FOLGEN (gehaltene Haltungen) sind davon ausgenommen -- STOPP
-# muss immer wirken.
+# ... the person is standing roughly in place: size (shoulder width) between
+# the start and end of the window differs by at most this factor ...
+GESTURE_STILL_SIZE = 1.2
+# ... and the shoulder center has moved at most this many shoulder widths;
+GESTURE_STILL_DRIFT = 0.8
+# ... the robot itself is standing still (its own driving and turning blur
+# the image and shift the person): limits for the command currently being
+# driven in m/s and rad/s;
+GESTURE_ROBOT_STILL_V = 0.05
+GESTURE_ROBOT_STILL_W = 0.3
+# ... and the gesture was detected in this many evaluations in a row.
+GESTURE_CONFIRM = 2
+# In addition, the face (nose) must be visible in GESTURE_SHARE of the
+# frames: whoever turns their back to the robot is not giving it a sign.
+# STOP and FOLLOW (held postures) are exempt from this -- STOP must always
+# work.
 
-# --- Interaktion (Folgen, Herkommen, Weggehen) -------------------------------------
+# --- Interaction (follow, come here, go away) --------------------------------------
 
-# Wunschabstand beim Folgen. 1 m: nah genug, um die Person nicht zu
-# verlieren, weit genug, dass sie sich nicht bedrängt fühlt.
-FOLGEN_ABSTAND_M = 1.0
+# Desired distance when following. 1 m: close enough not to lose the
+# person, far enough that they do not feel crowded.
+FOLLOW_DISTANCE_M = 1.0
 
-# Höchstgeschwindigkeit beim Folgen. Gemütliches Gehen ist ~1 m/s; der
-# Roboter muss nicht mithalten, er holt beim Stehenbleiben auf.
-FOLGEN_MAX_SPEED = 0.30
+# Maximum speed when following. Leisurely walking is ~1 m/s; the robot does
+# not have to keep up, it catches up when the person stops.
+FOLLOW_MAX_SPEED = 0.30
 
-# Rückwärts nur langsam -- hinten ist er weniger umsichtig unterwegs.
-FOLGEN_RUECK_SPEED = 0.12
+# Only slowly backwards -- it is less careful when moving towards the rear.
+FOLLOW_REVERSE_SPEED = 0.12
 
-# Regler: Geschwindigkeit pro Meter Abstandsfehler bzw. Drehrate pro
-# Radiant Winkelfehler.
-FOLGEN_KP_V = 0.6
-# 1,2 statt 1,5: Die Kamera liefert den Winkel mit ~0,1-0,2 s Verzug; zu
-# scharf eingestellt überdreht er und pendelt (29.10.2026).
-FOLGEN_KP_W = 1.2
-FOLGEN_MAX_OMEGA = 0.8
+# Controller: speed per meter of distance error and turn rate per radian of
+# angle error.
+FOLLOW_KP_V = 0.6
+# 1.2 instead of 1.5: the camera delivers the angle with ~0.1-0.2 s delay;
+# tuned too aggressively it overshoots and oscillates (29.10.2026).
+FOLLOW_KP_W = 1.2
+FOLLOW_MAX_OMEGA = 0.8
 
-# Glättung des Kamerawinkels (0..1, Anteil des neuen Werts je Bild). Die
-# Körperpunkte zittern von Bild zu Bild um einige Grad; ungeglättet wird
-# daraus ein Zappeln der Drehrate.
-FOLGEN_WINKEL_GLAETTUNG = 0.4
+# Smoothing of the camera angle (0..1, share of the new value per frame).
+# The keypoints jitter by a few degrees from frame to frame; unsmoothed this
+# turns into a twitching turn rate.
+FOLLOW_ANGLE_SMOOTHING = 0.4
 
-# Unter diesem Winkelfehler (Grad) dreht er nicht nach -- der Übergang ist
-# stetig (Regler rechnet ab dem Rand der Totzone), damit es nicht ruckt.
-FOLGEN_WINKEL_TOTZONE = 3.0
+# Below this angle error (degrees) it does not correct -- the transition is
+# continuous (the controller computes from the edge of the dead band), so
+# that it does not jerk.
+FOLLOW_ANGLE_DEADBAND = 3.0
 
-# Innerhalb dieses Abstandsfehlers bleibt er stehen -- sonst ruckelt er
-# bei jedem Atemzug der Person vor und zurück.
-FOLGEN_TOTZONE_M = 0.10
+# Within this distance error it stays put -- otherwise it jerks back and
+# forth with every breath of the person.
+FOLLOW_DEADBAND_M = 0.10
 
-# Erst geradeaus fahren, wenn die Person ungefähr vorn ist; sonst zuerst
-# drehen (sonst fährt er schräg an ihr vorbei).
-FOLGEN_MAX_WINKEL_FAHREN = 25.0
-# Bis zu diesem Winkel volle Fahrt, darüber bis FOLGEN_MAX_WINKEL_FAHREN
-# gleitend weniger -- früher sprang vx an der Grenze hart zwischen 0 und
-# voll, das ruckte und belastete die Stromversorgung.
-FOLGEN_VOLL_WINKEL = 10.0
+# Only drive straight when the person is roughly in front; otherwise turn
+# first (otherwise it drives past them at an angle).
+FOLLOW_MAX_ANGLE_DRIVE = 25.0
+# Full speed up to this angle, gradually less above it up to
+# FOLLOW_MAX_ANGLE_DRIVE -- previously vx jumped hard between 0 and full at
+# the limit, which jerked and strained the power supply.
+FOLLOW_FULL_ANGLE = 10.0
 
-# Verschwindet die Person nur kurz (ein, zwei Bilder ohne Erkennung),
-# rollt er so lange mit dem letzten Befehl weiter aus, statt hart zu
-# bremsen und gleich wieder anzufahren. Danach hält er an. Ebenso lange
-# gilt der letzte gute Lidar-Abstand, wenn in Richtung der Person kurz
-# kein Punkt liegt.
-FOLGEN_HALTEN_S = 0.5
+# If the person disappears only briefly (one or two frames without
+# detection), it keeps coasting with the last command for this long instead
+# of braking hard and starting again right away. Then it stops. The last
+# good lidar distance also stays valid for this long if there is briefly no
+# point in the person's direction.
+FOLLOW_HOLD_S = 0.5
 
-# Abstand zur Person aus dem Lidar-Cluster statt aus dem kleinsten Wert im
-# Bildwinkel der Box: Ein Stuhl oder Tisch vor der Person würde sonst als
-# ihr Abstand gelesen, und der Roboter bliebe stehen, während sie
-# weitergeht. Gesucht werden Cluster (navigation/hindernisse.py) im
-# Winkelbereich der Box, erweitert um diesen Rand -- Kamera und Lidar sehen
-# nicht exakt zur selben Zeit, beim Drehen verschiebt sich das um einige Grad.
-FOLGEN_CLUSTER_RAND_GRAD = 5.0
-# Weicht ein Cluster um mehr als das vom letzten guten Abstand ab, ist er
-# wahrscheinlich nicht die Person (bei 0,3 m/s Schritttempo legt sie in
-# FOLGEN_CLUSTER_GUT_S höchstens ~0,3 m zurück). Gilt nur, solange der
-# letzte gute Abstand jünger ist als FOLGEN_CLUSTER_GUT_S.
-FOLGEN_CLUSTER_SPRUNG_M = 0.5
-FOLGEN_CLUSTER_GUT_S = 1.0
+# Distance to the person from the lidar cluster instead of the smallest
+# value within the box's angle: a chair or table in front of the person
+# would otherwise be read as their distance, and the robot would stand
+# still while they walk on. Clusters (navigation/obstacles.py) are searched
+# within the box's angular range, widened by this margin -- camera and lidar
+# do not see at exactly the same time; when turning this shifts by a few
+# degrees.
+FOLLOW_CLUSTER_EDGE_DEG = 5.0
+# If a cluster deviates by more than this from the last good distance, it
+# is probably not the person (at a walking pace of 0.3 m/s they cover at
+# most ~0.3 m in FOLLOW_CLUSTER_GOOD_S). Only applies while the last good
+# distance is younger than FOLLOW_CLUSTER_GOOD_S.
+FOLLOW_CLUSTER_JUMP_M = 0.5
+FOLLOW_CLUSTER_GOOD_S = 1.0
 
-# War etwas sehr nah (EXPLORE_NAH_M), bleibt er noch so lange stehen,
-# nachdem es frei ist -- sonst flackert er an der Grenze zwischen Halt
-# und Fahrt.
-FOLGEN_NAH_HALTEN_S = 0.5
+# If something was very close (EXPLORE_NEAR_M), it stays put for this long
+# after it is clear -- otherwise it flickers at the boundary between
+# stopping and driving.
+FOLLOW_NEAR_HOLD_S = 0.5
 
-# So lange darf die Person aus dem Bild sein, bevor er sucht, und so lange
-# sucht er (drehen in die Richtung, in der sie verschwand). 0 = so lange,
-# bis er wieder jemanden sieht; abbrechen mit Stopp oder "Robi, gute Nacht".
-FOLGEN_VERLOREN_S = 2.0
-FOLGEN_SUCHEN_S = 0.0
-# Beim Suchen abwechselnd drehen und stillhalten (s): Während der Drehung
-# verwischt das Kamerabild, und die Posenerkennung übersieht die Person.
-# 1,2 s bei EXPLORE_TURN_SPEED (0,6 rad/s) sind rund 40°, weniger als das
-# Bildfeld der C270 -- so bleibt keine Lücke im Rundblick.
-FOLGEN_SUCHEN_DREH_S = 1.2
-FOLGEN_SUCHEN_PAUSE_S = 0.8
+# The person may be out of the image for this long before it searches, and
+# it searches for this long (turning in the direction where they
+# disappeared). 0 = until it sees someone again; cancel with stop or
+# "Robi, gute Nacht".
+FOLLOW_LOST_S = 2.0
+FOLLOW_SEARCH_S = 0.0
+# When searching, alternate between turning and holding still (s): during
+# the turn the camera image blurs and pose detection misses the person.
+# 1.2 s at EXPLORE_TURN_SPEED (0.6 rad/s) is about 40°, less than the field
+# of view of the C270 -- so there is no gap in the all-round view.
+FOLLOW_SEARCH_TURN_S = 1.2
+FOLLOW_SEARCH_PAUSE_S = 0.8
 
-# Herkommen: bis zu diesem Abstand heranfahren, dann stehen bleiben.
-HERKOMMEN_ABSTAND_M = 0.70
+# Come here: approach up to this distance, then stop.
+COME_HERE_DISTANCE_M = 0.70
 
-# Weggehen: so weit zurückweichen, mit dieser Geschwindigkeit.
-WEGGEHEN_STRECKE_M = 1.0
-WEGGEHEN_SPEED = 0.15
+# Go away: back off this far, at this speed.
+GO_AWAY_DISTANCE_M = 1.0
+GO_AWAY_SPEED = 0.15
 
-# Herkommen/Weggehen enden spätestens nach dieser Zeit, auch wenn das Ziel
-# nicht erreicht ist -- kein Verhalten soll endlos laufen.
-INTERAKTION_VERHALTEN_MAX_S = 20.0
+# Come here/go away end after this time at the latest, even if the goal has
+# not been reached -- no behavior should run forever.
+INTERACTION_BEHAVIOR_MAX_S = 20.0
 
-# Wechselt die verfolgte Person um mehr als diesen Winkel in einem Bild,
-# ist es vermutlich eine andere -- dann beginnt die Gestenerkennung neu.
-INTERAKTION_SPRUNG_GRAD = 15.0
+# If the tracked person shifts by more than this angle in one frame, it is
+# probably someone else -- then gesture detection starts over.
+INTERACTION_JUMP_DEG = 15.0
 
-# Sanfter Start (s): Wird die Interaktion eingeschaltet, läuft erst nur die
-# Posenerkennung warm, der Roboter steht still und schweigt. Danach sagt er
-# den Startsatz ("Jetzt folge ich dir.") und fährt erst los, wenn der Satz
-# zu Ende ist. Am 03.11. starteten Posenerkennung, Sprechen und Motoren in
-# derselben Sekunde, und die USB-Versorgung brach zusammen. 0 = sofort.
-INTERAKTION_ANLAUF_S = 5.0
+# Soft start (s): when the interaction is switched on, at first only pose
+# detection warms up, the robot stands still and stays silent. Then it says
+# the start sentence ("Jetzt folge ich dir.") and only starts driving when
+# the sentence is finished. On 03.11. pose detection, speech and motors
+# started in the same second, and the USB supply collapsed. 0 = immediately.
+INTERACTION_STARTUP_S = 5.0
 
-# --- Wem er folgt (interaktion/ziel.py) ---------------------------------------
-# Ein Tracker ordnet die Personen von Bild zu Bild zu. Unterschieden werden
-# sie nicht -- wer kurz aus dem Bild war, ist beim Zurückkommen wieder das
-# Ziel.
+# --- Whom it follows (interaction/target.py) ---------------------------------------
+# A tracker assigns the people from frame to frame. They are not told
+# apart -- whoever was briefly out of the image is the target again on
+# coming back.
 
-# Ist die verfolgte Person so lange (s) nicht zu sehen, folgt er einer
-# anderen im Bild (der, die dem letzten Winkel am nächsten steht). Kürzer
-# verdeckt, etwa von jemandem, der vorbeiläuft: wartet er auf sie.
-ZIEL_WECHSEL_S = 1.0
+# If the followed person is not visible for this long (s), it follows
+# another person in the image (the one closest to the last angle). Covered
+# for less time, e.g. by someone walking past: it waits for them.
+TARGET_SWITCH_S = 1.0
 
-# Winkelfenster um die vorhergesagte Position, in dem eine Erkennung dem
-# Track zugeordnet werden darf (wächst mit der Unsicherheit bis zum
-# Dreifachen).
-ZIEL_GATE_GRAD = 15.0
+# Angular window around the predicted position within which a detection may
+# be assigned to the track (grows with uncertainty up to three times).
+TARGET_GATE_DEG = 15.0
 
-# So lange bleibt ein Track ohne Messung erhalten (vorhergesagt), bevor er
-# verworfen wird.
-ZIEL_TRACK_HALTEN_S = 1.5
+# A track without a measurement is kept (predicted) for this long before it
+# is discarded.
+TARGET_TRACK_HOLD_S = 1.5
 
-# Höchstens so stark darf sich die Boxhöhe zwischen Vorhersage und Messung
-# ändern (Verhältnis klein/groß), sonst ist es nicht derselbe Track.
-ZIEL_HOEHE_VERHAELTNIS = 0.6
+# The box height may change at most this much between prediction and
+# measurement (ratio small/large), otherwise it is not the same track.
+TARGET_HEIGHT_RATIO = 0.6
 
-# Verschwindet die Person näher als so viele Grad am Bildrand, ist sie fast
-# sicher seitlich hinausgegangen -- dann sucht er schon nach
-# FOLGEN_VERLOREN_RAND_S statt nach FOLGEN_VERLOREN_S. In der Bildmitte
-# bleibt die längere Frist (dort ist es eher eine kurze Verdeckung).
-ZIEL_RAND_GRAD = 8.0
-FOLGEN_VERLOREN_RAND_S = 0.7
+# If the person disappears closer than this many degrees to the image edge,
+# they have almost certainly walked out sideways -- then it already searches
+# after FOLLOW_LOST_EDGE_S instead of FOLLOW_LOST_S. In the middle of the
+# image the longer period remains (there it is more likely a brief
+# occlusion).
+TARGET_EDGE_DEG = 8.0
+FOLLOW_LOST_EDGE_S = 0.7
 
-# Beim Suchen dreht er sich zu einem Lidar-Personencluster (zwei Beine),
-# statt blind weiterzudrehen. Ist der Cluster im Bild, wartet er so lange
-# auf die Kamera; erkennt sie dort niemanden, dreht er normal weiter.
-ZIEL_HINWEIS_S = 1.5
+# When searching, it turns towards a lidar person cluster (two legs) instead
+# of turning on blindly. If the cluster is in the image, it waits this long
+# for the camera; if the camera sees nobody there, it keeps turning as
+# usual.
+TARGET_HINT_S = 1.5
 
-# --- Diagnose (Seite /diagnose) ------------------------------------------------
-# Wie oft die schnellen Messungen laufen (Akku, USB-Überlastzähler, Geräte-
-# zustand) und wie oft die langsamen (Temperatur, vcgencmd, Kernel-Log,
-# Prozessliste). Die langsamen starten Unterprozesse -- jede Sekunde wäre
-# unnötige Last auf einem Pi, dessen USB ohnehin unter Lastsprüngen leidet.
-DIAGNOSE_INTERVAL_S = 1.0
-DIAGNOSE_LANGSAM_S = 5.0
+# --- Diagnostics (page /diagnose) ------------------------------------------------
+# How often the fast measurements run (battery, USB over-current counter,
+# device state) and how often the slow ones (temperature, vcgencmd, kernel
+# log, process list). The slow ones start subprocesses -- every second would
+# be unnecessary load on a Pi whose USB suffers from load spikes anyway.
+DIAG_INTERVAL_S = 1.0
+DIAG_SLOW_S = 5.0
 
-# Akkuschwellen für den 3S-Akku des X3 (voll 12,6 V). Unter 11,1 V reicht
-# der Anlaufstrom der Motoren, um die 5 V kurz einbrechen zu lassen; unter
-# 10,5 V nimmt der Akku Schaden und das Board meldet sich ständig ab.
-AKKU_WARN_V = 11.1
-AKKU_KRITISCH_V = 10.5
+# Battery thresholds for the X3's 3S battery (full 12.6 V). Below 11.1 V the
+# motors' inrush current is enough to make the 5 V dip briefly; below
+# 10.5 V the battery gets damaged and the board keeps disconnecting.
+BATTERY_WARN_V = 11.1
+BATTERY_CRITICAL_V = 10.5
 
-# Fällt die Spannung so weit unter das Maximum der letzten Minute, zählt
-# das als Spannungseinbruch (typisch: Motoren laufen gleichzeitig an).
-SPANNUNGSEINBRUCH_V = 0.6
+# If the voltage falls this far below the maximum of the last minute, it
+# counts as a voltage dip (typically: motors starting at the same time).
+VOLTAGE_DROP_V = 0.6
 
-# Ab dieser CPU-Temperatur warnt die Seite. Der Pi 5 drosselt selbst bei
-# 85 °C -- vorher soll man es sehen (am 28.10. lief ein Build bis 83 °C).
+# From this CPU temperature on the page warns. The Pi 5 throttles itself at
+# 85 °C -- you should see it before that (on 28.10. a build ran up to
+# 83 °C).
 TEMP_WARN_C = 75.0
 
-# Über diesem Takt traten am X3 USB-Resets auf, siehe docs/hardware.md.
+# Above this clock speed USB resets occurred on the X3, see docs/hardware.md.
 CPU_MAX_MHZ = 2000
 
-# Ein Problem gilt als vorbei, wenn es so lange nicht mehr aufgetreten ist.
-PROBLEM_FENSTER_S = 600.0
+# A problem counts as over when it has not occurred for this long.
+PROBLEM_WINDOW_S = 600.0
 
-# Nach dem Serverstart brauchen Lidar und Kameras ein paar Sekunden bis zu
-# den ersten Daten. So lange gilt "liefert nichts" noch nicht als Problem.
-DIAGNOSE_ANLAUF_S = 15.0
+# After server start, lidar and cameras need a few seconds until the first
+# data. Until then "delivers nothing" does not count as a problem yet.
+DIAG_STARTUP_S = 15.0
 
-# So viele Log-Zeilen und Ereignisse hält der Server im Speicher.
-DIAGNOSE_LOG_ZEILEN = 1000
-DIAGNOSE_EREIGNISSE = 300
+# The server keeps this many log lines and events in memory.
+DIAG_LOG_LINES = 1000
+DIAG_EVENTS = 300
 
-# Akkuverlauf: ein Punkt je schnelle Messung, so viele Punkte (30 min).
-DIAGNOSE_AKKU_PUNKTE = 1800
+# Battery history: one point per fast measurement, this many points (30 min).
+DIAG_BATTERY_POINTS = 1800
 
-# Beim Start so weit im Kernel-Log zurückschauen (USB-Abmeldungen, die vor
-# dem Serverstart passiert sind, z. B. beim Booten).
-DIAGNOSE_KERNEL_RUECKBLICK_S = 3600.0
+# At start, look back this far in the kernel log (USB disconnects that
+# happened before server start, e.g. during boot).
+DIAG_KERNEL_LOOKBACK_S = 3600.0
 
-# --- Absturzerfassung (seit 29.10.) ---
-# "Random Abstürze" ließen sich bisher nicht zuordnen: War es der Server
-# (Fehler, Speicher, SSH zu), der ganze Pi (Reset, Strom) oder nur ein
-# Hänger? Dafür schreibt die Diagnose in diesen Ordner mit, was ein
-# Absturz überlebt: Laufprotokoll, Server-Log, Stack-Dumps.
-DIAGNOSE_ORDNER = Path.home() / ".rosmaster" / "diagnose"
+# --- Crash capture (since 29.10.) ---
+# "Random crashes" could not be attributed so far: was it the server
+# (error, memory, SSH closed), the whole Pi (reset, power) or just a hang?
+# For this, the diagnostics record in this folder what survives a crash:
+# run log, server log, stack dumps.
+DIAG_FOLDER = Path.home() / ".rosmaster" / "diagnose"
 
-# So viele Serverläufe behält das Laufprotokoll (laeufe.json).
-DIAGNOSE_LAEUFE = 20
+# The run log (laeufe.json) keeps this many server runs.
+DIAG_RUNS = 20
 
-# Größe einer Server-Logdatei; zwei alte Dateien bleiben zusätzlich liegen.
-DIAGNOSE_LOGDATEI_BYTES = 2_000_000
+# Size of one server log file; two old files are kept in addition.
+DIAG_LOGFILE_BYTES = 2_000_000
 
-# Puls der Ereignisschleife: Alle DIAGNOSE_PULS_S schaut der Server nach, wie
-# pünktlich er geweckt wurde. Kommt er mehr als DIAGNOSE_HAENGER_S zu spät,
-# hat etwas die Schleife blockiert (dann reagiert auch der Not-Stopp
-# nicht). Bleibt der Puls DIAGNOSE_BLOCKIERT_S ganz aus, schreibt die
-# Diagnose auf, woran die Schleife gerade hängt.
-DIAGNOSE_PULS_S = 0.5
-DIAGNOSE_HAENGER_S = 1.0
-DIAGNOSE_BLOCKIERT_S = 3.0
+# Event loop pulse: every DIAG_PULSE_S the server checks how punctually it
+# was woken up. If it is more than DIAG_HANG_S late, something has blocked
+# the loop (then the emergency stop does not react either). If the pulse
+# stops entirely for DIAG_BLOCKED_S, the diagnostics write down what the
+# loop is currently stuck on.
+DIAG_PULSE_S = 0.5
+DIAG_HANG_S = 1.0
+DIAG_BLOCKED_S = 3.0
 
-# Ab hier warnt die Diagnose: wenig freier Arbeitsspeicher (der Kernel
-# beendet sonst den größten Prozess -- meist den Server) und zu viele offene
-# Dateien (ein Leck, das irgendwann jedes Öffnen scheitern lässt).
-DIAGNOSE_SPEICHER_WARN_MB = 200
-DIAGNOSE_DATEIEN_WARN = 800
+# From here on the diagnostics warn: little free memory (otherwise the
+# kernel kills the largest process -- usually the server) and too many open
+# files (a leak that eventually makes every open fail).
+DIAG_MEMORY_WARN_MB = 200
+DIAG_FILES_WARN = 800
 
-# Ein hängender Browser darf die Statusmeldungen an alle anderen nicht
-# aufhalten: Wer nach so vielen Sekunden nichts angenommen hat, fliegt raus.
-WS_SENDE_TIMEOUT_S = 2.0
+# A hanging browser must not hold up the status messages to everyone else:
+# whoever has not accepted anything after this many seconds is dropped.
+WS_SEND_TIMEOUT_S = 2.0
 
-# Hintergrundschleifen fangen Fehler ab und laufen weiter. Damit ein Fehler,
-# der jeden Takt kommt, nicht das Log flutet, steht er höchstens so oft drin.
-SCHLEIFENFEHLER_LOG_S = 10.0
+# Background loops catch errors and keep running. So that an error that
+# occurs on every tick does not flood the log, it appears at most this
+# often.
+LOOP_ERROR_LOG_S = 10.0
 
-# USB-Sturm: So viele Überlast-Meldungen pro Minute *im Stand* sind kein
-# Anlaufstrom mehr, sondern ein Dauerfehler an der Stromversorgung der
-# USB-Buchsen. Am 29.10. waren es im Leerlauf 300-400 pro Minute.
-USB_STURM_PRO_MIN = 20
+# USB storm: this many over-current messages per minute *while standing* are
+# no longer inrush current but a persistent fault in the power supply of the
+# USB ports. On 29.10. there were 300-400 per minute while idle.
+USB_STORM_PER_MIN = 20
 
-# --- Fahrtenschreiber (aufzeichnung.py, seit 03.11.) ---------------------------
-# Hält die letzten Sekunden einer Fahrt (Lidar-Runden, Fahrbefehle,
-# Board-Geschwindigkeit, Zustände) im Speicher. Erst "Fahrt speichern" in der
-# App schreibt sie auf die Karte; ausgewertet wird mit scripts/abspielen.py.
-AUFZEICHNUNG_AKTIV = True
-# Eine Minute reicht, um die Lage vor einem Fehler zu sehen, und braucht
-# rund 10 MB Speicher (450 Lidar-Runden mit je ~360 Punkten).
-AUFZEICHNUNG_PUFFER_S = 60.0
-AUFZEICHNUNG_ORDNER = Path.home() / ".rosmaster" / "aufzeichnungen"
-# Eine Datei hat gepackt einige hundert KB; ältere werden gelöscht.
-AUFZEICHNUNG_MAX_DATEIEN = 20
+# --- Drive recorder (recording.py, since 03.11.) ----------------------------
+# Keeps the last seconds of a drive (lidar revolutions, drive commands,
+# board velocity, states) in memory. Only "Fahrt speichern" in the app
+# writes them to the SD card; evaluate them with scripts/replay.py.
+RECORDING_ACTIVE = True
+# One minute is enough to see the situation before an error and needs about
+# 10 MB of memory (450 lidar revolutions with ~360 points each).
+RECORDING_BUFFER_S = 60.0
+RECORDING_FOLDER = Path.home() / ".rosmaster" / "aufzeichnungen"
+# One file is a few hundred KB compressed; older ones are deleted.
+RECORDING_MAX_FILES = 20
 
-# --- Musik ("MUKKE") ----------------------------------------------------------------
+# --- Music ("MUKKE") ----------------------------------------------------------------
 
-# YouTube-Links aus der App werden mit mpv auf dem USB-Lautsprecher
-# abgespielt, nur der Ton. Voraussetzung auf dem Pi:
+# YouTube links from the app are played with mpv on the USB speaker, audio
+# only. Prerequisites on the Pi:
 #   sudo apt install mpv
 #   robot/.venv/bin/pip install -U yt-dlp
-# yt-dlp aus pip statt apt: YouTube ändert laufend etwas, und die Version aus
-# den Paketquellen ist meist zu alt, um noch abzuspielen.
+# yt-dlp from pip instead of apt: YouTube keeps changing things, and the
+# version from the package sources is usually too old to still play.
 MUKKE_ENABLED = True
 
-# Ausgabegerät für mpv. Der USB-Lautsprecher heißt bei ALSA "UACDemoV10"
-# (siehe `aplay -l`). plughw statt hw: wandelt Abtastrate und Format um,
-# die der Lautsprecher nicht selbst kann. "auto" nimmt das Standardgerät.
+# Output device for mpv. In ALSA the USB speaker is called "UACDemoV10"
+# (see `aplay -l`). plughw instead of hw: converts sample rate and format
+# that the speaker cannot handle itself. "auto" uses the default device.
 MUKKE_AUDIO_DEVICE = "alsa/plughw:CARD=UACDemoV10,DEV=0"
 
-# Lautstärke der Musik in Prozent (0..100), als Anteil von LAUTSTAERKE.
-# In der App verstellbar.
-MUKKE_LAUTSTAERKE = 60
+# Music volume in percent (0..100), as a share of VOLUME.
+# Adjustable in the app.
+MUKKE_VOLUME = 60
 
-# --- Ton -----------------------------------------------------------------------
+# --- Sound ---------------------------------------------------------------------
 
-# Gesamtlautstärke in Prozent (0..100): der eine Regler für alles, was aus dem
-# Lautsprecher kommt (Stimme und Musik). Gerechnet wird in Software, der
-# Mixer des Lautsprechers steht fest auf TON_MIXER. Auf der Einstellungsseite
-# verstellbar. Leiser heißt auch: weniger Strom am USB des Pi.
-LAUTSTAERKE = 70
+# Master volume in percent (0..100): the single slider for everything that
+# comes out of the speaker (voice and music). Computed in software; the
+# speaker's mixer is fixed at SOUND_MIXER. Adjustable on the settings page.
+# Quieter also means: less current on the Pi's USB.
+VOLUME = 70
 
-# Hardware-Mixer des Lautsprechers (amixer) in Prozent. Bleibt immer gleich,
-# damit es nur einen Regler gibt (LAUTSTAERKE).
-TON_MIXER = 100
+# Hardware mixer of the speaker (amixer) in percent. Always stays the same,
+# so that there is only one slider (VOLUME).
+SOUND_MIXER = 100
 
-# --- Stimme (USB-Lautsprecher) ------------------------------------------------
-# Sprachausgabe über den USB-Lautsprecher „UACDemoV1.0“. Siehe
-# docs/interaktion.md und docs/hardware.md (Einrichtung).
+# --- Voice (USB speaker) ------------------------------------------------------
+# Speech output via the USB speaker "UACDemoV1.0". See docs/interaction.md
+# and docs/hardware.md (setup).
 
-# Abschaltbar, z.B. in der Vorlesung, ohne den Code anzufassen.
-STIMME_ENABLED = True
+# Can be switched off, e.g. during a lecture, without touching the code.
+VOICE_ENABLED = True
 
-# Piper spricht offline und klingt deutlich natürlicher als espeak-ng.
-# Fehlt Piper oder das Modell, weicht die Stimme auf espeak-ng aus und
-# zuletzt auf reine Log-Ausgabe -- der Server startet in jedem Fall.
-# Orte für das Programm, der erste gefundene gilt. Das Release von
-# github.com/rhasspy/piper wird nach ~/piper/piper/ entpackt.
-STIMME_PIPER = ("~/piper/piper/piper", "piper")
-# Weibliche Stimme "Kerstin" (16 kHz). Liegt auch noch Thorsten (männlich)
-# unter ~/piper/de_DE-thorsten-medium.onnx, zum Umschalten nur hier ändern.
-STIMME_MODELL = "~/piper/de_DE-kerstin-low.onnx"
-STIMME_ESPEAK = "espeak-ng"
+# Piper speaks offline and sounds much more natural than espeak-ng.
+# If Piper or the model is missing, the voice falls back to espeak-ng and
+# finally to plain log output -- the server starts in any case.
+# Locations for the program, the first one found wins. The release from
+# github.com/rhasspy/piper is unpacked to ~/piper/piper/.
+VOICE_PIPER = ("~/piper/piper/piper", "piper")
+# Female voice "Kerstin" (16 kHz). Thorsten (male) is also available under
+# ~/piper/de_DE-thorsten-medium.onnx; to switch, only change it here.
+VOICE_MODEL = "~/piper/de_DE-kerstin-low.onnx"
+VOICE_ESPEAK = "espeak-ng"
 
-# Piper nur auf diesen CPU-Kernen rechnen lassen (taskset; None = alle).
-# Auf allen vier Kernen war jeder Satz ein Lastsprung, und am 03.11. fielen
-# genau beim Sprechen alle USB-Geräte ab (Over-Current). Mit einem Kern ist
-# Piper kaum langsamer (gemessen 1,27 statt 1,28 s für 3,5 s Sprache).
-STIMME_KERNE = "3"
+# Let Piper compute only on these CPU cores (taskset; None = all).
+# On all four cores every sentence was a load spike, and on 03.11. all USB
+# devices dropped out exactly while speaking (over-current). With one core
+# Piper is hardly slower (measured 1.27 instead of 1.28 s for 3.5 s of
+# speech).
+VOICE_CORES = "3"
 
-# ALSA-Gerät über den Kartennamen statt der Nummer: die Nummer ändert sich,
-# wenn sich USB-Geräte nach einem Spannungseinbruch neu anmelden.
-# „plughw“ wandelt Abtastrate und Kanäle passend um.
-STIMME_GERAET = "plughw:CARD=UACDemoV10,DEV=0"
+# ALSA device via the card name instead of the number: the number changes
+# when USB devices re-register after a voltage dip.
+# "plughw" converts sample rate and channels as needed.
+VOICE_DEVICE = "plughw:CARD=UACDemoV10,DEV=0"
 
-# Sprechtempo für Piper: >1 langsamer. Etwas langsamer ist im Raum mit
-# Motorgeräusch besser zu verstehen.
-STIMME_TEMPO = 1.1
+# Speaking rate for Piper: >1 slower. Slightly slower is easier to
+# understand in a room with motor noise.
+VOICE_SPEED = 1.1
 
-# Mehr Sätze warten nicht -- sonst redet der Roboter noch über etwas, das
-# längst vorbei ist. Ältere fallen dann weg.
-STIMME_MAX_WARTESCHLANGE = 3
+# No more sentences than this wait in line -- otherwise the robot is still
+# talking about something that is long over. Older ones are dropped.
+VOICE_MAX_QUEUE = 3
 
-# Derselbe Satz wird innerhalb dieser Zeit nicht wiederholt (z.B. wenn die
-# Person mehrmals hintereinander verloren und wiedergefunden wird).
-STIMME_WIEDERHOLUNG_S = 4.0
+# The same sentence is not repeated within this time (e.g. when the person
+# is lost and found again several times in a row).
+VOICE_REPEAT_S = 4.0
 
-# Längere Texte werden abgeschnitten; die App soll keine Romane vorlesen.
-STIMME_MAX_ZEICHEN = 300
+# Longer texts are cut off; the app should not have novels read aloud.
+VOICE_MAX_CHARS = 300
 
-# Kein Satz darf den Sprech-Thread länger blockieren.
-STIMME_TIMEOUT_S = 20.0
+# No sentence may block the speech thread for longer than this.
+VOICE_TIMEOUT_S = 20.0
 
-# So lange nach dem Satzende gilt die Stimme noch als "spricht": Nachhall
-# im Raum und Puffer im Lautsprecher -- die Spracherkennung soll das nicht
-# als Eingabe verstehen.
-STIMME_NACHLAUF_S = 0.4
+# For this long after the end of a sentence the voice still counts as
+# "speaking": reverberation in the room and buffering in the speaker --
+# speech recognition should not take that as input.
+VOICE_TAIL_S = 0.4
 
-# Durchsage: aus der App (Laptop/Handy-Mikrofon) live über den Lautsprecher
-# des Roboters sprechen (WebSocket /sprache/durchsage). Kommt so lange (s)
-# kein Ton, gilt sie als beendet und der Lautsprecher wird frei ...
-DURCHSAGE_PAUSE_S = 2.0
-# ... und mehr als so viel (s) Ton wird nicht gepuffert. Stand die Durchsage
-# hinter einem Satz an, fällt der Anfang weg, statt dass sie dauerhaft um
-# Sekunden hinterherhinkt.
-DURCHSAGE_MAX_PUFFER_S = 0.5
-# Puffer von aplay (µs). Kleiner = weniger Verzögerung, aber jedes Stocken
-# im WLAN wird hörbar.
-DURCHSAGE_APLAY_PUFFER_US = 200000
+# Announcement: speak live from the app (laptop/phone microphone) through
+# the robot's speaker (WebSocket /sprache/durchsage). If no audio arrives
+# for this long (s), it counts as finished and the speaker is released ...
+ANNOUNCE_PAUSE_S = 2.0
+# ... and no more than this much (s) audio is buffered. If the announcement
+# was queued behind a sentence, the beginning is dropped instead of it
+# lagging seconds behind permanently.
+ANNOUNCE_MAX_BUFFER_S = 0.5
+# aplay buffer (µs). Smaller = less delay, but every WiFi stutter becomes
+# audible.
+ANNOUNCE_APLAY_BUFFER_US = 200000
 
-# --- Sprachbefehle (USB-Mikrofon, Vosk) -------------------------------------------
-# Siehe interaktion/sprache.py und docs/interaktion.md. Ohne vosk/sounddevice,
-# Modell oder Mikrofon ist die Erkennung aus; der Server läuft trotzdem.
-SPRACHE_ENABLED = True
+# --- Speech commands (USB microphone, Vosk) ---------------------------------------
+# See interaction/speech.py and docs/interaction.md. Without vosk/sounddevice,
+# model or microphone, recognition is off; the server runs anyway.
+SPEECH_ENABLED = True
 
-# Kleines deutsches Vosk-Modell (~45 MB, läuft auf der CPU des Pi).
-# Herunterladen: siehe docs/hardware.md.
-SPRACHE_MODELL = "~/vosk-model-small-de-0.15"
+# Small German Vosk model (~45 MB, runs on the Pi's CPU).
+# Download: see docs/hardware.md.
+SPEECH_MODEL = "~/vosk-model-small-de-0.15"
 
-# None = selbst suchen (nach SPRACHE_MIKROFON_NAMEN), sonst ein Teil des
-# Gerätenamens (str) oder die Gerätenummer von sounddevice (int).
-SPRACHE_MIKROFON = None
+# None = search automatically (by SPEECH_MICROPHONE_NAMES), otherwise part
+# of the device name (str) or the sounddevice device number (int).
+SPEECH_MICROPHONE = None
 
-# Reihenfolge = Vorliebe. Nur angesteckte USB-Mikrofone: das FongLun
-# ("USB Microphone", hw:5 am 03.11.) bzw. C-Media ("USB PnP Sound Device").
-# Die Kamera-Mikrofone sind bewusst nicht dabei: Das der C270 klingt so
-# schlecht, dass Vosk kaum etwas versteht -- lieber taub und ehrlich
-# "kein Mikrofon" in /sprache/status als halb hörend.
-SPRACHE_MIKROFON_NAMEN = ("USB Microphone", "USB PnP", "C-Media", "Microphone")
+# Order = preference. Only plugged-in USB microphones: the FongLun
+# ("USB Microphone", hw:5 on 03.11.) or C-Media ("USB PnP Sound Device").
+# The camera microphones are deliberately not included: the C270's sounds
+# so bad that Vosk understands hardly anything -- better deaf and honestly
+# "kein Mikrofon" in /sprache/status than half hearing.
+SPEECH_MICROPHONE_NAMES = ("USB Microphone", "USB PnP", "C-Media", "Microphone")
 
-# Geräte mit diesen Namensteilen nimmt die automatische Suche nie, auch wenn
-# ein Eintrag oben passt (etwa "Webcam Microphone"). Ein fest eingetragenes
-# SPRACHE_MIKROFON gilt trotzdem.
-SPRACHE_MIKROFON_NIE = ("C270", "Logi", "WebCam", "ORBBEC", "Depth Sensor")
+# The automatic search never takes devices with these name parts, even if
+# an entry above matches (such as "Webcam Microphone"). An explicitly set
+# SPEECH_MICROPHONE still applies.
+SPEECH_MICROPHONE_NEVER = ("C270", "Logi", "WebCam", "ORBBEC", "Depth Sensor")
 
-# Der Name des Roboters. Vosk kennt "robi" nicht als Wort; es hört je nach
-# Aussprache eine der Varianten. Nur die, die im Modell stehen, werden benutzt.
-SPRACHE_WECKWORT = "robi"
-SPRACHE_WECKWORT_VARIANTEN = ("robbie", "robby", "roby", "robi", "ruby", "rubi", "robin")
+# The robot's name. Vosk does not know "robi" as a word; depending on
+# pronunciation it hears one of the variants. Only those in the model are
+# used.
+SPEECH_WAKE_WORD = "robi"
+SPEECH_WAKE_WORD_VARIANTS = ("robbie", "robby", "roby", "robi", "ruby", "rubi", "robin")
 
-# So lange (s) nach einem einzelnen "Robi" reicht der Befehl allein.
-SPRACHE_WECK_FENSTER_S = 5.0
+# For this long (s) after a lone "Robi", the command alone is enough.
+SPEECH_WAKE_WINDOW_S = 5.0
 
-# "Stopp"/"halt" gilt auch ohne Namen: Anhalten darf nie daran scheitern,
-# dass der Name überhört wurde. Ein falscher Stopp schadet nicht.
-SPRACHE_STOPP_OHNE_WECKWORT = True
+# "Stopp"/"halt" also works without the name: stopping must never fail
+# because the name was missed. A false stop does no harm.
+SPEECH_STOP_WITHOUT_WAKE_WORD = True
 
-# "La-da-da" spielt dieses Lied über MUKKE. Ohne Weckwort: Wer "la da da"
-# singt, will Musik -- und ein Fehlalarm fährt nirgends hin. Nur die
-# Video-Adresse, ohne &list=...: das Lied, nicht die ganze Playlist.
-SPRACHE_LADADA_URL = "https://www.youtube.com/watch?v=j-S_w3tK3dw"
-SPRACHE_LADADA_OHNE_WECKWORT = True
+# "La-da-da" plays this song via MUKKE. Without wake word: whoever sings
+# "la da da" wants music -- and a false alarm does not drive anywhere. Only
+# the video address, without &list=...: the song, not the whole playlist.
+SPEECH_LADADA_URL = "https://www.youtube.com/watch?v=j-S_w3tK3dw"
+SPEECH_LADADA_WITHOUT_WAKE_WORD = True
 
-# "Robi, Beatbox" spielt dieses Lied (mit Weckwort, wie die anderen Befehle).
-SPRACHE_BEATBOX_URL = "https://www.youtube.com/watch?v=EfSp8EjZikE"
+# "Robi, Beatbox" plays this song (with wake word, like the other commands).
+SPEECH_BEATBOX_URL = "https://www.youtube.com/watch?v=EfSp8EjZikE"
 
-# Mit fester Grammatik macht Vosk aus jedem Geräusch einen erlaubten Satz:
-# Musik, Fernseher und Gespräche wurden zu "robbie hallo" und schalteten die
-# Interaktion ein. Deshalb gilt ein Satz nur, wenn Vosk sich bei jedem Wort
-# mindestens so sicher ist (0..1) ...
-SPRACHE_MIN_KONFIDENZ = 0.7
-# ... und höchstens dieser Anteil der Wörter unbekannt war ([unk]). Mehr
-# heißt: Da hat jemand geredet, und "komm" war nur ein Wort darin.
-SPRACHE_MAX_UNK_ANTEIL = 0.5
-# ... und neben Weckwort und Wendung höchstens so viele weitere Wörter
-# kamen. Am 03.11. wurde aus Geräuschen "robin hallo hause zu weg ruby"
-# (-> weggehen); ein gesprochener Befehl ist genau ein Grammatik-Satz.
-SPRACHE_MAX_ZUSATZWOERTER = 0
-# Unsicher Gehörtes lässt nur Stopp durch. Beim Einstellen helfen
-# "konfidenz" und "zuletzt_verworfen" in /sprache/status.
+# With a fixed grammar, Vosk turns every noise into an allowed sentence:
+# music, TV and conversations became "robbie hallo" and switched the
+# interaction on. So a sentence only counts if Vosk is at least this
+# confident (0..1) about every word ...
+SPEECH_MIN_CONFIDENCE = 0.7
+# ... and at most this share of the words was unknown ([unk]). More means:
+# someone was talking, and "komm" was just one word in it.
+SPEECH_MAX_UNK_SHARE = 0.5
+# ... and at most this many further words came besides the wake word and
+# the phrase. On 03.11. noise turned into "robin hallo hause zu weg ruby"
+# (-> go away); a spoken command is exactly one grammar sentence.
+SPEECH_MAX_EXTRA_WORDS = 0
+# Uncertain input only lets stop through. When tuning, "konfidenz" and
+# "zuletzt_verworfen" in /sprache/status help.
 
-# Läuft Musik, hört das Mikrofon das Lied mit. Dann gilt ein Befehl nur mit
-# "Robi" und mit dieser höheren Konfidenz (Stopp und "Musik aus" immer).
-SPRACHE_MIN_KONFIDENZ_MUSIK = 0.85
+# While music is playing, the microphone hears the song too. Then a command
+# only counts with "Robi" and with this higher confidence (stop and
+# "Musik aus" always).
+SPEECH_MIN_CONFIDENCE_MUSIC = 0.85
 
-# Antwort auf ein einzelnes "Robi" (None = still). Gesagt wird sie erst nach
-# dieser Pause (s): Wer "Robi ... folge mir" mit kurzer Pause sagt, dem soll
-# das "Ja?" nicht ins Wort fallen -- während der Roboter spricht, hört er nicht.
-SPRACHE_WECK_ANTWORT = "Ja?"
-SPRACHE_WECK_ANTWORT_NACH_S = 1.0
+# Reply to a lone "Robi" (None = silent). It is only said after this pause
+# (s): whoever says "Robi ... folge mir" with a short pause should not be
+# interrupted by the "Ja?" -- while the robot is speaking, it does not
+# listen.
+SPEECH_WAKE_REPLY = "Ja?"
+SPEECH_WAKE_REPLY_AFTER_S = 1.0
 
-# Live-Feed vom Mikrofon für die App (Mitlesen und Mithören, beides in der
-# App schaltbar). So viele zuletzt gehörte Sätze zeigt das Mitlesen ...
-SPRACHE_LIVE_EREIGNISSE = 15
-# ... und so lange (s) nach dem letzten Abruf rechnet der Hör-Thread Pegel
-# und Zwischentext noch aus. Liest niemand mit, kostet es nichts.
-SPRACHE_LIVE_HALTEN_S = 3.0
-# Mithören: so viele Blöcke (je 0,25 s) puffern, bevor welche wegfallen.
-# Klein halten, sonst hört man mit Verzögerung.
-SPRACHE_TON_PUFFER = 8
+# Live feed from the microphone for the app (transcript and listen-in, both
+# switchable in the app). The transcript shows this many recently heard
+# sentences ...
+SPEECH_LIVE_EVENTS = 15
+# ... and for this long (s) after the last request the listening thread
+# still computes level and partial text. If nobody is reading along, it
+# costs nothing.
+SPEECH_LIVE_HOLD_S = 3.0
+# Listen-in: buffer this many blocks (0.25 s each) before some are dropped.
+# Keep it small, otherwise you hear with a delay.
+SPEECH_SOUND_BUFFER = 8
 
-# Vosk-Modelle sind auf 16 kHz trainiert. Kann das Mikrofon das nicht,
-# wird seine eigene Rate genommen und Vosk rechnet um.
-SPRACHE_ABTASTRATE = 16000
+# Vosk models are trained on 16 kHz. If the microphone cannot do that, its
+# own rate is used and Vosk resamples.
+SPEECH_SAMPLE_RATE = 16000
 
-# Wartezeit (s) vor dem nächsten Versuch, wenn das Mikrofon weg ist.
-SPRACHE_NEUVERSUCH_S = 3.0
+# Wait time (s) before the next attempt when the microphone is gone.
+SPEECH_RETRY_S = 3.0
 
-# Failsafe nach USB-Aussetzern. Nach einem Absturz meldete sich die C270
-# schneller zurück als das USB-Mikrofon, und die Erkennung blieb dann auf
-# der schlechteren C270 hängen (deshalb ist sie jetzt ganz ausgeschlossen).
-# Läuft sie auf einem weniger bevorzugten Mikrofon, schaut sie so oft (s)
-# nach, ob ein besseres wieder angemeldet ist, und wechselt ...
-SPRACHE_MIKROFON_PRUEFEN_S = 5.0
-# ... war es schon beim Öffnen da und PortAudio fand es trotzdem nicht,
-# versucht sie es erst nach dieser Zeit (s) erneut (kein Dauerwechsel).
-SPRACHE_MIKROFON_ERNEUT_S = 30.0
-# Liefert das Mikrofon so lange (s) nur exakte Nullen, ist der Stream tot
-# (das Gerät ist weg, ohne dass PortAudio einen Fehler meldet): neu öffnen.
-SPRACHE_STUMM_S = 5.0
-# Kommt so lange (s) gar kein Block mehr, hängt der Stream: Nach einem
-# USB-Aussetzer blieb das Lesen ohne Fehler für immer stehen (Pegel
-# eingefroren, Zustand "hoert", keine Befehle mehr). Dann neu öffnen.
-SPRACHE_HAENGT_S = 3.0
-# So viele Blöcke (je 0,25 s) puffert der Hör-Thread, wenn die Auswertung
-# kurz nicht hinterherkommt (Piper rechnet); ältere fallen weg.
-SPRACHE_BLOCK_PUFFER = 20
-# So lange (s) darf das Schließen eines toten Streams dauern. Hängt auch
-# das, wird er liegen gelassen, damit der Neuversuch nicht mit hängt.
-SPRACHE_SCHLIESSEN_S = 2.0
-# Kommt der Hör-Thread selbst so lange (s) nicht voran (z. B. hängt schon das
-# Öffnen des Mikrofons in PortAudio), startet die Wache einen neuen. Muss
-# länger sein als ein ganzer Neuversuch (Frist + Schließen + Warten).
-SPRACHE_THREAD_HAENGT_S = 15.0
-# Höchstens so oft hintereinander; danach Zustand "fehler" mit dem Hinweis,
-# den Server neu zu starten (jeder hängende Thread bleibt liegen).
-SPRACHE_THREAD_MAX_NEU = 3
-# Beim Mapping ist das Mikrofon zu (keine Sprachbefehle): Der Stream belastet
-# den USB-Bus, an dem auch der Lidar hängt, und Vosk die CPU, die SLAM
-# braucht; ein falsch gehörtes "folgen" bräche zudem die Kartierfahrt ab.
-SPRACHE_AUS_BEIM_MAPPEN = True
-# So oft (s) schaut der Hör-Thread in der Pause, ob sie vorbei ist.
-SPRACHE_PAUSE_PRUEFEN_S = 0.5
+# Failsafe after USB dropouts. After a crash the C270 came back faster than
+# the USB microphone, and recognition then stayed stuck on the worse C270
+# (which is why it is now excluded entirely). If it runs on a less
+# preferred microphone, it checks this often (s) whether a better one has
+# registered again, and switches ...
+SPEECH_MICROPHONE_CHECK_S = 5.0
+# ... if it was already there when opening and PortAudio still did not find
+# it, it only tries again after this time (s) (no constant switching).
+SPEECH_MICROPHONE_RETRY_S = 30.0
+# If the microphone delivers only exact zeros for this long (s), the stream
+# is dead (the device is gone without PortAudio reporting an error): reopen.
+SPEECH_SILENT_S = 5.0
+# If no block at all arrives for this long (s), the stream hangs: after a
+# USB dropout, reading stopped forever without an error (level frozen,
+# state "hoert", no more commands). Then reopen.
+SPEECH_HANG_S = 3.0
+# The listening thread buffers this many blocks (0.25 s each) when the
+# evaluation briefly cannot keep up (Piper computing); older ones are
+# dropped.
+SPEECH_BLOCK_BUFFER = 20
+# Closing a dead stream may take this long (s). If that hangs as well, it
+# is abandoned so that the retry does not hang along with it.
+SPEECH_CLOSE_S = 2.0
+# If the listening thread itself makes no progress for this long (s) (e.g.
+# even opening the microphone hangs in PortAudio), the watchdog starts a
+# new one. Must be longer than a whole retry (deadline + closing + waiting).
+SPEECH_THREAD_HANG_S = 15.0
+# At most this many times in a row; after that state "fehler" with the hint
+# to restart the server (every hanging thread is left behind).
+SPEECH_THREAD_MAX_RESTARTS = 3
+# During mapping the microphone is closed (no speech commands): the stream
+# loads the USB bus that the lidar is also on, and Vosk loads the CPU that
+# SLAM needs; a misheard "folgen" would also abort the mapping drive.
+SPEECH_OFF_WHILE_MAPPING = True
+# How often (s) the listening thread checks during the pause whether it is
+# over.
+SPEECH_PAUSE_CHECK_S = 0.5

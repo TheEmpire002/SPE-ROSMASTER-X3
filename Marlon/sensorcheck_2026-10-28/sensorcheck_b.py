@@ -1,6 +1,6 @@
-# Sensor-Check Phase B: ueber ROS2 (im Container x3, Treiber + Lidar laufen).
-# Aufruf im Container:  python3 sensorcheck_b.py  -> schreibt phase_b.txt / phase_b.json
-# Raeder in der Luft! Am Ende kurzer cmd_vel-Test (0,2 m/s, 1 rad/s).
+# Sensor check phase B: via ROS2 (in container x3, driver + lidar running).
+# Run inside the container:  python3 sensorcheck_b.py  -> writes phase_b.txt / phase_b.json
+# Wheels off the ground! At the end a short cmd_vel test (0.2 m/s, 1 rad/s).
 import json
 import math
 import statistics as st
@@ -91,20 +91,20 @@ def scan_summary(lst):
         valid.append(len(ok) / max(len(m.ranges), 1))
     out["punkte"] = stats(npts)
     out["anteil_gueltig"] = stats(valid)
-    # Entfernung je 30-Grad-Sektor (Rohwinkel des Lidars), letzter Scan
-    sek = {}
+    # Distance per 30-degree sector (raw lidar angle), last scan
+    sect = {}
     for i, r in enumerate(m0.ranges):
         if not (math.isfinite(r) and m0.range_min <= r <= m0.range_max):
             continue
         a = math.degrees(m0.angle_min + i * m0.angle_increment)
         a = (a + 180.0) % 360.0 - 180.0
         k = int((a + 180.0) // 30) * 30 - 180
-        sek.setdefault(k, []).append(r)
-    out["sektoren_min_m"] = {f"{k}..{k + 30}": round(min(v), 3) for k, v in sorted(sek.items())}
+        sect.setdefault(k, []).append(r)
+    out["sektoren_min_m"] = {f"{k}..{k + 30}": round(min(v), 3) for k, v in sorted(sect.items())}
     allr = [r for r in m0.ranges if math.isfinite(r) and m0.range_min <= r <= m0.range_max]
     out["naechster_m"] = round(min(allr), 3) if allr else None
     out["weitester_m"] = round(max(allr), 3) if allr else None
-    # Winkel des naechsten Punkts (Rohwinkel), hilft bei der Ausrichtung
+    # Angle of the nearest point (raw angle), helps with alignment
     if allr:
         i = min(range(len(m0.ranges)), key=lambda j: m0.ranges[j]
                 if math.isfinite(m0.ranges[j]) and m0.ranges[j] >= m0.range_min else 1e9)
@@ -140,11 +140,11 @@ def vel_summary(lst):
 rclpy.init()
 node = Probe()
 try:
-    log("Ruhe 20 s, alle Topics mitschreiben ...")
+    log("Idle 20 s, recording all topics ...")
     node.spin_for(20.0)
     M = node.msgs
     DATA["raten"] = {k: rate(v) for k, v in M.items()}
-    log(f"  Raten {DATA['raten']}")
+    log(f"  Rates {DATA['raten']}")
     DATA["scan"] = scan_summary(M["scan"])
     log(f"  scan {DATA['scan']}")
     DATA["imu"] = imu_summary(M["imu"])
@@ -155,14 +155,14 @@ try:
         log(f"  mag {DATA['mag']}")
     DATA["volt"] = stats([m.data for _, m in M["volt"]])
     DATA["edition"] = M["ed"][-1][1].data if M["ed"] else None
-    log(f"  Akku {DATA['volt']}  Edition {DATA['edition']}")
+    log(f"  Battery {DATA['volt']}  Edition {DATA['edition']}")
     if M["js"]:
         js = M["js"][-1][1]
         DATA["joint_states"] = {"namen": list(js.name), "pos": [round(p, 3) for p in js.position]}
         log(f"  joint_states {DATA['joint_states']}")
     DATA["vel_ruhe"] = vel_summary(M["vel"])
 
-    # cmd_vel-Kette: Latenz bis vel_raw reagiert + erreichte Geschwindigkeit
+    # cmd_vel chain: latency until vel_raw reacts + speed reached
     DATA["cmd"] = {}
     for name, cmd in (("vor", (0.2, 0.0, 0.0)), ("links", (0.0, 0.2, 0.0)),
                       ("drehen_links", (0.0, 0.0, 1.0))):
@@ -174,13 +174,13 @@ try:
         vel = node.msgs["vel"]
         idx = {"vor": lambda m: m.linear.x, "links": lambda m: m.linear.y,
                "drehen_links": lambda m: m.angular.z}[name]
-        soll = max(cmd, key=abs)
-        t_start = next((t for t, m in vel if abs(idx(m)) > 0.2 * abs(soll)), None)
-        t_90 = next((t for t, m in vel if abs(idx(m)) > 0.9 * abs(soll)), None)
+        requested = max(cmd, key=abs)
+        t_start = next((t for t, m in vel if abs(idx(m)) > 0.2 * abs(requested)), None)
+        t_90 = next((t for t, m in vel if abs(idx(m)) > 0.9 * abs(requested)), None)
         stat = [idx(m) for t, m in vel if t0 + 1.5 < t < t0 + 3.0]
-        t_stop = next((t for t, m in vel if t > t0 + 3.0 and abs(idx(m)) < 0.1 * abs(soll)), None)
+        t_stop = next((t for t, m in vel if t > t0 + 3.0 and abs(idx(m)) < 0.1 * abs(requested)), None)
         imu_z = [m.angular_velocity.z for t, m in node.msgs["imu"] if t0 + 1.5 < t < t0 + 3.0]
-        r = {"soll": soll,
+        r = {"soll": requested,
              "latenz_20%_s": t_start and round(t_start - t0, 3),
              "anstieg_90%_s": t_90 and round(t_90 - t0, 3),
              "ist_stationaer": stats(stat),
@@ -189,9 +189,9 @@ try:
         DATA["cmd"][name] = r
         log(f"cmd {name} {cmd}: {r}")
         node.spin_for(1.0)
-    log("fertig")
+    log("done")
 except KeyboardInterrupt:
-    log("abgebrochen")
+    log("aborted")
 finally:
     for _ in range(5):
         node.pub.publish(Twist())

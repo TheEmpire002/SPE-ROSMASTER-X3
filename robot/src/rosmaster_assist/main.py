@@ -1,7 +1,7 @@
-"""Startpunkt der Roboter-Software.
+"""Entry point of the robot software.
 
-    python -m rosmaster_assist.main --mock    # ohne Hardware, zum Entwickeln
-    python -m rosmaster_assist.main           # auf dem Roboter
+    python -m rosmaster_assist.main --mock    # without hardware, for development
+    python -m rosmaster_assist.main           # on the robot
 """
 
 from __future__ import annotations
@@ -25,55 +25,55 @@ log = logging.getLogger("rosmaster_assist")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="ROSMASTER X3 Hilfsroboter")
+    p = argparse.ArgumentParser(description="ROSMASTER X3 helper robot")
     p.add_argument(
         "--mock",
         action="store_true",
-        help="Ohne Hardware starten (Fahrbefehle nur ins Log)",
+        help="Start without hardware (drive commands only go to the log)",
     )
-    p.add_argument("--host", default=config.HOST, help=f"Standard: {config.HOST}")
-    p.add_argument("--port", type=int, default=config.PORT, help=f"Standard: {config.PORT}")
-    p.add_argument("--debug", action="store_true", help="Ausführliche Logausgabe")
+    p.add_argument("--host", default=config.HOST, help=f"Default: {config.HOST}")
+    p.add_argument("--port", type=int, default=config.PORT, help=f"Default: {config.PORT}")
+    p.add_argument("--debug", action="store_true", help="Verbose log output")
     return p.parse_args(argv)
 
 
-def _zertifikat() -> tuple[str, str] | None:
-    """Selbst unterschriebenes Zertifikat für HTTPS; erzeugt es beim ersten Mal.
+def _certificate() -> tuple[str, str] | None:
+    """Self-signed certificate for HTTPS; creates it the first time.
 
-    None, wenn es nicht geht -- dann läuft eben nur HTTP.
+    None if that is not possible -- then only HTTP runs.
     """
-    ordner = os.path.expanduser(config.HTTPS_ORDNER)
-    zert, schluessel = os.path.join(ordner, "cert.pem"), os.path.join(ordner, "key.pem")
-    if os.path.isfile(zert) and os.path.isfile(schluessel):
-        return zert, schluessel
+    folder = os.path.expanduser(config.HTTPS_FOLDER)
+    cert, key = os.path.join(folder, "cert.pem"), os.path.join(folder, "key.pem")
+    if os.path.isfile(cert) and os.path.isfile(key):
+        return cert, key
     if shutil.which("openssl") is None:
-        log.warning("HTTPS aus: openssl fehlt (Durchsage vom Handy geht dann nicht)")
+        log.warning("HTTPS off: openssl missing (announcements from the phone will not work)")
         return None
     try:
-        os.makedirs(ordner, exist_ok=True)
+        os.makedirs(folder, exist_ok=True)
         subprocess.run(
             ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "3650",
-             "-subj", "/CN=rosmaster", "-keyout", schluessel, "-out", zert],
+             "-subj", "/CN=rosmaster", "-keyout", key, "-out", cert],
             check=True, capture_output=True, timeout=60,
         )
-        # Unter sudo gestartet: Die Dateien sollen trotzdem dem Benutzer
-        # gehören, sonst kann ein späterer Start ohne sudo sie nicht lesen.
+        # Started under sudo: the files should still belong to the user,
+        # otherwise a later start without sudo cannot read them.
         uid, gid = os.environ.get("SUDO_UID"), os.environ.get("SUDO_GID")
         if uid and gid and hasattr(os, "chown"):
-            for pfad in (ordner, zert, schluessel):
-                os.chown(pfad, int(uid), int(gid))
+            for path in (folder, cert, key):
+                os.chown(path, int(uid), int(gid))
     except (OSError, subprocess.SubprocessError) as exc:
-        log.warning("HTTPS aus: Zertifikat ließ sich nicht erzeugen (%s)", exc)
+        log.warning("HTTPS off: could not create certificate (%s)", exc)
         return None
-    log.info("HTTPS: neues Zertifikat in %s", ordner)
-    return zert, schluessel
+    log.info("HTTPS: new certificate in %s", folder)
+    return cert, key
 
 
-class _NebenServer(uvicorn.Server):
-    """Zweiter Zugang (HTTPS) zur selben App.
+class _SecondaryServer(uvicorn.Server):
+    """Second access point (HTTPS) to the same app.
 
-    Fängt keine Signale ab: Strg+C gehört dem Haupt-Server, der beim Beenden
-    die Motoren anhält. Der Neben-Server wird danach einfach abgeräumt.
+    Does not capture signals: Ctrl+C belongs to the main server, which stops
+    the motors on shutdown. The secondary server is simply cleaned up after that.
     """
 
     @contextlib.contextmanager
@@ -81,26 +81,26 @@ class _NebenServer(uvicorn.Server):
         yield
 
 
-async def _neben_sicher(neben: uvicorn.Server) -> None:
-    """HTTPS darf ausfallen, ohne den Server mitzureißen.
+async def _secondary_guarded(secondary: uvicorn.Server) -> None:
+    """HTTPS may fail without taking the server down with it.
 
-    Ist der Port belegt, beendet uvicorn mit sys.exit(1) -- in einer Aufgabe
-    risse das den ganzen Prozess mit, samt Fahren und Lidar (am 03.11.
-    passiert, als ein zweiter Server lief). Dann eben nur HTTP.
+    If the port is in use, uvicorn exits with sys.exit(1) -- inside a task that
+    would take down the whole process, including driving and lidar (happened
+    on 03.11. while a second server was running). Then just HTTP.
     """
     try:
-        await neben.serve()
+        await secondary.serve()
     except (SystemExit, OSError) as exc:
-        log.warning("HTTPS aus: Port %d geht nicht (%s) -- Durchsage vom Handy fehlt, "
-                    "sonst läuft alles", config.HTTPS_PORT, exc)
+        log.warning("HTTPS off: port %d not usable (%s) -- announcements from the phone "
+                    "unavailable, everything else runs", config.HTTPS_PORT, exc)
 
 
-async def _mit_https(haupt: uvicorn.Server, neben: uvicorn.Server) -> None:
-    aufgabe = asyncio.create_task(_neben_sicher(neben))
+async def _with_https(main_server: uvicorn.Server, secondary: uvicorn.Server) -> None:
+    task = asyncio.create_task(_secondary_guarded(secondary))
     try:
-        await haupt.serve()
+        await main_server.serve()
     finally:
-        aufgabe.cancel()
+        task.cancel()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -119,35 +119,35 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     if args.mock:
-        log.warning("MOCK-MODUS -- es bewegt sich nichts")
+        log.warning("MOCK MODE -- nothing moves")
 
-    # Ohne Hardware auch kein Kamerabild erwarten: dann das Testbild.
+    # Without hardware, do not expect a camera image either: use the test image.
     app = create_app(driver, use_mock_camera=args.mock)
 
     host_text = "localhost" if args.host == "0.0.0.0" else args.host
-    log.info("Web-App: http://%s:%d", host_text, args.port)
+    log.info("Web app: http://%s:%d", host_text, args.port)
 
-    # log_config=None: uvicorn soll unser Logging-Format nicht überschreiben.
-    # timeout_graceful_shutdown: offene Streams nach kurzer Zeit kappen,
-    # damit Strg+C immer beendet und die Motoren sicher stoppen.
-    gemeinsam = dict(log_config=None, timeout_graceful_shutdown=config.SHUTDOWN_TIMEOUT_S)
-    https = _zertifikat() if config.HTTPS_PORT else None
+    # log_config=None: uvicorn must not overwrite our logging format.
+    # timeout_graceful_shutdown: cut open streams after a short time so that
+    # Ctrl+C always exits and the motors stop reliably.
+    common = dict(log_config=None, timeout_graceful_shutdown=config.SHUTDOWN_TIMEOUT_S)
+    https = _certificate() if config.HTTPS_PORT else None
     if https is None:
-        uvicorn.run(app, host=args.host, port=args.port, **gemeinsam)
+        uvicorn.run(app, host=args.host, port=args.port, **common)
         return 0
 
-    haupt = uvicorn.Server(uvicorn.Config(app, host=args.host, port=args.port, **gemeinsam))
-    # lifespan="off": Hochfahren und Aufräumen (Antrieb, Lidar, Kamera) nur
-    # einmal, über den Haupt-Server -- beide teilen sich dieselbe App.
-    neben = _NebenServer(uvicorn.Config(
+    main_server = uvicorn.Server(uvicorn.Config(app, host=args.host, port=args.port, **common))
+    # lifespan="off": startup and cleanup (drive, lidar, camera) only once,
+    # via the main server -- both share the same app.
+    secondary = _SecondaryServer(uvicorn.Config(
         app, host=args.host, port=config.HTTPS_PORT, lifespan="off",
-        ssl_certfile=https[0], ssl_keyfile=https[1], **gemeinsam,
+        ssl_certfile=https[0], ssl_keyfile=https[1], **common,
     ))
-    log.info("Web-App mit Mikrofon (Durchsage): https://%s:%d", host_text, config.HTTPS_PORT)
+    log.info("Web app with microphone (announcements): https://%s:%d", host_text, config.HTTPS_PORT)
     try:
-        asyncio.run(_mit_https(haupt, neben))
+        asyncio.run(_with_https(main_server, secondary))
     except KeyboardInterrupt:
-        pass  # wie uvicorn.run: Strg+C ist ein normales Ende
+        pass  # like uvicorn.run: Ctrl+C is a normal exit
     return 0
 
 
