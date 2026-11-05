@@ -39,6 +39,9 @@ HARD = "hart"
 SOFT = "weich"
 MOTION = "bewegung"
 
+# who paused, for the /map page
+_PAUSE_TEXT = {"nutzer": "von Hand pausiert", "slam": "während der Erstkartierung mit SLAM"}
+
 # states (also the protocol values of state.karte.kartieren.zustand)
 START = "start"              # empty map, waiting to found it
 INTEGRATING = "integriert"   # writes into the map
@@ -169,7 +172,7 @@ class IntegrateGate:
     def pause(self, by: str) -> None:
         self._paused_by.add(by)
         self.state = PAUSED
-        self.reason = "pausiert"
+        self.reason = _PAUSE_TEXT.get(by, "pausiert")
         self._reset()
 
     def resume(self, by: str) -> None:
@@ -320,4 +323,5 @@ class IntegrateGate:
             "von": config.LIVE_GATE_CONFIRM_N,
             "durchgelassen": self.passed,
             "eingefroren_mal": self.frozen,
+            "pausiert_von": sorted(self._paused_by),
         }

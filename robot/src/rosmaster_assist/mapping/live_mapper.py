@@ -506,6 +506,7 @@ class LiveMapper:
             "groesse_m": [round(size[0], 1), round(size[1], 1)] if size else None,
             "aufnahmen": self.scans_written,
             "eingefroren_mal": g["eingefroren_mal"],
+            "pausiert_von": g["pausiert_von"],
             "zu_gross": self.too_big,
             "ms": {k: round(v, 1) for k, v in self._ms.items()},
         }

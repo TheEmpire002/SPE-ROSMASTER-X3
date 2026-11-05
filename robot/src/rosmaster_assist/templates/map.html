@@ -80,6 +80,12 @@
     canvas.zielen { cursor: crosshair; }
     .legende { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--muted); font-size: 11px; }
     .legende i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+    .overlay { position: absolute; top: 12px; left: 12px; right: 12px; padding: 9px 12px; border-radius: 9px; border: 1px solid #2f5f9e; background: #13233aee; color: #cfe0fb; font-size: 13px; pointer-events: none; }
+    .overlay.frozen { border-color: #9a6a1f; background: #2b2213ee; color: #f5d9a8; }
+    details.erst { border: 1px solid var(--border); border-radius: 9px; padding: 10px; }
+    details.erst > summary { cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 600; }
+    details.erst[open] > summary { margin-bottom: 10px; }
+    details.erst .erst-body { display: grid; gap: 14px; }
     @media (max-width: 900px) {
       .layout { grid-template-columns: 1fr; }
       .canvas-wrap { min-height: 420px; height: 58vh; }
@@ -100,7 +106,7 @@
     <header>
       <div>
         <h1>Roboter-Mapping</h1>
-        <div class="sub">Live-Karte des Rosmaster X3 · LiDAR / SLAM</div>
+        <div class="sub">Live-Karte des Rosmaster X3 · kartiert bei jeder Fahrt mit</div>
       </div>
       <div id="statusBadge" class="status"><span class="dot"></span><span id="statusText">Verbindung wird hergestellt …</span></div>
     </header>
@@ -115,8 +121,9 @@
           <canvas id="mapCanvas" aria-label="Live-Karte"></canvas>
           <div class="empty" id="emptyState">
             <strong>Noch keine Karte vorhanden</strong>
-            <span>Starte das Mapping, damit ROS 2 die Umgebung erfasst.</span>
+            <span>Die Karte beginnt, sobald der Roboter kurz stillsteht, und wächst bei jeder Fahrt.</span>
           </div>
+          <div class="overlay" id="liveOverlay" hidden></div>
         </div>
       </section>
 
@@ -124,16 +131,12 @@
         <div class="side-head"><strong>Steuerung</strong></div>
         <div class="side-body">
           <div class="full">
-            <div class="button-row">
-              <button id="startButton" class="primary" type="button">▶ Starten</button>
-              <button id="stopButton" class="stop" type="button" disabled>■ Stoppen</button>
+            <label>Dauerkartierung</label>
+            <div class="ortung idle" id="liveText">Dauerkartierung: keine Angaben.</div>
+            <div class="button-row" style="margin-top:9px">
+              <button id="livePause" type="button" disabled>❚❚ Pausieren</button>
+              <button id="neueKarte" class="stop" type="button" disabled>Neue Karte beginnen</button>
             </div>
-            <label class="check"><input type="checkbox" id="autoFahrt" checked> nach dem Start automatisch abfahren, Raum für Raum</label>
-          </div>
-
-          <div class="full">
-            <button id="fahrtButton" class="secondary" type="button" disabled>Kartierfahrt starten</button>
-            <div class="fahrt idle" id="fahrtText">Kartierfahrt aus. Der Roboter fährt erst, wenn sie gestartet wird.</div>
           </div>
 
           <div class="full">
@@ -150,16 +153,44 @@
             <div class="help" id="modusHilfe" style="margin-top:7px"></div>
           </div>
 
-          <div class="hinweis idle full" id="hinweis">Mapping ist gestoppt.</div>
-
-          <div class="metrics full">
-            <div class="metric"><span>Docker-Container</span><strong id="containerState">Unbekannt</strong></div>
-            <div class="metric"><span>Lidar → ROS</span><strong id="feedState">Unbekannt</strong></div>
-            <div class="metric"><span>Kartenempfang</span><strong id="bridgeState">Unbekannt</strong></div>
-            <div class="metric"><span>Letzte Karte</span><strong id="lastMap">–</strong></div>
-            <div class="metric"><span>Kartengröße</span><strong id="mapSize">–</strong></div>
-            <div class="metric"><span>Auflösung</span><strong id="resolution">–</strong></div>
+          <div class="full">
+            <label>Mission</label>
+            <div class="button-row">
+              <button id="missionStart" type="button" disabled>⚑ Missionsstart hier</button>
+              <button id="missionZurueck" type="button" disabled>↶ Zurück zum Missionsstart</button>
+            </div>
+            <div class="help" id="missionText" style="margin-top:7px">Missionsstart setzen, losfahren -- „Zurück“ fährt auf der gefahrenen Spur dorthin zurück.</div>
           </div>
+
+          <details class="erst full" id="erstBox">
+            <summary>Erstkartierung mit SLAM (optional)</summary>
+            <div class="erst-body">
+              <div class="help">Für große Wohnungen mit Rundwegen: SLAM schließt Schleifen. Die Dauerkartierung pausiert solange.</div>
+              <div>
+                <div class="button-row">
+                  <button id="startButton" class="primary" type="button">▶ Starten</button>
+                  <button id="stopButton" class="stop" type="button" disabled>■ Stoppen</button>
+                </div>
+                <label class="check"><input type="checkbox" id="autoFahrt" checked> nach dem Start automatisch abfahren, Raum für Raum</label>
+              </div>
+
+              <div>
+                <button id="fahrtButton" class="secondary" type="button" disabled>Kartierfahrt starten</button>
+                <div class="fahrt idle" id="fahrtText">Kartierfahrt aus. Der Roboter fährt erst, wenn sie gestartet wird.</div>
+              </div>
+
+              <div class="hinweis idle" id="hinweis">Mapping ist gestoppt.</div>
+
+              <div class="metrics">
+                <div class="metric"><span>Docker-Container</span><strong id="containerState">Unbekannt</strong></div>
+                <div class="metric"><span>Lidar → ROS</span><strong id="feedState">Unbekannt</strong></div>
+                <div class="metric"><span>Kartenempfang</span><strong id="bridgeState">Unbekannt</strong></div>
+                <div class="metric"><span>Letzte Karte</span><strong id="lastMap">–</strong></div>
+                <div class="metric"><span>Kartengröße</span><strong id="mapSize">–</strong></div>
+                <div class="metric"><span>Auflösung</span><strong id="resolution">–</strong></div>
+              </div>
+            </div>
+          </details>
 
           <div class="full">
             <label for="mapName">Name der Karte</label>
@@ -171,6 +202,7 @@
           <div class="full">
             <label>Gespeicherte Karten</label>
             <div id="savedMaps" class="saved-list"><div class="help">Noch keine gespeicherten Karten.</div></div>
+            <div class="help" style="margin-top:6px">Eine geladene Karte wird zur Hauptkarte und wächst beim Fahren weiter.</div>
           </div>
 
           <div class="message full" id="message">Warte auf Verbindung zur Mapping-API.</div>
@@ -184,8 +216,10 @@
             <span><i style="background:#9be15d"></i>geplanter Weg / Ziel</span>
             <span><i style="background:#f0a020"></i>unbekannte Stelle</span>
             <span><i style="background:#c792ea"></i>Ausgangspunkt</span>
+            <span><i style="background:#3dd6c6"></i>Rückweg-Spur</span>
+            <span><i style="background:#ff7ab6"></i>Missionsstart</span>
           </div>
-          <div class="help full">Mausrad: Zoom · Ziehen: Karte verschieben · Doppelklick: Ansicht einpassen · Mit „Hierhin fahren“ oder „Hier stehe ich“ auf die Karte tippen (beim Zeigen ziehen = Blickrichtung)</div>
+          <div class="help full">Mausrad: Zoom · Ziehen: Karte verschieben · Doppelklick: Ansicht einpassen · Mit „Hierhin fahren“ oder „Hier stehe ich“ auf die Karte tippen (beim Zeigen ziehen = Blickrichtung) · Ziele nur im schon gescannten Bereich</div>
         </div>
       </aside>
     </div>
@@ -278,6 +312,8 @@
           ? `vor ${Math.max(0, Math.round(Date.now() / 1000 - s.last_map_at))} s` : '–';
         $('startButton').disabled = running || active;
         $('stopButton').disabled = !running && !active && !s.bridge_running;
+        // SLAM running: keep its section open, it has the stop button
+        if (active && !mappingActive) $('erstBox').open = true;
         mappingActive = active;
         // Map from an earlier run (e.g. in a second tab)? Discard it.
         if (mapPayload && s.started_at && (mapPayload.received_at || 0) < s.started_at) clearMap();
@@ -415,6 +451,35 @@
         const o = localization.ortung || {};
         for (const [x, y] of localization.luecken || []) drawDot(x, y, '#f0a020', 4);
         drawLine(localization.spur, '#4fa3ff', 2);
+        // way-back trail: one line per unbroken piece, strict crumbs solid
+        let piece = [];
+        const crumbs = localization.brotkrumen || [];
+        crumbs.forEach((c, i) => {
+          piece.push([c[0], c[1]]);
+          const next = crumbs[i + 1];
+          if (!next || next[3] !== c[3]) {
+            drawLine(piece, '#3dd6c688', 3);
+            piece = [];
+          }
+        });
+        for (const [x, y, strict] of crumbs) if (strict) drawDot(x, y, '#3dd6c6', 2);
+        const mission = (localization.anker || {}).mission;
+        if (mission) {
+          // flag: pole and pennant
+          const [mx, my] = worldToCanvas(mission[0], mission[1]);
+          ctx.strokeStyle = '#ff7ab6';
+          ctx.fillStyle = '#ff7ab6';
+          ctx.lineWidth = 2 * dpr;
+          ctx.beginPath();
+          ctx.moveTo(mx, my);
+          ctx.lineTo(mx, my - 18 * dpr);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(mx, my - 18 * dpr);
+          ctx.lineTo(mx + 11 * dpr, my - 14 * dpr);
+          ctx.lineTo(mx, my - 10 * dpr);
+          ctx.fill();
+        }
         // Starting point of the map ("home").
         if (o.start) {
           const [sx, sy] = worldToCanvas(o.start[0], o.start[1]);
@@ -472,8 +537,10 @@
         if (o.name) text = `Karte „${o.name}“: ` + text;
         else if (o.live) text = 'Live-Karte: ' + text;
         if (drive.aktiv) {
-          text += ` · ${drive.art === 'heim' ? 'fährt zum Ausgangspunkt' : 'fährt zum Ziel'}`
-            + (drive.rest_m != null ? `, noch ${drive.rest_m.toFixed(1)} m` : '');
+          const what = { heim: 'fährt zum Ausgangspunkt', zurueck: 'fährt zurück' }[drive.art] || 'fährt zum Ziel';
+          text += ` · ${what}`
+            + (drive.rest_m != null ? `, noch ${drive.rest_m.toFixed(1)} m` : '')
+            + (drive.wartet ? ` -- hält an, ${drive.wartet}` : '');
         } else if (drive.grund) {
           text += ` · letzte Fahrt: ${drive.grund}`;
         }
@@ -488,7 +555,76 @@
         $('zielStop').disabled = !drive.aktiv;
         if (mode === 'ziel' && !canDrive) setMode(null);
         if (mode === 'pose' && !o.karte) setMode(null);
+        setLive(d.kartieren, o);
+        const mission = (d.anker || {}).mission;
+        const inMain = !!d.kartieren && !!o.karte && !o.live;
+        $('missionStart').disabled = !canDrive || !inMain;
+        $('missionZurueck').disabled = !canDrive || !mission;
+        $('missionText').textContent = drive.aktiv && drive.art === 'zurueck'
+          ? 'Fährt auf der gefahrenen Spur zurück. Abbrechen mit „Fahrt abbrechen“.'
+          : mission
+            ? `Missionsstart gesetzt · ${(d.brotkrumen || []).length ? 'Spur wird aufgezeichnet' : 'noch keine Spur'}`
+            : 'Missionsstart setzen, losfahren -- „Zurück“ fährt auf der gefahrenen Spur dorthin zurück.';
         draw();
+      }
+
+      // always-on mapping: what the integrate gate is doing, and why
+      function setLive(k, o) {
+        const field = $('liveText');
+        const overlay = $('liveOverlay');
+        $('livePause').disabled = !k || k.zustand === 'aus';
+        $('neueKarte').disabled = !k || mappingActive;
+        if (!k) {
+          field.textContent = 'Dauerkartierung ist abgeschaltet.';
+          field.className = 'ortung idle';
+          overlay.hidden = true;
+          return;
+        }
+        const size = k.groesse_m ? ` · ${k.groesse_m[0]} × ${k.groesse_m[1]} m` : '';
+        const userPaused = (k.pausiert_von || []).includes('nutzer');
+        let text;
+        let state = 'ortung';
+        if (k.zustand === 'integriert') {
+          text = `Kartiert mit${size} · ${k.aufnahmen} Aufnahmen eingetragen`;
+        } else if (k.zustand === 'bestaetigt') {
+          text = `Bestätigt die Lage ${k.bestaetigt}/${k.von} -- danach trägt er wieder ein`;
+          state = 'ortung unsicher';
+        } else if (k.zustand === 'eingefroren') {
+          text = `Eingefroren: ${k.grund || 'Lage unsicher'} -- die Karte bleibt unverändert`;
+          state = 'ortung unsicher';
+        } else if (k.zustand === 'pausiert') {
+          text = `Pausiert${k.grund ? ': ' + k.grund : ''} -- die Karte bleibt unverändert`;
+          state = 'ortung idle';
+        } else if (k.zustand === 'start') {
+          text = k.grund || 'Neue Karte: bitte kurz stillhalten, dann beginnt sie hier';
+          state = 'ortung unsicher';
+        } else {
+          text = 'Dauerkartierung aus';
+          state = 'ortung idle';
+        }
+        if (k.zu_gross) text += ' · Karte hat die Höchstgröße erreicht, wächst nicht weiter';
+        if (k.speicherfehler) text += ` · Speichern fehlgeschlagen: ${k.speicherfehler}`;
+        if (k.eingefroren_mal >= 3 && k.zustand === 'eingefroren') {
+          text += ' · Friert sie oft ein: einmal die Erstkartierung mit SLAM (unten) machen';
+        }
+        field.textContent = text;
+        field.className = state;
+        $('livePause').textContent = userPaused ? '▶ Fortsetzen' : '❚❚ Pausieren';
+        $('livePause').dataset.paused = userPaused ? '1' : '';
+        // over the map only what matters while driving
+        if (k.zustand === 'eingefroren' || k.zustand === 'bestaetigt') {
+          overlay.textContent = k.zustand === 'eingefroren'
+            ? `Karte eingefroren -- ${k.grund || 'Lage unsicher'}`
+            : `Karte eingefroren -- bestätigt ${k.bestaetigt}/${k.von}`;
+          overlay.className = 'overlay frozen';
+          overlay.hidden = false;
+        } else if (o && o.karte && !o.sicher) {
+          overlay.textContent = `Lage unsicher${o.grund ? ' -- ' + o.grund : ''}`;
+          overlay.className = 'overlay frozen';
+          overlay.hidden = false;
+        } else {
+          overlay.hidden = true;
+        }
       }
 
       function setMode(newMode) {
@@ -601,7 +737,7 @@
               try {
                 await api('/api/mapping/laden', { method: 'POST', body: JSON.stringify({ name: item.name }) });
                 view.fitted = false;
-                message(`Karte „${item.name}“ geladen. Er sucht seine Lage am Ausgangspunkt -- klappt das nicht, mit „Hier stehe ich“ zeigen.`);
+                message(`Karte „${item.name}“ geladen -- sie wächst beim Fahren weiter. Er sucht seine Lage an der letzten Stelle und am Ausgangspunkt -- klappt das nicht, mit „Hier stehe ich“ zeigen.`);
               } catch (error) { message(error.message, true); }
             });
             row.append(name, loadButton);
@@ -682,6 +818,37 @@
             method: 'POST', body: JSON.stringify({ x: start[0], y: start[1], winkel: start[2] }),
           }));
           message('Fährt zum Ausgangspunkt der Karte.');
+        } catch (error) { message(error.message, true); }
+      });
+
+      $('missionStart').addEventListener('click', async () => {
+        try {
+          setLocalization(await api('/api/mapping/mission/start', { method: 'POST' }));
+          message('Missionsstart gesetzt -- der Rückweg führt hierher.');
+        } catch (error) { message(error.message, true); }
+      });
+      $('missionZurueck').addEventListener('click', async () => {
+        try {
+          setLocalization(await api('/api/mapping/zurueck', {
+            method: 'POST', body: JSON.stringify({ ziel: 'mission' }),
+          }));
+          message('Fährt zurück zum Missionsstart.');
+        } catch (error) { message(error.message, true); }
+      });
+      $('livePause').addEventListener('click', async () => {
+        const resume = !!$('livePause').dataset.paused;
+        try {
+          await api('/api/mapping/live', { method: 'POST', body: JSON.stringify({ aktiv: resume }) });
+          message(resume ? 'Dauerkartierung läuft wieder (nach kurzer Bestätigung).'
+            : 'Dauerkartierung pausiert -- die Lage wird weiter verfolgt, die Karte ändert sich nicht.');
+        } catch (error) { message(error.message, true); }
+      });
+      $('neueKarte').addEventListener('click', async () => {
+        if (!window.confirm('Neue Karte beginnen? Die jetzige Hauptkarte wird gesichert (Ordner backups) und durch eine leere ersetzt.')) return;
+        try {
+          await api('/api/mapping/hauptkarte/neu', { method: 'POST' });
+          clearMap();
+          message('Neue Karte: bitte den Roboter kurz stillhalten, dann beginnt sie an dieser Stelle.');
         } catch (error) { message(error.message, true); }
       });
 
