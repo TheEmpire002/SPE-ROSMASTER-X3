@@ -1,97 +1,97 @@
-# Roboter-API
+# Robot API
 
-Alles, was man braucht, um eine eigene Oberfläche, einen Autonomie-Baustein
-oder ein Skript an den Roboter anzubinden, ohne den Server-Code zu lesen.
+Everything you need to connect your own user interface, autonomy block or
+script to the robot, without reading the server code.
 
-Der Roboter bietet zwei Wege an:
+The robot offers two channels:
 
-| Weg | Adresse | Wofür |
+| Channel | Address | Used for |
 |---|---|---|
-| **WebSocket** | `ws://<IP-des-Pi>:8000/ws` | Fahren, Heimfahrt, Einstellungen; laufender Zustand vom Roboter |
-| **HTTP** | `http://<IP-des-Pi>:8000/...` | Kamerabild, Lidar-Aufnahme, Diagnose |
+| **WebSocket** | `ws://<Pi-IP>:8000/ws` | Driving, homing, settings; live state from the robot |
+| **HTTP** | `http://<Pi-IP>:8000/...` | Camera image, lidar scan, diagnostics |
 
-Die IP zeigt `hostname -I` auf dem Pi. Port 8000 ist der Standard
-(`--port` beim Start, `PORT` in `config.py`).
+`hostname -I` on the Pi shows the IP. Port 8000 is the default
+(`--port` at startup, `PORT` in `config.py`).
 
-Eine Anmeldung gibt es nicht: wer im selben WLAN ist, kann den Roboter
-steuern. HTTP-Endpunkte sind per CORS für alle Herkünfte freigegeben, eine
-Browser-App muss also nicht vom Roboter ausgeliefert werden.
-
----
-
-## Regeln, die man kennen muss
-
-Diese fünf Punkte bestimmen das Verhalten. Wer sie übersieht, wundert sich,
-warum der Roboter stehen bleibt.
-
-1. **Fahrbefehle laufend wiederholen.** Kommt `COMMAND_TIMEOUT_S` (0,5 s)
-   lang kein `drive`, hält der Roboter von selbst an. Das ist die
-   Totmannschaltung für WLAN-Abriss und abgestürzte Apps. Die Web-App
-   sendet mit **10 Hz**, und das ist auch die Empfehlung. Ein einzelnes
-   `drive` bewegt den Roboter also nur für einen Moment.
-   Mehrere Clients: Wer gerade lenkt (ein `drive` ungleich 0), hat
-   Vorrang. Nullen von anderen Verbindungen zählen erst
-   `DRIVE_VORRANG_S` (0,5 s) nach seinem letzten echten Befehl wieder,
-   sonst bremsen die Leerlauf-Nullen einer zweiten offenen App ihn aus.
-   `stop` wirkt immer, von jeder Verbindung.
-2. **Letzter Client weg heißt Stopp.** Trennt sich die letzte
-   WebSocket-Verbindung, hält der Roboter an und bricht eine laufende
-   Heimfahrt ab.
-3. **Der Server begrenzt, nicht der Client.** Jeder Befehl wird auf die
-   Werte aus der `limits`-Nachricht gekappt. Physikalisch schafft das
-   Fahrgestell ohnehin nur rund 1 m/s.
-4. **Die Kollisionsvermeidung kann eingreifen.** Ist sie eingeschaltet,
-   prüft der Fahrschutz, ob die Grundfläche des Roboters bei diesem Befehl
-   etwas berühren würde. Er bremst dann stufenlos, so dass der Roboter mit
-   Reaktionszeit und Bremsweg vorher steht, und sperrt zuletzt die Fahrt.
-   Wegfahren und Drehen, bei dem keine Ecke anstößt, bleiben erlaubt.
-   `distance` gilt ab Lidar-Mitte nach vorn; rundum hält die Roboterkante
-   `distance - ROBOTER_VORN_M` Luft. Was der Roboter tatsächlich ausführt,
-   steht in der `state`-Nachricht, nicht unbedingt das, was man geschickt
-   hat. Selbstständige Fahrten (Erkunden, Kartierfahrt, Heimfahrt,
-   Interaktion, genaue Fahrbefehle) prüft der Fahrschutz immer, mit
-   `FAHRSCHUTZ_RAND_M`, und ohne frischen Lidar-Scan fahren sie nicht.
-5. **Alle Clients sind gleichberechtigt.** Es gibt keine Steuerhoheit. Fahren
-   zwei Clients gleichzeitig, gilt der jeweils letzte Befehl. Zustand und
-   Meldungen gehen an alle.
+There is no authentication: anyone on the same Wi-Fi can control the robot.
+HTTP endpoints allow all origins via CORS, so a browser app does not have to
+be served by the robot.
 
 ---
 
-## Konventionen
+## Rules you need to know
 
-Überall dieselben, für Fahrbefehle, Position und Lidar:
+These five points determine the behavior. Overlook them and you will wonder
+why the robot keeps stopping.
 
-| Größe | Einheit | Richtung |
+1. **Repeat drive commands continuously.** If no `drive` arrives for
+   `COMMAND_TIMEOUT_S` (0.5 s), the robot stops on its own. This is the
+   dead man's switch for Wi-Fi dropouts and crashed apps. The web app
+   sends at **10 Hz**, and that is also the recommendation. A single
+   `drive` therefore moves the robot only for a moment.
+   Multiple clients: whoever is currently steering (a `drive` other than 0)
+   has priority. Zeros from other connections only count again
+   `DRIVE_PRIORITY_S` (0.5 s) after that client's last real command;
+   otherwise the idle zeros of a second open app would slow it down.
+   `stop` always works, from any connection.
+2. **Last client gone means stop.** When the last WebSocket connection
+   closes, the robot stops and cancels any homing in progress.
+3. **The server limits, not the client.** Every command is clamped to the
+   values from the `limits` message. Physically the chassis only manages
+   about 1 m/s anyway.
+4. **Collision avoidance can intervene.** When it is enabled, the drive
+   guard checks whether the robot's footprint would touch anything with
+   this command. It then brakes smoothly so that the robot, accounting for
+   reaction time and braking distance, stops in time, and finally blocks
+   the motion. Driving away and turning without any corner hitting
+   something remain allowed. `distance` is measured forward from the lidar
+   center; all around, the robot's edge keeps `distance - ROBOT_FRONT_M`
+   of clearance. What the robot actually executes is in the `state`
+   message, not necessarily what you sent. Autonomous drives (explore,
+   mapping drive, homing, interaction, precise drive commands) are always
+   checked by the drive guard, with `GUARD_MARGIN_M`, and they do not move
+   without a fresh lidar scan.
+5. **All clients are equal.** There is no control ownership. If two clients
+   drive at the same time, the most recent command wins. State and
+   messages go to everyone.
+
+---
+
+## Conventions
+
+The same everywhere, for drive commands, position and lidar:
+
+| Quantity | Unit | Direction |
 |---|---|---|
-| `vx` | m/s | vorwärts positiv |
-| `vy` | m/s | **links** positiv (Mecanum: seitwärts fahren ohne Drehen) |
-| `omega` | rad/s | gegen den Uhrzeigersinn positiv (= nach links drehen) |
-| Lidar-Winkel | Grad, 0–360 | 0° = vorn (Kamera), 90° = links, 180° = hinten, 270° = rechts |
-| Lidar-Entfernung | Meter | nur 0,15–8 m, alles andere ist schon verworfen |
-| Position `x`, `y` | Meter | bezogen auf den Startpunkt: `x` in die Blickrichtung beim Start, `y` links davon |
-| Position `winkel` | **Grad** | gegen den Uhrzeigersinn, 0 = Blickrichtung beim Start |
+| `vx` | m/s | forward positive |
+| `vy` | m/s | **left** positive (mecanum: strafe sideways without turning) |
+| `omega` | rad/s | counterclockwise positive (= turn left) |
+| Lidar angle | degrees, 0–360 | 0° = front (camera), 90° = left, 180° = rear, 270° = right |
+| Lidar distance | meters | only 0.15–8 m, everything else is already discarded |
+| Position `x`, `y` | meters | relative to the start point: `x` in the heading at start, `y` to the left of it |
+| Position `winkel` | **degrees** | counterclockwise, 0 = heading at start |
 
-Der Startpunkt ist dort, wo der Server gestartet oder zuletzt `set_home`
-geschickt wurde.
+The start point is where the server was started or where `set_home` was
+last sent.
 
 ---
 
-## Schnellstart
+## Quick start
 
-### Python: einen Meter vorwärts, dann Lidar abfragen
+### Python: drive one meter forward, then query the lidar
 
 ```python
 import asyncio, json, urllib.request
 import websockets  # pip install websockets
 
-ROBOTER = "192.168.1.50:8000"   # IP des Pi eintragen
+ROBOT = "192.168.1.50:8000"   # enter the Pi's IP
 
 async def main():
-    async with websockets.connect(f"ws://{ROBOTER}/ws") as ws:
-        limits = json.loads(await ws.recv())          # immer die erste Nachricht
-        print("Grenzen:", limits)
+    async with websockets.connect(f"ws://{ROBOT}/ws") as ws:
+        limits = json.loads(await ws.recv())          # always the first message
+        print("Limits:", limits)
 
-        # 0,2 m/s für 5 s = 1 m. Mit 10 Hz wiederholen, sonst greift der Watchdog.
+        # 0.2 m/s for 5 s = 1 m. Repeat at 10 Hz, otherwise the watchdog kicks in.
         for _ in range(50):
             await ws.send(json.dumps({"type": "drive", "vx": 0.2, "vy": 0, "omega": 0}))
             await asyncio.sleep(0.1)
@@ -99,16 +99,16 @@ async def main():
 
 asyncio.run(main())
 
-scan = json.load(urllib.request.urlopen(f"http://{ROBOTER}/lidar/scan"))
-vorn = [m for grad, m in scan["punkte"] if grad < 15 or grad > 345]
-print("Nächstes Hindernis vorn:", min(vorn) if vorn else "nichts", "m")
+scan = json.load(urllib.request.urlopen(f"http://{ROBOT}/lidar/scan"))
+front = [m for deg, m in scan["punkte"] if deg < 15 or deg > 345]
+print("Nearest obstacle in front:", min(front) if front else "nothing", "m")
 ```
 
 ### Browser (JavaScript)
 
 ```js
-const ROBOTER = "192.168.1.50:8000";
-const ws = new WebSocket(`ws://${ROBOTER}/ws`);
+const ROBOT = "192.168.1.50:8000";
+const ws = new WebSocket(`ws://${ROBOT}/ws`);
 
 ws.onmessage = (e) => {
   const msg = JSON.parse(e.data);
@@ -116,97 +116,96 @@ ws.onmessage = (e) => {
   if (msg.type === "alert") console.log(msg.level, msg.text);
 };
 
-// Fahren: im Takt senden, solange gefahren werden soll.
-let fahrt = { vx: 0, vy: 0, omega: 0 };
+// Driving: send at a steady rate for as long as the robot should move.
+let motion = { vx: 0, vy: 0, omega: 0 };
 setInterval(() => {
-  if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "drive", ...fahrt }));
+  if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "drive", ...motion }));
 }, 100);
 
-// Kamerabild: einfach als <img> einbinden.
+// Camera image: simply embed as <img>.
 // <img src="http://192.168.1.50:8000/camera/stream">
 ```
 
-### Kommandozeile
+### Command line
 
 ```bash
 curl http://<IP>:8000/lidar/scan
 curl http://<IP>:8000/lidar/status
-curl -o bild.jpg http://<IP>:8000/camera/snapshot
+curl -o image.jpg http://<IP>:8000/camera/snapshot
 ```
 
-Eine automatisch erzeugte Übersicht aller HTTP-Endpunkte (ohne WebSocket)
-liefert FastAPI unter `http://<IP>:8000/docs`.
+FastAPI provides an automatically generated overview of all HTTP endpoints
+(without WebSocket) at `http://<IP>:8000/docs`.
 
 ---
 
 ## WebSocket `/ws`
 
-Alle Nachrichten sind JSON-Objekte mit einem Feld `type`. Der verbindliche
-Vertrag steht in
+All messages are JSON objects with a `type` field. The binding contract is
+in
 [`robot/src/rosmaster_assist/protocol.py`](../robot/src/rosmaster_assist/protocol.py),
-die Verarbeitung in `_handle()` in
+the handling in `_handle()` in
 [`api/server.py`](../robot/src/rosmaster_assist/api/server.py).
 
-### Ablauf beim Verbinden
+### Sequence on connect
 
-Direkt nach dem Verbinden schickt der Roboter von sich aus, in dieser
-Reihenfolge:
+Right after connecting, the robot sends on its own, in this order:
 
 1. `limits`
-2. `collision` (aktuelle Einstellung)
-3. danach alle 0,5 s `state`, dazu bei Bedarf `alert`, `vitals` und `collision`
+2. `collision` (current setting)
+3. then `state` every 0.5 s, plus `alert`, `vitals` and `collision` as needed
 
-### An den Roboter
+### To the robot
 
-| `type` | Felder | Wirkung | Antwort |
+| `type` | Fields | Effect | Response |
 |---|---|---|---|
-| `drive` | `vx`, `vy`, `omega` (Zahlen, fehlende = 0) | Fahren. Siehe Regeln 1, 3, 4. Bricht eine laufende Heimfahrt ab, sobald ein Wert ≠ 0 ist; Nullbefehle werden während der Heimfahrt ignoriert. | keine; bei ungültigen Werten `error` |
-| `stop` | – | Sofort anhalten, Heimfahrt, autonomes Fahren und Interaktion abbrechen. | keine |
-| `explore` | – | Autonomes Fahren starten (siehe unten). Braucht den Lidar; bricht eine Heimfahrt ab. | `alert` an alle; ohne Lidar `alert` (warning) |
-| `explore_stop` | – | Autonomes Fahren beenden und anhalten. | `alert` an alle |
-| `move` | `richtung`: `"vor"` / `"zurueck"` / `"links"` / `"rechts"`, `meter` (0 < m ≤ 5) | Genau so weit fahren, links/rechts seitwärts (siehe „Genaue Fahrbefehle im Detail“). Braucht den Lidar; bricht Heimfahrt, autonomes Fahren und Interaktion ab. Abbrechen mit `stop` oder einer Fahreingabe ≠ 0. | `alert` an alle, am Ende `alert` mit Ergebnis (warning, wenn nicht geschafft); sonst `alert` (warning) |
-| `turn` | `grad` (+ = links, − = rechts, Betrag 1–720) | Auf der Stelle um genau diesen Winkel drehen. Sonst wie `move`. | wie `move` |
-| `home` | – | Selbstständig zum Startpunkt zurückfahren (siehe unten). Mit Karte und sicherer Lage darin: auf geplantem Weg zum Ausgangspunkt der Karte. | `alert` an alle |
-| `home_cancel` | – | Heimfahrt abbrechen und anhalten. | `alert` an alle |
-| `goto` | `x`, `y` (m im Kartenrahmen), `winkel` (Grad, optional: Blickrichtung am Ziel) | Zu diesem Punkt der Karte fahren, auf geplantem Weg um Wände herum (neu 04.11., siehe „Karte nutzen“ unter Kartierung). Braucht eine Karte und eine sichere Lage darin; bricht andere Fahrten ab. Läuft technisch als Heimfahrt mit Ziel: `state.homing` ist `true`, `stop`, `home_cancel` und Fahreingaben beenden sie. | `alert` an alle; ohne Karte/Lage `alert` (warning) mit Grund |
-| `goto_cancel` | – | Fahrt zum Ziel abbrechen und anhalten (wie `home_cancel`). | – |
-| `map_pose` | `x`, `y` (m), `winkel` (Grad, optional) | „Hier stehe ich“: Die Ortung sucht die eigene Lage im Umkreis dieses Punkts (mit `winkel` enger). Für den Fall, dass sie sich nach dem Laden einer Karte nicht selbst findet. | `alert` (info); ohne Karte `alert` (warning) |
-| `map_load` | `name` (gespeicherte Karte) | Gespeicherte Karte laden, um darin zu fahren. Die Ortung sucht dann die Lage am Ausgangspunkt der Karte. Nicht während einer Kartierung. | `alert` (info/warning) |
-| `interaction_start` | – | Interaktionsmodus an: Der Roboter wartet auf Handzeichen (siehe „Interaktion im Detail“). Braucht Lidar und Posenerkennung; bricht Heimfahrt und autonomes Fahren ab. | `alert` an alle; sonst `alert` (warning) |
-| `interaction_stop` | – | Interaktionsmodus aus und anhalten. | `alert` an alle |
-| `follow` | `ziel_id` (optional, Zahl) | „Folge mir“ ohne Geste. Schaltet den Interaktionsmodus bei Bedarf mit ein. Mit `ziel_id` (die `id` einer Person aus `/interaktion/pose`) folgt er genau dieser Person, auch als Wechsel während des Folgens. Ist sie nicht mehr im Bild, lehnt er ab. | `alert` an alle |
-| `follow_pause` | – | Anhalten, das Ziel bleibt gemerkt (neu 03.11.). Nur in `folgen`, `herkommen`, `weggehen`, `sucht`. | – |
-| `follow_resume` | – | Nach `follow_pause` weiterfahren, zum selben Ziel. | – |
-| `follow_stop` | – | Folgen beenden, anhalten, Ziel freigeben; der Interaktionsmodus bleibt an. Quittiert auch ein `safe_stop`. | `alert` an alle |
-| `record_save` | `notiz` (string, optional, höchstens 200 Zeichen) | Die letzte Minute des Fahrtenschreibers als Datei speichern (neu 03.11., siehe „Fahrtenschreiber“ unter HTTP). Fährt nicht. | `alert` (info) „Fahrt gespeichert: <name>“; ausgeschaltet `alert` (warning) |
-| `say` | `text` (string, höchstens 300 Zeichen), `vorrang` (bool, optional) | Über den Lautsprecher sprechen (siehe „Stimme im Detail“). `vorrang: true` bricht den laufenden Satz ab und leert die Warteschlange. | keine; ohne `text` `error`, ohne Lautsprecher/Synthese `alert` (warning) |
-| `say_stop` | – | Sofort verstummen, Warteschlange leeren. | keine |
-| `speech` | `text` (string) | Text so behandeln, als wäre er ins Mikrofon gesprochen worden (siehe „Sprachbefehle im Detail“). Zum Ausprobieren ohne Mikrofon und in `--mock`. | `alert` „Sprachbefehl: …“ an alle, wenn ein Befehl erkannt wurde; sonst `alert` (info) „Kein Befehl erkannt …“; ohne `text` `error` |
-| `set_home` | – | Aktuelle Stelle wird neuer Startpunkt (0, 0, 0°), Lidar-Referenz wird neu aufgenommen. Mit Karte und sicherer Lage wird die Stelle auch Ausgangspunkt der Karte (und in ihrer Datei gemerkt). | `alert` an alle |
-| `collision` | `enabled` (bool, optional), `distance` (m, optional) | Kollisionsvermeidung ein/aus, Mindestabstand. `distance` wird auf 0,15–1,5 m begrenzt. | `collision` an alle |
-| `beep` | `ms` (int, Standard 100) | Buzzer. | keine |
-| `vitals` | `bpm` (Zahl/null), `motion` (bool/null) | Messwerte vom ESP32, werden an alle weitergereicht. | `vitals` an alle |
-| `box` | `action`: `"open"` / `"close"` | Noch nicht gebaut. | `alert` „Box ist noch nicht angebaut“ |
-| `ping` | – | Verbindung prüfen. | `pong` |
+| `drive` | `vx`, `vy`, `omega` (numbers, missing = 0) | Drive. See rules 1, 3, 4. Cancels a running homing as soon as a value is ≠ 0; zero commands are ignored during homing. | none; `error` for invalid values |
+| `stop` | – | Stop immediately; cancel homing, autonomous driving and interaction. | none |
+| `explore` | – | Start autonomous driving (see below). Needs the lidar; cancels homing. | `alert` to all; without lidar `alert` (warning) |
+| `explore_stop` | – | End autonomous driving and stop. | `alert` to all |
+| `move` | `richtung`: `"vor"` (forward) / `"zurueck"` (back) / `"links"` (left) / `"rechts"` (right), `meter` (0 < m ≤ 5) | Drive exactly this far; left/right strafes sideways (see "Precise drive commands in detail"). Needs the lidar; cancels homing, autonomous driving and interaction. Cancel with `stop` or a drive input ≠ 0. | `alert` to all, at the end an `alert` with the result (warning if not achieved); otherwise `alert` (warning) |
+| `turn` | `grad` (+ = left, − = right, magnitude 1–720) | Turn on the spot by exactly this angle (degrees). Otherwise like `move`. | like `move` |
+| `home` | – | Drive back to the start point autonomously (see below). With a map and a confident pose in it: along a planned path to the map's origin. | `alert` to all |
+| `home_cancel` | – | Cancel homing and stop. | `alert` to all |
+| `goto` | `x`, `y` (m in the map frame), `winkel` (degrees, optional: heading at the goal) | Drive to this point of the map, along a planned path around walls (new 04.11., see "Using the map" under Mapping). Needs a map and a confident pose in it; cancels other drives. Technically runs as homing with a goal: `state.homing` is `true`; `stop`, `home_cancel` and drive inputs end it. | `alert` to all; without map/pose `alert` (warning) with reason |
+| `goto_cancel` | – | Cancel the goal drive and stop (like `home_cancel`). | – |
+| `map_pose` | `x`, `y` (m), `winkel` (degrees, optional) | "I am here": localization searches for the robot's pose around this point (narrower with `winkel`). For the case where it does not find itself after loading a map. | `alert` (info); without map `alert` (warning) |
+| `map_load` | `name` (saved map) | Load a saved map to drive in it. Localization then searches for the pose at the map's origin. Not during mapping. | `alert` (info/warning) |
+| `interaction_start` | – | Interaction mode on: the robot waits for hand signals (see "Interaction in detail"). Needs lidar and pose detection; cancels homing and autonomous driving. | `alert` to all; otherwise `alert` (warning) |
+| `interaction_stop` | – | Interaction mode off and stop. | `alert` to all |
+| `follow` | `ziel_id` (optional, number) | "Follow me" without a gesture. Turns interaction mode on if needed. With `ziel_id` (the `id` of a person from `/interaktion/pose`) it follows exactly that person, also as a switch while already following. If that person is no longer in view, it refuses. | `alert` to all |
+| `follow_pause` | – | Stop, the target stays remembered (new 03.11.). Only in `folgen`, `herkommen`, `weggehen`, `sucht`. | – |
+| `follow_resume` | – | After `follow_pause`, continue to the same target. | – |
+| `follow_stop` | – | End following, stop, release the target; interaction mode stays on. Also acknowledges a `safe_stop`. | `alert` to all |
+| `record_save` | `notiz` (string, optional, at most 200 characters; a note) | Save the last minute of the drive recorder to a file (new 03.11., see "Drive recorder" under HTTP). Does not drive. | `alert` (info) „Fahrt gespeichert: <name>“ (drive saved); when disabled `alert` (warning) |
+| `say` | `text` (string, at most 300 characters), `vorrang` (bool, optional) | Speak through the loudspeaker (see "Voice in detail"). `vorrang: true` (priority) interrupts the current sentence and clears the queue. | none; without `text` `error`, without loudspeaker/synthesis `alert` (warning) |
+| `say_stop` | – | Go silent immediately, clear the queue. | none |
+| `speech` | `text` (string) | Treat the text as if it had been spoken into the microphone (see "Speech commands in detail"). For trying things out without a microphone and in `--mock`. | `alert` „Sprachbefehl: …“ to all if a command was recognized; otherwise `alert` (info) „Kein Befehl erkannt …“ (no command recognized); without `text` `error` |
+| `set_home` | – | The current position becomes the new start point (0, 0, 0°), the lidar reference is re-recorded. With a map and a confident pose, the position also becomes the map's origin (and is remembered in its file). | `alert` to all |
+| `collision` | `enabled` (bool, optional), `distance` (m, optional) | Collision avoidance on/off, minimum distance. `distance` is clamped to 0.15–1.5 m. | `collision` to all |
+| `beep` | `ms` (int, default 100) | Buzzer. | none |
+| `vitals` | `bpm` (number/null), `motion` (bool/null) | Readings from the ESP32, relayed to all. | `vitals` to all |
+| `box` | `action`: `"open"` / `"close"` | Not built yet. | `alert` „Box ist noch nicht angebaut“ (box not attached yet) |
+| `ping` | – | Check the connection. | `pong` |
 
-Ein unbekannter `type` liefert `{"type": "error", "text": "Unbekannter Nachrichtentyp: …"}`.
+An unknown `type` returns `{"type": "error", "text": "Unbekannter Nachrichtentyp: …"}`.
 
-### Vom Roboter
+### From the robot
 
-**`limits`**: einmal beim Verbinden.
+**`limits`**: once on connect.
 
 ```json
 {"type": "limits", "max_vx": 1.0, "max_vy": 1.0, "max_omega": 3.0}
 ```
 
-Das sind die Grenzen der Handsteuerung (`MAX_SPEED_*`). Folgen, Erkunden und
-Heimfahrt sind zusätzlich auf `AUTONOM_MAX_SPEED` (0,35 m/s) und
-`AUTONOM_MAX_OMEGA` (1,2 rad/s) begrenzt, bei schwachem Akku auf die Hälfte.
-Außerdem bremst der Roboter autonome Fahrt so, dass er vor dem nächsten
-Lidar-Punkt in Fahrtrichtung anhalten kann; ohne frische Lidar-Daten dreht
-er nur noch.
+These are the limits for manual control (`MAX_SPEED_*`). Following, exploring
+and homing are additionally limited to `AUTONOMOUS_MAX_SPEED` (0.35 m/s) and
+`AUTONOMOUS_MAX_OMEGA` (1.2 rad/s), halved when the battery is low.
+In addition, the robot slows autonomous driving so that it can stop before
+the nearest lidar point in the direction of travel; without fresh lidar data
+it only turns.
 
-**`state`**: alle 0,5 s an alle Clients.
+**`state`**: every 0.5 s to all clients.
 
 ```json
 {
@@ -227,153 +226,153 @@ er nur noch.
 }
 ```
 
-| Feld | Bedeutung |
+| Field | Meaning |
 |---|---|
-| `driver` | `"rosmaster"` = echte Motoren, `"mock"` = Simulation |
-| `connected` | Verbindung zum Motorboard steht. `false` nach einem USB-Aussetzer; der Server verbindet selbst neu. |
-| `homing` | Heimfahrt läuft |
-| `vx`, `vy`, `omega` | was der Roboter **gerade ausführt**, nach Begrenzung und Kollisionsvermeidung. Seit der Anfahrrampe im Watchdog (29.10.) steigt der Wert nach einem Fahrbefehl allmählich an (`RAMPE_*` in `config.py`, unter Einstellungen → „Fahren & Motoren“ abschalt- und verstellbar); ein Stopp gilt sofort. |
-| `pose` | geschätzte Position, siehe Konventionen. `gemessen: false` heißt: nur aus den Befehlen gerechnet, deutlich ungenauer. |
-| `collision.verfuegbar` | ob ein Lidar da ist, der Hindernisse sehen kann |
-| `collision.blockiert` | die Kollisionsvermeidung hält gerade eine Fahrt zurück |
-| `autonomie` | autonomes Fahren und erkannte Hindernisse, siehe „Autonomes Fahren im Detail“ |
-| `interaktion` | Interaktionsmodus (Handzeichen, Folgen), siehe „Interaktion im Detail“. Fehlt bei älteren Servern. |
-| `stimme` | Sprachausgabe: `verfuegbar` (es kommt Ton heraus), `spricht` (gerade ein Satz), `text` (zuletzt gesagter Satz oder `null`). Siehe „Stimme im Detail“. Fehlt bei älteren Servern. |
-| `sprache` | Sprachbefehle: `verfuegbar` (Mikrofon und Modell bereit), `geweckt` („Robi“ wurde gerade allein gesagt, der nächste Satz braucht keinen Namen), `gehoert` (zuletzt verstandener Satz oder `null`), `befehl` (erkannter Befehl, wenige Sekunden lang, sonst `null`), `pause` (warum das Mikrofon gerade bewusst zu ist, z. B. „Mapping läuft“; dann ist `verfuegbar` `false`, sonst `null`). Siehe „Sprachbefehle im Detail“. Fehlt bei älteren Servern. |
-| `karte` | Nur, wenn eine Karte da ist (neu 04.11.): `name` (gespeicherte Karte, `null` bei der Live-Karte der Kartierung), `live`, `pose` (Lage **im Kartenrahmen**, nicht zu verwechseln mit `pose` oben im Odometrie-Rahmen; `null`, solange unbekannt), `sicher` (nur dann geht `goto`), `text`, `fahrt` (laufende oder letzte Fahrt nach Karte: `art` `"heim"`/`"ziel"`, `ziel`, `rest_m`, `grund`). Siehe „Karte nutzen“ unter Kartierung. |
+| `driver` | `"rosmaster"` = real motors, `"mock"` = simulation |
+| `connected` | Connection to the motor board is up. `false` after a USB dropout; the server reconnects on its own. |
+| `homing` | Homing is running |
+| `vx`, `vy`, `omega` | what the robot is **currently executing**, after limiting and collision avoidance. Since the acceleration ramp in the watchdog (29.10.), the value rises gradually after a drive command (`RAMP_*` in `config.py`, can be turned off and adjusted under Settings → „Fahren & Motoren“); a stop takes effect immediately. |
+| `pose` | estimated position, see Conventions. `gemessen: false` (not measured) means: computed from the commands only, considerably less accurate. |
+| `collision.verfuegbar` | whether a lidar is present that can see obstacles (available) |
+| `collision.blockiert` | collision avoidance is currently holding back a motion (blocked) |
+| `autonomie` | autonomous driving and detected obstacles, see "Autonomous driving in detail" |
+| `interaktion` | interaction mode (hand signals, following), see "Interaction in detail". Missing on older servers. |
+| `stimme` | voice output: `verfuegbar` (sound comes out), `spricht` (speaking a sentence right now), `text` (last sentence spoken, or `null`). See "Voice in detail". Missing on older servers. |
+| `sprache` | speech commands: `verfuegbar` (microphone and model ready), `geweckt` (awake: „Robi“ was just said on its own, the next sentence needs no name), `gehoert` (last sentence understood, or `null`), `befehl` (recognized command, for a few seconds, otherwise `null`), `pause` (why the microphone is deliberately closed right now, e.g. „Mapping läuft“; then `verfuegbar` is `false`, otherwise `null`). See "Speech commands in detail". Missing on older servers. |
+| `karte` | Only present when a map exists (new 04.11.): `name` (saved map, `null` for the live map during mapping), `live`, `pose` (pose **in the map frame**, not to be confused with `pose` above in the odometry frame; `null` while unknown), `sicher` (confident; `goto` only works then), `text`, `fahrt` (running or last map-based drive: `art` (kind) `"heim"` (home) / `"ziel"` (goal), `ziel` (goal), `rest_m` (remaining distance), `grund` (reason)). See "Using the map" under Mapping. |
 
-**`collision`**: beim Verbinden und nach jeder Änderung, Felder wie
+**`collision`**: on connect and after every change, fields as in
 `state.collision`.
 
-**`alert`**: Meldungen für den Menschen.
+**`alert`**: messages for humans.
 
 ```json
 {"type": "alert", "level": "warning", "text": "Hindernis in 0.31 m -- Fahrt gesperrt"}
 ```
 
-`level` ist `"info"`, `"warning"` oder `"emergency"`. `emergency` ist für
-Notfälle vorgesehen, wird derzeit aber noch nirgends ausgelöst. Der Text ist
-für die Anzeige gedacht, nicht zum Auswerten. Wer auf ein Ereignis reagieren
-will, liest besser die Felder in `state` (etwa `homing` wechselt auf
-`false`, wenn die Heimfahrt endet).
+`level` is `"info"`, `"warning"` or `"emergency"`. `emergency` is intended
+for emergencies but is currently not triggered anywhere. The text is meant
+for display, not for parsing. To react to an event, read the fields in
+`state` instead (for example, `homing` switches to `false` when homing
+ends).
 
-**`vitals`**: weitergereichte ESP-Daten: `{"type": "vitals", "bpm": 72, "motion": true}`
+**`vitals`**: relayed ESP data: `{"type": "vitals", "bpm": 72, "motion": true}`
 
-**`error`**: Antwort auf eine unbrauchbare Nachricht: `{"type": "error", "text": "…"}`
+**`error`**: response to an unusable message: `{"type": "error", "text": "…"}`
 
-**`pong`**: Antwort auf `ping`.
+**`pong`**: response to `ping`.
 
-### Heimfahrt im Detail
+### Homing in detail
 
-`home` fährt auf direktem Weg zum Startpunkt. Dank Mecanum-Rädern muss sich
-der Roboter dafür nicht drehen. Die Werte stehen in `config.py`:
+`home` drives straight to the start point. Thanks to the mecanum wheels the
+robot does not need to turn for this. The values are in `config.py`:
 
-- Tempo `HOME_SPEED` (0,25 m/s), langsamer ab 0,4 m vor dem Ziel
-- angekommen bei weniger als `HOME_TOLERANCE_M` (0,12 m) Abstand
-- bricht nach `HOME_TIMEOUT_S` (60 s) ab
-- **umfährt Hindernisse** (neu 03.11., F3): Steht etwas auf dem Weg zum
-  Startpunkt, schiebt er schräg daran vorbei (bis 75° neben der Zielrichtung,
-  in Türen mittig) und kehrt danach auf die Verbindungslinie zurück. Ohne
-  Karte, also um einzelne Hindernisse herum, nicht durch Labyrinthe. Ist 3 s
-  lang nirgends Platz, hält er an: „Hindernis in 0.40 m, noch 3.00 m bis zum
-  Startpunkt“ bzw. „kein Weg frei, …“
-- **wird er hochgehoben**, bricht er ab („hochgehoben -- Position stimmt
-  nicht mehr“): die Koppelnavigation weiß vom Tragen nichts
-- ohne frischen Lidar-Scan hält er wie früher an, sobald etwas näher als
-  0,45 m in Fahrtrichtung steht
-- endet mit einem `alert` „Heimfahrt: …“ und `state.homing = false`
+- speed `HOME_SPEED` (0.25 m/s), slower from 0.4 m before the goal
+- arrived when closer than `HOME_TOLERANCE_M` (0.12 m)
+- gives up after `HOME_TIMEOUT_S` (60 s)
+- **drives around obstacles** (new 03.11., F3): if something is in the way
+  to the start point, it slides diagonally past it (up to 75° off the goal
+  direction, centered in doorways) and then returns to the connecting line.
+  Without a map, i.e. around individual obstacles, not through mazes. If
+  there is no room anywhere for 3 s, it stops: „Hindernis in 0.40 m, noch
+  3.00 m bis zum Startpunkt“ or „kein Weg frei, …“
+- **if it is lifted**, it aborts („hochgehoben -- Position stimmt nicht
+  mehr“): dead reckoning knows nothing about being carried
+- without a fresh lidar scan it stops, as before, as soon as something is
+  closer than 0.45 m in the direction of travel
+- ends with an `alert` „Heimfahrt: …“ and `state.homing = false`
 
-**Mit Karte (neu 04.11.):** Ist eine Karte geladen und `state.karte.sicher`,
-fährt `home` nicht mehr geradewegs, sondern auf einem geplanten Weg zum
-**Ausgangspunkt der Karte** (dort begann die Kartierung, oder wo zuletzt
-`set_home` gedrückt wurde) -- durch Türen, in andere Räume. Dieselbe Fahrt
-steckt hinter `goto`. Unterschiede zur Fahrt ohne Karte:
-- Tempo `KARTE_FAHRT_TEMPO` (0,25 m/s), dreht sich langsam in Fahrtrichtung,
-  am Ziel auf Wunsch in die verlangte Blickrichtung
-- angekommen bei `KARTE_ZIEL_TOLERANZ_M` (0,15 m)
-- Steht etwas im Weg, das die Karte nicht kennt, schiebt er vorbei wie oben;
-  geht das `KARTE_BLOCKIERT_S` (3 s) lang nicht, trägt er die Stelle für
-  60 s als Wand ein und plant drumherum (höchstens 5-mal)
-- verliert er die Lage in der Karte länger als 4 s, oder wird er
-  hochgehoben, hält er an (`alert` „… Lage in der Karte verloren“)
-- Zeitgrenze nach Weglänge (12 s je Meter, mindestens 60 s)
-- endet mit `alert` „Heimfahrt: …“ bzw. „Fahrt zum Ziel: …“
+**With a map (new 04.11.):** if a map is loaded and `state.karte.sicher`
+is set, `home` no longer drives in a straight line but along a planned path
+to the **map's origin** (where mapping began, or where `set_home` was last
+pressed) -- through doors, into other rooms. The same drive is behind
+`goto`. Differences from the drive without a map:
+- speed `NAV_DRIVE_SPEED` (0.25 m/s), turns slowly into the direction of
+  travel, at the goal into the requested heading if one was given
+- arrived at `NAV_GOAL_TOLERANCE_M` (0.15 m)
+- if something the map does not know is in the way, it slides past as
+  above; if that does not work for `NAV_BLOCKED_S` (3 s), it marks the spot
+  as a wall for 60 s and plans around it (at most 5 times)
+- if it loses its pose in the map for more than 4 s, or is lifted, it stops
+  (`alert` „… Lage in der Karte verloren“)
+- time limit based on path length (12 s per meter, at least 60 s)
+- ends with `alert` „Heimfahrt: …“ or „Fahrt zum Ziel: …“
 
-### Autonomes Fahren im Detail
+### Autonomous driving in detail
 
-`explore` startet Test 1: Der Roboter fährt zufällig durch den Raum und
-weicht allem aus, was der Lidar sieht. Werte in `config.py` (`EXPLORE_*`):
+`explore` starts test 1: the robot drives randomly through the room and
+avoids everything the lidar sees. Values in `config.py` (`EXPLORE_*`):
 
-- geradeaus mit `EXPLORE_SPEED` (0,2 m/s), langsamer ab 0,9 m vor einem
-  Hindernis; schiebt sich seitlich von nahen Wänden weg
-- frei ist ein 40 cm breiter Korridor (`EXPLORE_HALF_WIDTH_M`), nicht ein
-  Kegel -- so passt er nicht in Lücken, die schmaler sind als er selbst
-- unter `EXPLORE_STOP_M` (0,4 m) vorn: anhalten und in die freieste
-  Richtung drehen. Gedreht wird nach dem gemessenen Winkel aus der
-  Drehrate des Boards (seit 03.11.); er hört `EXPLORE_DREH_VORHALT_GRAD`
-  (8°) vor dem Ziel auf, weil er nachläuft. Eine Zeitgrenze
-  (`EXPLORE_DREH_ZEIT_FAKTOR`) fängt Hänger ab. Nur ohne Messung dreht er
-  wie früher nach Zeit (`EXPLORE_TURN_FACTOR`). Danach wartet er auf einen
-  frischen Scan, statt auf dem alten Bild weiterzufahren.
-- Punkte näher als `EXPLORE_NAH_M`: Er wartet erst `EXPLORE_NAH_WARTEN_S`
-  (3 s), weil oft ein Mensch herangetreten ist. Ist es dann nicht frei,
-  **befreit er sich** (Zustand `befreit sich`): langsam seitlich oder
-  rückwärts in die freieste Richtung, ohne zu drehen, damit das Heck nicht
-  ausschwenkt.
-- **Festfahr-Erkennung:** Fährt er laut Befehl, aber das Board meldet
-  kaum Tempo oder das Lidar-Bild rundum ändert sich über `EXPLORE_FEST_S`
-  (1,5 s) nicht, befreit er sich ebenso.
-- **Tiefenkamera (seit 04.11.):** Während jeder autonomen Fahrt läuft
-  der Tiefenkanal der Orbbec Astra mit. Was zwischen 4 und 40 cm über dem
-  Boden steht (Stuhlbeine, Tischkanten, Kisten unter der Lidar-Ebene),
-  wird zu Hindernispunkten. Die Astra misst erst ab ~0,6 m. Deshalb merkt
-  sich ein **Hindernisgedächtnis** die Punkte und rechnet sie mit der
-  eigenen Bewegung nach, bis er vorbei ist (`TIEFE_GEDAECHTNIS_S`, 30 s).
-  Ausweichen, Kartierfahrt und Fahrschutz sehen sie wie Lidar-Punkte.
-  Ohne Kamera oder in der Simulation fehlt nur dieser Zusatz.
-- **Fortschrittswache (seit 04.11., beide Modi):** Alle 0,5 s vergleicht
-  er die Bewegung, die der Watchdog über die letzten ~2 s an die Motoren
-  gab, mit der laut Lidar-Abgleich (ICP) gefahrenen. Kam weniger als 30 %
-  an (`FORTSCHRITT_ANTEIL`), hängt er fest. Dann trägt er an dieser Stelle
-  ein **Phantom-Hindernis** ein (verfällt nach `FORTSCHRITT_PHANTOM_S`,
-  30 s) und schiebt sich vom Hindernis weg frei. Ist die Umgebung für den
-  Abgleich mehrdeutig (langer Flur), urteilt er nicht.
-- Erst nach `EXPLORE_BEFREIEN_MAX` (3) erfolglosen Befreiungen hintereinander
-  endet die Fahrt mit „festgefahren“. Beim Kartieren zählen die Versuche
-  neu, wenn `FORTSCHRITT_ERHOLT_S` (15 s) lang keiner nötig war.
-- **Umfahren in Bögen (seit 03.11., F2):** Vor einem Hindernis rechnet er
-  mögliche Bögen (Drehrate, etwas seitliches Schieben) gut eine Sekunde
-  voraus und nimmt den besten, bei dem sein Umriss überall Luft behält.
-  Danach lenkt er auf den alten Kurs zurück. Erst wenn kein sicherer Bogen
-  passt, hält er an und dreht.
-- **Türen und Lücken:** Beim Drehen wählt er die Mitte eines freien
-  Bereichs statt einer Richtung knapp am Rahmen vorbei.
-- **Kurzgedächtnis:** Punkte, die beim Vorbeifahren aus dem Blickfeld
-  rutschen (z. B. ein Türrahmen neben ihm), behält er wenige Sekunden
-  (`AUSWEICH_GEDAECHTNIS_S`).
-- alle 4–10 s biegt er zufällig ab, damit er nicht immer dieselbe Bahn fährt
-  -- aber nicht, solange etwas näher als `AUSWEICH_ENG_M` (0,45 m) ist
-  (Tür, Engstelle): erst hindurch
-- **Hochgehoben** (Zustand `hochgehoben`): Ändert sich das Lidar-Bild rundum
-  auf einmal (gekippt, getragen), hält er an. Steht er wieder ruhig, fängt
-  er von vorn an und vergisst Gedächtnis und Kurs. Kein Alarm, die Fahrt
-  läuft weiter.
-- steht ein **Mensch** bis 1 m vor ihm, wartet er `EXPLORE_PERSON_WAIT_S`
-  (2 s), bevor er ausweicht
-- liefert der Lidar länger als 3 s nichts, endet die Fahrt
-- jede Fahreingabe ≠ 0, `stop`, `home`, `set_home` oder das Trennen des
-  letzten Clients beendet sie. Nullbefehle der App werden ignoriert.
-- endet mit `alert` „Autonomes Fahren beendet: …“ und `autonomie.aktiv = false`
+- straight ahead at `EXPLORE_SPEED` (0.2 m/s), slower from 0.9 m before an
+  obstacle; slides sideways away from nearby walls
+- "free" means a 40 cm wide corridor (`EXPLORE_HALF_WIDTH_M`), not a cone
+  -- so it does not squeeze into gaps narrower than itself
+- below `EXPLORE_STOP_M` (0.4 m) in front: stop and turn toward the most
+  open direction. The turn is controlled by the measured angle from the
+  board's turn rate (since 03.11.); it stops `EXPLORE_TURN_LEAD_DEG`
+  (8°) before the target because it coasts. A time limit
+  (`EXPLORE_TURN_TIME_FACTOR`) catches hangs. Only without a measurement
+  does it turn by time as before (`EXPLORE_TURN_FACTOR`). Afterwards it
+  waits for a fresh scan instead of continuing on the old picture.
+- points closer than `EXPLORE_NEAR_M`: it first waits `EXPLORE_NEAR_WAIT_S`
+  (3 s), because often a person has stepped up. If it is still not clear,
+  it **unsticks itself** (state `befreit sich`): slowly sideways or
+  backward toward the most open direction, without turning, so the rear
+  does not swing out.
+- **Stuck detection:** if it is commanded to drive but the board reports
+  hardly any speed, or the lidar picture all around does not change over
+  `EXPLORE_STUCK_S` (1.5 s), it unsticks itself the same way.
+- **Depth camera (since 04.11.):** during every autonomous drive the depth
+  channel of the Orbbec Astra runs as well. Anything standing between 4 and
+  40 cm above the floor (chair legs, table edges, boxes below the lidar
+  plane) becomes obstacle points. The Astra only measures from ~0.6 m.
+  Therefore an **obstacle memory** remembers the points and updates them
+  with the robot's own motion until it has passed (`DEPTH_MEMORY_S`, 30 s).
+  Avoidance, mapping drive and drive guard see them like lidar points.
+  Without the camera or in the simulation, only this addition is missing.
+- **Progress watch (since 04.11., both modes):** every 0.5 s it compares
+  the motion the watchdog sent to the motors over the last ~2 s with the
+  motion actually driven according to lidar matching (ICP). If less than
+  30 % arrived (`PROGRESS_SHARE`), it is stuck. It then places a **phantom
+  obstacle** at that spot (expires after `PROGRESS_PHANTOM_S`, 30 s) and
+  unsticks itself away from the obstacle. If the surroundings are ambiguous
+  for matching (long corridor), it makes no judgment.
+- Only after `EXPLORE_UNSTICK_MAX` (3) consecutive failed unstick attempts
+  does the drive end with „festgefahren“ (stuck). During mapping the
+  attempts are reset when none was needed for `PROGRESS_RECOVERED_S` (15 s).
+- **Detours in arcs (since 03.11., F2):** in front of an obstacle it
+  simulates possible arcs (turn rate, some sideways sliding) a little more
+  than a second ahead and takes the best one where its outline keeps
+  clearance everywhere. Afterwards it steers back onto the old course. Only
+  when no safe arc fits does it stop and turn.
+- **Doors and gaps:** when turning, it picks the middle of an open area
+  instead of a direction just past the frame.
+- **Short-term memory:** points that slip out of the field of view while
+  driving past (e.g. a door frame beside it) are kept for a few seconds
+  (`AVOID_MEMORY_S`).
+- every 4–10 s it turns off randomly so it does not always follow the same
+  track -- but not while something is closer than `AVOID_NARROW_M` (0.45 m)
+  (door, narrow passage): first get through
+- **Lifted** (state `hochgehoben`): if the lidar picture all around changes
+  at once (tilted, carried), it stops. Once it stands still again, it starts
+  over and forgets memory and course. No alarm; the drive continues.
+- if a **person** stands up to 1 m in front of it, it waits
+  `EXPLORE_PERSON_WAIT_S` (2 s) before avoiding
+- if the lidar delivers nothing for more than 3 s, the drive ends
+- any drive input ≠ 0, `stop`, `home`, `set_home` or the disconnection of
+  the last client ends it. Zero commands from the app are ignored.
+- ends with `alert` „Autonomes Fahren beendet: …“ and `autonomie.aktiv = false`
 
-Die Hindernisse werden auch ohne laufende Fahrt erkannt (bis 3 m) und grob
-benannt: `Wand`, `Stuhl` (dünne Beine dicht beieinander), `Tisch` (dünne
-Beine 0,6–1,8 m auseinander), `Mensch` (zwei dicke Beine oder Kamera-Treffer),
-`Bein (Mensch?)`, `Bein (Stuhl/Tisch?)`, `Objekt`. Das ist eine Faustregel
-auf einer Lidar-Ebene, keine Objekterkennung.
+Obstacles are detected even without a running drive (up to 3 m) and roughly
+classified: `Wand` (wall), `Stuhl` (chair: thin legs close together),
+`Tisch` (table: thin legs 0.6–1.8 m apart), `Mensch` (person: two thick legs
+or a camera hit), `Bein (Mensch?)` (leg, person?), `Bein (Stuhl/Tisch?)`
+(leg, chair/table?), `Objekt` (object). This is a rule of thumb on a single
+lidar plane, not object recognition.
 
-Ist OpenCV installiert, sucht die Personenkamera (Logitech C270, siehe
-[Kamera](#kamera)) während der Fahrt nach Personen (HOG-Detektor, 2 Bilder/s). Lidar-Hindernisse in deren Richtung heißen dann
-`Mensch` mit `quelle: "Kamera+Lidar"`. Ohne OpenCV läuft alles andere weiter.
+If OpenCV is installed, the person camera (Logitech C270, see
+[Camera](#camera)) looks for people during the drive (HOG detector, 2 frames/s). Lidar obstacles in their direction are then labeled
+`Mensch` with `quelle: "Kamera+Lidar"`. Without OpenCV everything else keeps working.
 
 `state.autonomie`:
 
@@ -401,58 +400,62 @@ Ist OpenCV installiert, sucht die Personenkamera (Logitech C270, siehe
 }
 ```
 
-| Feld | Bedeutung |
+| Field | Meaning |
 |---|---|
-| `verfuegbar` | Lidar vorhanden, `explore` möglich |
-| `modus` | `zufall` (`explore`) oder `karte` (Kartierfahrt, siehe [Kartierung](#kartierung-slam)); `null` wenn aus |
-| `kartierfahrt` | nur im Modus `karte`: `{"schritt", "text", "randweg_m", "bahnen"}` |
-| `zustand` | `faehrt`, `dreht`, `wartet`, `wartet auf Mensch`, `wartet auf Lidar`, `befreit sich` (neu 03.11.), `hochgehoben` (neu 03.11., F2), `kartiert`; `null` wenn aus |
-| `text` | Erklärung für die Anzeige |
-| `frei_vorn` | freie Strecke im Korridor vor dem Roboter (m) |
-| `ausweichen`, `menschen`, `befreien` | Zähler dieser Fahrt (`befreien` neu 03.11., fehlt bei älteren Servern) |
-| `tiefe` | Punkte im Hindernisgedächtnis (Tiefenkamera und Phantome); `null` ohne Tiefenkamera (neu 04.11.) |
-| `festgefahren` | wie oft die Fortschrittswache in dieser Fahrt ein Festhängen erkannte (neu 04.11.) |
-| `grund` | warum die letzte Fahrt endete |
-| `hindernisse` | die 12 nächsten, nächstes zuerst. `winkel` in Grad wie beim Lidar, `x`/`y` Mitte in Roboterkoordinaten (m) |
-| `personen` | Personenrahmen im Bild der Personenkamera, relativ zur Bildgröße (0..1) |
-| `personenerkennung` | ob die Kamera-Erkennung geht; `fehler` z. B. „opencv fehlt“; `kamera`: auf welchem Kamerabild die Rahmen liegen (Name wie in `/cameras`) |
+| `aktiv` | an autonomous drive is running (active) |
+| `verfuegbar` | lidar present, `explore` possible (available) |
+| `modus` | `zufall` (random, `explore`) or `karte` (mapping drive, see [Mapping](#mapping-slam)); `null` when off |
+| `kartierfahrt` | only in mode `karte`: `{"schritt", "text", "randweg_m", "bahnen"}` (step, text, wall-follow distance in m, lanes) |
+| `zustand` | state: `faehrt` (driving), `dreht` (turning), `wartet` (waiting), `wartet auf Mensch` (waiting for person), `wartet auf Lidar` (waiting for lidar), `befreit sich` (unsticking, new 03.11.), `hochgehoben` (lifted, new 03.11., F2), `kartiert` (mapping); `null` when off |
+| `text` | explanation for display |
+| `frei_vorn` | free distance in the corridor in front of the robot (m) |
+| `dauer_s` | duration of the current drive (s) |
+| `ausweichen`, `menschen`, `befreien` | counters for this drive: avoidance maneuvers, people encountered, unstick attempts (`befreien` new 03.11., missing on older servers) |
+| `tiefe` | points in the obstacle memory (depth camera and phantoms); `null` without depth camera (new 04.11.) |
+| `festgefahren` | how often the progress watch detected being stuck during this drive (new 04.11.) |
+| `grund` | why the last drive ended (reason) |
+| `hindernisse` | the 12 nearest obstacles, nearest first. `art` (kind), `winkel` in degrees as for the lidar, `abstand` (distance, m), `breite` (width, m), `x`/`y` center in robot coordinates (m), `quelle` (source) |
+| `personen` | person boxes in the person camera image, relative to the image size (0..1) |
+| `personenerkennung` | whether camera person detection works; `fehler` (error) e.g. „opencv fehlt“; `kamera`: which camera image the boxes refer to (name as in `/cameras`) |
 
-### Interaktion im Detail
+### Interaction in detail
 
-`interaction_start` schaltet den Interaktionsmodus ein. Der Roboter steht
-dann und wartet auf ein Handzeichen vor der Kamera (Modus `bereit`). Die
-Körperpunkte rechnet der Hailo-Chip (YOLOv8-Pose); er arbeitet nur, solange
-der Modus an ist. **Nur am Boden benutzen.**
+`interaction_start` turns interaction mode on. The robot then stands still
+and waits for a hand signal in front of the camera (mode `bereit`, ready).
+The body keypoints are computed by the Hailo chip (YOLOv8-Pose); it only
+works while the mode is on. **Use only on the floor.**
 
-**Sanfter Start:** Nach dem Einschalten läuft erst
-`INTERAKTION_ANLAUF_S` (5 s) nur die Posenerkennung warm, der Roboter steht
-und schweigt (`text`: „startet …“). Dann sagt er den Startsatz (z. B.
-„Jetzt folge ich dir.“) und fährt erst los, wenn der Satz zu Ende ist.
-Befehle in dieser Zeit (Folgen, Stopp …) gelten danach. Grund: Pose,
-Sprechen und Motoren gleichzeitig ließen die USB-Versorgung zusammenbrechen.
+**Soft start:** after switching on, only pose detection warms up for
+`INTERACTION_STARTUP_S` (5 s); the robot stands still and stays silent
+(`text`: „startet …“). Then it says the start sentence (e.g.
+„Jetzt folge ich dir.“) and only starts moving once the sentence is
+finished. Commands during this time (follow, stop …) apply afterwards.
+Reason: pose detection, speaking and motors at the same time made the USB
+power supply collapse.
 
-| Handzeichen | Wie | Modus danach |
+| Hand signal | How | Mode afterwards |
 |---|---|---|
-| Folgen | einen Arm über den Kopf halten (1 s) | `folgen`: bleibt `FOLGEN_ABSTAND_M` (1,0 m) hinter der Person |
-| Stopp | beide Hände über die Schultern halten (0,4 s) | `bereit`: steht sofort |
-| Herkommen | vor dem Körper auf und ab winken | `herkommen`: fährt bis `HERKOMMEN_ABSTAND_M` (0,7 m) heran, dann `bereit` |
-| Weggehen | Hand seitlich wegwischen | `weggehen`: `WEGGEHEN_STRECKE_M` (1,0 m) rückwärts, dann `bereit` |
+| Follow | hold one arm above your head (1 s) | `folgen` (following): stays `FOLLOW_DISTANCE_M` (1.0 m) behind the person |
+| Stop | hold both hands above your shoulders (0.4 s) | `bereit` (ready): stops immediately |
+| Come here | wave up and down in front of your body | `herkommen` (come here): approaches to `COME_HERE_DISTANCE_M` (0.7 m), then `bereit` |
+| Go away | swipe your hand sideways | `weggehen` (go away): `GO_AWAY_DISTANCE_M` (1.0 m) backward, then `bereit` |
 
-- Die Richtung zur Person kommt aus der Kamera, der Abstand aus dem Lidar
-  (Cluster der Person in dieser Richtung, ein Stuhl davor zählt nicht).
-- Verliert er die Person beim Folgen länger als `FOLGEN_VERLOREN_S` (2 s),
-  sucht er durch Drehen (Modus `sucht`): je `FOLGEN_SUCHEN_DREH_S` drehen,
-  `FOLGEN_SUCHEN_PAUSE_S` stillhalten (im Drehen verwischt das Bild). Er
-  sucht, bis er wieder jemanden sieht; mit `FOLGEN_SUCHEN_S` > 0 gibt er
-  nach so vielen Sekunden auf.
-- Sicherheit wie beim autonomen Fahren: vorwärts nur bei freiem
-  Fahrschlauch, rückwärts nur bei freiem Raum hinten, ohne frische
-  Lidar-Daten steht er. `herkommen` und `weggehen` enden spätestens nach
-  `INTERAKTION_VERHALTEN_MAX_S` (20 s).
-- Jede Fahreingabe ≠ 0, `stop`, `explore`, `home`, `set_home` oder das
-  Trennen des letzten Clients beendet den Modus. Nullbefehle der App
-  werden ignoriert.
-- Erkannte Gesten und Moduswechsel kommen als `alert` (info), das Ende als
+- The direction to the person comes from the camera, the distance from the
+  lidar (the person's cluster in that direction; a chair in front does not
+  count).
+- If it loses the person while following for longer than `FOLLOW_LOST_S`
+  (2 s), it searches by turning (mode `sucht`, searching): turn for
+  `FOLLOW_SEARCH_TURN_S`, hold still for `FOLLOW_SEARCH_PAUSE_S` (the image
+  blurs while turning). It searches until it sees someone again; with
+  `FOLLOW_SEARCH_S` > 0 it gives up after that many seconds.
+- Safety as for autonomous driving: forward only with a free driving lane,
+  backward only with free space behind, without fresh lidar data it stands
+  still. `herkommen` and `weggehen` end after at most
+  `INTERACTION_BEHAVIOR_MAX_S` (20 s).
+- Any drive input ≠ 0, `stop`, `explore`, `home`, `set_home` or the
+  disconnection of the last client ends the mode. Zero commands from the app
+  are ignored.
+- Recognized gestures and mode changes arrive as `alert` (info), the end as
   „Interaktion beendet: …“.
 
 `state.interaktion`:
@@ -472,142 +475,146 @@ Sprechen und Motoren gleichzeitig ließen die USB-Versorgung zusammenbrechen.
 }
 ```
 
-| Feld | Bedeutung |
+| Field | Meaning |
 |---|---|
-| `verfuegbar` | Lidar und Posenerkennung da, `interaction_start` möglich |
-| `modus` | `bereit`, `folgen`, `herkommen`, `weggehen`, `sucht`; `null` wenn aus |
-| `text` | Erklärung für die Anzeige; beim Folgen, Herkommen und Weggehen neu (03.11., F3) z. B. „umfährt Hindernis (links, 0.62 m)“ oder „hochgehoben -- wartet, bis er wieder steht“ |
-| `person` | verfolgte Person: `winkel` in Grad wie beim Lidar, `abstand` in m (`null`, wenn der Lidar dort nichts sieht); `null` ohne Person |
-| `personen` | wie viele Menschen die Kamera gerade sieht |
-| `geste` | zuletzt erkannte Geste (`folgen`, `stopp`, `herkommen`, `weggehen`), wenige Sekunden lang, sonst `null` |
-| `grund` | warum der Modus zuletzt endete; „hochgehoben -- angehalten“ (neu 03.11., F3), wenn er beim Fahren hochgehoben wurde -- danach `bereit` und die Ansage „Ich wurde hochgehoben. Ich bleibe stehen.“ |
-| `pausiert` | `true` nach `follow_pause`: steht, Modus und Ziel bleiben. Jeder Moduswechsel (auch die Stopp-Geste) beendet die Pause. Fehlt bei älteren Servern. |
-| `ziel` | Ziel-Lock (neu 03.11.): `zustand` ist `idle`, `acquiring_target`, `following`, `target_temporarily_lost`, `searching_for_target` oder `safe_stop`. `id` ist die Track-ID des Ziels (nur für diese Sitzung), `sicherheit` liegt bei 0..1, `grund` sagt, warum er angehalten oder abgelehnt hat (z. B. „mehrere Personen – bitte im Bild antippen“). Details in `docs/interaktion.md`. Fehlt bei älteren Servern. |
+| `aktiv` | interaction mode is on (active) |
+| `verfuegbar` | lidar and pose detection present, `interaction_start` possible (available) |
+| `modus` | `bereit` (ready), `folgen` (following), `herkommen` (coming here), `weggehen` (going away), `sucht` (searching); `null` when off |
+| `text` | explanation for display; while following, coming here and going away, new (03.11., F3) e.g. „umfährt Hindernis (links, 0.62 m)“ (detouring around obstacle) or „hochgehoben -- wartet, bis er wieder steht“ (lifted, waiting until it stands again) |
+| `person` | tracked person: `winkel` in degrees as for the lidar, `abstand` (distance) in m (`null` if the lidar sees nothing there); `null` without a person |
+| `personen` | how many people the camera currently sees |
+| `geste` | last recognized gesture (`folgen`, `stopp`, `herkommen`, `weggehen`), for a few seconds, otherwise `null` |
+| `grund` | why the mode last ended (reason); „hochgehoben -- angehalten“ (new 03.11., F3) if it was lifted while driving -- afterwards `bereit` and the announcement „Ich wurde hochgehoben. Ich bleibe stehen.“ |
+| `pausiert` | `true` after `follow_pause` (paused): stands still, mode and target are kept. Any mode change (including the stop gesture) ends the pause. Missing on older servers. |
+| `ziel` | target lock (new 03.11.): `zustand` (state) is `idle`, `acquiring_target`, `following`, `target_temporarily_lost`, `searching_for_target` or `safe_stop`. `id` is the target's track ID (only for this session), `sicherheit` (confidence) is in 0..1, `grund` says why it stopped or refused (e.g. „mehrere Personen – bitte im Bild antippen“). Details in `docs/interaction.md`. Missing on older servers. |
 
-### Stimme im Detail
+### Voice in detail
 
-Am Roboter hängt ein USB-Lautsprecher. Der Roboter sagt von selbst kurz,
-was er tut: „Ich bin bereit.“ beim Start, „Ich folge dir.“, „Ich komme.“,
-„Da bin ich.“, „Wo bist du?“, „Okay, ich halte an.“, beim `stop` „Halt.“.
-Mit `say` lässt sich beliebiger Text vorlesen.
+A USB loudspeaker is attached to the robot. The robot briefly says on its
+own what it is doing: „Ich bin bereit.“ at startup, „Ich folge dir.“,
+„Ich komme.“, „Da bin ich.“, „Wo bist du?“, „Okay, ich halte an.“, and
+„Halt.“ on `stop`. With `say` any text can be read aloud.
 
-**Lautstärke:** Ein Regler für alles, `LAUTSTAERKE` (0–100 %) auf der
-Einstellungsseite (Gruppe „Ton & Lautstärke“, `POST /einstellungen`). Der
-Mixer des Lautsprechers steht fest auf 100 %, leiser wird in Software. Die
-Musik-Lautstärke (`/mukke/volume`) ist ein Anteil davon.
+**Volume:** one slider for everything, `VOLUME` (0–100 %) on the settings
+page (group „Ton & Lautstärke“, `POST /einstellungen`). The loudspeaker's
+mixer is fixed at 100 %; volume is reduced in software. The music volume
+(`/mukke/volume`) is a fraction of it.
 
-- Gesprochen wird mit Piper (offline, deutsche Stimme). Fehlt Piper, spricht
-  espeak-ng, fehlt auch das, landet der Text nur im Log (`verfuegbar: false`).
-  In der Simulation (`--mock`) wird nur geloggt, `spricht` verhält sich aber
-  wie echt.
-- Sätze stellen sich in eine kleine Warteschlange (`STIMME_MAX_WARTESCHLANGE`,
-  3). Ist sie voll, fällt der älteste Satz weg. Derselbe Satz innerhalb von
-  `STIMME_WIEDERHOLUNG_S` (4 s) wird verschluckt.
-- `spricht` bleibt nach jedem Satz noch `STIMME_NACHLAUF_S` (0,4 s) wahr.
-  Die Spracherkennung hört in dieser Zeit nicht zu.
+- Speech is synthesized with Piper (offline, German voice). If Piper is
+  missing, espeak-ng speaks; if that is missing too, the text only goes to
+  the log (`verfuegbar: false`). In the simulation (`--mock`) it is only
+  logged, but `spricht` behaves as for real.
+- Sentences go into a small queue (`VOICE_MAX_QUEUE`, 3). When it is full,
+  the oldest sentence is dropped. The same sentence within
+  `VOICE_REPEAT_S` (4 s) is swallowed.
+- `spricht` stays true for `VOICE_TAIL_S` (0.4 s) after each sentence.
+  Speech recognition does not listen during this time.
 
-### Genaue Fahrbefehle im Detail
+### Precise drive commands in detail
 
-`move` und `turn` fahren eine bestimmte Strecke oder drehen um einen
-bestimmten Winkel, und zwar wirklich: Gemessen wird mit dem Lidar, nicht
-nach Zeit oder Radumdrehungen (`navigation/manoever.py`).
+`move` and `turn` drive a specific distance or turn by a specific angle,
+and really do so: the measurement is done with the lidar, not by time or
+wheel revolutions (`navigation/maneuver.py`).
 
-- Beim Start nimmt er im Stand eine Lidar-Aufnahme auf. Jede weitere wird
-  darauf gelegt (ICP); daraus folgt, wie weit er sich wirklich bewegt und
-  gedreht hat. Rutschende Mecanum-Räder und der unbrauchbare Gyro spielen
-  so keine Rolle. Räder und Fahrbefehl schätzen nur die Zeit zwischen zwei
-  Aufnahmen.
-- **Gerade fahren:** Der Regler hält neben dem Restweg auch die seitliche
-  Abweichung und die Blickrichtung bei null. Abweichungen gleicht er
-  seitwärts aus (Mecanum), statt zu lenken.
-- **Am Ende misst er im Stand nach** (im Fahren ist eine Lidar-Umdrehung
-  verzerrt) und bessert bis zu `MANOEVER_NACHBESSERN` Mal nach. Ziel:
-  `MANOEVER_TOLERANZ_M` (3 cm) und `MANOEVER_TOLERANZ_GRAD` (2°). In der
-  Simulation mit absichtlich rutschendem Antrieb lag er 1–2 cm und 1–2°
-  daneben.
-- Tempo `MANOEVER_SPEED` (0,2 m/s), drehen `MANOEVER_DREH` (0,6 rad/s).
-- **Sicherheit:** Er hält an, wenn in Fahrtrichtung etwas näher als
-  `EXPLORE_STOP_M` (0,4 m) kommt und wenn das Lidar die Umgebung
-  `MANOEVER_BLIND_S` (2 s) lang nicht wiedererkennt. Gedreht wird nur, wenn
-  über den ganzen Winkel keine Ecke der Grundfläche näher als
-  `FAHRSCHUTZ_RAND_M` an etwas herankommt (vorher geprüft). Zusätzlich läuft
-  jeder Befehl durch den Fahrschutz; sperrt der `MANOEVER_GESPERRT_S`
-  (1,5 s) am Stück, gibt er auf und sagt, warum.
-- `GET /manoever/status`: `aktiv`, `art`, `wert`, `text` (Fortschritt),
-  `grund` (wie der letzte endete), `erfolgreich`, `gefahren_m`,
-  `gedreht_grad` (laut Lidar, gegenüber dem Start), `abgleiche`,
-  `fehlschlaege`.
+- At the start it records a lidar scan while standing still. Each further
+  scan is matched against it (ICP); this yields how far it has really moved
+  and turned. Slipping mecanum wheels and the unusable gyro therefore do not
+  matter. Wheels and drive command only estimate the time between two
+  scans.
+- **Driving straight:** besides the remaining distance, the controller also
+  keeps the lateral deviation and the heading at zero. It corrects
+  deviations by strafing sideways (mecanum) instead of steering.
+- **At the end it measures again while standing still** (while driving, a
+  lidar revolution is distorted) and corrects up to
+  `MANEUVER_MAX_CORRECTIONS` times. Target: `MANEUVER_TOLERANCE_M` (3 cm)
+  and `MANEUVER_TOLERANCE_DEG` (2°). In the simulation with deliberately
+  slipping drive it was off by 1–2 cm and 1–2°.
+- Speed `MANEUVER_SPEED` (0.2 m/s), turning `MANEUVER_TURN` (0.6 rad/s).
+- **Safety:** it stops when something comes closer than `EXPLORE_STOP_M`
+  (0.4 m) in the direction of travel and when the lidar fails to recognize
+  the surroundings for `MANEUVER_BLIND_S` (2 s). It only turns if, over the
+  whole angle, no corner of the footprint comes closer than
+  `GUARD_MARGIN_M` to anything (checked beforehand). In addition, every
+  command passes through the drive guard; if it blocks for
+  `MANEUVER_BLOCKED_S` (1.5 s) in a row, it gives up and says why.
+- `GET /manoever/status`: `aktiv` (active), `art` (kind), `wert` (value),
+  `text` (progress), `grund` (how the last one ended), `erfolgreich`
+  (successful), `gefahren_m` (distance driven), `gedreht_grad` (angle
+  turned; according to the lidar, relative to the start), `abgleiche`
+  (matches), `fehlschlaege` (failures).
 
-### Sprachbefehle im Detail
+### Speech commands in detail
 
-Der Roboter hört über das USB-Mikrofon zu (Vosk, offline). Befehle gelten
-nur mit dem Weckwort **„Robi“** im selben Satz oder bis zu 5 s
-(`SPRACHE_WECK_FENSTER_S`), nachdem „Robi“ allein gesagt wurde. „Stopp“,
-„Halt“ und „Bleib stehen“ gelten auch ohne Weckwort, ebenso „La da da“.
-Hört Vosk unsicher (Wort-Konfidenz unter `SPRACHE_MIN_KONFIDENZ` oder
-überwiegend unbekannte Wörter) oder kommt mehr als Weckwort plus Wendung
-(Wortsalat wie „robin hallo hause zu weg ruby“), gilt nur Stopp. Während MUKKE spielt,
-braucht jeder Befehl außer Stopp das Weckwort und eine höhere Konfidenz
-(`SPRACHE_MIN_KONFIDENZ_MUSIK`). Sonst würden Musik und Gespräche zu
-Befehlen. Auf „Robi“ allein antwortet er nach 1 s mit „Ja?“
-(`SPRACHE_WECK_ANTWORT`), sofern bis dahin kein Befehl kam. Die 5 s für den
-Befehl laufen erst ab, wenn er ausgeredet hat.
+The robot listens through the USB microphone (Vosk, offline). Commands only
+count with the wake word **„Robi“** in the same sentence or up to 5 s
+(`SPEECH_WAKE_WINDOW_S`) after „Robi“ was said on its own. „Stopp“,
+„Halt“ and „Bleib stehen“ also count without the wake word, as does „La da da“.
+If Vosk is unsure (word confidence below `SPEECH_MIN_CONFIDENCE` or mostly
+unknown words) or it hears more than wake word plus phrase (word salad such
+as „robin hallo hause zu weg ruby“), only stop counts. While MUKKE is
+playing, every command except stop needs the wake word and a higher
+confidence (`SPEECH_MIN_CONFIDENCE_MUSIC`). Otherwise music and
+conversations would turn into commands. To „Robi“ on its own it answers
+after 1 s with „Ja?“ (`SPEECH_WAKE_REPLY`), unless a command arrived by
+then. The 5 s for the command only start counting down once it has
+finished speaking.
 
-| Befehl | Beispiele | wirkt wie |
+| Command | Examples (German phrases) | Acts like |
 |---|---|---|
 | `folgen` | „Robi, folgen“, „Robi, folge mir“, „Robi, komm mit“ | `follow` |
-| `herkommen` | „Robi, komm her“ | `interaction_start`, dann Modus `herkommen` |
-| `weggehen` | „Robi, geh weg“, „Robi, zurück“ | `interaction_start`, dann Modus `weggehen` |
-| `stopp` | „Stopp“, „Halt“ | bei laufender Interaktion: Modus `bereit` (Interaktion bleibt an); sonst `stop` |
+| `herkommen` | „Robi, komm her“ | `interaction_start`, then mode `herkommen` |
+| `weggehen` | „Robi, geh weg“, „Robi, zurück“ | `interaction_start`, then mode `weggehen` |
+| `stopp` | „Stopp“, „Halt“ | during interaction: mode `bereit` (interaction stays on); otherwise `stop` |
 | `nach_hause` | „Robi, fahr nach Hause“ | `home` |
 | `erkunden` | „Robi, erkunde“ | `explore` |
 | `musik_aus` | „Robi, Musik aus“, „Robi, Ruhe“ | `POST /mukke/stop` |
-| `ladada` | „La da da“ (ohne Weckwort) | `POST /mukke/play` mit `SPRACHE_LADADA_URL` |
-| `beatbox` | „Robi, Beatbox“ | `POST /mukke/play` mit `SPRACHE_BEATBOX_URL` |
+| `ladada` | „La da da“ (without wake word) | `POST /mukke/play` with `SPEECH_LADADA_URL` |
+| `beatbox` | „Robi, Beatbox“ | `POST /mukke/play` with `SPEECH_BEATBOX_URL` |
 | `start` | „Hallo Robi“ | `interaction_start` |
-| `aus` | „Robi, gute Nacht“ | `interaction_stop`, Heimfahrt/Erkunder abbrechen |
-| `manoever` | „Robi, fahr zwei Meter vor“, „Robi, einen halben Meter nach links“, „Robi, dreh dich um neunzig Grad nach rechts“, „Robi, dreh dich um“ (180°) | `move` bzw. `turn`; er sagt an, was er tut |
+| `aus` | „Robi, gute Nacht“ | `interaction_stop`, cancel homing/explorer |
+| `manoever` | „Robi, fahr zwei Meter vor“, „Robi, einen halben Meter nach links“, „Robi, dreh dich um neunzig Grad nach rechts“, „Robi, dreh dich um“ (180°) | `move` or `turn`; it announces what it is doing |
 
-- Ausgeführt wird über dieselben Wege wie die Befehle der App, mit
-  denselben Prüfungen und Meldungen. Wird ein Befehl abgelehnt, geht die
-  Warnung an alle Clients, und der Roboter sagt „Das geht gerade nicht.“.
-- Jeder erkannte Befehl erzeugt `alert` (info) „Sprachbefehl: <Text>“.
-- Ohne Vosk, Modell oder Mikrofon ist die Erkennung aus
-  (`sprache.verfuegbar: false`), der Rest läuft weiter. Den Grund nennt
-  `GET /sprache/status`.
+- Commands are executed through the same paths as the app's commands, with
+  the same checks and messages. If a command is refused, the warning goes to
+  all clients and the robot says „Das geht gerade nicht.“.
+- Every recognized command produces `alert` (info) „Sprachbefehl: <Text>“.
+- Without Vosk, model or microphone, recognition is off
+  (`sprache.verfuegbar: false`); everything else keeps running.
+  `GET /sprache/status` gives the reason.
 
 ---
 
 ## HTTP
 
-### Kamera
+### Camera
 
-Der Roboter betreibt alle Kameras, die er findet, jede mit eigenem Bild.
-Jede hat einen Namen:
+The robot operates all cameras it finds, each with its own image. Each one
+has a name:
 
-| Name | Kamera | Wofür |
+| Name | Camera | Used for |
 |---|---|---|
-| `orientierung` | Orbbec, Farbbild | Orientierung, Fahren. **Standardkamera.** |
-| `personen` | Logitech C270 | Personenerkennung |
-| `usb1`, `usb2`, … | weitere USB-Kameras | nichts Festes |
-| `csi` | Kamera am Flachbandkabel, falls vorhanden | nichts Festes |
+| `orientierung` | Orbbec, color image | Orientation, driving. **Default camera.** |
+| `personen` | Logitech C270 | Person detection |
+| `usb1`, `usb2`, … | further USB cameras | nothing fixed |
+| `csi` | camera on the ribbon cable, if present | nothing fixed |
 
-`orientierung` und `personen` sind immer aufgeführt, auch wenn die Kamera
-gerade fehlt (dann `geoeffnet: false`). Der Roboter sucht sie im Hintergrund
-weiter. Zugeordnet wird über die USB-Kennung (`config.CAMERA_ROLES`).
+`orientierung` and `personen` are always listed, even if the camera is
+currently missing (then `geoeffnet: false`, not opened). The robot keeps
+looking for them in the background. Assignment is by USB ID
+(`config.CAMERA_ROLES`).
 
-| Endpunkt | Liefert |
+| Endpoint | Returns |
 |---|---|
-| `GET /cameras` | alle Kameras mit Zustand und Adressen, siehe unten |
-| `GET /camera/<name>/stream` | MJPEG-Strom (`multipart/x-mixed-replace`) dieser Kamera. Direkt in `<img src>` verwendbar, bis zu `CAMERA_FPS` Bilder/s (Standard 15, höchstens 30, auf der Einstellungsseite verstellbar). |
-| `GET /camera/<name>/snapshot` | ein Einzelbild (meist `image/jpeg`). `503`, solange noch keines da ist. Gut für Bildverarbeitung: einfach im gewünschten Takt abholen. |
-| `GET /camera/<name>/status` | Diagnose dieser Kamera, siehe unten |
-| `GET /camera/stream`, `/camera/snapshot`, `/camera/status` | dasselbe für die Standardkamera (`config.CAMERA_DEFAULT`) |
+| `GET /cameras` | all cameras with state and addresses, see below |
+| `GET /camera/<name>/stream` | MJPEG stream (`multipart/x-mixed-replace`) of this camera. Usable directly in `<img src>`, up to `CAMERA_FPS` frames/s (default 15, at most 30, adjustable on the settings page). |
+| `GET /camera/<name>/snapshot` | a single frame (usually `image/jpeg`). `503` as long as none is available yet. Good for image processing: just fetch at the desired rate. |
+| `GET /camera/<name>/status` | diagnostics for this camera, see below |
+| `GET /camera/stream`, `/camera/snapshot`, `/camera/status` | the same for the default camera (`config.CAMERA_DEFAULT`) |
 
-Ein unbekannter Name gibt `404`. Auflösung standardmäßig 640×480. Wird die
-Kamera abgeschaltet (`CAMERA_ENABLED = False`), antworten `stream` und
-`snapshot` mit `503`. Im Simulationsmodus liefert jede Kamera ein bewegtes
-Testbild als `image/png`, mit eigener Balkenfarbe.
+An unknown name returns `404`. Default resolution 640×480. If the camera is
+disabled (`CAMERA_ENABLED = False`), `stream` and `snapshot` respond with
+`503`. In simulation mode each camera delivers a moving test image as
+`image/png`, with its own bar color.
 
 `/cameras`:
 
@@ -630,12 +637,12 @@ Testbild als `image/png`, mit eigener Balkenfarbe.
 }
 ```
 
-`personen` ist der Name der Kamera, auf deren Bild die Personenrahmen aus
-`state.autonomie.personen` liegen.
-`tiefe` (neu 04.11.) sind die Ansichten der Tiefenkamera, leer ohne sie. Bild
-unter `<basis>/stream` bzw. `<basis>/snapshot`, siehe [Tiefenkamera](#tiefenkamera).
+`standard` is the default camera. `personen` is the name of the camera
+whose image the person boxes from `state.autonomie.personen` refer to.
+`tiefe` (new 04.11.) lists the views of the depth camera, empty without it.
+Image at `<basis>/stream` or `<basis>/snapshot`, see [Depth camera](#depth-camera).
 
-`/camera/status` bzw. `/camera/<name>/status`:
+`/camera/status` or `/camera/<name>/status`:
 
 ```json
 {
@@ -648,35 +655,39 @@ unter `<basis>/stream` bzw. `<basis>/snapshot`, siehe [Tiefenkamera](#tiefenkame
 }
 ```
 
-`geraet` ist das gerade benutzte Gerät. Es kann sich nach einem
-USB-Aussetzer ändern. `fov_deg` ist der horizontale Bildwinkel in Grad. `fps_soll` ist die
-eingestellte Bildrate (`CAMERA_FPS`), `fps_ist` die tatsächlich erreichte.
-Die Kameras schaffen höchstens 30 fps, die Logitech bei wenig Licht nur
-etwa 15.
+`geraet` is the device currently in use. It can change after a USB dropout.
+`fov_deg` is the horizontal field of view in degrees. `fps_soll` is the
+configured frame rate (`CAMERA_FPS`), `fps_ist` the rate actually achieved.
+The cameras manage at most 30 fps, the Logitech only about 15 in low light.
+Other fields: `thread_laeuft` (capture thread running), `bilder_gesamt`
+(total frames), `letztes_bild_vor_s` (seconds since the last frame),
+`bildgroesse_bytes` (frame size), `letzter_fehler` (last error),
+`neu_geoeffnet` (number of reopens).
 
 ### Lidar
 
-**`GET /lidar/scan`**: die letzte vollständige Umdrehung.
+**`GET /lidar/scan`**: the last complete revolution.
 
 ```json
 {"punkte": [[0.0, 1.52], [1.1, 1.53], [358.9, 1.51]], "alter_s": 0.12}
 ```
 
-- `punkte`: Liste von `[winkel_grad, entfernung_m]`, Konventionen siehe
-  oben. Pro Umdrehung einige hundert Punkte, der Lidar dreht rund 5,5-mal
-  pro Sekunde. Winkel auf 0,1°, Entfernung auf 1 cm gerundet.
-- `alter_s`: wie alt die Aufnahme ist.
-- Ist keine aktuelle Aufnahme da (älter als 3 s oder Lidar gestört), kommt
-  stattdessen `{"punkte": [], "hinweis": "Lidar: <Grund>"}`.
+- `punkte` (points): list of `[angle_deg, distance_m]`, conventions see
+  above. A few hundred points per revolution; the lidar spins about 5.5
+  times per second. Angle rounded to 0.1°, distance to 1 cm.
+- `alter_s`: age of the scan in seconds.
+- If no current scan is available (older than 3 s or lidar faulty), you get
+  `{"punkte": [], "hinweis": "Lidar: <Grund>"}` instead (`hinweis` = hint
+  with the reason).
 
-Umrechnen in x/y (Meter, Roboter in der Mitte, x vorn, y links):
+Converting to x/y (meters, robot at the center, x forward, y left):
 
 ```python
 import math
 xy = [(m * math.cos(math.radians(g)), m * math.sin(math.radians(g))) for g, m in scan["punkte"]]
 ```
 
-**`GET /lidar/status`**: Diagnose und Zustand der Ortung.
+**`GET /lidar/status`**: diagnostics and localization state.
 
 ```json
 {
@@ -691,13 +702,14 @@ xy = [(m * math.cos(math.radians(g)), m * math.sin(math.radians(g))) for g, m in
 }
 ```
 
-`letztes_residuum_m` sagt, wie gut die aktuelle Aufnahme auf die Referenz
-vom Startpunkt passt. Unter 0,05 ist gut.
+`ortung` is the localization against the start-point scan.
+`letztes_residuum_m` (last residual) says how well the current scan fits
+the reference from the start point. Below 0.05 is good.
 
-### Tiefenkamera
+### Depth camera
 
-Die Kamera läuft nur während autonomer Fahrten (Strom am USB-Hub). Eingebunden
-wird sie per OpenNI2, Einrichtung siehe [hardware.md](hardware.md#tiefenkamera-orbbec-astra).
+The camera only runs during autonomous drives (power on the USB hub). It is
+integrated via OpenNI2; for setup see [hardware.md](hardware.md#depth-camera-orbbec-astra).
 
 **`GET /tiefe/status`**:
 
@@ -715,54 +727,57 @@ wird sie per OpenNI2, Einrichtung siehe [hardware.md](hardware.md#tiefenkamera-o
 }
 ```
 
-- `kamera` ist `null` in der Simulation oder ohne OpenNI2 (dann steht der
-  Grund in `hinweis`).
-- `boden_erkannt`: Im Bild wurde eine Bodenebene gefunden. Dann stimmen die
-  Höhen, und `kamera_hoehe_m`/`neigung_grad` zeigen die gemessene
-  Einbaulage. Ohne Boden rechnet er vorsichtiger: 5 cm mehr Mindesthöhe,
-  nur bis 1,3 m.
-- `gedaechtnis.rahmen`: worin die Punkte gemerkt werden, `lidar`
-  (Lidar-Odometrie, beim Kartieren) oder `rad` (Odometrie).
+- `kamera` is `null` in the simulation or without OpenNI2 (the reason is
+  then in `hinweis`).
+- `boden_erkannt` (floor detected): a floor plane was found in the image.
+  Then the heights are correct, and `kamera_hoehe_m`/`neigung_grad` show the
+  measured mounting height and tilt. Without a floor it computes more
+  cautiously: 5 cm more minimum height, only up to 1.3 m.
+- `gedaechtnis.rahmen`: the frame in which the obstacle memory stores the
+  points, `lidar` (lidar odometry, during mapping) or `rad` (wheel
+  odometry).
+- `fortschritt_aktiv`: whether the progress watch is running.
 
-**`POST /tiefe/test`**: schaltet die Kamera für 20 s ein, um im Stand
-Bodenerkennung und Einbaulage zu prüfen.
+**`POST /tiefe/test`**: switches the camera on for 20 s to check floor
+detection and mounting pose while standing still.
 
-**Tiefenbild ansehen** (neu 04.11., braucht OpenCV am Pi):
+**Viewing the depth image** (new 04.11., needs OpenCV on the Pi):
 
-| Endpunkt | Liefert |
+| Endpoint | Returns |
 |---|---|
-| `GET /tiefe/stream` | MJPEG: Tiefenbild in Farbe |
-| `GET /tiefe/snapshot` | ein Bild davon (JPEG) |
-| `GET /tiefe/ueberlagert/stream` | dasselbe halbdurchsichtig über dem Farbbild der Orbbec (`TIEFE_UEBER_KAMERA`) |
-| `GET /tiefe/ueberlagert/snapshot` | ein Bild davon |
+| `GET /tiefe/stream` | MJPEG: depth image in color |
+| `GET /tiefe/snapshot` | a single frame of it (JPEG) |
+| `GET /tiefe/ueberlagert/stream` | the same, semi-transparent over the Orbbec's color image (`DEPTH_OVERLAY_CAMERA`) |
+| `GET /tiefe/ueberlagert/snapshot` | a single frame of it |
 
-Rot ist nah, blau fern (`TIEFE_ANZEIGE_NAH_M` bis `…_FERN_M`). Schwarz heißt
-keine Messung: näher als ~0,6 m, zu weit, spiegelnd. Magenta zählt als
-Hindernis. Dazu kommen die Entfernung in der Bildmitte (Kreuz), das nächste
-Hindernis und ob der Boden erkannt ist. Wer zusieht, schaltet die Kamera
-ein; nach dem Schließen geht sie wieder aus. Die Überlagerung deckt sich nur
-ungefähr, denn die Kameras haben verschiedene Bildwinkel und sitzen 2–3 cm
-auseinander. Nachstellen lässt sie sich mit `TIEFE_UEBER_VERSATZ_PX` und
-`TIEFE_UEBER_ZOOM`. In der App sind beide Ansichten im Kamera-Umschalter
-wählbar, aber nicht unter „Alle“.
+Red is near, blue far (`DEPTH_VIEW_NEAR_M` to `DEPTH_VIEW_FAR_M`). Black
+means no measurement: closer than ~0.6 m, too far, reflective. Magenta
+counts as an obstacle. In addition there is the distance at the image center
+(crosshair), the nearest obstacle and whether the floor is detected. Anyone
+watching switches the camera on; after closing, it turns off again. The
+overlay only roughly lines up, because the cameras have different fields of
+view and sit 2–3 cm apart. It can be adjusted with `DEPTH_OVERLAY_SHIFT_PX`
+and `DEPTH_OVERLAY_ZOOM`. In the app both views can be selected in the
+camera switcher, but not under „Alle“ (all).
 
-### Autonomes Fahren
+### Autonomous driving
 
-| Endpunkt | Liefert |
+| Endpoint | Returns |
 |---|---|
-| `GET /autonomie/status` | dasselbe wie `state.autonomie`, zum Nachsehen ohne WebSocket |
+| `GET /autonomie/status` | the same as `state.autonomie`, for checking without WebSocket |
 
-### Einstellungen
+### Settings
 
-Die Einstellungen aus `config.py`, die sich zur Laufzeit verstellen lassen
-(Tempo, Kamera-Bildrate, Lidar, Autonomie …). In der Web-App öffnet das Zahnrad oben rechts sie als Fenster; als
-eigene Seite gibt es sie unter `/einstellungen`.
+The settings from `config.py` that can be changed at runtime (speed, camera
+frame rate, lidar, autonomy …). In the web app the gear icon at the top
+right opens them as a dialog; as a separate page they are available at
+`/einstellungen`.
 
-| Endpunkt | Liefert |
+| Endpoint | Returns |
 |---|---|
-| `GET /settings` | alle Einstellungen nach Blöcken, mit Wert, Standard und Grenzen |
-| `POST /settings` | Body `{"CAMERA_FPS": 20, "EXPLORE_SPEED": 0.15}`: setzt die Werte. Alle oder keiner: Ist einer ungültig, kommt `400` mit `{"fehler": "…"}`, und nichts wird geändert. |
-| `POST /settings/reset` | Body `{"keys": ["CAMERA_FPS"]}` für einzelne Werte, `{}` für alle: zurück auf die Werte aus `config.py` |
+| `GET /settings` | all settings grouped in blocks, with value, default and limits |
+| `POST /settings` | Body `{"CAMERA_FPS": 20, "EXPLORE_SPEED": 0.15}`: sets the values. All or nothing: if one is invalid, you get `400` with `{"fehler": "…"}` (error), and nothing is changed. |
+| `POST /settings/reset` | Body `{"keys": ["CAMERA_FPS"]}` for individual values, `{}` for all: back to the values from `config.py` |
 
 `GET /settings`:
 
@@ -778,78 +793,84 @@ eigene Seite gibt es sie unter `/einstellungen`.
 }
 ```
 
-- `typ`: `bool`, `int`, `float` oder `auswahl` (dann stehen die erlaubten
-  Werte in `optionen`).
-- `neustart: true`: wirkt erst nach einem Neustart des Servers.
-- Die Antwort auf beide `POST` ist dieselbe Liste, dazu `geaendert` (welche
-  Werte sich wirklich geändert haben) und `neustart_noetig`.
+- `gruppen` are the blocks (groups), each with `id`, `titel` (title),
+  `text` and `einstellungen` (settings). Per setting: `key`, `label`,
+  `typ` (type), `wert` (value), `standard` (default), `min`, `max`,
+  `schritt` (step), `einheit` (unit), `optionen` (options), `hilfe` (help
+  text), `neustart` (restart).
+- `typ`: `bool`, `int`, `float` or `auswahl` (choice; the allowed values
+  are then in `optionen`).
+- `neustart: true`: only takes effect after a server restart.
+- The response to both `POST`s is the same list, plus `geaendert` (which
+  values actually changed) and `neustart_noetig` (restart needed).
 
-Änderungen gelten sofort und werden in `robot/settings.json` gespeichert.
-Die Datei enthält nur Abweichungen vom Standard. Wer sie löscht, hat wieder
-die Werte aus `config.py`. Ändern sich die Tempo-Grenzen, schickt der
-Roboter allen Clients ein neues `limits`. Jede Änderung meldet er außerdem
-als `alert` (`info`).
+Changes take effect immediately and are saved in `robot/settings.json`.
+The file only contains deviations from the defaults. Delete it and you are
+back to the values from `config.py`. If the speed limits change, the robot
+sends a new `limits` to all clients. It also reports every change as an
+`alert` (`info`).
 
-Ändern geht nur von einer Seite, die vom Roboter selbst geladen wurde: CORS
-erlaubt fremden Seiten nur `GET`.
+Changes are only possible from a page loaded from the robot itself: CORS
+only allows `GET` for foreign pages.
 
-### Interaktion
+### Interaction
 
-| Endpunkt | Liefert |
+| Endpoint | Returns |
 |---|---|
-| `GET /interaktion/status` | dasselbe wie `state.interaktion`, dazu `pose`: `verfuegbar`, `simuliert`, `aktiv`, `fehler`, `fps`, `bilder`, `letzte_erkennung_vor_s`, `kamera` (auf welchem Kamerabild die Punkte liegen, Name wie in `/cameras`) |
-| `GET /interaktion/pose` | `personen`: erkannte Menschen, größter zuerst, je `box` [x1, y1, x2, y2] und `kp` (17 × [x, y, Sicherheit], COCO-Reihenfolge), relativ zur Bildgröße (0..1), dazu `score`, `winkel`, `id` (Track-ID für `follow {ziel_id}`, `null` solange der Tracker die Person noch nicht kennt) und `ziel` (`true` beim gesperrten Ziel); `skelett`: Punktpaare zum Verbinden. Leer, solange der Modus aus ist. |
+| `GET /interaktion/status` | the same as `state.interaktion`, plus `pose`: `verfuegbar` (available), `simuliert` (simulated), `aktiv` (active), `fehler` (error), `fps`, `bilder` (frames), `letzte_erkennung_vor_s` (seconds since last detection), `kamera` (which camera image the keypoints refer to, name as in `/cameras`) |
+| `GET /interaktion/pose` | `personen`: detected people, largest first, each with `box` [x1, y1, x2, y2] and `kp` (17 × [x, y, confidence], COCO order), relative to the image size (0..1), plus `score`, `winkel` (angle), `id` (track ID for `follow {ziel_id}`, `null` while the tracker does not know the person yet) and `ziel` (`true` for the locked target); `skelett`: point pairs to connect (skeleton). Empty while the mode is off. |
 
-### Fahrtenschreiber
+### Drive recorder
 
-Neu 03.11. Der Server hält immer die letzte Minute (`AUFZEICHNUNG_PUFFER_S`)
-im Speicher: jeden Lidar-Scan, jeden Fahrbefehl vor und nach den Grenzen des
-Watchdogs (`soll`, `safe`, `quelle`), harte Halts, Board-Geschwindigkeit und
-Pose (20 Hz) und Zustandswechsel (Erkunder, Interaktion, Heimfahrt). Erst
-`record_save` (Knopf „Fahrt speichern“ in der Web-App) schreibt sie nach
-`AUFZEICHNUNG_ORDNER` (Standard `~/.rosmaster/aufzeichnungen/`); die
-neuesten `AUFZEICHNUNG_MAX_DATEIEN` bleiben. Wozu: auffällige Fahrten am
-eigenen Rechner mit `scripts/abspielen.py` nachsehen und neue Ausweichlogik
-an ihnen prüfen.
+New 03.11. The server always keeps the last minute (`RECORDING_BUFFER_S`)
+in memory: every lidar scan, every drive command before and after the
+watchdog's limits (`soll`, `safe`, `quelle`), hard stops, board speed and
+pose (20 Hz) and state changes (explorer, interaction, homing). Only
+`record_save` (button „Fahrt speichern“ in the web app) writes it to
+`RECORDING_FOLDER` (default `~/.rosmaster/aufzeichnungen/`); the newest
+`RECORDING_MAX_FILES` are kept. Purpose: review conspicuous drives on your
+own computer with `scripts/replay.py` and test new avoidance logic against
+them.
 
-| Endpunkt | Liefert |
+| Endpoint | Returns |
 |---|---|
-| `GET /aufzeichnung/status` | `aktiv`, `puffer_s`, `ereignisse`, `scans`, `dauer_s` (was gerade im Puffer liegt), `ordner`, `gespeichert` (seit Start), `letzte_datei`. Ausgeschaltet nur `{"aktiv": false}`. |
-| `GET /aufzeichnung/liste` | `dateien`: je `name`, `bytes`, `zeit`, neueste zuerst |
-| `GET /aufzeichnung/datei/<name>` | die Datei zum Herunterladen (`application/gzip`). Unbekannter oder ungültiger Name `404`. |
+| `GET /aufzeichnung/status` | `aktiv` (active), `puffer_s` (buffer length), `ereignisse` (events), `scans`, `dauer_s` (what is currently in the buffer), `ordner` (folder), `gespeichert` (saved since start), `letzte_datei` (last file). When disabled only `{"aktiv": false}`. |
+| `GET /aufzeichnung/liste` | `dateien` (files): each with `name`, `bytes`, `zeit` (time), newest first |
+| `GET /aufzeichnung/datei/<name>` | the file for download (`application/gzip`). Unknown or invalid name `404`. |
 
-Dateiformat: gzip-komprimiertes JSON Lines. Erste Zeile ist der Kopf
-(`version`, `erstellt`, `notiz`, `dauer_s`, `antrieb`, `mock`, `lidar`, `config` mit den
-fahrrelevanten Einstellungen), danach ein Ereignis je Zeile mit `t`
-(Sekunden ab dem ersten Ereignis) und `art`:
+File format: gzip-compressed JSON Lines. The first line is the header
+(`version`, `erstellt` (created), `notiz` (note), `dauer_s`, `antrieb`
+(drive), `mock`, `lidar`, `config` with the driving-related settings),
+followed by one event per line with `t` (seconds since the first event) and
+`art` (kind):
 
-| `art` | Felder |
+| `art` | Fields |
 |---|---|
-| `scan` | `zeit` (Ende der Umdrehung), `dauer`, `w` (Winkel in Zehntelgrad), `r` (Entfernung in mm) |
-| `befehl` | `quelle`, `soll` und `safe` (je `[vx, vy, omega]`) |
-| `stop` | – (harter Halt über den Watchdog) |
-| `odo` | `v` (Board-Geschwindigkeit), `pose` (`[x, y, theta_grad]`), `ist` (aktueller Befehl), `misst` (ob `v` gemessen statt geschätzt ist) |
-| `zustand` | `erkunder`, `erkunder_text`, `erkunder_grund`, `interaktion`, `heimfahrt` – nur bei Änderung |
+| `scan` | `zeit` (end of revolution), `dauer` (duration), `w` (angle in tenths of a degree), `r` (distance in mm) |
+| `befehl` | command: `quelle` (source), `soll` (requested) and `safe` (each `[vx, vy, omega]`) |
+| `stop` | – (hard stop via the watchdog) |
+| `odo` | `v` (board speed), `pose` (`[x, y, theta_grad]`, theta in degrees), `ist` (current command), `misst` (whether `v` is measured rather than estimated) |
+| `zustand` | state: `erkunder` (explorer), `erkunder_text`, `erkunder_grund`, `interaktion`, `heimfahrt` (homing) – only on change |
 
 ```bash
-curl -O http://<roboter>:8000/aufzeichnung/datei/fahrt_20261103_141500.jsonl.gz
-python scripts/abspielen.py fahrt_20261103_141500.jsonl.gz --svg fahrt.svg --erkunder
+curl -O http://<robot>:8000/aufzeichnung/datei/fahrt_20261103_141500.jsonl.gz
+python scripts/replay.py fahrt_20261103_141500.jsonl.gz --svg fahrt.svg --erkunder
 ```
 
-### Diagnose
+### Diagnostics
 
-Sammelt alles, was am X3 schiefgehen kann (Akku, Spannungseinbrüche,
-USB-Überlast und -Abmeldungen, Unterspannung, Temperatur, Geräteausfälle,
-Fehler im Log), und macht daraus Probleme mit Erklärung und Handlungs-
-schritten. Die Seite dazu ist `/diagnose`.
+Collects everything that can go wrong on the X3 (battery, voltage drops,
+USB overcurrent and disconnects, undervoltage, temperature, device
+failures, errors in the log) and turns it into problems with an explanation
+and steps to take. The page for it is `/diagnose`.
 
-| Endpunkt | Liefert |
+| Endpoint | Returns |
 |---|---|
-| `GET /diagnose/status` | Gesamtzustand, Probleme, Messwerte, Geräte, Zeitleiste, Akkuverlauf (siehe unten) |
-| `GET /diagnose/protokoll?nach=N` | Server-Log-Zeilen mit Nummer > `N`: `{"zeilen": [{"id", "zeit", "stufe", "quelle", "text"}], "letzte_id"}`. `letzte_id` ist immer die letzte Nummer des Servers; ist sie kleiner als `N`, wurde er neu gestartet. |
-| `POST /diagnose/quittieren` | Body `{"id": "akku_schwach"}` oder `{"alle": true}`: als gesehen markieren. Ohne beides `400`. |
+| `GET /diagnose/status` | overall state, problems, readings, devices, timeline, battery history (see below) |
+| `GET /diagnose/protokoll?nach=N` | server log lines with number > `N`: `{"zeilen": [{"id", "zeit", "stufe", "quelle", "text"}], "letzte_id"}` (lines with id, time, level, source, text). `letzte_id` is always the server's latest number; if it is smaller than `N`, the server was restarted. |
+| `POST /diagnose/quittieren` | Body `{"id": "akku_schwach"}` or `{"alle": true}`: mark as seen (acknowledge). Without either, `400`. |
 
-`GET /diagnose/status` (gekürzt):
+`GET /diagnose/status` (abridged):
 
 ```json
 {
@@ -872,100 +893,105 @@ schritten. Die Seite dazu ist `/diagnose`.
 }
 ```
 
-- `gesamt.stufe`: `kritisch`, `warnung` oder `ok`; zählt nur nicht
-  quittierte Probleme.
-- `schwere`: `kritisch`, `warnung` oder `hinweis`.
-- `zustand: true`: eine Bedingung (Akku, Lidar weg …), `besteht` sagt, ob
-  sie gerade gilt. `zustand: false`: ein einmaliger Vorfall (USB-Überlast),
-  sichtbar für `PROBLEM_FENSTER_S` Sekunden.
-- Quittiert gilt bis zum nächsten *neuen* Auftreten.
-- `quellen.kernel_log`: `ok`, `keine Berechtigung` (Benutzer in die Gruppe
-  `systemd-journal`), `nicht vorhanden` (Windows, Simulation) oder
-  `Fehler beim Lesen`.
-- Die Warnschwellen sind über `/settings` (Block `diagnose`) einstellbar.
-- `absturz` (seit 29.10.): Absturz- und Hänger-Erfassung. Felder:
-  - `aktiv`, `ordner`: ob mitgeschrieben wird und wohin
+- Top-level fields: `gesamt` (overall), `probleme` (problems), `messwerte`
+  (readings), `geraete` (devices), `ereignisse` (events), `akku_verlauf`
+  (battery history), `schwellen` (thresholds), `quellen` (data sources).
+  Per problem: `titel` (title), `was` (what happened), `tun` (what to do),
+  `seit` (since), `zuletzt` (last seen), `anzahl` (count), `quittiert`
+  (acknowledged), `vor_s` (seconds ago).
+- `gesamt.stufe`: `kritisch` (critical), `warnung` (warning) or `ok`; only
+  counts unacknowledged problems.
+- `schwere` (severity): `kritisch`, `warnung` or `hinweis` (hint).
+- `zustand: true`: a condition (battery, lidar gone …); `besteht` says
+  whether it currently applies. `zustand: false`: a one-off incident (USB
+  overcurrent), visible for `PROBLEM_WINDOW_S` seconds.
+- Acknowledged lasts until the next *new* occurrence.
+- `quellen.kernel_log`: `ok`, `keine Berechtigung` (no permission: add the
+  user to the `systemd-journal` group), `nicht vorhanden` (not present:
+  Windows, simulation) or `Fehler beim Lesen` (read error).
+- The warning thresholds can be set via `/settings` (block `diagnose`).
+- `absturz` (since 29.10.): crash and hang capture. Fields:
+  - `aktiv`, `ordner`: whether it records and where to
     (`~/.rosmaster/diagnose/`).
-  - `boot`, `journal_dauerhaft`: Boot-ID; ob das Kernel-Log Neustarts
-    überlebt.
-  - `vorher`: Erklärung, falls der vorige Lauf nicht sauber endete
-    (`art`: `pi_neustart`, `segfault`, `speicher`, `prozess_weg`; dazu
-    `titel`, `was`, `tun`, Log-Zeilen, `dump`), sonst `null`.
-  - `laeufe`: die letzten Serverläufe (`pid`, `boot`, `start`, `zuletzt`,
-    `ende`; `ende: null` = nicht sauber beendet).
-  - `haenger`, `puls_max_s`, `puls_alter_s`: wie oft und wie lange die
-    Ereignisschleife stand; `blockiert` (`zeit`, `dauer_s`, `stapel`) zeigt,
-    woran sie zuletzt hing.
+  - `boot`, `journal_dauerhaft`: boot ID; whether the kernel log survives
+    reboots (persistent journal).
+  - `vorher`: explanation if the previous run did not end cleanly
+    (`art`: `pi_neustart` (Pi reboot), `segfault`, `speicher` (memory),
+    `prozess_weg` (process gone); plus `titel`, `was`, `tun`, log lines,
+    `dump`), otherwise `null`.
+  - `laeufe`: the last server runs (`pid`, `boot`, `start`, `zuletzt`,
+    `ende`; `ende: null` = not ended cleanly).
+  - `haenger`, `puls_max_s`, `puls_alter_s`: how often and how long the
+    event loop stalled; `blockiert` (`zeit`, `dauer_s`, `stapel` = stack)
+    shows where it last hung.
   - `speicher` (`server_mb`, `threads`, `dateien`, `frei_mb`, `gesamt_mb`)
-    und `speicher_verlauf`: um ein Speicherleck zu erkennen.
-  - `usb_ports`, `usb_ports_neu`, `usb_pro_min`: Over-Current-Zähler je
-    Root-Port, neue seit dem Start und Rate pro Minute. Ab
-    `USB_STURM_PRO_MIN` meldet die Seite eine dauerhafte USB-Überlast.
+    and `speicher_verlauf`: to detect a memory leak.
+  - `usb_ports`, `usb_ports_neu`, `usb_pro_min`: overcurrent counters per
+    root port, new ones since startup and rate per minute. From
+    `USB_STORM_PER_MIN` on, the page reports a persistent USB overload.
 
-### Musik („MUKKE“)
+### Music („MUKKE“)
 
-Spielt den Ton eines YouTube-Links auf dem USB-Lautsprecher des Roboters
-ab. Abgespielt wird auf dem Roboter, nicht im Browser. In der Web-App öffnet
-der Knopf „MUKKE“ oben links das Fenster dafür.
+Plays the audio of a YouTube link on the robot's USB loudspeaker. Playback
+happens on the robot, not in the browser. In the web app, the „MUKKE“
+button at the top left opens the dialog for it.
 
-| Endpunkt | Liefert |
+| Endpoint | Returns |
 |---|---|
-| `GET /mukke/status` | `laeuft`, `pausiert`, `titel`, `url`, `lautstaerke` (0–100), `fehler` (warum zuletzt nichts lief), `verfuegbar` und `hinweis` (was fehlt, z. B. „mpv fehlt“) |
-| `POST /mukke/play` | Body `{"url": "https://youtu.be/…"}`. Ersetzt, was gerade läuft. Nur Links von youtube.com, music.youtube.com und youtu.be, sonst `400` mit `{"fehler": "…"}`. |
-| `POST /mukke/pause` | Pause an/aus |
-| `POST /mukke/stop` | anhalten |
-| `POST /mukke/volume` | Body `{"lautstaerke": 70}`: Anteil der Gesamtlautstärke `LAUTSTAERKE` (mpv bekommt beides multipliziert) |
+| `GET /mukke/status` | `laeuft` (playing), `pausiert` (paused), `titel` (title), `url`, `lautstaerke` (volume, 0–100), `fehler` (why nothing played last time), `verfuegbar` (available) and `hinweis` (what is missing, e.g. „mpv fehlt“) |
+| `POST /mukke/play` | Body `{"url": "https://youtu.be/…"}`. Replaces whatever is playing. Only links from youtube.com, music.youtube.com and youtu.be, otherwise `400` with `{"fehler": "…"}`. |
+| `POST /mukke/pause` | toggle pause |
+| `POST /mukke/stop` | stop |
+| `POST /mukke/volume` | Body `{"lautstaerke": 70}`: fraction of the overall volume `VOLUME` (mpv gets both multiplied) |
 
-Alle `POST` antworten mit dem neuen Zustand wie `/mukke/status`. Bis der
-Titel bekannt ist, vergehen ein paar Sekunden (yt-dlp muss die Tonspur erst
-finden). Voraussetzungen auf dem Pi: `mpv` und `yt-dlp`, siehe
-`docs/hardware.md`.
+All `POST`s respond with the new state, like `/mukke/status`. It takes a few
+seconds until the title is known (yt-dlp first has to find the audio track).
+Requirements on the Pi: `mpv` and `yt-dlp`, see `docs/hardware.md`.
 
-### Stimme
+### Voice
 
-| Endpunkt | Liefert |
+| Endpoint | Returns |
 |---|---|
-| `GET /stimme/status` | `aktiviert`, `verfuegbar`, `simuliert`, `ausgabe` (`piper`, `espeak`, `text`, `simuliert`), `geraet` (ALSA-Name), `spricht`, `warteschlange`, `zuletzt`, `gesagt`, `verworfen`, `fehler` (z. B. Meldung von aplay, wenn der Lautsprecher fehlt) |
+| `GET /stimme/status` | `aktiviert` (enabled), `verfuegbar` (available), `simuliert` (simulated), `ausgabe` (output: `piper`, `espeak`, `text`, `simuliert`), `geraet` (ALSA name), `spricht` (speaking), `warteschlange` (queued sentences), `zuletzt` (last sentence), `gesagt` (sentences spoken), `verworfen` (sentences dropped), `fehler` (error, e.g. a message from aplay if the loudspeaker is missing) |
 
-### Sprachbefehle
+### Speech commands
 
-| Endpunkt | Liefert |
+| Endpoint | Returns |
 |---|---|
-| `GET /sprache/status` | `aktiviert`, `verfuegbar`, `simuliert`, `zustand` (`aus`, `laedt`, `hoert`, `fehler`, `simuliert`, `pausiert`), `pause` (warum das Mikrofon gerade bewusst zu ist, z. B. „Mapping läuft“, sonst `null`), `mikrofon` (Gerätename), `modell` (Pfad), `weckwort`, `geweckt`, `zuletzt_gehoert`, `letzter_befehl`, `erkannt` (Anzahl), `konfidenz` (kleinste Wort-Konfidenz des letzten Satzes, 0..1), `verworfen` (Anzahl), `zuletzt_verworfen` (Befehl, Text, Grund), `befehle` (alle Wendungen je Befehl), `fehler` (z. B. „vosk fehlt (pip install vosk sounddevice)“, „Vosk-Modell fehlt: …“ oder „kein Mikrofon gefunden (vorhanden: …)“) |
-| `GET /sprache/live` | Mitlesen (App: Schalter „Mikrofon mitlesen“, fragt 4x pro Sekunde): `verfuegbar`, `zustand`, `mikrofon`, `rate` (Hz), `pegel` (0..1, −60 dBFS bis Vollaussteuerung), `teil` (was Vosk im laufenden Satz bisher versteht), `taub` (spricht gerade selbst, wertet nichts aus), `geweckt`, `ereignisse` (letzte Sätze: `zeit` (Unix-Zeit), `text`, `ergebnis` = `befehl` / `verworfen` / `weckwort` / `ohne`, dazu `befehl` und bei `verworfen` der `grund`). Pegel und `teil` rechnet der Server nur, solange jemand abfragt. |
-| `WS /sprache/ton` | Mithören (App: Schalter „Mikrofon mithören“): erst eine Textnachricht `{"rate": 16000}` (`null`, solange kein Mikrofon offen ist; bei jedem Wechsel neu und ohne Ton jede Sekunde als Lebenszeichen: Kommt 5 s gar nichts, verbindet die App neu), dann der Rohton als Binärnachrichten, 16 bit little-endian, mono, Blöcke à 0,25 s. Kommt der Browser nicht hinterher, fallen Blöcke weg (`SPRACHE_TON_PUFFER`). Nur solange jemand verbunden ist, wird etwas verschickt. |
-| `WS /sprache/durchsage` | Durchsage (App: Schalter „Über den Roboter sprechen“): Ton aus dem Browser-Mikrofon live über den Lautsprecher des Roboters. Der Server antwortet zuerst `{"bereit": true|false, "grund": …}`, später erneut, wenn der Lautsprecher ausfällt oder wieder geht. Der Client schickt `{"rate": 16000}` und danach Rohton als Binärnachrichten (16 bit little-endian, mono). Läuft in der Warteschlange der Stimme: Musik pausiert, die Spracherkennung hört so lange weg, ein Stopp bricht ab. Nach `DURCHSAGE_PAUSE_S` (2 s) ohne Ton ist der Lautsprecher wieder frei. Browser geben das Mikrofon nur über HTTPS frei, deshalb läuft dieselbe App zusätzlich unter `https://<roboter>:8443` (`HTTPS_PORT`, selbst unterschriebenes Zertifikat in `~/.rosmaster/https`, die Warnung im Browser einmal bestätigen). |
+| `GET /sprache/status` | `aktiviert` (enabled), `verfuegbar` (available), `simuliert` (simulated), `zustand` (state: `aus` off, `laedt` loading, `hoert` listening, `fehler` error, `simuliert`, `pausiert` paused), `pause` (why the microphone is deliberately closed right now, e.g. „Mapping läuft“, otherwise `null`), `mikrofon` (device name), `modell` (path), `weckwort` (wake word), `geweckt` (awake), `zuletzt_gehoert` (last heard), `letzter_befehl` (last command), `erkannt` (recognized count), `konfidenz` (lowest word confidence of the last sentence, 0..1), `verworfen` (rejected count), `zuletzt_verworfen` (last rejected: command, text, reason), `befehle` (all phrases per command), `fehler` (e.g. „vosk fehlt (pip install vosk sounddevice)“, „Vosk-Modell fehlt: …“ or „kein Mikrofon gefunden (vorhanden: …)“) |
+| `GET /sprache/live` | Live transcript (app: switch „Mikrofon mitlesen“, polls 4 times per second): `verfuegbar`, `zustand`, `mikrofon`, `rate` (Hz), `pegel` (level, 0..1, −60 dBFS to full scale), `teil` (partial: what Vosk understands of the current sentence so far), `taub` (deaf: it is speaking itself and evaluates nothing), `geweckt`, `ereignisse` (last sentences: `zeit` (Unix time), `text`, `ergebnis` (result) = `befehl` (command) / `verworfen` (rejected) / `weckwort` (wake word) / `ohne` (none), plus `befehl` and, for `verworfen`, the `grund` (reason)). The server only computes level and `teil` while someone is polling. |
+| `WS /sprache/ton` | Live listening (app: switch „Mikrofon mithören“): first a text message `{"rate": 16000}` (`null` while no microphone is open; resent on every change and, without audio, every second as a heartbeat: if nothing at all arrives for 5 s, the app reconnects), then the raw audio as binary messages, 16 bit little-endian, mono, blocks of 0.25 s. If the browser cannot keep up, blocks are dropped (`SPEECH_SOUND_BUFFER`). Data is only sent while someone is connected. |
+| `WS /sprache/durchsage` | Announcement (app: switch „Über den Roboter sprechen“): audio from the browser microphone live through the robot's loudspeaker. The server first replies `{"bereit": true|false, "grund": …}` (ready, reason), and again later if the loudspeaker fails or comes back. The client sends `{"rate": 16000}` and then raw audio as binary messages (16 bit little-endian, mono). Runs in the voice queue: music pauses, speech recognition stops listening for the duration, a stop aborts it. After `ANNOUNCE_PAUSE_S` (2 s) without audio, the loudspeaker is free again. Browsers only grant microphone access over HTTPS, so the same app additionally runs at `https://<robot>:8443` (`HTTPS_PORT`, self-signed certificate in `~/.rosmaster/https`; confirm the browser warning once). |
 
-### Kartierung (SLAM)
+### Mapping (SLAM)
 
-Die Karte baut slam_toolbox im ROS-Container `x3`. Lidar und Position
-speist der Server selbst ein (E8 in [`entscheidungen.md`](entscheidungen.md)).
-Bedienoberfläche: `GET /map`.
+The map is built by slam_toolbox in the ROS container `x3`. The server
+feeds in lidar and position itself (E8 in [`decisions.md`](decisions.md)).
+User interface: `GET /map`.
 
-| Endpunkt | Liefert |
+| Endpoint | Returns |
 |---|---|
-| `GET /api/mapping/status` | Zustand (siehe unten) |
-| `POST /api/mapping/start` | startet Einspeisung, Kartenempfang und SLAM; Fehler kommen als 503 mit Text |
-| `POST /api/mapping/stop` | beendet alles wieder (auch die Kartierfahrt), die letzte Karte bleibt abrufbar |
-| `POST /api/mapping/fahrt/start` | Kartierfahrt starten (nur bei laufendem Mapping, sonst 409 mit Grund) |
-| `POST /api/mapping/fahrt/stop` | Kartierfahrt anhalten |
-| `GET /api/mapping/map` | letzte Karte (`nav_msgs/OccupancyGrid`, Zellen als Base64), 404 vor der ersten |
-| `POST /api/mapping/save` | speichert die letzte Karte als PGM + YAML, Body `{"name": "wohnzimmer"}` |
-| `GET /api/mapping/maps` | gespeicherte Karten |
-| `POST /api/mapping/laden` | gespeicherte Karte laden, um darin zu fahren, Body `{"name": "wohnzimmer"}`; 404 unbekannt, 409 während einer Kartierung |
-| `GET /api/mapping/ortung` | Lage in der Karte, Spur, laufende Fahrt, offene Lücken (siehe „Karte nutzen“) |
-| `POST /api/mapping/ziel` | zu einem Punkt fahren, Body `{"x": 2.5, "y": -1.0, "winkel": 90}` (`winkel` optional); 409 mit Grund, wenn es nicht geht |
-| `POST /api/mapping/ziel/stop` | Fahrt zum Ziel abbrechen |
-| `POST /api/mapping/pose` | „Hier stehe ich“, Body wie bei `ziel`: Lage dort suchen |
-| `WS /api/mapping/ws` | alle 3 s `{"type": "status"}`, bei jeder neuen Karte `{"type": "map"}`, bei Änderungen der Kartierfahrt `{"type": "fahrt"}`, bei Änderungen der Lage `{"type": "ortung"}` (Inhalt wie `GET /api/mapping/ortung`) |
+| `GET /api/mapping/status` | state (see below) |
+| `POST /api/mapping/start` | starts scan feed, map reception and SLAM; errors come back as 503 with text |
+| `POST /api/mapping/stop` | stops everything again (including the mapping drive); the last map remains available |
+| `POST /api/mapping/fahrt/start` | start the mapping drive (only while mapping is running, otherwise 409 with reason) |
+| `POST /api/mapping/fahrt/stop` | stop the mapping drive |
+| `GET /api/mapping/map` | last map (`nav_msgs/OccupancyGrid`, cells as Base64), 404 before the first one |
+| `POST /api/mapping/save` | saves the last map as PGM + YAML, body `{"name": "wohnzimmer"}` |
+| `GET /api/mapping/maps` | saved maps |
+| `POST /api/mapping/laden` | load a saved map to drive in it, body `{"name": "wohnzimmer"}`; 404 unknown, 409 during mapping |
+| `GET /api/mapping/ortung` | pose in the map, trail, running drive, open frontiers (see "Using the map") |
+| `POST /api/mapping/ziel` | drive to a point, body `{"x": 2.5, "y": -1.0, "winkel": 90}` (`winkel` optional); 409 with reason if not possible |
+| `POST /api/mapping/ziel/stop` | cancel the goal drive |
+| `POST /api/mapping/pose` | "I am here", body as for `ziel`: search for the pose there |
+| `WS /api/mapping/ws` | `{"type": "status"}` every 3 s, `{"type": "map"}` on every new map, `{"type": "fahrt"}` on changes of the mapping drive, `{"type": "ortung"}` on changes of the pose (content as `GET /api/mapping/ortung`) |
 
-`GET /api/mapping/map` und die `map`-Pakete liefern die Karte, **mit der er
-gerade fährt**: die Live-Karte der Kartierung oder, wenn eine gespeicherte
-Karte geladen ist, diese. Neben `<name>.pgm` und `<name>.yaml` legt
-`save` eine `<name>.json` mit dem Ausgangspunkt der Karte ab
-(`{"start": [x, y, Bogenmaß]}`).
+`GET /api/mapping/map` and the `map` packets deliver the map **the robot is
+currently driving with**: the live map of the mapping run or, if a saved map
+is loaded, that one. Next to `<name>.pgm` and `<name>.yaml`, `save` writes a
+`<name>.json` with the map's origin (`{"start": [x, y, radians]}`).
 
-Für die Rückmeldung im Status:
+For feedback in the status:
 
 ```json
 {
@@ -979,62 +1005,61 @@ Für die Rückmeldung im Status:
 }
 ```
 
-`hinweis` nennt den ersten Schritt, der hakt: Lidar, Weitergabe an ROS,
-SLAM-Prozess, Kartenempfang. Bei `hinweis_fehler` steht die Ursache meist
-in `slam_log`. Dazu kommen `lidar_odometrie` (Position aus dem
-Lidar-Abgleich, Zahl gelungener und verworfener Abgleiche) und `fahrt`
-(`aktiv`, `text`, `schritt`, `bahnen`, `dauer_s`, `grund` der letzten
-Kartierfahrt).
+`hinweis` (hint) names the first step that is stuck: lidar, hand-off to
+ROS, SLAM process, map reception. With `hinweis_fehler` the cause is usually
+in `slam_log`. `einspeisung` is the scan feed into ROS. In addition there
+are `lidar_odometrie` (position from lidar matching, number of successful
+and rejected matches) and `fahrt` (`aktiv`, `text`, `schritt` (step),
+`bahnen` (lanes), `dauer_s`, `grund` (reason) of the last mapping drive).
 
-**Kartierfahrt.** Der Roboter fährt den Raum ab wie ein Saugroboter:
-zur nächsten Wand, mit der Wand rechts einmal rundherum, dann Bahnen
-parallel zu dieser Wand, jede `MAP_FAHRT_BAHNABSTAND_M` (0,8 m) weiter im
-Raum, bis zur gegenüberliegenden Wand. Auf den Bahnen dreht er nicht um,
-sondern fährt vor, rutscht seitlich weiter und fährt rückwärts zurück
-(Mecanum). Eine Runde unter `MAP_FAHRT_INSEL_M` (5 m) gilt als Hindernis
-mitten im Raum: Er verlässt es und sucht die Wand. Werte: `MAP_FAHRT_*` in
-`config.py`.
+**Mapping drive.** The robot covers the room like a robot vacuum: to the
+nearest wall, once all the way around with the wall on its right, then lanes
+parallel to that wall, each `MAPPING_DRIVE_LANE_SPACING_M` (0.8 m) further
+into the room, up to the opposite wall. On the lanes it does not turn
+around, but drives forward, slides sideways and drives back in reverse
+(mecanum). A lap shorter than `MAPPING_DRIVE_ISLAND_M` (5 m) counts as an
+obstacle in the middle of the room: it leaves it and looks for the wall.
+Values: `MAPPING_DRIVE_*` in `config.py`.
 
-**Raum für Raum (neu 04.11.):** Ist das Zimmer fertig, hört er nicht auf.
-Er fährt zur nächsten Stelle, an der die Karte ins Unbekannte übergeht
-(offene Tür, Flur, Schatten hinter Möbeln; „Lücke“), sieht sich dort um und
-sucht die nächste -- bis keine erreichbare mehr übrig ist. Dann fährt er zum
-Ausgangspunkt zurück und meldet „Kartierfahrt fertig -- Karte vollständig
-(n Lücken angefahren), zurück am Ausgangspunkt“. Auch wenn er im Zimmer
-nicht weiterkommt (keine Wand in Sicht, festgefahren, der Fahrschutz lässt
-nichts durch), endet die Fahrt nicht mehr, sondern geht zur nächsten Lücke.
-Unerreichbare Lücken überspringt er; erst nach `MAP_LUECKE_MAX_FEHLER` (6)
-Fehlschlägen in Folge gibt er auf. `fahrt.luecken` zählt die angefahrenen
-Lücken. Werte: `MAP_LUECKE_*`, `MAP_FAHRT_ZURUECK`. Höchstdauer jetzt
-`MAP_FAHRT_MAX_S` = 1 h.
+**Room by room (new 04.11.):** when the room is done, it does not stop. It
+drives to the next spot where the map turns into the unknown (open door,
+corridor, shadow behind furniture; a "frontier", „Lücke“ in the UI), looks
+around there and seeks the next one -- until no reachable one is left. Then
+it drives back to the origin and reports „Kartierfahrt fertig -- Karte
+vollständig (n Lücken angefahren), zurück am Ausgangspunkt“. Even when it
+cannot progress in the room (no wall in sight, stuck, the drive guard lets
+nothing through), the drive no longer ends but moves on to the next
+frontier. It skips unreachable frontiers; only after `FRONTIER_MAX_ERRORS`
+(6) consecutive failures does it give up. `fahrt.luecken` counts the
+frontiers visited. Values: `FRONTIER_*`, `MAPPING_DRIVE_RETURN`. Maximum
+duration is now `MAPPING_DRIVE_MAX_S` = 1 h.
 
-Technisch ist sie ein Modus des Erkunders (`state.autonomie.modus =
-"karte"`). Deshalb beenden sie dieselben Dinge wie `explore`: `stop`,
-`explore_stop`, jede Fahreingabe ≠ 0, `home`, `set_home`, Interaktion und
-`POST /api/mapping/stop`. Das Ende meldet `alert` „Autonomes Fahren beendet:
-Kartierfahrt fertig -- …“. Was sie **nicht mehr** beendet (neu 04.11.):
-- *Seite zu:* Erst wenn weder eine Seite `/map` noch die App verbunden ist,
-  hält sie an, und auch dann erst nach `MAP_ZUSCHAUER_WARTEN_S` (20 s). Ein
-  Handy, dessen Bildschirm kurz ausgeht, beendet sie also nicht mehr.
-- *Antrieb kurz weg (USB-Reset):* Sie hält an und fährt nach dem
-  Neuverbinden weiter (direkt zur nächsten Lücke), wenn das binnen
-  `MAP_FAHRT_WIEDER_S` (60 s) geschieht. `fahrt.unterbrochen` ist so lange
-  `true`. Ein `stop` verwirft das Weiterfahren.
-- *Lidar kurz weg:* Sie wartet bis `MAP_FAHRT_LIDAR_WARTEN_S` (30 s), beim
-  Zufallsfahren bleibt es bei 3 s.
+Technically it is a mode of the explorer (`state.autonomie.modus =
+"karte"`). Therefore the same things end it as `explore`: `stop`,
+`explore_stop`, any drive input ≠ 0, `home`, `set_home`, interaction and
+`POST /api/mapping/stop`. The end is reported by `alert` „Autonomes Fahren
+beendet: Kartierfahrt fertig -- …“. What **no longer** ends it (new 04.11.):
+- *Page closed:* only when neither a `/map` page nor the app is connected
+  does it stop, and even then only after `MAP_WATCHER_WAIT_S` (20 s). A
+  phone whose screen briefly turns off therefore no longer ends it.
+- *Drive briefly gone (USB reset):* it stops and continues after
+  reconnecting (directly to the next frontier) if that happens within
+  `MAPPING_DRIVE_RESUME_S` (60 s). `fahrt.unterbrochen` (interrupted) is
+  `true` during that time. A `stop` discards the resumption.
+- *Lidar briefly gone:* it waits up to `MAPPING_DRIVE_LIDAR_WAIT_S` (30 s);
+  for random exploring it stays at 3 s.
 
-**Karte nutzen (neu 04.11.).** Ist eine Karte da, weiß der Roboter, wo er
-in ihr steht. Beim Kartieren gilt das sofort; danach (Mapping gestoppt)
-bleibt die Karte samt Lage erhalten, er kann also gleich darin fahren. Eine
-gespeicherte Karte lädt man mit `POST /api/mapping/laden` bzw. `map_load`;
-dann sucht er seine Lage am Ausgangspunkt der Karte, und wenn er sich dort
-nicht findet, zeigt man sie mit `POST /api/mapping/pose` bzw. `map_pose`
-(auf der Seite `/map`: „Hier stehe ich“, tippen, für die Blickrichtung
-ziehen). Die Ortung legt mehrmals pro Sekunde die Lidar-Aufnahme auf die
-Karte und gleicht so die Drift der Odometrie aus (E12). Sie sagt lieber
-„weiß nicht“ als etwas Falsches: Zwei gleiche leere Zimmer (oder eines, das
-um 180° gedreht genauso aussieht) kann sie nicht unterscheiden; dann fragt
-sie nach.
+**Using the map (new 04.11.).** When a map exists, the robot knows where it
+is in it. During mapping this applies immediately; afterwards (mapping
+stopped) the map and the pose are kept, so it can drive in it right away. A
+saved map is loaded with `POST /api/mapping/laden` or `map_load`; it then
+looks for its pose at the map's origin, and if it cannot find itself there,
+you show it with `POST /api/mapping/pose` or `map_pose` (on the `/map`
+page: „Hier stehe ich“, tap, drag for the heading). Localization matches the
+lidar scan against the map several times per second and thereby corrects
+the odometry drift (E12). It would rather say "don't know" than something
+wrong: it cannot tell apart two identical empty rooms (or one that looks the
+same rotated by 180°); then it asks.
 
 `GET /api/mapping/ortung`:
 
@@ -1052,92 +1077,97 @@ sie nach.
 }
 ```
 
-`anteil` ist der Anteil der Lidar-Punkte, die auf eine Wand der Karte
-treffen; unter `KARTE_MIN_ANTEIL` (0,45) zählt ein Abgleich nicht. `sicher`
-heißt: in den letzten 4 s hat einer gepasst. `spur` ist der gefahrene Weg
-(ein Punkt je 10 cm), `luecken` sind die offenen Übergänge ins Unbekannte
-(nur, solange eine Seite `/map` offen ist). Die Seite `/map` zeigt das alles
-auf der Karte und hat die Knöpfe „Hierhin fahren“, „Hier stehe ich“, „Zum
-Ausgangspunkt“ und „Fahrt abbrechen“. Werte: `KARTE_*` in `config.py`.
+`anteil` (share) is the fraction of lidar points that hit a wall of the
+map; below `NAV_MIN_SHARE` (0.45) a match does not count. `sicher`
+(confident) means: one matched within the last 4 s. `sucht`: it is
+searching for its pose. `start` is the map's origin, `abgleiche`/`verworfen`
+count accepted/rejected matches. `spur` (trail) is the path driven (one
+point per 10 cm), `fahrt.weg` the planned path, `luecken` (frontiers) are the
+open transitions into the unknown (only while a `/map` page is open). The
+`/map` page shows all of this on the map and has the buttons „Hierhin
+fahren“ (drive here), „Hier stehe ich“ (I am here), „Zum Ausgangspunkt“ (to
+the origin) and „Fahrt abbrechen“ (cancel drive). Values: `NAV_*` in
+`config.py`.
 
-**In der Simulation** (`--mock`) gibt es weder Docker noch slam_toolbox;
-dann baut der Server die Karte selbst aus dem simulierten Lidar
-(`mapping/simulation.py`, `status.simulation = true`). Mit
-`ROSMASTER_MOCK_WOHNUNG=1` wird aus dem gedachten Zimmer eine Wohnung mit
-zwei Zimmern, Tür und Möbeln -- zum Ausprobieren der Weiterfahrt.
+**In the simulation** (`--mock`) there is neither Docker nor slam_toolbox;
+the server then builds the map itself from the simulated lidar
+(`mapping/simulation.py`, `status.simulation = true`). With
+`ROSMASTER_MOCK_WOHNUNG=1` the imaginary room becomes an apartment with two
+rooms, a door and furniture -- for trying out the room-to-room continuation.
 
-### Sonstiges
+### Miscellaneous
 
-| Endpunkt | Liefert |
+| Endpoint | Returns |
 |---|---|
-| `GET /` | die mitgelieferte Web-App |
-| `GET /einstellungen` | die Einstellungsseite der Web-App |
-| `GET /diagnose`, `GET /logs` | die Diagnoseseite der Web-App |
-| `GET /static/...` | deren Dateien (`webapp/`) |
-| `GET /docs` | automatisch erzeugte HTTP-Übersicht (FastAPI) |
+| `GET /` | the bundled web app |
+| `GET /einstellungen` | the web app's settings page |
+| `GET /diagnose`, `GET /logs` | the web app's diagnostics page |
+| `GET /static/...` | its files (`webapp/`) |
+| `GET /docs` | automatically generated HTTP overview (FastAPI) |
 
 ---
 
-## Entwickeln ohne Roboter
+## Developing without the robot
 
 ```bash
 python main.py --mock
 ```
 
-startet denselben Server auf dem eigenen Rechner unter `http://localhost:8000`.
-Alle Endpunkte und Nachrichten verhalten sich wie am Roboter:
+starts the same server on your own computer at `http://localhost:8000`.
+All endpoints and messages behave as on the robot:
 
-- **Antrieb:** simuliert, mit absichtlichem Radschlupf. Fahrbefehle
-  erscheinen im Log.
-- **Lidar:** tastet einen gedachten Raum ab (8 × 6 m mit einer Säule), der
-  sich passend zur Fahrt bewegt. Ortung, Heimfahrt und Kollisionsvermeidung
-  lassen sich damit vollständig ausprobieren. Mit `ROSMASTER_MOCK_WOHNUNG=1`
-  zwei Zimmer mit Tür, Schrank und Sofa.
-- **Kartierung:** ohne Docker; die Karte entsteht in Python aus dem
-  simulierten Lidar. Kartierfahrt, Ortung und Fahrt zum Ziel laufen wie am
-  Roboter.
-- **Kamera:** je Kamera (`orientierung`, `personen`) ein bewegtes Testbild.
+- **Drive:** simulated, with deliberate wheel slip. Drive commands appear
+  in the log.
+- **Lidar:** scans an imaginary room (8 × 6 m with a pillar) that moves in
+  accordance with the motion. Localization, homing and collision avoidance
+  can be fully tried out with it. With `ROSMASTER_MOCK_WOHNUNG=1`: two rooms
+  with a door, a cupboard and a sofa.
+- **Mapping:** without Docker; the map is built in Python from the
+  simulated lidar. Mapping drive, localization and goal drive work as on the
+  robot.
+- **Camera:** one moving test image per camera (`orientierung`, `personen`).
 
-`driver: "mock"` in der `state`-Nachricht zeigt, dass man in der Simulation
-ist.
+`driver: "mock"` in the `state` message shows that you are in the
+simulation.
 
 ---
 
-## Erweitern
+## Extending
 
-Wer in einem eigenen Branch neue Funktionen anbaut:
+If you add new features in your own branch:
 
-**Neuer WebSocket-Befehl**
-1. In `protocol.py` im Kopfkommentar eintragen (das ist der Vertrag).
-2. In `_handle()` in `api/server.py` einen Zweig `if kind == "…":` ergänzen.
-3. Diese Datei (`docs/api.md`) nachziehen.
+**New WebSocket command**
+1. Add it to the header comment in `protocol.py` (that is the contract).
+2. Add a branch `if kind == "…":` in `_handle()` in `api/server.py`.
+3. Update this file (`docs/api.md`).
 
-**Neuer HTTP-Endpunkt**: in `create_app()` in `api/server.py`, neben den
-bestehenden `@app.get(...)`. Er erscheint dann automatisch unter `/docs`.
+**New HTTP endpoint**: in `create_app()` in `api/server.py`, next to the
+existing `@app.get(...)`. It then appears automatically under `/docs`.
 
-**Bestehende Nachrichten nicht umbauen.** Web-App und ESP verlassen sich
-auf die Feldnamen. Lieber ein neues Feld oder einen neuen `type` ergänzen;
-zusätzliche Felder stören keinen bestehenden Client.
+**Do not restructure existing messages.** The web app and the ESP rely on
+the field names. Add a new field or a new `type` instead; additional fields
+do not disturb any existing client.
 
-**Fahren immer über den Watchdog.** Wer selbst Fahrbefehle erzeugt (etwa ein
-Autonomie-Baustein im Server), ruft `watchdog.submit(DriveCommand(...))` auf,
-nie den Treiber direkt. Nur so greifen Begrenzung und Totmannschaltung.
-Vorbild ist `navigation/homing.py`.
+**Always drive through the watchdog.** Anyone generating drive commands
+themselves (such as an autonomy block in the server) calls
+`watchdog.submit(DriveCommand(...))`, never the driver directly. Only then
+do limiting and the dead man's switch apply. See `navigation/homing.py` as
+the model.
 
-**Wo was liegt** (`robot/src/rosmaster_assist/`):
+**Where things are** (`robot/src/rosmaster_assist/`):
 
-| Datei | Inhalt |
+| File | Content |
 |---|---|
-| `protocol.py` | Nachrichtenformat, `DriveCommand` |
-| `api/server.py` | alle Endpunkte, WebSocket-Verarbeitung, Hintergrundschleifen |
-| `config.py` | alle Grenzwerte und Einstellungen an einer Stelle |
-| `safety/watchdog.py` | Begrenzung, Totmannschaltung und Anfahrrampe |
-| `safety/collision.py` | Kollisionsvermeidung bei manueller Fahrt (über den Fahrschutz) |
-| `safety/fahrschutz.py` | Kollisionsprüfung über die Grundfläche für alle Fahrten |
-| `navigation/odometry.py` | Positionsschätzung |
-| `navigation/localizer.py` | Lidar-Abgleich gegen die Startpunkt-Aufnahme |
-| `navigation/homing.py` | Heimfahrt |
-| `navigation/manoever.py` | genaue Fahrbefehle (`move`, `turn`), Lidar misst Strecke und Winkel |
-| `sensors/lidar.py` | Lidar auslesen (echt und simuliert) |
-| `sensors/camera.py` | Kamera (CSI, USB, Testbild) |
-| `drive/` | Motortreiber (echt und simuliert) |
+| `protocol.py` | message format, `DriveCommand` |
+| `api/server.py` | all endpoints, WebSocket handling, background loops |
+| `config.py` | all limits and settings in one place |
+| `safety/watchdog.py` | limiting, dead man's switch and acceleration ramp |
+| `safety/collision.py` | collision avoidance during manual driving (via the drive guard) |
+| `safety/drive_guard.py` | footprint-based collision check for all drives |
+| `navigation/odometry.py` | position estimation |
+| `navigation/localizer.py` | lidar matching against the start-point scan |
+| `navigation/homing.py` | homing |
+| `navigation/maneuver.py` | precise drive commands (`move`, `turn`); the lidar measures distance and angle |
+| `sensors/lidar.py` | reading the lidar (real and simulated) |
+| `sensors/camera.py` | camera (CSI, USB, test image) |
+| `drive/` | motor drivers (real and simulated) |

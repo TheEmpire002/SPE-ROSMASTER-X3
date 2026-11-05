@@ -1,35 +1,35 @@
-"""Sicherheitsschicht zwischen Server und Antrieb.
+"""Safety layer between the server and the drive.
 
-Zwei Aufgaben:
+Two tasks:
 
-1. **Begrenzen.** Jeder Fahrbefehl wird auf die Grenzwerte aus `config`
-   gekappt, bevor er die Motoren erreicht. Ein Programmierfehler in der App
-   kann den Roboter damit nicht schneller machen als erlaubt.
+1. **Limit.** Every drive command is clamped to the limits from `config`
+   before it reaches the motors. A programming error in the app therefore
+   cannot make the robot faster than allowed.
 
-2. **Totmannschaltung.** Bleiben die Fahrbefehle aus -- WLAN weg, Browser-Tab
-   geschlossen, App abgestürzt -- hält der Roboter nach `COMMAND_TIMEOUT_S`
-   von selbst an.
+2. **Dead man's switch.** If the drive commands stop arriving -- Wi-Fi gone,
+   browser tab closed, app crashed -- the robot stops by itself after
+   `COMMAND_TIMEOUT_S`.
 
-Punkt 2 ist der Grund, warum diese Schicht existiert. Sie darf nicht etwas
-sein, woran die App denken muss: ein fahrender Roboter ohne Verbindung ist
-genau die Situation, in der oben nichts mehr funktioniert.
+Point 2 is the reason this layer exists. It must not be something the app
+has to remember: a driving robot without a connection is exactly the
+situation in which nothing up there works any more.
 
-3. **Rampe.** Befehle springen nicht direkt auf die Motoren, sondern werden
-   mit begrenzter Beschleunigung angefahren (`RAMPE_*` in `config`). Harte
-   Sprünge zwischen Fahren und Halten erzeugen Stromspitzen, die am X3 den
-   USB-Hub zurücksetzen. `stop()` umgeht die Rampe und steht sofort.
+3. **Ramp.** Commands do not jump straight to the motors but are approached
+   with limited acceleration (`RAMP_*` in `config`). Hard jumps between
+   driving and stopping cause current spikes that reset the USB hub on the
+   X3. `stop()` bypasses the ramp and stops immediately.
 
-4. **Autonome Grenze.** Befehle der autonomen Modi (`quelle="autonom"`)
-   werden zusätzlich auf `AUTONOM_MAX_*` gekappt, bei schwachem Akku noch
-   einmal reduziert. So kann kein Rechenfehler in Folgen, Erkunden oder
-   Heimfahrt den Roboter schneller machen, als der Lidar Hindernisse sieht.
+4. **Autonomous limit.** Commands from the autonomous modes (`source="autonom"`)
+   are additionally clamped to `AUTONOMOUS_MAX_*`, and reduced once more when
+   the battery is low. So no calculation error in follow, explore or homing
+   can make the robot faster than the lidar sees obstacles.
 
-5. **Fahrschutz autonom.** Danach prüft `fahrschutz` (`fahrschutz.py`,
-   vom Server gesetzt), ob die Grundfläche des Roboters bei diesem Befehl
-   etwas berühren würde -- auch im Bogen und beim Drehen, wenn die Ecken
-   ausschwenken -- und bremst stufenlos so, dass er mit Reaktionszeit und
-   Bremsweg vorher steht. Wegfahren bleibt erlaubt. Ohne frische
-   Lidar-Daten fährt kein autonomer Modus.
+5. **Autonomous DriveGuard.** Then `drive_guard` (`drive_guard.py`, set by
+   the server) checks whether the robot's footprint would touch something
+   with this command -- also in an arc and when turning, when the corners
+   swing out -- and brakes smoothly so that it stops beforehand, allowing for
+   reaction time and braking distance. Driving away stays allowed. Without
+   fresh lidar data no autonomous mode drives.
 """
 
 from __future__ import annotations
@@ -50,202 +50,202 @@ def _clamp(value: float, limit: float) -> float:
     return max(-limit, min(limit, value))
 
 
-def _rampe(ist: float, soll: float, anfahren: float, bremsen: float, dt: float) -> float:
-    """Einen Rampenschritt von `ist` Richtung `soll` gehen.
+def _ramp(actual: float, requested: float, accel: float, brake: float, dt: float) -> float:
+    """Take one ramp step from `actual` towards `requested`.
 
-    Als Bremsen zählt alles, was den Betrag verkleinert -- auch ein
-    Richtungswechsel, der erst einmal über null führt. Dort endet der Schritt
-    bei null; in die neue Richtung geht es erst im nächsten Schritt mit der
-    Anfahrgrenze weiter.
+    Everything that reduces the magnitude counts as braking -- including a
+    change of direction, which first passes through zero. There the step ends
+    at zero; it continues in the new direction only in the next step, with
+    the acceleration limit.
     """
-    if ist * soll < 0:
-        schritt = bremsen * dt
-        if abs(ist) <= schritt:
+    if actual * requested < 0:
+        step = brake * dt
+        if abs(actual) <= step:
             return 0.0
-        return ist - math.copysign(schritt, ist)
-    grenze = bremsen if abs(soll) < abs(ist) else anfahren
-    schritt = grenze * dt
-    if abs(soll - ist) <= schritt:
-        return soll
-    return ist + math.copysign(schritt, soll - ist)
+        return actual - math.copysign(step, actual)
+    limit = brake if abs(requested) < abs(actual) else accel
+    step = limit * dt
+    if abs(requested - actual) <= step:
+        return requested
+    return actual + math.copysign(step, requested - actual)
 
 
 class SafetyWatchdog:
-    """Nimmt Fahrbefehle entgegen und reicht sie begrenzt an den Antrieb weiter."""
+    """Accepts drive commands and passes them on, limited, to the drive."""
 
     def __init__(self, driver: DriveBase) -> None:
         self._driver = driver
-        self._last_command = STOP     # was gerade gefahren wird (nach Rampe)
-        self._ziel = STOP             # was zuletzt verlangt wurde
-        self._last_command_at = 0.0   # wann zuletzt etwas verlangt wurde
-        self._ausgabe_at = 0.0        # wann zuletzt an den Antrieb gegeben
+        self._last_command = STOP     # what is being driven right now (after the ramp)
+        self._target = STOP             # what was requested last
+        self._last_command_at = 0.0   # when something was last requested
+        self._output_at = 0.0        # when last passed to the drive
         self._stopped = True
         self._task: asyncio.Task[None] | None = None
-        # Akkuspannung wird nur gelegentlich nachgesehen -- sie ändert sich
-        # langsam, und submit() läuft im 20-Hz-Takt.
-        self._akku_v: float | None = None
-        self._akku_at = -1e9
-        # Kollisionsprüfung über die Grundfläche für autonome Befehle
-        # (Punkt 5, safety/fahrschutz.py). Bleibt None, wenn kein Lidar
-        # konfiguriert ist -- dann gibt es auch keine autonomen Modi, die
-        # fahren könnten. letzte_pruefung: Ergebnis des letzten autonomen
-        # Befehls, damit die Modi sehen, ob und warum gebremst wurde.
-        self.fahrschutz = None
-        self.letzte_pruefung = None
-        # Fahrtenschreiber (aufzeichnung.py), setzt der Server. Hält jeden
-        # Befehl vor und nach den Grenzen fest -- so sieht man später, wo
-        # der Fahrschutz eingegriffen hat.
-        self.aufzeichnung = None
+        # Battery voltage is only checked occasionally -- it changes
+        # slowly, and submit() runs at a 20 Hz tick.
+        self._battery_v: float | None = None
+        self._battery_at = -1e9
+        # Collision check via the footprint for autonomous commands
+        # (point 5, safety/drive_guard.py). Stays None if no lidar is
+        # configured -- then there are no autonomous modes that could
+        # drive either. last_check: result of the last autonomous command,
+        # so the modes can see whether and why it braked.
+        self.drive_guard = None
+        self.last_check = None
+        # Recorder (recording.py), set by the server. Records every
+        # command before and after the limits -- so you can see later where
+        # the DriveGuard intervened.
+        self.recording = None
 
-    # --- Steuerung ------------------------------------------------------------
+    # --- Control --------------------------------------------------------------
 
-    def submit(self, cmd: DriveCommand, quelle: str = "hand") -> DriveCommand:
-        """Fahrbefehl ausführen. Gibt den tatsächlich gefahrenen Befehl zurück.
+    def submit(self, cmd: DriveCommand, source: str = "hand") -> DriveCommand:
+        """Execute a drive command. Returns the command actually driven.
 
-        `quelle` ist "hand" (App, ESP32) oder "autonom" (Folgen, Erkunden,
-        Kartierfahrt, Heimfahrt, genaue Fahrbefehle). Für autonome Befehle
-        gilt die engere Grenze, und der Fahrschutz prüft sie. Die
-        Handsteuerung prüft vorher über den ``CollisionGuard`` (abschaltbar
-        in der App).
+        `source` is "hand" (app, ESP32) or "autonom" (follow, explore,
+        mapping drive, homing, exact drive commands). The tighter limit
+        applies to autonomous commands, and the DriveGuard checks them.
+        Manual control is checked beforehand by the ``CollisionGuard``
+        (can be switched off in the app).
         """
-        jetzt = time.monotonic()
-        grenze_xy_x, grenze_xy_y = config.MAX_SPEED_X, config.MAX_SPEED_Y
-        grenze_w = config.MAX_SPEED_OMEGA
-        if quelle == "autonom":
-            autonom = config.AUTONOM_MAX_SPEED * self._akku_faktor(jetzt)
-            grenze_xy_x = min(grenze_xy_x, autonom)
-            grenze_xy_y = min(grenze_xy_y, autonom)
-            grenze_w = min(grenze_w, config.AUTONOM_MAX_OMEGA)
+        now = time.monotonic()
+        limit_xy_x, limit_xy_y = config.MAX_SPEED_X, config.MAX_SPEED_Y
+        limit_w = config.MAX_SPEED_OMEGA
+        if source == "autonom":
+            autonomous = config.AUTONOMOUS_MAX_SPEED * self._battery_factor(now)
+            limit_xy_x = min(limit_xy_x, autonomous)
+            limit_xy_y = min(limit_xy_y, autonomous)
+            limit_w = min(limit_w, config.AUTONOMOUS_MAX_OMEGA)
         safe = DriveCommand(
-            vx=_clamp(cmd.vx, grenze_xy_x),
-            vy=_clamp(cmd.vy, grenze_xy_y),
-            omega=_clamp(cmd.omega, grenze_w),
+            vx=_clamp(cmd.vx, limit_xy_x),
+            vy=_clamp(cmd.vy, limit_xy_y),
+            omega=_clamp(cmd.omega, limit_w),
         )
-        if quelle == "autonom":
-            # Ohne Prüfung None, sonst sähen die Modi ein veraltetes Ergebnis.
-            self.letzte_pruefung = None
-            if self.fahrschutz is not None and config.AUTONOM_SCHUTZ_AKTIV:
-                self.letzte_pruefung = self.fahrschutz.pruefen(safe)
-                safe = self.letzte_pruefung.befehl
-                if self.letzte_pruefung.grund is not None:
-                    self.fahrschutz.eingriff_melden(self.letzte_pruefung.grund, jetzt)
+        if source == "autonom":
+            # None without a check, otherwise the modes would see a stale result.
+            self.last_check = None
+            if self.drive_guard is not None and config.AUTONOMOUS_GUARD_ACTIVE:
+                self.last_check = self.drive_guard.check(safe)
+                safe = self.last_check.command
+                if self.last_check.reason is not None:
+                    self.drive_guard.report_intervention(self.last_check.reason, now)
         if safe != cmd:
-            log.debug("Fahrbefehl begrenzt (%s): %s -> %s", quelle, cmd, safe)
-        if self.aufzeichnung is not None:
+            log.debug("Drive command limited (%s): %s -> %s", source, cmd, safe)
+        if self.recording is not None:
             try:
-                self.aufzeichnung.befehl(quelle, cmd, safe, jetzt)
+                self.recording.command(source, cmd, safe, now)
             except Exception:
-                # Die Aufzeichnung ist Beiwerk -- fahren geht vor.
-                log.debug("Aufzeichnung des Fahrbefehls fehlgeschlagen", exc_info=True)
+                # The recording is an extra -- driving comes first.
+                log.debug("Recording the drive command failed", exc_info=True)
 
-        self._ziel = safe
-        self._last_command_at = jetzt
-        return self._ausgeben(jetzt)
+        self._target = safe
+        self._last_command_at = now
+        return self._emit(now)
 
-    def _akku_faktor(self, jetzt: float) -> float:
-        """Tempofaktor für autonome Modi je nach Akkuspannung."""
-        if jetzt - self._akku_at > 2.0:
-            self._akku_at = jetzt
+    def _battery_factor(self, now: float) -> float:
+        """Speed factor for autonomous modes depending on battery voltage."""
+        if now - self._battery_at > 2.0:
+            self._battery_at = now
             try:
-                self._akku_v = self._driver.read_battery()
+                self._battery_v = self._driver.read_battery()
             except Exception:
-                # Ohne Messwert nicht drosseln -- die Diagnose meldet den
-                # Ausfall ohnehin, und ein Treiberfehler darf hier nicht
-                # den Fahrbefehl verhindern.
-                self._akku_v = None
-        if self._akku_v is not None and self._akku_v < config.AKKU_WARN_V:
-            return config.AUTONOM_AKKU_FAKTOR
+                # Do not throttle without a reading -- diagnostics reports the
+                # failure anyway, and a driver error must not prevent the
+                # drive command here.
+                self._battery_v = None
+        if self._battery_v is not None and self._battery_v < config.BATTERY_WARN_V:
+            return config.AUTONOMOUS_BATTERY_FACTOR
         return 1.0
 
-    def _ausgeben(self, jetzt: float) -> DriveCommand:
-        """Einen Rampenschritt Richtung Ziel an den Antrieb geben."""
-        ziel = self._ziel
-        if config.RAMPE_AKTIV:
-            dt = min(max(jetzt - self._ausgabe_at, 0.0), config.RAMPE_DT_MAX_S)
-            ist = self._last_command
-            neu = DriveCommand(
-                vx=_rampe(ist.vx, ziel.vx, config.RAMPE_ANFAHREN_XY,
-                          config.RAMPE_BREMSEN_XY, dt),
-                vy=_rampe(ist.vy, ziel.vy, config.RAMPE_ANFAHREN_XY,
-                          config.RAMPE_BREMSEN_XY, dt),
-                omega=_rampe(ist.omega, ziel.omega, config.RAMPE_ANFAHREN_OMEGA,
-                             config.RAMPE_BREMSEN_OMEGA, dt),
+    def _emit(self, now: float) -> DriveCommand:
+        """Pass one ramp step towards the target to the drive."""
+        target = self._target
+        if config.RAMP_ACTIVE:
+            dt = min(max(now - self._output_at, 0.0), config.RAMP_DT_MAX_S)
+            actual = self._last_command
+            new = DriveCommand(
+                vx=_ramp(actual.vx, target.vx, config.RAMP_ACCEL_XY,
+                          config.RAMP_BRAKE_XY, dt),
+                vy=_ramp(actual.vy, target.vy, config.RAMP_ACCEL_XY,
+                          config.RAMP_BRAKE_XY, dt),
+                omega=_ramp(actual.omega, target.omega, config.RAMP_ACCEL_OMEGA,
+                             config.RAMP_BRAKE_OMEGA, dt),
             )
         else:
-            neu = ziel
-        self._ausgabe_at = jetzt
-        self._last_command = neu
-        # Erst "steht", wenn auch die Rampe unten angekommen ist -- bis dahin
-        # muss die Überwachung weiter Schritte nachliefern.
-        self._stopped = neu.is_stop() and ziel.is_stop()
+            new = target
+        self._output_at = now
+        self._last_command = new
+        # Only "stopped" once the ramp has also reached zero -- until then
+        # the monitoring has to keep delivering steps.
+        self._stopped = new.is_stop() and target.is_stop()
 
         try:
-            self._driver.drive(neu)
+            self._driver.drive(new)
         except Exception:
-            # Im Fehlerfall gilt: lieber stehen bleiben als weiterfahren.
-            log.exception("Antrieb meldet Fehler -- halte an")
+            # On error: better to stand still than to keep driving.
+            log.exception("Drive reports an error -- stopping")
             self.stop()
             raise
 
-        return neu
+        return new
 
     def stop(self) -> None:
-        """Sofort anhalten -- ohne Rampe."""
+        """Stop immediately -- without the ramp."""
         self._driver.stop()
         self._last_command = STOP
-        self._ziel = STOP
+        self._target = STOP
         self._stopped = True
-        if self.aufzeichnung is not None:
+        if self.recording is not None:
             try:
-                self.aufzeichnung.stop()
+                self.recording.stop()
             except Exception:
-                log.debug("Aufzeichnung des Halts fehlgeschlagen", exc_info=True)
+                log.debug("Recording the stop failed", exc_info=True)
 
     @property
     def current_command(self) -> DriveCommand:
-        """Was der Roboter gerade tut (nach Begrenzung)."""
+        """What the robot is doing right now (after limiting)."""
         return self._last_command
 
-    # --- Hintergrundüberwachung -----------------------------------------------
+    # --- Background monitoring ------------------------------------------------
 
     async def run(self) -> None:
-        """Überwachungsschleife. Läuft, solange der Server läuft."""
-        log.info("Watchdog aktiv (Timeout %.1fs)", config.COMMAND_TIMEOUT_S)
+        """Monitoring loop. Runs as long as the server runs."""
+        log.info("Watchdog active (timeout %.1fs)", config.COMMAND_TIMEOUT_S)
         try:
             while True:
                 await asyncio.sleep(config.WATCHDOG_INTERVAL_S)
                 self._check_timeout()
-                self._rampe_nachfuehren()
+                self._update_ramp()
         except asyncio.CancelledError:
-            # Beim Herunterfahren: sicherstellen, dass der Roboter steht.
+            # On shutdown: make sure the robot is stopped.
             self.stop()
             raise
 
     def _check_timeout(self) -> None:
         if self._stopped:
-            return  # steht bereits
+            return  # already stopped
         age = time.monotonic() - self._last_command_at
         if age > config.COMMAND_TIMEOUT_S:
-            log.warning("Seit %.2fs kein Fahrbefehl -- Not-Stopp", age)
+            log.warning("No drive command for %.2fs -- emergency stop", age)
             self.stop()
 
-    def _rampe_nachfuehren(self) -> None:
-        """Rampe auch zwischen zwei Befehlen weiterführen.
+    def _update_ramp(self) -> None:
+        """Continue the ramp between two commands as well.
 
-        Die App schickt nur zehn Befehle pro Sekunde, und wer einmal "halt"
-        sagt, schickt danach oft gar nichts mehr. Ohne diesen Schritt bliebe
-        die Ausgabe dann auf halbem Weg stehen.
+        The app sends only ten commands per second, and whoever says "stop"
+        once often sends nothing at all afterwards. Without this step the
+        output would then get stuck halfway.
         """
-        if self._stopped or self._last_command == self._ziel:
+        if self._stopped or self._last_command == self._target:
             return
         try:
-            self._ausgeben(time.monotonic())
+            self._emit(time.monotonic())
         except Exception:
-            # _ausgeben hat schon angehalten und geloggt. Die Überwachung
-            # selbst darf daran nicht sterben.
+            # _emit has already stopped and logged. The monitoring itself
+            # must not die from it.
             pass
 
-    # --- Lebenszyklus ----------------------------------------------------------
+    # --- Lifecycle -------------------------------------------------------------
 
     def start(self) -> None:
         if self._task is None:

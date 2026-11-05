@@ -1,4 +1,4 @@
-"""WebSocket-Server und Auslieferung der Web-App."""
+"""WebSocket server and delivery of the web app."""
 
 from .server import create_app
 

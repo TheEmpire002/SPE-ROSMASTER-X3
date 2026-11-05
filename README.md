@@ -1,68 +1,66 @@
 # SPE-ROSMASTER-X3
 
-Hilfsroboter auf Basis eines **Yahboom ROSMASTER X3**.
+Helper robot based on a **Yahboom ROSMASTER X3**.
 
-Der Roboter soll in Innenräumen autonom fahren, eine Person per ESP-Sensorik
-beobachten (Bewegung, Puls) und im Notfall Hilfe holen. Zusätzlich kann er per
-Web-App manuell gesteuert werden und über eine aufgesetzte Box Hilfsmittel
-ausliefern.
+The robot is meant to drive autonomously indoors, observe a person via ESP
+sensors (motion, pulse) and fetch help in an emergency. In addition, it can be
+controlled manually via a web app and deliver aids using a box mounted on top.
 
-> **Hinweis:** Die Vitaldaten-Erfassung ist ein Prototyp und **kein
-> Medizinprodukt**. Der Roboter trifft keine medizinischen Entscheidungen — er
-> alarmiert immer einen Menschen.
+> **Note:** The vital-sign capture is a prototype and **not a medical
+> device**. The robot makes no medical decisions — it always alerts a human.
 
-## Teilsysteme
+## Subsystems
 
-| Ordner    | Läuft auf        | Zweck                                                  |
-|-----------|------------------|--------------------------------------------------------|
-| `robot/`  | Raspberry Pi 5   | Antrieb, Sensorik, Sicherheits-Logik, WebSocket-Server |
-| `webapp/` | Browser          | Fernsteuerung, Statusanzeige, Notfall-Alarm            |
-| `esp/`    | ESP32            | Personentracking und Vitaldaten                        |
-| `docs/`   | —                | Architektur, Hardware, Entscheidungen                  |
-| `scripts/`| Raspberry Pi 5   | Hilfs- und Diagnoseskripte                             |
+| Folder    | Runs on          | Purpose                                              |
+|-----------|------------------|------------------------------------------------------|
+| `robot/`  | Raspberry Pi 5   | Drive, sensors, safety logic, WebSocket server       |
+| `webapp/` | Browser          | Remote control, status display, emergency alert      |
+| `esp/`    | ESP32            | Person tracking and vital signs                      |
+| `docs/`   | —                | Architecture, hardware, decisions                    |
+| `scripts/`| Raspberry Pi 5   | Helper and diagnostic scripts                        |
 
-Details: [`docs/architektur.md`](docs/architektur.md)
+Details: [`docs/architecture.md`](docs/architecture.md)
 
-**Eigene Oberfläche oder eigenen Client anbinden?** Die komplette Schnittstelle
-(Fahren, Lidar, Kamera, Heimfahrt) steht in [`docs/api.md`](docs/api.md).
-Hinweise für KI-Assistenten: [`AGENTS.md`](AGENTS.md).
+**Connecting your own user interface or client?** The complete interface
+(driving, lidar, camera, homing) is in [`docs/api.md`](docs/api.md).
+Notes for AI assistants: [`AGENTS.md`](AGENTS.md).
 
-## Schnellstart
+## Quick start
 
-Ein Befehl, überall — auf dem Laptop wie auf dem Roboter:
+One command, everywhere — on the laptop as on the robot:
 
 ```bash
 python main.py
 ```
 
-Das Skript richtet beim ersten Mal alles selbst ein (virtuelle Umgebung,
-Abhängigkeiten), erkennt dann, ob echte Hardware angeschlossen ist, startet
-den Server und öffnet die Web-App im Browser.
+The first time, the script sets everything up by itself (virtual environment,
+dependencies), then detects whether real hardware is connected, starts the
+server and opens the web app in the browser.
 
-- **Auf dem Laptop** findet es keine Hardware und schaltet automatisch in die
-  Simulation. Fahrbefehle landen nur auf der Konsole — du kannst also die
-  komplette App entwickeln, ohne den Roboter zu belegen.
-- **Auf dem Raspberry Pi** erkennt es Treiber und serielle Schnittstelle und
-  fährt mit echter Hardware hoch. Die App ist dann im WLAN erreichbar unter
-  `http://<IP-des-Pi>:8000` (IP: `hostname -I`). Ist das Board beim Start
-  gerade nicht erreichbar (z.B. kurzer USB-Aussetzer), startet es trotzdem
-  echt, warnt nur und verbindet sich, sobald das Board wieder da ist. In die
-  Simulation geht es nur ohne `Rosmaster_Lib` oder mit `--mock`.
+- **On the laptop** it finds no hardware and automatically switches to the
+  simulation. Drive commands only end up on the console — so you can develop
+  the complete app without occupying the robot.
+- **On the Raspberry Pi** it detects the driver and the serial port and starts
+  up with real hardware. The app is then reachable on the Wi-Fi at
+  `http://<IP-of-the-Pi>:8000` (IP: `hostname -I`). If the board is not
+  reachable at startup (e.g. a brief USB dropout), it still starts for real,
+  only warns, and connects as soon as the board is back. It only goes into
+  the simulation without `Rosmaster_Lib` or with `--mock`.
 
-Optionen:
+Options:
 
-| Option          | Wirkung                                        |
-|-----------------|------------------------------------------------|
-| `--mock`        | Simulation erzwingen, auch auf dem Roboter     |
-| `--real`        | Hardware erzwingen, Abbruch ohne Rosmaster_Lib |
-| `--port 8001`   | anderer Port                                   |
-| `--no-browser`  | Browser nicht öffnen (z.B. über SSH)           |
-| `--setup-only`  | nur einrichten, nicht starten                  |
-| `--debug`       | ausführliche Logausgabe                        |
+| Option          | Effect                                          |
+|-----------------|-------------------------------------------------|
+| `--mock`        | Force simulation, even on the robot             |
+| `--real`        | Force hardware, abort without Rosmaster_Lib     |
+| `--port 8001`   | Different port                                  |
+| `--no-browser`  | Do not open the browser (e.g. over SSH)         |
+| `--setup-only`  | Only set up, do not start                       |
+| `--debug`       | Verbose log output                              |
 
-### Ohne Automatik
+### Without the automation
 
-Wenn du den Server direkt starten willst:
+If you want to start the server directly:
 
 ```bash
 cd robot
@@ -71,152 +69,156 @@ pip install -e .
 python -m rosmaster_assist.main --mock
 ```
 
-## Kamera
+## Camera
 
-Das Bild erscheint oben in der Web-App, ohne Zutun. Die Software sucht sich
-die Kamera selbst: zuerst eine CSI-Kamera, dann eine USB-Kamera, sonst ein
-bewegtes Testbild. Welche es wurde, steht beim Start im Log.
+The image appears at the top of the web app without any extra steps. The
+software finds the camera by itself: first a CSI camera, then a USB camera,
+otherwise a moving test image. Which one it picked is shown in the log at
+startup.
 
-Für eine **USB-Kamera** wird OpenCV gebraucht:
+A **USB camera** needs OpenCV:
 
 ```bash
 robot/.venv/bin/pip install opencv-python
 ```
 
-Direkt aufrufbar, auch ohne App: `http://<IP-des-Pi>:8000/camera/stream`
+Directly accessible, even without the app: `http://<IP-of-the-Pi>:8000/camera/stream`
 
-**Kein Bild?** Server beenden, dann:
+**No image?** Stop the server, then:
 
 ```bash
 robot/.venv/bin/python scripts/check_camera.py
 ```
 
-Prüft Geräte, Rechte, konkurrierende Prozesse, OpenCV und das tatsächliche
-Öffnen — und nennt am Ende die Ursache.
+It checks devices, permissions, competing processes, OpenCV and actually
+opening the camera — and names the cause at the end.
 
-Einstellungen (Auflösung, Bildrate, Qualität): `config.py`, Abschnitt Kamera.
-Details in [`docs/hardware.md`](docs/hardware.md#kamera).
+Settings (resolution, frame rate, quality): `config.py`, camera section.
+Details in [`docs/hardware.md`](docs/hardware.md#camera).
 
 ## Lidar
 
-Der RPLIDAR A1 wird direkt ausgelesen — ohne ROS2. Er leistet zweierlei:
+The RPLIDAR A1 is read directly — without ROS2. It does two things:
 
-1. **Ortung.** Beim Setzen des Startpunkts wird einmal aufgenommen, wie der
-   Raum von dort aussieht. Später wird die aktuelle Aufnahme damit
-   abgeglichen; die nötige Verschiebung ist die Position. Dieses Verfahren
-   driftet nicht — anders als die Koppelnavigation.
-2. **Hindernisse.** Während der Heimfahrt wird der Bereich in Fahrtrichtung
-   überwacht. Der Roboter weicht nicht aus, er hält an und meldet es.
+1. **Localization.** When the start point is set, a snapshot is taken once of
+   what the room looks like from there. Later the current scan is matched
+   against it; the shift needed is the position. This method does not drift
+   — unlike dead reckoning.
+2. **Obstacles.** During homing, the area in the direction of travel is
+   monitored. The robot does not swerve; it stops and reports it.
 
-Dafür wird ein Paket gebraucht:
+This needs one package:
 
 ```bash
 robot/.venv/bin/pip install rplidar-roboticia
 ```
 
-Die App zeigt die Punktwolke als Draufsicht. Zustand und Trefferquote des
-Abgleichs: `http://<IP-des-Pi>:8000/lidar/status`
+The app shows the point cloud as a top view. State and hit rate of the
+matching: `http://<IP-of-the-Pi>:8000/lidar/status`
 
-**Wichtig:** ROS2 darf nicht parallel laufen — `sllidar_ros2` belegt
-denselben Anschluss. Siehe [`docs/hardware.md`](docs/hardware.md).
+**Important:** ROS2 must not run in parallel — `sllidar_ros2` occupies the
+same port. See [`docs/hardware.md`](docs/hardware.md).
 
-## Nach Hause fahren
+## Driving home
 
-In der App gibt es unter „Startpunkt" zwei Knöpfe:
+In the app there are two buttons under "Startpunkt":
 
-- **Startpunkt hier setzen** — die aktuelle Stelle wird der Nullpunkt
-- **Nach Hause** — der Roboter fährt selbsttätig dorthin zurück
+- **Startpunkt hier setzen** (set start point here) — the current spot
+  becomes the origin
+- **Nach Hause** (go home) — the robot drives back there by itself
 
-Dazwischen zeigt die App laufend Entfernung, Position und Blickrichtung.
-Während der Fahrt wird derselbe Knopf zum Abbrechen.
+In between, the app continuously shows distance, position and heading.
+During the drive, the same button becomes the cancel button.
 
-**Zwei Einschränkungen, die man kennen muss:**
+**Two limitations you need to know:**
 
-Die Position kommt aus zwei Quellen: der Koppelnavigation (driftet, ist aber
-immer da) und dem Lidar-Abgleich (driftet nicht, braucht aber Sicht auf den
-Startbereich). Gemessen im Simulationslauf über 2,3 m: **30 cm Abweichung
-ohne Lidar, 7 cm mit**. Steht in der App „geschätzt" hinter der Entfernung,
-fehlt der Lidar oder die Bewegungsmessung — dann gilt der schlechtere Wert.
+The position comes from two sources: dead reckoning (drifts, but is always
+available) and lidar matching (does not drift, but needs a view of the start
+area). Measured in a simulation run over 2.3 m: **30 cm error without lidar,
+7 cm with**. If the app shows "geschätzt" (estimated) after the distance, the
+lidar or the motion measurement is missing — then the worse value applies.
 
-Jenseits von `MATCH_RADIUS_M` (4 m) erkennt der Lidar den Startbereich nicht
-wieder und korrigiert nicht. Die Odometrie bringt den Roboter dorthin
-zurück, der Lidar weist ihn dann genau ein.
+Beyond `MATCH_RADIUS_M` (4 m) the lidar no longer recognizes the start area
+and does not correct. Odometry brings the robot back there, and the lidar
+then guides it in precisely.
 
-Der Roboter **weicht Hindernissen nicht aus** — er hält davor an und meldet
-es. Ausweichen ohne Karte endet leicht in einer Ecke. Deshalb auch das
-gemächliche Tempo (`HOME_SPEED`) und die Zeitbegrenzung.
+The robot **does not avoid obstacles** — it stops in front of them and
+reports it. Avoiding without a map easily ends in a corner. That is also the
+reason for the leisurely speed (`HOME_SPEED`) and the time limit.
 
-Abgebrochen wird die Heimfahrt durch jede Fahreingabe, die Leertaste, den
-Abbrechen-Knopf oder eine verlorene Verbindung.
+Homing is cancelled by any drive input, the space bar, the cancel button or a
+lost connection.
 
-## Tempo einstellen
+## Setting the speed
 
-In der Web-App gibt es zwei Regler:
+The web app has two sliders:
 
-- **Max-Tempo** — das Maximum in m/s, das du dir gibst. Drinnen zum Üben
-  z.B. 0.3, draußen Vollgas. Die Einstellung bleibt im Browser gespeichert.
-- **Tempo** — wie viel Prozent davon die Tasten ausreizen.
+- **Max-Tempo** (max speed) — the maximum in m/s you allow yourself. Indoors
+  for practice e.g. 0.3, outdoors full throttle. The setting is stored in
+  the browser.
+- **Tempo** (speed) — what percentage of it the keys use.
 
-Seitwärtsfahrt und Drehen werden im selben Verhältnis gedrosselt, damit der
-Roboter bei zahmem Max-Tempo nicht trotzdem hektisch rotiert.
+Sideways driving and turning are throttled in the same ratio, so that the
+robot does not still rotate hectically with a tame max speed.
 
-Die **harte Obergrenze** steht auf dem Roboter in
-`robot/src/rosmaster_assist/config.py` (`MAX_SPEED_X` und Co.) und lässt sich
-aus der App nicht überschreiten. Der Server schickt sie beim Verbinden mit;
-der Max-Tempo-Regler geht nie darüber hinaus.
+The **hard upper limit** is on the robot in
+`robot/src/rosmaster_assist/config.py` (`MAX_SPEED_X` and co.) and cannot be
+exceeded from the app. The server sends it along when connecting; the max
+speed slider never goes beyond it.
 
-## Funktioniert alles noch?
+## Does everything still work?
 
-Bei laufendem Server in einem zweiten Terminal:
+With the server running, in a second terminal:
 
 ```bash
 pip install websockets
-python scripts/smoke_test.py          # --port 8099 falls nötig
+python scripts/smoke_test.py          # --port 8099 if needed
 ```
 
-Prüft HTTP, WebSocket, Tempobegrenzung und Watchdog von außen — also genau
-den Weg, den die App auch nimmt. Nach Änderungen am Server kurz laufen lassen.
+It checks HTTP, WebSocket, the speed limit and the watchdog from the outside
+— exactly the path the app takes. Run it briefly after changes to the
+server.
 
-### Auf dem Roboter
+### On the robot
 
 ```bash
-ssh pi@<IP-des-Pi>
+ssh pi@<IP-of-the-Pi>
 cd ~/SPE-ROSMASTER-X3 && git pull
 
-# Terminal 1 — Server mit echter Hardware
+# Terminal 1 — server with real hardware
 cd robot && source .venv/bin/activate
 python -m rosmaster_assist.main
 
-# Terminal 2 — Test
+# Terminal 2 — test
 cd ~/SPE-ROSMASTER-X3
 robot/.venv/bin/python scripts/smoke_test.py
 ```
 
-Die Fahrtests werden dabei **übersprungen**: das Skript erkennt am gemeldeten
-Antrieb, dass echte Hardware dranhängt, und bewegt den Roboter nicht von
-selbst. Wer sie trotzdem braucht, **bockt die Räder auf** und hängt
-`--allow-motion` an.
+The driving tests are **skipped** here: the script recognizes from the
+reported drive that real hardware is attached and does not move the robot on
+its own. If you need them anyway, **jack up the wheels** and add
+`--allow-motion`.
 
-Vom Laptop aus geht es auch: `--host <IP-des-Pi>`.
+It also works from the laptop: `--host <IP-of-the-Pi>`.
 
-## Was ist installiert?
+## What is installed?
 
-Wenn unklar ist, welche Treiber auf dem Pi vorhanden sind:
+If it is unclear which drivers are present on the Pi:
 
 ```bash
 python scripts/check_hardware.py
 ```
 
-## Projektstand
+## Project status
 
-- [x] Grundgerüst, Treiber-Abstraktion, Protokoll
-- [x] Manuelle Steuerung per Web-App
-- [x] Kamerabild in der App
-- [x] Rückfahrt zum Startpunkt (Koppelnavigation)
-- [x] Lidar: Ortung und Hinderniserkennung
-- [ ] ESP-Anbindung (Bewegung, Puls)
-- [x] Autonomes Fahren, Test 1: Erkunder mit Hindernis-Benennung (ohne SLAM)
-- [x] Interaktion, Stufe 2+3: Gesten (Hailo-Pose) und Verhalten Folgen/Stopp/Herkommen/Weggehen (siehe [`docs/interaktion.md`](docs/interaktion.md))
-- [ ] Interaktion: Sprache, Stimme, „Geist“
-- [x] SLAM / Karte: Kartierfahrt Raum für Raum, Lage in der Karte, Fahrt zu einem Punkt auf der Karte (Seite `/map`; am Roboter noch zu prüfen)
-- [ ] Box-Mechanik
+- [x] Basic framework, driver abstraction, protocol
+- [x] Manual control via web app
+- [x] Camera image in the app
+- [x] Return to the start point (dead reckoning)
+- [x] Lidar: localization and obstacle detection
+- [ ] ESP connection (motion, pulse)
+- [x] Autonomous driving, test 1: explorer with obstacle naming (without SLAM)
+- [x] Interaction, stages 2+3: gestures (Hailo pose) and behaviors follow/stop/come here/go away (see [`docs/interaction.md`](docs/interaction.md))
+- [ ] Interaction: speech, voice, "ghost"
+- [x] SLAM / map: mapping drive room by room, pose in the map, drive to a point on the map (`/map` page; still to be verified on the robot)
+- [ ] Box mechanics

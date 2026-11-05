@@ -1,16 +1,16 @@
-"""Sensorik: Lidar, Kamera, Vitaldaten.
+"""Sensors: lidar, camera, vital data.
 
-Noch leer. Geplant:
+Still empty. Planned:
 
-- ``lidar.py``   Slamtec RPLIDAR A1 auslesen (USB-Seriell, 115200 Baud),
-                 Grundlage für Hinderniserkennung und später SLAM.
-                 Achtung: fester Gerätepfad über ``/dev/serial/by-id/``, sonst
-                 kann der Port mit dem Expansion Board vertauscht werden --
-                 siehe docs/hardware.md.
-- ``camera.py``  Bildstream für die App, optional Personenerkennung über
-                 den AI HAT+
-- ``vitals.py``  Auswertung der ESP-Daten (Bewegungslosigkeit erkennen)
+- ``lidar.py``   Read the Slamtec RPLIDAR A1 (USB serial, 115200 baud),
+                 basis for obstacle detection and later SLAM.
+                 Caution: use a fixed device path via ``/dev/serial/by-id/``,
+                 otherwise the port can get swapped with the expansion board --
+                 see docs/hardware.md.
+- ``camera.py``  Image stream for the app, optionally person detection via
+                 the AI HAT+
+- ``vitals.py``  Evaluate the ESP data (detect lack of movement)
 
-Dabei demselben Muster folgen wie ``drive/``: eine abstrakte Basisklasse plus
-ein Mock, damit auch ohne Hardware entwickelt werden kann.
+Follow the same pattern as ``drive/``: an abstract base class plus a mock,
+so development is possible without hardware too.
 """

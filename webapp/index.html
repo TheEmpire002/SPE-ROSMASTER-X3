@@ -45,8 +45,8 @@
   </div>
 </header>
 
-<!-- Einstellungen als Modal. Inhalt baut einstellungen.js beim ersten
-     Öffnen aus GET /settings auf. -->
+<!-- Settings as a modal. einstellungen.js builds the content from
+     GET /settings when it is first opened. -->
 <dialog id="einst-dialog" class="einst-dialog" aria-labelledby="einst-titel">
   <div class="einst-dialog-kopf">
     <h1 id="einst-titel">Einstellungen</h1>
@@ -66,7 +66,7 @@
   </div>
 </dialog>
 
-<!-- Musik auf dem Lautsprecher des Roboters (POST /mukke/...). -->
+<!-- Music on the robot's speaker (POST /mukke/...). -->
 <dialog id="mukke-dialog" class="einst-dialog mukke-dialog" aria-labelledby="mukke-titel">
   <div class="einst-dialog-kopf">
     <h1 id="mukke-titel">MUKKE</h1>
@@ -104,16 +104,16 @@
 
   <section id="cam-panel" class="panel">
     <h2>Kamera</h2>
-    <!-- Umschalter, wird aus /cameras gefüllt. Bei nur einer Kamera leer. -->
+    <!-- Switcher, filled from /cameras. Empty with only one camera. -->
     <div id="cam-wahl" class="cam-wahl" hidden></div>
-    <!-- Eine Kachel je angezeigter Kamera, gebaut in app.js (CamKachel). -->
+    <!-- One tile per displayed camera, built in app.js (CamKachel). -->
     <div id="cam-feld" class="cam-feld"></div>
   </section>
 
   <section class="panel">
     <h2>Steuerung</h2>
 
-    <!-- Mecanum-Räder: die mittlere Reihe fährt seitwärts, nicht drehen. -->
+    <!-- Mecanum wheels: the middle row moves sideways, it does not turn. -->
     <div class="pad">
       <button class="pad-btn" data-vx="1"  data-vy="1"  title="vorwärts links">↖</button>
       <button class="pad-btn" data-vx="1"  data-vy="0"  title="vorwärts">↑</button>
@@ -165,7 +165,7 @@
     </p>
   </section>
 
-  <!-- Genaue Fahrbefehle (genau.js): {"type": "move"} / {"type": "turn"}, das Lidar misst. -->
+  <!-- Precise drive commands (genau.js): {"type": "move"} / {"type": "turn"}, the lidar measures. -->
   <section class="panel">
     <h2>Genau fahren</h2>
 
@@ -225,7 +225,7 @@
       Lidar sieht. Vor Menschen wartet er kurz. Jede Fahreingabe, der
       Not-Stopp oder dieser Knopf beenden die Fahrt.
       Lief etwas falsch, gleich „Fahrt speichern“ drücken: Die letzte Minute
-      lässt sich dann am Rechner mit <code>scripts/abspielen.py</code> nachspielen.
+      lässt sich dann am Rechner mit <code>scripts/replay.py</code> nachspielen.
     </p>
   </section>
 
@@ -241,7 +241,7 @@
       <dt>Ohr</dt>      <dd id="val-sprache">—</dd>
     </dl>
 
-    <!-- Live-Feed vom Mikrofon (GET /sprache/live, WebSocket /sprache/ton). -->
+    <!-- Live feed from the microphone (GET /sprache/live, WebSocket /sprache/ton). -->
     <label class="switch">
       <input type="checkbox" id="mikro-lesen">
       <span>Mikrofon mitlesen</span>
@@ -252,7 +252,7 @@
       <span>Mikrofon mithören</span>
       <output id="mikro-hoeren-state" class="switch-state">aus</output>
     </label>
-    <!-- Durchsage: eigenes Mikrofon -> Lautsprecher des Roboters (WebSocket /sprache/durchsage). -->
+    <!-- Announcement: your own microphone -> robot's speaker (WebSocket /sprache/durchsage). -->
     <label class="switch">
       <input type="checkbox" id="mikro-sprechen">
       <span>Über den Roboter sprechen</span>
@@ -273,7 +273,7 @@
         Folge mir
       </button>
     </div>
-    <!-- Ziel-Lock: Neu wählen = Person im Kamerabild antippen. -->
+    <!-- Target lock: to reselect, tap a person in the camera image. -->
     <div class="home-buttons">
       <button type="button" id="btn-ia-pause" class="btn" disabled>
         Pause
@@ -285,7 +285,7 @@
 
     <p class="hint" id="ia-text">—</p>
 
-    <!-- Text über den Lautsprecher des Roboters ausgeben (say). -->
+    <!-- Speak text through the robot's speaker (say). -->
     <form id="say-form" class="say-form">
       <input type="text" id="say-text" maxlength="300"
              placeholder="Etwas sagen lassen …" autocomplete="off">

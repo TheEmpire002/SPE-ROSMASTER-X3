@@ -1,21 +1,21 @@
-"""Kartierung in der Simulation (--mock): die Karte entsteht in Python.
+"""Mapping in the simulation (--mock): the map is built in Python.
 
-Am Schreibtisch gibt es weder Docker noch slam_toolbox. Damit die Seite
-/map, die Kartierfahrt und alles, was die Karte nutzt (Ortung, Fahrt zum
-Ziel), trotzdem laufen, baut diese Klasse aus dem simulierten Lidar und der
-Lidar-Odometrie eine einfache Belegungskarte: Jeder Strahl macht die Zellen
-bis zum Treffer freier und die Zelle am Treffer belegter (Log-Odds).
+At the desk there is neither Docker nor slam_toolbox. So that the /map
+page, the mapping drive and everything that uses the map (localization,
+goal drive) still work, this class builds a simple occupancy map from the
+simulated lidar and the lidar odometry: every ray makes the cells up to the
+hit more free and the cell at the hit more occupied (log-odds).
 
-Eingetragen wird mit der **wahren** Lage, die nur die Simulation kennt
-(``Scan.wahre_pose``), umgerechnet in den Rahmen, in dem die Kartierung
-begann. So verhält sich die Karte wie die von slam_toolbox mit
-Schleifenschluss: Sie ist richtig, während die Lidar-Odometrie langsam
-driftet -- und genau diese Drift muss die Ortung in der Karte dann
-ausgleichen. Mit der Lage der Lidar-Odometrie eingetragen, verschmierte die
-Karte im ersten Versuch nach 7 Minuten um rund 30° (04.11.).
+Cells are entered with the **true** pose, which only the simulation knows
+(``Scan.true_pose``), converted into the frame in which mapping began. That
+way the map behaves like slam_toolbox's with loop closure: it is correct
+while the lidar odometry slowly drifts -- and exactly this drift is what
+localization in the map then has to compensate. Entered with the lidar
+odometry pose, the map smeared by about 30° after 7 minutes in the first
+attempt (04.11.).
 
-Bewusst nur für die Simulation (E8). Die Karte kommt im selben Format wie
-von der ROS-Brücke, also merkt der Rest nichts vom Unterschied.
+Deliberately only for the simulation (E8). The map comes in the same format
+as from the ROS bridge, so the rest of the code notices no difference.
 """
 
 from __future__ import annotations
@@ -29,57 +29,57 @@ import time
 import numpy as np
 
 from .. import config
-from ..navigation.kartenortung import umkehren, verketten
+from ..navigation.map_localization import invert, compose
 
 log = logging.getLogger(__name__)
 
-#: Größe des Rasters (m) um den Ursprung; die Karte wird beim Senden auf den
-#: bekannten Teil zugeschnitten.
-_GROESSE_M = 30.0
-_FREI = -0.4
-_BELEGT = 0.9
-_GRENZE = 4.0
+#: Size of the grid (m) around the origin; when sent, the map is cropped to
+#: the known part.
+_SIZE_M = 30.0
+_FREE = -0.4
+_OCCUPIED = 0.9
+_LIMIT = 4.0
 
 
-class SimKartierung:
-    """Belegungskarte aus Scans und Lidar-Odometrie, im eigenen Thread."""
+class SimMapping:
+    """Occupancy map from scans and lidar odometry, in its own thread."""
 
-    def __init__(self, scan_odometrie) -> None:
-        self._odo = scan_odometrie
+    def __init__(self, scan_odometry) -> None:
+        self._odo = scan_odometry
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
-        self._karte: dict | None = None
+        self._map: dict | None = None
         self._scans = 0
         self._started_at: float | None = None
-        self._zuruecksetzen()
+        self._reset()
 
-    def _zuruecksetzen(self) -> None:
-        self.aufloesung = config.MAP_SIM_AUFLOESUNG_M
-        n = int(_GROESSE_M / self.aufloesung)
+    def _reset(self) -> None:
+        self.resolution = config.MAP_SIM_RESOLUTION_M
+        n = int(_SIZE_M / self.resolution)
         self._n = n
-        self._ursprung = -_GROESSE_M / 2.0
+        self._origin = -_SIZE_M / 2.0
         self._lo = np.zeros((n, n), dtype=np.float32)
-        self._gesehen = np.zeros((n, n), dtype=bool)
-        self._karte = None
+        self._seen = np.zeros((n, n), dtype=bool)
+        self._map = None
         self._scans = 0
-        # Wahre Lage -> Kartenrahmen, festgelegt bei der ersten Aufnahme.
-        self._wahr_zu_karte: tuple[float, float, float] | None = None
+        # True pose -> map frame, fixed at the first scan.
+        self._true_to_map: tuple[float, float, float] | None = None
 
     @property
-    def laeuft(self) -> bool:
+    def running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
     def start(self) -> None:
-        if self.laeuft:
+        if self.running:
             return
         with self._lock:
-            self._zuruecksetzen()
+            self._reset()
         self._stop.clear()
         self._started_at = time.time()
-        self._thread = threading.Thread(target=self._schleife, name="sim-kartierung", daemon=True)
+        self._thread = threading.Thread(target=self._loop, name="sim-kartierung", daemon=True)
         self._thread.start()
-        log.info("Kartierung in der Simulation gestartet (ohne Docker/slam_toolbox)")
+        log.info("Mapping started in the simulation (without Docker/slam_toolbox)")
 
     def stop(self) -> None:
         self._stop.set()
@@ -89,113 +89,113 @@ class SimKartierung:
 
     def get_latest_map(self) -> dict | None:
         with self._lock:
-            return dict(self._karte) if self._karte is not None else None
+            return dict(self._map) if self._map is not None else None
 
     def status(self) -> dict:
         with self._lock:
             return {
-                "running": self.laeuft,
-                "map_available": self._karte is not None,
-                "last_map_at": self._karte["received_at"] if self._karte else None,
+                "running": self.running,
+                "map_available": self._map is not None,
+                "last_map_at": self._map["received_at"] if self._map else None,
                 "scans": self._scans,
             }
 
-    def _schleife(self) -> None:
-        letzte_nr = None
-        takt = 1.0 / max(config.MAP_SIM_HZ, 0.1)
-        naechste_karte = 0.0
+    def _loop(self) -> None:
+        last_nr = None
+        tick = 1.0 / max(config.MAP_SIM_HZ, 0.1)
+        next_map = 0.0
         while not self._stop.is_set():
-            messung = self._odo.messung()
-            if messung is not None and messung.nr != letzte_nr:
-                letzte_nr = messung.nr
+            measurement = self._odo.measurement()
+            if measurement is not None and measurement.nr != last_nr:
+                last_nr = measurement.nr
                 try:
-                    self._eintragen(messung.scan.punkte(), self._lage(messung))
-                    if time.monotonic() >= naechste_karte:
-                        naechste_karte = time.monotonic() + takt
-                        self._veroeffentlichen()
+                    self._integrate(measurement.scan.points(), self._pose(measurement))
+                    if time.monotonic() >= next_map:
+                        next_map = time.monotonic() + tick
+                        self._publish()
                 except Exception:
-                    log.exception("Simulierte Kartierung: Aufnahme nicht verarbeitet")
+                    log.exception("Simulated mapping: scan not processed")
             self._stop.wait(0.05)
 
-    def _lage(self, messung) -> tuple[float, float, float]:
-        """Lage für den Eintrag: die wahre, im Rahmen der Kartierung.
+    def _pose(self, measurement) -> tuple[float, float, float]:
+        """Pose for entering the scan: the true one, in the mapping frame.
 
-        Der Kartenrahmen ist -- wie bei slam_toolbox -- der der Lidar-
-        Odometrie zu Beginn. Bei der ersten Aufnahme stimmen beide noch
-        überein; daraus ergibt sich die feste Umrechnung von wahr nach Karte.
-        Ohne wahre Lage (kein Mock-Lidar) bleibt nur die Odometrie.
+        The map frame is -- as with slam_toolbox -- that of the lidar
+        odometry at the start. At the first scan both still agree; that
+        gives the fixed conversion from true to map. Without a true pose
+        (no mock lidar) only the odometry is left.
         """
-        wahr = getattr(messung.scan, "wahre_pose", None)
-        if wahr is None:
-            return messung.pose
-        if self._wahr_zu_karte is None:
-            self._wahr_zu_karte = verketten(messung.pose, umkehren(wahr))
-        return verketten(self._wahr_zu_karte, wahr)
+        truth = getattr(measurement.scan, "true_pose", None)
+        if truth is None:
+            return measurement.pose
+        if self._true_to_map is None:
+            self._true_to_map = compose(measurement.pose, invert(truth))
+        return compose(self._true_to_map, truth)
 
-    def _eintragen(self, punkte, pose) -> None:
-        pkt = np.asarray(punkte, dtype=float).reshape(-1, 2)
-        if len(pkt) == 0:
+    def _integrate(self, points, pose) -> None:
+        pts = np.asarray(points, dtype=float).reshape(-1, 2)
+        if len(pts) == 0:
             return
-        pkt = pkt[:: max(1, len(pkt) // 240)]
+        pts = pts[:: max(1, len(pts) // 240)]
         c, s = math.cos(pose[2]), math.sin(pose[2])
-        wx = c * pkt[:, 0] - s * pkt[:, 1] + pose[0]
-        wy = s * pkt[:, 0] + c * pkt[:, 1] + pose[1]
+        wx = c * pts[:, 0] - s * pts[:, 1] + pose[0]
+        wy = s * pts[:, 0] + c * pts[:, 1] + pose[1]
         r = np.hypot(wx - pose[0], wy - pose[1])
-        schritte = int(np.ceil(r.max() / self.aufloesung))
-        t = np.arange(schritte) * self.aufloesung
-        # Freie Zellen entlang jedes Strahls bis kurz vor dem Treffer.
-        anteil = t[None, :] / np.maximum(r[:, None], 1e-6)
-        gueltig = t[None, :] < (r[:, None] - self.aufloesung)
-        fx = pose[0] + anteil * (wx - pose[0])[:, None]
-        fy = pose[1] + anteil * (wy - pose[1])[:, None]
-        frei = self._indizes(fx[gueltig], fy[gueltig])
-        belegt = self._indizes(wx, wy)
+        steps = int(np.ceil(r.max() / self.resolution))
+        t = np.arange(steps) * self.resolution
+        # Free cells along each ray up to just before the hit.
+        share = t[None, :] / np.maximum(r[:, None], 1e-6)
+        valid = t[None, :] < (r[:, None] - self.resolution)
+        fx = pose[0] + share * (wx - pose[0])[:, None]
+        fy = pose[1] + share * (wy - pose[1])[:, None]
+        free = self._indices(fx[valid], fy[valid])
+        occupied = self._indices(wx, wy)
         with self._lock:
-            flach = self._lo.ravel()
-            gesehen = self._gesehen.ravel()
-            frei = np.setdiff1d(frei, belegt)
-            flach[frei] += _FREI
-            flach[belegt] += _BELEGT
-            np.clip(flach, -_GRENZE, _GRENZE, out=flach)
-            gesehen[frei] = True
-            gesehen[belegt] = True
+            flat = self._lo.ravel()
+            seen = self._seen.ravel()
+            free = np.setdiff1d(free, occupied)
+            flat[free] += _FREE
+            flat[occupied] += _OCCUPIED
+            np.clip(flat, -_LIMIT, _LIMIT, out=flat)
+            seen[free] = True
+            seen[occupied] = True
             self._scans += 1
 
-    def _indizes(self, x, y) -> np.ndarray:
-        ix = np.floor((x - self._ursprung) / self.aufloesung).astype(int)
-        iy = np.floor((y - self._ursprung) / self.aufloesung).astype(int)
-        innen = (ix >= 0) & (iy >= 0) & (ix < self._n) & (iy < self._n)
-        return np.unique(iy[innen] * self._n + ix[innen])
+    def _indices(self, x, y) -> np.ndarray:
+        ix = np.floor((x - self._origin) / self.resolution).astype(int)
+        iy = np.floor((y - self._origin) / self.resolution).astype(int)
+        inside = (ix >= 0) & (iy >= 0) & (ix < self._n) & (iy < self._n)
+        return np.unique(iy[inside] * self._n + ix[inside])
 
-    def _veroeffentlichen(self) -> None:
+    def _publish(self) -> None:
         with self._lock:
             lo = self._lo.copy()
-            gesehen = self._gesehen.copy()
-        ys, xs = np.nonzero(gesehen)
+            seen = self._seen.copy()
+        ys, xs = np.nonzero(seen)
         if len(xs) == 0:
             return
-        rand = 10
-        x0, x1 = max(0, xs.min() - rand), min(self._n, xs.max() + rand + 1)
-        y0, y1 = max(0, ys.min() - rand), min(self._n, ys.max() + rand + 1)
-        lo, gesehen = lo[y0:y1, x0:x1], gesehen[y0:y1, x0:x1]
-        belegung = np.full(lo.shape, -1, dtype=np.int8)
-        belegung[gesehen & (lo < 0.0)] = 0
-        belegung[gesehen & (lo > 0.6)] = 100
-        karte = {
+        margin = 10
+        x0, x1 = max(0, xs.min() - margin), min(self._n, xs.max() + margin + 1)
+        y0, y1 = max(0, ys.min() - margin), min(self._n, ys.max() + margin + 1)
+        lo, seen = lo[y0:y1, x0:x1], seen[y0:y1, x0:x1]
+        occupancy = np.full(lo.shape, -1, dtype=np.int8)
+        occupancy[seen & (lo < 0.0)] = 0
+        occupancy[seen & (lo > 0.6)] = 100
+        occ_map = {
             "topic": "/map",
             "frame_id": "map",
             "info": {
-                "resolution": self.aufloesung,
-                "width": int(belegung.shape[1]),
-                "height": int(belegung.shape[0]),
+                "resolution": self.resolution,
+                "width": int(occupancy.shape[1]),
+                "height": int(occupancy.shape[0]),
                 "origin": {
-                    "position": {"x": self._ursprung + x0 * self.aufloesung,
-                                 "y": self._ursprung + y0 * self.aufloesung, "z": 0.0},
+                    "position": {"x": self._origin + x0 * self.resolution,
+                                 "y": self._origin + y0 * self.resolution, "z": 0.0},
                     "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0},
                 },
             },
-            "data_b64": base64.b64encode(belegung.tobytes()).decode("ascii"),
+            "data_b64": base64.b64encode(occupancy.tobytes()).decode("ascii"),
             "received_at": time.time(),
         }
         with self._lock:
-            self._karte = karte
+            self._map = occ_map

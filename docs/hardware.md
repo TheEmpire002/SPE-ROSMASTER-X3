@@ -1,578 +1,581 @@
 # Hardware
 
-## Bestand
+## Inventory
 
-| Komponente      | Modell                | Anschluss        | Status      |
+| Component       | Model                 | Connection       | Status      |
 |-----------------|-----------------------|------------------|-------------|
-| Rechner         | Raspberry Pi 5 (16 GB) + AI HAT+ 2 (Hailo-10H) | PCIe (`/dev/hailo0`) | vorhanden, Hailo für Interaktion geplant |
-| Fahrgestell     | Yahboom ROSMASTER X3  | USB-Serial       | vorhanden   |
-| Expansion Board | Yahboom (STM32)       | USB-Serial       | vorhanden   |
-| Lidar           | Slamtec RPLIDAR A1    | USB-Seriell      | eingebunden (Ortung + Hindernisse) |
-| Tiefenkamera    | Orbbec (Farb- + Tiefenkanal) | USB (über Hub) | Farbbild eingebunden (Kamera `orientierung`), Tiefe seit 04.11. (Hindernisse beim autonomen Fahren) |
-| Webcam          | Logitech C270 (vorn, leicht nach oben) | USB, eigener Bus (direkt am Pi) | eingebunden (Kamera `personen`: Personenerkennung, Gesten) |
-| Mikrofon        | USB-Mikrofon (FongLun, C-Media `0d8c:0016`); weitere in C270 und Orbbec | USB-Audio, eigener Bus | eingebunden (Sprachbefehle „Robi …“, `SPRACHE_MIKROFON`) |
-| Lautsprecher    | USB-Lautsprecher „UACDemoV1.0“ | USB-Audio, direkt am Pi | eingebunden (MUKKE: Musik von YouTube; Sprachausgabe, `STIMME_GERAET`) |
-| ESP32           | *(Modell eintragen)*  | WLAN             | geplant     |
-| Pulssensor      | *(Modell eintragen)*  | ESP32            | geplant     |
-| Box-Motor       | *(Modell eintragen)*  | Servo am X3      | geplant     |
+| Computer        | Raspberry Pi 5 (16 GB) + AI HAT+ 2 (Hailo-10H) | PCIe (`/dev/hailo0`) | present, Hailo planned for interaction |
+| Chassis         | Yahboom ROSMASTER X3  | USB serial       | present     |
+| Expansion Board | Yahboom (STM32)       | USB serial       | present     |
+| Lidar           | Slamtec RPLIDAR A1    | USB serial       | integrated (localization + obstacles) |
+| Depth camera    | Orbbec (color + depth channel) | USB (via hub) | color image integrated (camera `orientierung`), depth since 04.11. (obstacles during autonomous driving) |
+| Webcam          | Logitech C270 (front, tilted slightly up) | USB, own bus (directly on the Pi) | integrated (camera `personen`: person detection, gestures) |
+| Microphone      | USB microphone (FongLun, C-Media `0d8c:0016`); more in the C270 and Orbbec | USB audio, own bus | integrated (voice commands "Robi …", `SPEECH_MICROPHONE`) |
+| Speaker         | USB speaker "UACDemoV1.0" | USB audio, directly on the Pi | integrated (MUKKE: music from YouTube; speech output, `VOICE_DEVICE`) |
+| ESP32           | *(enter model)*       | Wi-Fi            | planned     |
+| Pulse sensor    | *(enter model)*       | ESP32            | planned     |
+| Box motor       | *(enter model)*       | servo on the X3  | planned     |
 
-> Bitte beim Einbauen die Modellbezeichnungen hier eintragen — ohne die lässt
-> sich später nicht nachvollziehen, welcher Treiber gebraucht wird.
+> Please enter the model names here when installing parts. Without them it
+> is impossible to tell later which driver is needed.
 
-## Was am USB hängt
+## What is connected via USB
 
-Ausgabe von `lsusb` auf diesem Roboter, übersetzt:
+Output of `lsusb` on this robot, explained:
 
-| USB-ID | Gerät | Wofür |
+| USB ID | Device | Purpose |
 |---|---|---|
-| `1a86:7523` | QinHeng CH340 | **Expansion Board** — Antrieb |
+| `1a86:7523` | QinHeng CH340 | **Expansion Board**: drive |
 | `10c4:ea60` | Silicon Labs CP210x | **RPLIDAR A1** |
-| `2bc5:050f` | Orbbec „USB 2.0 Camera" | RGB-Bild, Kamera `orientierung` |
-| `2bc5:060f` | Orbbec Depth Sensor | Tiefenkanal derselben Kamera |
-| `046d:0825` | Logitech C270 HD WebCam | Kamera `personen`, Mikrofon (eigener USB-Bus, nicht am Hub) |
-| `0d8c:0016` | USB-Mikrofon (C-Media) | Spracheingabe (ALSA „Microphone“) |
-| `4c4a:4155` | Jieli „UACDemoV1.0“ | USB-Lautsprecher, Sprachausgabe (ALSA „UACDemoV10“), keine Kamera |
+| `2bc5:050f` | Orbbec "USB 2.0 Camera" | RGB image, camera `orientierung` |
+| `2bc5:060f` | Orbbec Depth Sensor | depth channel of the same camera |
+| `046d:0825` | Logitech C270 HD WebCam | camera `personen`, microphone (own USB bus, not on the hub) |
+| `0d8c:0016` | USB microphone (C-Media) | speech input (ALSA "Microphone") |
+| `4c4a:4155` | Jieli "UACDemoV1.0" | USB speaker, speech output (ALSA "UACDemoV10"), not a camera |
 
-**Daraus folgt das Wichtigste:** Es gibt **zwei** USB-Seriell-Adapter. Board
-und Lidar erscheinen beide als `/dev/ttyUSB*`, und welcher welche Nummer
-bekommt, hängt von der Einschaltreihenfolge ab. Überlässt man
-`Rosmaster_Lib` die Suche, kann sie den Lidar erwischen — dann bewegt sich
-nichts, ohne dass eine Fehlermeldung erscheint.
+**The most important consequence:** there are **two** USB serial adapters.
+Board and lidar both show up as `/dev/ttyUSB*`, and which one gets which
+number depends on the power-on order. If you leave the search to
+`Rosmaster_Lib`, it may pick the lidar. Then nothing moves, and no error
+message appears.
 
-Deshalb den Port fest eintragen:
+So set the port explicitly:
 
 ```bash
 ls -l /dev/serial/by-id/
 ```
 
-Den Eintrag mit `1a86` bzw. `CH340` in `config.py` bei `SERIAL_PORT`
-hinterlegen. Der Lidar hat mit `/dev/rplidar` bereits einen festen Namen.
+Put the entry containing `1a86` or `CH340` into `config.py` as
+`SERIAL_PORT`. The lidar already has a fixed name, `/dev/rplidar`.
 
-Die **Orbbec-Tiefenkamera** meldet sich als zwei USB-Geräte. Genutzt wird
-ihr RGB-Kanal als gewöhnliche USB-Kamera. Der Tiefenkanal ist kein
-Videogerät (taucht in `v4l2-ctl --list-devices` nicht auf); er läuft über
-Orbbecs OpenNI2, siehe [Tiefenkamera](#tiefenkamera-orbbec-astra).
+The **Orbbec depth camera** shows up as two USB devices. Its RGB channel is
+used as an ordinary USB camera. The depth channel is not a video device (it
+does not appear in `v4l2-ctl --list-devices`); it runs via Orbbec's
+OpenNI2, see [Depth camera](#depth-camera-orbbec-astra).
 
-Seit dem 28.10. ist zusätzlich eine **Logitech C270** vorn montiert. Sie
-hängt direkt am Pi, nicht am Hub: Am Hub hängen schon Board, Lidar und
-Orbbec, und eine weitere Kamera dort macht Spannungseinbrüche
-wahrscheinlicher. Beim Einstecken meldet der Kernel einige
-`Failed to query (GET_INFO) UVC control …` und `cannot get freq`. Das ist
-bei der C270 normal und harmlos.
+Since 28.10. a **Logitech C270** is additionally mounted at the front. It is
+connected directly to the Pi, not to the hub: the hub already carries the
+board, lidar and Orbbec, and another camera there makes voltage drops more
+likely. When it is plugged in, the kernel reports a few
+`Failed to query (GET_INFO) UVC control …` and `cannot get freq`. That is
+normal and harmless for the C270.
 
-Die `/dev/video*`-Nummern hängen von der Einsteckreihenfolge ab. Der Server
-ordnet die Kameras deshalb über die USB-Kennung zu, nicht über die Nummer
-(siehe [Kamera](#kamera)).
+The `/dev/video*` numbers depend on the plug-in order. The server therefore
+assigns the cameras by their USB ID, not by number (see [Camera](#camera)).
 
-## Antrieb
+## Drive
 
-Der X3 hat **Mecanum-Räder**. Er kann dadurch seitwärts fahren, ohne sich zu
-drehen. Die Fahrbefehle haben deshalb drei Werte statt zwei:
+The X3 has **mecanum wheels**. This lets it drive sideways without turning.
+Drive commands therefore have three values instead of two:
 
-| Wert    | Bedeutung                    | Einheit |
+| Value   | Meaning                      | Unit    |
 |---------|------------------------------|---------|
-| `vx`    | vorwärts (+) / rückwärts (−) | m/s     |
-| `vy`    | links (+) / rechts (−)       | m/s     |
-| `omega` | drehen gegen (+) / im (−) Uhrzeigersinn | rad/s |
+| `vx`    | forward (+) / backward (−)   | m/s     |
+| `vy`    | left (+) / right (−)         | m/s     |
+| `omega` | turn counterclockwise (+) / clockwise (−) | rad/s |
 
-Grenzwerte und Standard-Tempo stehen in `robot/src/rosmaster_assist/config.py`.
+Limits and default speed are in `robot/src/rosmaster_assist/config.py`.
 
 ## Rosmaster_Lib
 
-Yahboons Python-Treiber spricht über USB-Serial mit dem Expansion Board.
+Yahboom's Python driver talks to the Expansion Board via USB serial.
 
 ```python
 from Rosmaster_Lib import Rosmaster
 
-bot = Rosmaster()                     # Standard: /dev/myserial bzw. /dev/ttyUSB0
-bot.create_receive_threading()        # startet den Empfangs-Thread
-bot.set_car_motion(vx, vy, omega)     # fahren
-bot.set_beep(100)                     # Buzzer, Dauer in ms
-bot.set_colorful_lamps(0xFF, r, g, b) # LED-Streifen
+bot = Rosmaster()                     # default: /dev/myserial or /dev/ttyUSB0
+bot.create_receive_threading()        # starts the receive thread
+bot.set_car_motion(vx, vy, omega)     # drive
+bot.set_beep(100)                     # buzzer, duration in ms
+bot.set_colorful_lamps(0xFF, r, g, b) # LED strip
 ```
 
-Falls die Bibliothek fehlt, liegt sie im Yahboom-Lieferumfang bzw. im
-offiziellen Yahboom-GitHub-Repository zum ROSMASTER.
+If the library is missing, it is part of the Yahboom delivery or in the
+official Yahboom GitHub repository for the ROSMASTER.
 
-**Serielle Schnittstelle.** Der Gerätename unterscheidet sich je nach Image
-und Anschlussart (`/dev/myserial`, `/dev/ttyUSB0`, `/dev/ttyAMA0`, …). Das ist
-aber meist egal: **`Rosmaster()` ohne Argument findet das Board selbst.**
-Deshalb steht `SERIAL_PORT` in `config.py` auf `None` und sollte dort auch
-bleiben, solange nichts dagegen spricht.
+**Serial port.** The device name differs depending on the image and the
+connection type (`/dev/myserial`, `/dev/ttyUSB0`, `/dev/ttyAMA0`, …). Usually
+that does not matter: **`Rosmaster()` without an argument finds the board by
+itself.** That is why `SERIAL_PORT` in `config.py` is `None` and should stay
+that way unless there is a reason against it.
 
-Ein fester Port ist nur nötig, wenn die Automatik das falsche Gerät erwischt —
-realistisch dann, wenn der RPLIDAR am selben Bus hängt. In dem Fall den
-`by-id`-Pfad eintragen, nicht `/dev/ttyUSB0` (siehe Lidar-Abschnitt unten).
+A fixed port is only needed if the automatic search picks the wrong device,
+which realistically happens when the RPLIDAR is on the same bus. In that
+case enter the `by-id` path, not `/dev/ttyUSB0` (see the lidar section
+below).
 
-Ob das Board erreichbar ist, beantwortet `python scripts/check_hardware.py`
-unter „Expansion Board" — das versucht tatsächlich, es zu öffnen, statt nur
-nach Gerätedateien zu suchen.
+Whether the board is reachable is answered by `python scripts/check_hardware.py`
+under "Expansion Board". It actually tries to open the board instead of just
+looking for device files.
 
-**Nur ein Programm pro Port.** Der serielle Port lässt sich technisch
-mehrfach öffnen, aber nicht sinnvoll teilen: zwei Leser bekommen jeweils
-Bruchstücke. Typische Meldung:
+**Only one program per port.** Technically the serial port can be opened
+several times, but it cannot be shared sensibly: two readers each get
+fragments. Typical message:
 
 ```
 SerialException: device reports readiness to read but returned no data
 (device disconnected or multiple access on port?)
 ```
 
-Wer noch mitliest, zeigt:
+To see who else is reading:
 
 ```bash
 ps aux | grep -i python | grep -v grep
 sudo fuser -v /dev/ttyUSB* /dev/ttyAMA* /dev/myserial 2>&1
 ```
 
-Die üblichen Verdächtigen:
+The usual suspects:
 
-- **Der ROS2-Stack.** `yahboomcar_bringup` öffnet dasselbe Board über
-  dieselbe Bibliothek. Häufigste Ursache bei uns:
+- **The ROS2 stack.** `yahboomcar_bringup` opens the same board via the same
+  library. The most common cause for us:
 
   ```bash
   sudo pkill -f yahboomcar_bringup
-  sudo pkill -f x3_explorer       # fährt sonst nebenher selbst
-  sudo pkill -f sllidar_node      # belegt /dev/rplidar
+  sudo pkill -f x3_explorer       # otherwise drives on its own in parallel
+  sudo pkill -f sllidar_node      # occupies /dev/rplidar
   ```
 
-  Entweder ROS2 **oder** unser Server — niemals beide.
-- **Yahboom-App** (`app.py` mit Flask, MakerControl). Startet auf
-  Yahboom-Images beim Booten. `sudo systemctl stop <name>`, bei Bedarf
-  zusätzlich `disable`.
-- **Serielle Konsole** auf der GPIO-UART. Abschalten über
-  `sudo raspi-config` → *Interface Options* → *Serial Port* → Login-Shell
-  **nein**, Hardware **ja**.
-- **ModemManager**, der neue USB-Seriell-Geräte automatisch abklopft:
+  Either ROS2 **or** our server, never both.
+- **Yahboom app** (`app.py` with Flask, MakerControl). Starts at boot on
+  Yahboom images. `sudo systemctl stop <name>`, additionally `disable` if
+  needed.
+- **Serial console** on the GPIO UART. Switch it off via
+  `sudo raspi-config` → *Interface Options* → *Serial Port* → login shell
+  **no**, hardware **yes**.
+- **ModemManager**, which automatically probes new USB serial devices:
   `sudo systemctl disable --now ModemManager`
 
-Als Übergangslösung lässt sich in `config.py` `TELEMETRY_ENABLED = False`
-setzen. Dann liest unsere Software gar nicht mehr und der Konflikt
-verschwindet — Fahren funktioniert weiter, Akku- und IMU-Werte fehlen.
+As a workaround, `TELEMETRY_ENABLED = False` can be set in `config.py`. Then
+our software does not read at all and the conflict disappears. Driving
+still works, but battery and IMU values are missing.
 
-**Rechte.** Wenn der Zugriff an „Permission denied" scheitert:
+**Permissions.** If access fails with "Permission denied":
 
 ```bash
-sudo usermod -aG dialout $USER   # danach neu anmelden
+sudo usermod -aG dialout $USER   # log in again afterwards
 ```
 
 ## Lidar: Slamtec RPLIDAR A1
 
-360°-Laserscanner, Reichweite ca. 12 m, rund 8000 Messpunkte pro Sekunde bei
-5,5 Umdrehungen/s. Liefert pro Messpunkt Winkel, Entfernung und Signalqualität
-— mehr nicht. Daraus eine Karte zu bauen ist Aufgabe der Software.
+360° laser scanner, range about 12 m, around 8000 measurement points per
+second at 5.5 revolutions/s. For each point it delivers angle, distance and
+signal quality, nothing more. Building a map from that is the software's
+job.
 
-**Anschluss.** Der A1 hängt über einen USB-Seriell-Adapter (CP2102) am Pi und
-läuft mit **115200 Baud**. Auf diesem Pi existiert bereits der feste Pfad
-**`/dev/rplidar`** (udev-Regel aus dem Yahboom-Setup) — den verwenden, nicht
-`/dev/ttyUSB0`. Der Motor wird über die DTR-Leitung gesteuert; dreht sich der
-Scanner nicht, liegt es meist daran.
+**Connection.** The A1 is connected to the Pi via a USB serial adapter
+(CP2102) and runs at **115200 baud**. This Pi already has the fixed path
+**`/dev/rplidar`** (udev rule from the Yahboom setup). Use it, not
+`/dev/ttyUSB0`. The motor is controlled via the DTR line; if the scanner
+does not spin, that is usually the reason.
 
-**Eingebunden.** Der Lidar wird direkt aus Python ausgelesen, ohne ROS2
-(Begründung: E4 in [`entscheidungen.md`](entscheidungen.md)). Nötig ist dafür:
+**Integrated.** The lidar is read directly from Python, without ROS2
+(rationale: E4 in [`decisions.md`](decisions.md)). This requires:
 
 ```bash
 robot/.venv/bin/pip install rplidar-roboticia
 ```
 
-**ROS2 darf nicht gleichzeitig laufen.** `sllidar_ros2` belegt denselben
-Anschluss — entweder das eine oder das andere:
+**ROS2 must not run at the same time.** `sllidar_ros2` occupies the same
+port. It is one or the other:
 
 ```bash
 sudo pkill -f sllidar_node
 ```
 
-Zustand prüfen: `http://<IP-des-Pi>:8000/lidar/status`. Dort steht, wie viele
-Umdrehungen angekommen sind, ob der Startpunkt eingemessen wurde und wie gut
-der Abgleich passt (`letztes_residuum_m`; unter 5 cm ist gut).
+Check the state: `http://<IP-of-the-Pi>:8000/lidar/status`. It shows how many
+revolutions have arrived, whether the start point has been calibrated and
+how well the match fits (`letztes_residuum_m`; below 5 cm is good).
 
-**⚠ Portverwechslung — wichtig.** Das X3-Expansion-Board nutzt *ebenfalls*
-einen USB-Seriell-Port. Bei zwei Geräten vergibt Linux `/dev/ttyUSB0` und
-`/dev/ttyUSB1` in der Reihenfolge, in der sie erkannt werden — und die kann
-sich bei jedem Neustart ändern. Dann bekommt der Antrieb plötzlich
-Lidar-Befehle.
+**⚠ Port mix-up: important.** The X3 Expansion Board *also* uses a USB serial
+port. With two devices, Linux assigns `/dev/ttyUSB0` and `/dev/ttyUSB1` in
+the order in which they are detected, and that order can change on every
+reboot. Then the drive suddenly receives lidar commands.
 
-Deshalb feste Namen über die Geräte-ID verwenden statt `ttyUSB0`:
+So use fixed names based on the device ID instead of `ttyUSB0`:
 
 ```bash
 ls -l /dev/serial/by-id/
 # -> /dev/serial/by-id/usb-Silicon_Labs_CP2102_...-if00-port0
 ```
 
-Dieser Pfad bleibt gleich, egal in welcher Reihenfolge gebootet wird. Den
-Pfad des Expansion Boards in `config.py` bei `SERIAL_PORT` eintragen, den des
-Lidars später entsprechend beim Lidar-Treiber.
+This path stays the same regardless of the boot order. Enter the Expansion
+Board's path in `config.py` as `SERIAL_PORT`, and the lidar's path later in
+the lidar driver accordingly.
 
-**Stromversorgung.** Der A1 zieht beim Anlaufen des Motors kurz spürbar
-Strom. Hängt er über einen unversorgten USB-Hub am Pi, kann es zu Aussetzern
-kommen — im Zweifel direkt an den Pi.
+**Power supply.** The A1 briefly draws noticeable current when its motor
+starts. If it is connected to the Pi through an unpowered USB hub, dropouts
+can occur. When in doubt, connect it directly to the Pi.
 
-**Bibliothek.** Für reines Python kommt `rplidar-roboticia` in Frage (Fork des
-nicht mehr gepflegten `rplidar`). Noch nicht ausgewählt — siehe offene Punkte
+**Library.** For pure Python, `rplidar-roboticia` is an option (a fork of
+the no longer maintained `rplidar`). Not yet chosen; see the open points
 in `robot/src/rosmaster_assist/sensors/__init__.py`.
 
-## Kamera
+## Camera
 
-Die Software betreibt **alle** Kameras, die sie findet, jede mit eigenem
-Bild:
+The software runs **all** cameras it finds, each with its own image:
 
-| Variante | Voraussetzung |
+| Variant | Requirement |
 |---|---|
-| USB-Kameras | `pip install opencv-python` |
-| CSI-Kamera am Flachbandkabel | `picamera2` (bei Raspberry Pi OS dabei) |
-| Testbild, wenn gar keine da ist | nichts, läuft überall |
+| USB cameras | `pip install opencv-python` |
+| CSI camera on the ribbon cable | `picamera2` (included in Raspberry Pi OS) |
+| Test image if there is no camera at all | nothing, runs everywhere |
 
-Welche USB-Kamera wofür da ist, steht in `config.py` bei `CAMERA_ROLES`:
-`orientierung` ist die Orbbec (USB-Kennung `2bc5`), `personen` die Logitech
-(`046d`). Zugeordnet wird über die USB-Kennung, nicht über `/dev/videoN`,
-denn die Nummern vertauschen sich nach Neustart oder Neu-Einstecken. Fehlt
-eine dieser Kameras, sucht der Server sie im Hintergrund weiter. Weitere
-USB-Kameras laufen als `usb1`, `usb2`, …
+Which USB camera is used for what is set in `config.py` in `CAMERA_ROLES`:
+`orientierung` is the Orbbec (USB ID `2bc5`), `personen` the Logitech
+(`046d`). Assignment is by USB ID, not by `/dev/videoN`, because the numbers
+get swapped after a reboot or re-plugging. If one of these cameras is
+missing, the server keeps looking for it in the background. Further USB
+cameras run as `usb1`, `usb2`, …
 
-Beim Start steht im Log, was gefunden wurde („Kameras: orientierung (…),
-personen (…)“ und je Kamera „Kamera '…' (USB …, /dev/videoN) bereit“).
-Ohne Log: `/cameras` im Browser aufrufen.
+At startup the log shows what was found (a line "Cameras: orientierung (…),
+personen (…)" and, per camera, "Camera '…' (USB …, /dev/videoN) ready").
+Without the log: open `/cameras` in the browser.
 
-Auflösung, Bildrate und JPEG-Qualität lassen sich in den Einstellungen (Zahnrad
-oben rechts in der App) verstellen; die Standardwerte stehen in
-`robot/src/rosmaster_assist/config.py`. Bei ruckelndem Bild über WLAN zuerst
-`CAMERA_FPS` senken, erst danach die Auflösung.
+Resolution, frame rate and JPEG quality can be changed in the settings (gear
+icon at the top right of the app); the default values are in
+`robot/src/rosmaster_assist/config.py`. If the image stutters over Wi-Fi,
+lower `CAMERA_FPS` first, and only then the resolution.
 
-**USB-Kamera prüfen:**
+**Check a USB camera:**
 
 ```bash
-v4l2-ctl --list-devices # je Kamera ein Block; fehlt sie hier, wird sie nicht erkannt
-lsusb                   # USB-Kennung, muss zu CAMERA_ROLES passen
+v4l2-ctl --list-devices # one block per camera; if it is missing here, it is not detected
+lsusb                   # USB ID, must match CAMERA_ROLES
 pip install opencv-python
 ```
 
-**CSI-Kamera prüfen:**
+**Check a CSI camera:**
 
 ```bash
 rpicam-hello --list-cameras
 ```
 
-Der Stream liegt unter `/camera/<name>/stream` (MJPEG) und ein Einzelbild
-unter `/camera/<name>/snapshot`, z. B. `/camera/personen/stream`. Beides ist
-direkt im Browser aufrufbar, auch ohne die App. `/camera/stream` ohne Namen
-zeigt die Standardkamera (`orientierung`).
+The stream is at `/camera/<name>/stream` (MJPEG) and a single frame at
+`/camera/<name>/snapshot`, e.g. `/camera/personen/stream`. Both can be opened
+directly in the browser, even without the app. `/camera/stream` without a
+name shows the default camera (`orientierung`).
 
-## Tiefenkamera (Orbbec Astra)
+## Depth camera (Orbbec Astra)
 
-Seit 04.11. nutzt das autonome Fahren den Tiefenkanal (`sensors/tiefe.py`),
-um zu sehen, was unter der Lidar-Ebene liegt: Stuhl- und Tischbeine,
-Kisten, Taschen. Am Stuhlbein ist der Roboter vorher hängen geblieben.
+Since 04.11. autonomous driving uses the depth channel (`sensors/depth.py`)
+to see what lies below the lidar plane: chair and table legs, boxes, bags.
+The robot used to get stuck on a chair leg.
 
-**Einrichten (einmal am Pi):** `bash scripts/orbbec_einrichten.sh`.
-Das Skript kopiert `libOpenNI2.so` und den Orbbec-Treiber aus dem
-Yahboom-Container nach `~/orbbec_openni2` (`TIEFE_OPENNI_PFAD`). Das
-pip-Paket `openni` läuft unter Python 3.13 nicht, deshalb gibt es eine
-eigene kleine ctypes-Anbindung. Die udev-Regel `56-orbbec-usb.rules`
-von Yahboom erlaubt den Zugriff ohne root. Fehlt die Bibliothek, läuft
-der Server ohne Tiefe weiter und meldet das im Log und unter `/tiefe/status`.
+**Setup (once on the Pi):** `bash scripts/setup_orbbec.sh`.
+The script copies `libOpenNI2.so` and the Orbbec driver from the Yahboom
+container to `~/orbbec_openni2` (`DEPTH_OPENNI_PATH`). The pip package
+`openni` does not run under Python 3.13, so there is a small ctypes binding
+of our own. Yahboom's udev rule `56-orbbec-usb.rules` allows access without
+root. If the library is missing, the server keeps running without depth and
+reports this in the log and under `/tiefe/status`.
 
-**Was man wissen muss:**
+**What you need to know:**
 
-- Die Astra misst erst ab **~0,6 m** (`TIEFE_MIN_M`). Was näher ist, kennt
-  der Roboter nur aus dem Gedächtnis, also von früher, als es weiter weg
-  war. Ein Stuhl, der direkt neben ihm hingestellt wird, bleibt unsichtbar.
-  Dagegen hilft die Fortschrittswache (siehe `docs/api.md`).
-- Gelesen wird mit 320×240. Ausgewertet werden 8 Bilder/s (`TIEFE_HZ`),
-  die Kamera liefert 30.
-- Hindernis ist, was 4–40 cm über dem **Boden** steht. Den Boden sucht
-  er in jedem Bild als Ebene. So gleicht er die Einbaulage aus
-  (`TIEFE_KAMERA_HOEHE_M`, `…_NEIGUNG_GRAD` sind nur Startwerte). Findet er
-  keinen Boden (dunkler oder spiegelnder Boden, Roboter aufgebockt), zählt
-  erst ab 9 cm Höhe und nur bis 1,3 m.
-- **Strom:** Der Projektor ist einer der größten Verbraucher am Hub (siehe
-  USB-Resets unten). Deshalb ist die Kamera nur während autonomer Fahrten
-  an und sonst geschlossen. Meldet sie sich ab, verbindet sie sich nach
-  `TIEFE_NEUVERSUCH_S` neu. Die Fahrt läuft derweil mit dem Lidar allein.
-- Die Tiefenpunkte gehen bewusst **nicht** in die Karte (SLAM). Die Karte
-  bleibt eine Lidar-Karte, die Punkte dienen nur dem Ausweichen.
-- Ansehen: in der App im Kamera-Umschalter „Tiefe“ bzw. „Tiefe + Farbbild“
-  (oder `/tiefe/stream` im Browser), Farben siehe `docs/api.md`.
-- Prüfen im Stand: `curl -X POST <IP>:8000/tiefe/test`, dann
-  `/tiefe/status`. Auf dem Boden stehend sollte `boden_erkannt` true sein
-  und `kamera_hoehe_m` ungefähr die echte Höhe zeigen. Zur Kontrolle von
-  links/rechts eine Hand links vor die Kamera halten (mehr als 60 cm weg):
-  `naechstes` muss dann ein positives y zeigen (Konvention: y links).
-- **Kamera hängt** (04.11.): `/tiefe/status` meldet „Gerät öffnen: … Failed
-  to open the file!“, danach „Resource busy!“. Die Firmware meldet sich am
-  USB an, beantwortet aber keine Befehle mehr. Ein USB-Reset per Software
-  hilft nicht, nur **Orbbec ab- und wieder anstecken** (stromlos machen).
-  Früher stürzte dabei der ganze Server ab (Segfault in OpenNI2, weil der
-  Zeiger eines misslungenen Öffnens geschlossen wurde). Inzwischen bleibt
-  er stehen, und die Fahrt läuft mit dem Lidar allein.
+- The Astra only measures from **~0.6 m** (`DEPTH_MIN_M`). Anything closer
+  the robot only knows from memory, i.e. from earlier, when it was farther
+  away. A chair placed right next to it stays invisible. The progress watch
+  helps against that (see `docs/api.md`).
+- Frames are read at 320×240. 8 frames/s are evaluated (`DEPTH_HZ`); the
+  camera delivers 30.
+- An obstacle is anything 4–40 cm above the **floor**. The floor is fitted
+  as a plane in every frame. This compensates for the mounting position
+  (`DEPTH_CAMERA_HEIGHT_M` and `…_TILT_DEG` are only starting values). If
+  no floor is found (dark or reflective floor, robot jacked up), only
+  points from 9 cm height upward and only up to 1.3 m count.
+- **Power:** the projector is one of the biggest consumers on the hub (see
+  USB resets below). That is why the camera is only on during autonomous
+  drives and closed otherwise. If it drops off USB, it reconnects after
+  `DEPTH_RETRY_S`. Meanwhile the drive continues with the lidar alone.
+- The depth points deliberately do **not** go into the map (SLAM). The map
+  stays a lidar map; the points are only used for avoidance.
+- Viewing: in the app via the camera switcher "Tiefe" or "Tiefe + Farbbild"
+  (depth, or depth over the color image; or `/tiefe/stream` in the
+  browser), colors see `docs/api.md`.
+- Check while standing: `curl -X POST <IP>:8000/tiefe/test`, then
+  `/tiefe/status`. Standing on the floor, `boden_erkannt` should be true and
+  `kamera_hoehe_m` should show roughly the real height. To check left/right,
+  hold a hand to the left in front of the camera (more than 60 cm away):
+  `naechstes` must then show a positive y (convention: y to the left).
+- **Camera hangs** (04.11.): `/tiefe/status` reports "Gerät öffnen: … Failed
+  to open the file!", then "Resource busy!". The firmware registers on USB
+  but no longer answers commands. A USB reset via software does not help,
+  only **unplugging and re-plugging the Orbbec** (cutting its power).
+  Previously the whole server crashed in this case (segfault in OpenNI2,
+  because the handle of a failed open was closed). Now it keeps running,
+  and the drive continues with the lidar alone.
 
-## Lautsprecher und Musik („MUKKE“)
+## Speaker and music ("MUKKE")
 
-Der USB-Lautsprecher heißt bei ALSA `UACDemoV10`. Die App spielt darüber
-YouTube-Links ab (Knopf „MUKKE“). Einmalig auf dem Pi einrichten:
+The USB speaker is called `UACDemoV10` in ALSA. The app plays YouTube links
+through it (button "MUKKE"). One-time setup on the Pi:
 
 ```bash
 sudo apt install mpv
 robot/.venv/bin/pip install -U yt-dlp
-aplay -l                      # der Lautsprecher muss als "UACDemoV10" auftauchen
-speaker-test -D plughw:CARD=UACDemoV10,DEV=0 -c 2 -t sine -l 1   # Testton
+aplay -l                      # the speaker must show up as "UACDemoV10"
+speaker-test -D plughw:CARD=UACDemoV10,DEV=0 -c 2 -t sine -l 1   # test tone
 ```
 
-yt-dlp aus pip, nicht aus apt: YouTube ändert laufend etwas, und die
-Version aus den Paketquellen ist meist zu alt. Spielt plötzlich nichts mehr,
-hilft fast immer `robot/.venv/bin/pip install -U yt-dlp`.
+yt-dlp from pip, not from apt: YouTube keeps changing things, and the
+version from the package sources is usually too old. If suddenly nothing
+plays any more, `robot/.venv/bin/pip install -U yt-dlp` almost always helps.
 
-Das Ausgabegerät steht in `config.py` bei `MUKKE_AUDIO_DEVICE`. Kommt kein
-Ton, zeigt das MUKKE-Fenster den Grund an: die Fehlermeldung von YouTube
-(yt-dlp), wenn der Link nicht aufgelöst werden kann, sonst die letzte Meldung
-von mpv. Gegenprobe am Pi: `robot/.venv/bin/yt-dlp -f bestaudio -g "<Link>"`.
+The output device is set in `config.py` as `MUKKE_AUDIO_DEVICE`. If there is
+no sound, the MUKKE window shows the reason: the error message from YouTube
+(yt-dlp) if the link cannot be resolved, otherwise the last message from
+mpv. Cross-check on the Pi: `robot/.venv/bin/yt-dlp -f bestaudio -g "<Link>"`.
 
-## Lautsprecher und Sprachausgabe
+## Speaker and speech output
 
-Der USB-Lautsprecher meldet sich als ALSA-Karte **„UACDemoV10“**. Der Server
-spricht ihn über den Namen an (`STIMME_GERAET =
-"plughw:CARD=UACDemoV10,DEV=0"`), nicht über die Kartennummer. Die Nummer
-ändert sich, wenn sich Geräte nach einem USB-Reset neu anmelden, der Name
-bleibt gleich. `plughw` rechnet Abtastrate und Format passend um.
+The USB speaker registers as ALSA card **"UACDemoV10"**. The server
+addresses it by name (`VOICE_DEVICE =
+"plughw:CARD=UACDemoV10,DEV=0"`), not by card number. The number changes
+when devices re-register after a USB reset; the name stays the same.
+`plughw` converts sample rate and format as needed.
 
-Einrichtung am Pi (einmalig):
+Setup on the Pi (once):
 
 ```bash
-sudo apt install alsa-utils espeak-ng      # aplay/amixer, Ersatzstimme
-aplay -L | grep UACDemo                    # Lautsprecher da?
+sudo apt install alsa-utils espeak-ng      # aplay/amixer, fallback voice
+aplay -L | grep UACDemo                    # speaker present?
 
-# Piper: Release für aarch64 nach ~/piper/piper/ entpacken (der Server
-# sucht dort zuerst, siehe STIMME_PIPER), dazu die weibliche Stimme Kerstin.
+# Piper: unpack the aarch64 release to ~/piper/piper/ (the server looks
+# there first, see VOICE_PIPER), plus the female voice Kerstin.
 mkdir -p ~/piper && cd ~/piper
 curl -fsSL https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_aarch64.tar.gz | tar xz
 B=https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/de/de_DE/kerstin/low
 curl -fsSLO $B/de_DE-kerstin-low.onnx && curl -fsSLO $B/de_DE-kerstin-low.onnx.json
 
-# Test ohne Server (Kerstin hat 16 kHz, steht in der .onnx.json):
+# Test without the server (Kerstin uses 16 kHz, as stated in the .onnx.json):
 echo "Hallo, ich bin Robi." \
   | taskset -c 3 ~/piper/piper/piper --model ~/piper/de_DE-kerstin-low.onnx --output-raw \
   | aplay -D plughw:CARD=UACDemoV10,DEV=0 -r 16000 -f S16_LE -c 1 -t raw
 ```
 
-- Am Pi eingerichtet am 03.11., dort liegt auch noch Thorsten (männlich,
-  `de_DE-thorsten-medium`). Umschalten über `STIMME_MODELL`. Gemessen für
-  3,5 s Sprache: Kerstin 1,3 s, Thorsten medium 1,1 s, Thorsten high 5,7 s
-  (langsamer als Echtzeit, deshalb nicht genommen).
-- **Piper rechnet nur auf einem Kern** (`STIMME_KERNE`, per `taskset`). Auf
-  allen vier Kernen fielen am 03.11. genau beim Sprechen alle USB-Geräte ab
-  (Over-Current, `aplay: No such device`). Mit einem Kern ist Piper kaum
-  langsamer, und ein Testsatz bei 70 % lief ohne neue Over-Current-Meldung.
-- **Nicht mit `sudo` starten.** Unter sudo ist `~` gleich `/root`, dann fehlen
-  Piper, Vosk-Modell und `~/.rosmaster` (der Roboter sprach so wieder mit
-  espeak). `main.py` biegt das inzwischen selbst auf den eigentlichen
-  Benutzer um, nötig ist sudo aber nicht.
-- Piper ist ein Systemprogramm, keine pip-Abhängigkeit. Fehlt es (oder das
-  Modell), weicht der Server auf espeak-ng aus und meldet das im Log. Fehlt
-  auch das, spricht er nicht, läuft aber normal weiter.
-- Der Server stellt den Mixer per `amixer` fest auf `TON_MIXER` (100 %),
-  vor jeder Satzfolge neu, weil der Lautsprecher nach einem USB-Aussetzer
-  mit seinem Standardwert zurückkommt. Leiser wird in Software
-  (`LAUTSTAERKE`, Einstellungsseite): Piper-Töne rechnet der Server selbst
-  herunter, espeak bekommt `-a`, mpv `--volume`. Beim Start sagt er „Ich bin bereit.“. Hört man das,
-  funktioniert die ganze Kette.
-- Diagnose: `curl localhost:8000/stimme/status`. `ausgabe` zeigt, welche
-  Stimme benutzt wird, und `fehler` die letzte Meldung von aplay (z. B.
-  „No such device“, wenn der Lautsprecher fehlt).
-- Nach einem USB-Aussetzer geht höchstens der Satz verloren, der gerade
-  lief. Der nächste findet den Lautsprecher unter demselben Namen wieder.
+The test sentence ("Hello, I am Robi.") stays German because the voice is
+German.
 
-## Mikrofon und Sprachbefehle
+- Set up on the Pi on 03.11.; Thorsten (male, `de_DE-thorsten-medium`) is
+  also installed there. Switch via `VOICE_MODEL`. Measured for 3.5 s of
+  speech: Kerstin 1.3 s, Thorsten medium 1.1 s, Thorsten high 5.7 s (slower
+  than real time, therefore not used).
+- **Piper computes on one core only** (`VOICE_CORES`, via `taskset`). On all
+  four cores, on 03.11. all USB devices dropped off exactly while speaking
+  (over-current, `aplay: No such device`). With one core Piper is hardly
+  slower, and a test sentence at 70 % ran without a new over-current message.
+- **Do not start with `sudo`.** Under sudo, `~` is `/root`, so Piper, the
+  Vosk model and `~/.rosmaster` are missing (the robot then spoke with
+  espeak again). `main.py` now redirects this to the actual user by itself,
+  but sudo is not needed.
+- Piper is a system program, not a pip dependency. If it (or the model) is
+  missing, the server falls back to espeak-ng and reports this in the log.
+  If that is missing too, it does not speak but otherwise runs normally.
+- The server sets the mixer via `amixer` to a fixed `SOUND_MIXER` (100 %),
+  again before every sequence of sentences, because after a USB dropout the
+  speaker comes back with its default value. Lower volume is done in
+  software (`VOLUME`, settings page): the server scales Piper audio down
+  itself, espeak gets `-a`, mpv `--volume`. At startup it says "Ich bin
+  bereit." ("I am ready."). If you hear that, the whole chain works.
+- Diagnostics: `curl localhost:8000/stimme/status`. `ausgabe` shows which
+  voice is used and `fehler` the last message from aplay (e.g.
+  "No such device" when the speaker is missing).
+- After a USB dropout, at most the sentence currently playing is lost. The
+  next one finds the speaker again under the same name.
 
-Gehört wird über das USB-Mikrofon (FongLun bzw. C-Media `0d8c:0016`). Der Server sucht
-es über den Namen (`SPRACHE_MIKROFON_NAMEN`: „USB Microphone“, „USB PnP“,
-„C-Media“, „Microphone“ – in dieser Reihenfolge), nicht über die Nummer.
-Die Mikrofone in C270 und Orbbec nimmt er nie (`SPRACHE_MIKROFON_NIE`):
-Das der C270 klingt so schlecht, dass Vosk kaum etwas versteht.
-Erkannt wird mit Vosk und dem kleinen deutschen Modell (ca. 45 MB, läuft
-auf der CPU).
+## Microphone and voice commands
 
-Einrichtung am Pi: `python main.py` erledigt das beim Start mit echter
-Hardware selbst (Pakete `vosk`/`sounddevice` und Modell nach `~`, braucht
-einmal Internet). Von Hand bleibt nur PortAudio, weil es `sudo` braucht;
-`main.py` weist darauf hin, wenn es fehlt. Zum Nachvollziehen von Hand:
+Listening uses the USB microphone (FongLun or C-Media `0d8c:0016`). The
+server looks it up by name (`SPEECH_MICROPHONE_NAMES`: "USB Microphone",
+"USB PnP", "C-Media", "Microphone", in that order), not by number. It never
+uses the microphones in the C270 and Orbbec (`SPEECH_MICROPHONE_NEVER`): the
+C270's sounds so bad that Vosk hardly understands anything. Recognition uses
+Vosk with the small German model (about 45 MB, runs on the CPU).
+
+Setup on the Pi: `python main.py` does this by itself when starting with real
+hardware (packages `vosk`/`sounddevice` and the model to `~`, needs
+internet once). Only PortAudio remains manual, because it needs `sudo`;
+`main.py` points this out if it is missing. To reproduce by hand:
 
 ```bash
-sudo apt install libportaudio2             # für sounddevice
+sudo apt install libportaudio2             # for sounddevice
 cd ~/gitpipeline/SPE-ROSMASTER-X3
 robot/.venv/bin/pip install -e "robot[sprache]"   # vosk + sounddevice
 
 cd ~ && wget https://alphacephei.com/vosk/models/vosk-model-small-de-0.15.zip
-unzip vosk-model-small-de-0.15.zip         # -> ~/vosk-model-small-de-0.15 (SPRACHE_MODELL)
+unzip vosk-model-small-de-0.15.zip         # -> ~/vosk-model-small-de-0.15 (SPEECH_MODEL)
 
-arecord -l                                 # Mikrofon da?
+arecord -l                                 # microphone present?
 arecord -D plughw:CARD=Device,DEV=0 -d 3 -f S16_LE -r 16000 test.wav && aplay test.wav
 ```
 
-- Der Kartenname beim `arecord`-Test kann anders heißen; `arecord -l`
-  zeigt ihn. Der Server braucht ihn nicht.
-- Das kleine Modell hat keine `words.txt`; welche Weckwort-Varianten es
-  kennt, fragt der Server Vosk direkt (zurzeit „robbie“, „ruby“, „robin“).
-- Fehlt etwas, läuft der Server ohne Sprachbefehle weiter.
-  `curl localhost:8000/sprache/status` zeigt `zustand` und `fehler`.
-- Nach einem USB-Aussetzer versucht die Erkennung alle
-  `SPRACHE_NEUVERSUCH_S` (3 s), das Mikrofon wieder zu öffnen.
-- Lautsprecher und Mikrofon sitzen nah beieinander. Solange der Roboter
-  spricht, wird das Mikrofon verworfen. Musik (MUKKE) hört er aber mit;
-  „Robi, Musik aus“ geht trotzdem meist durch.
+- The card name in the `arecord` test may be different; `arecord -l` shows
+  it. The server does not need it.
+- The small model has no `words.txt`; the server asks Vosk directly which
+  wake word variants it knows (currently "robbie", "ruby", "robin").
+- If something is missing, the server keeps running without voice commands.
+  `curl localhost:8000/sprache/status` shows `zustand` and `fehler`.
+- After a USB dropout, recognition tries to reopen the microphone every
+  `SPEECH_RETRY_S` (3 s).
+- Speaker and microphone sit close together. While the robot is speaking,
+  the microphone input is discarded. It does hear music (MUKKE), though;
+  "Robi, Musik aus" ("Robi, music off") usually still gets through.
 
 ## AI HAT+
 
-> **Nachtrag 28.10.:** Verbaut ist ein **AI HAT+ 2 mit Hailo-10H** (PCIe,
-> `/dev/hailo0`, Firmware 5.1.1, 40 TOPS, 8 GB eigener Speicher). HailoRT
-> 5.1.1 ist installiert; `hailo_platform` lässt sich im venv importieren.
-> Mitgelieferte Modelle liegen in `/usr/share/hailo-models/`, u. a.
-> `yolov8s_pose_h10.hef` (Körperpose, 17 Punkte) und `yolov8m_h10.hef`
-> (Objekte). Der Hailo-10H kann auch kleine Sprachmodelle ausführen (Hailo
-> GenAI, noch nicht installiert). Geplante Nutzung: Gestenerkennung über
-> die Körperpose, siehe [`interaktion.md`](interaktion.md) und E5 in
-> [`entscheidungen.md`](entscheidungen.md).
+> **Addendum 28.10.:** The installed unit is an **AI HAT+ 2 with Hailo-10H**
+> (PCIe, `/dev/hailo0`, firmware 5.1.1, 40 TOPS, 8 GB own memory). HailoRT
+> 5.1.1 is installed; `hailo_platform` can be imported in the venv.
+> Bundled models are in `/usr/share/hailo-models/`, among them
+> `yolov8s_pose_h10.hef` (body pose, 17 points) and `yolov8m_h10.hef`
+> (objects). The Hailo-10H can also run small language models (Hailo GenAI,
+> not yet installed). Planned use: gesture recognition via the body pose,
+> see [`interaction.md`](interaction.md) and E5 in
+> [`decisions.md`](decisions.md).
 
-Der AI HAT+ enthält einen Hailo-Beschleuniger. Er ist für die spätere
-Kamera-Auswertung interessant (Personenerkennung, Sturzerkennung) und wird im
-aktuellen Grundgerüst noch nicht genutzt. Ob die Personenerkennung über die
-Kamera oder über den ESP läuft, ist noch offen — der AI HAT+ wäre das deutlich
-zuverlässigere Verfahren.
+The AI HAT+ contains a Hailo accelerator. It is interesting for later
+camera analysis (person detection, fall detection) and is not yet used in
+the current base framework. Whether person detection runs via the camera or
+via the ESP is still open; the AI HAT+ would be the much more reliable
+approach.
 
-## USB-Resets (Befund vom 28.10.)
+## USB resets (findings from 28.10.)
 
-Geräte am USB-Hub (Lidar, Board, Orbbec) melden sich gelegentlich gleichzeitig
-ab. `dmesg` zeigt dann „over-current“ auf allen Ports. Die Ursache sind
-**CPU-Lastsprünge bei 2,4 GHz**, vermutlich mit Rückspeisung (Backfeed) des
-Hubs über das Expansion-Board. Ein leerer Akku ist es nicht.
+Devices on the USB hub (lidar, board, Orbbec) occasionally drop off at the
+same time. `dmesg` then shows "over-current" on all ports. The cause is
+**CPU load spikes at 2.4 GHz**, probably combined with backfeed of the hub
+via the Expansion Board. An empty battery is not the cause.
 
-- Mit 2,0 GHz treten die Resets deutlich seltener auf, ganz weg sind sie
-  aber nicht. **Seit dem 28.10. steht deshalb `arm_freq=2000` in
-  `/boot/firmware/config.txt`** (mit Ben abgestimmt, Backup
-  `config.txt.vor-arm_freq-2026-10-28`). Der Server braucht dafür keine
-  Anpassung: Alle Schleifen laufen nach Uhrzeit, nicht nach Rechenzeit, und
-  die teuersten Teile (Personenerkennung 2 Hz, JPEG 15 fps) haben genug Luft.
-- `python scripts/check_hardware.py` zeigt Takt, Temperatur und Drosselung
-  und warnt, wenn die Begrenzung fehlt.
-- Wird der Pi heiß (über ~80 °C, z. B. beim Kompilieren), drosselt er selbst
-  auf 1,5 GHz und die USB-Geräte fallen massenhaft ab. Beim Kompilieren also
-  Roboter nicht fahren lassen.
-- Die eigentliche Lösung liegt in der Hardware: ein Hub ohne Rückspeisung
-  oder eine getrennte VBUS-Leitung.
-- Die C270 hängt an einem eigenen *Datenbus*, aber **nicht an einer eigenen
-  Stromversorgung**. Beim Pi 5 hängen alle vier Buchsen an einem
-  gemeinsamen Stromschalter (1,6 A gesamt). Löst er aus, melden alle Ports
-  gleichzeitig „over-current“, und bei einer längeren Überlast fällt auch die
-  C270 ab (so am 28.10. passiert).
+- At 2.0 GHz the resets occur much less often, but they do not go away
+  completely. **Since 28.10. `arm_freq=2000` is therefore set in
+  `/boot/firmware/config.txt`** (agreed with Ben, backup
+  `config.txt.vor-arm_freq-2026-10-28`). The server needs no changes for
+  this: all loops run by wall-clock time, not by computing time, and the
+  most expensive parts (person detection 2 Hz, JPEG 15 fps) have enough
+  headroom.
+- `python scripts/check_hardware.py` shows clock, temperature and throttling
+  and warns if the limit is missing.
+- If the Pi gets hot (above ~80 °C, e.g. while compiling), it throttles
+  itself to 1.5 GHz and the USB devices drop off en masse. So do not let the
+  robot drive while compiling.
+- The real fix is in hardware: a hub without backfeed or a separated VBUS
+  line.
+- The C270 is on its own *data bus*, but **not on its own power supply**. On
+  the Pi 5 all four sockets share one power switch (1.6 A total). If it
+  trips, all ports report "over-current" at the same time, and during a
+  longer overload the C270 drops off too (as happened on 28.10.).
 
-**Dauerschleife.** Ist die Versorgung einmal zusammengebrochen, kann sich das
-selbst halten: Beim Neu-Anmelden ziehen Orbbec und Lidar-Motor Anlaufstrom,
-der Schalter löst wieder aus, und so weiter. In `dmesg` steht dann
-`cannot reset (err = -71)` an den Hub-Ports. Meist endet die Schleife, wenn
-die Ursache weg ist (Last/Hitze), sonst den Roboter einmal ausschalten.
+**Endless loop.** Once the supply has collapsed, it can sustain itself: when
+re-registering, the Orbbec and the lidar motor draw inrush current, the
+switch trips again, and so on. `dmesg` then shows `cannot reset (err = -71)`
+on the hub ports. Usually the loop ends once the cause is gone (load/heat);
+otherwise switch the robot off once.
 
-**Kurzcheck vor jedem Test** (`python scripts/check_hardware.py`):
+**Quick check before every test** (`python scripts/check_hardware.py`):
 
-| Prüfung | Gut | Schlecht → tun |
+| Check | Good | Bad → do |
 |---|---|---|
-| USB-Versorgung | „keine neuen in 3 s“ | Neue Over-Current-Meldungen → nicht fahren, Ursache suchen (nächste Zeilen) |
-| Installiert/kompiliert der Pi? | keine Warnung | `dpkg`/`apt`/`dkms`/`cc1` läuft → abwarten bzw. abbrechen, nicht fahren |
-| Temperatur | unter ~70 °C | über 80 °C → Lüfter prüfen, Last wegnehmen |
-| Takt | 2000 MHz | höher → `arm_freq=2000` fehlt in `config.txt` |
+| USB supply | `[ok]`, no new messages in 3 s | new over-current messages → do not drive, find the cause (next lines) |
+| Is the Pi installing/compiling? | no warning | `dpkg`/`apt`/`dkms`/`cc1` running → wait or cancel, do not drive |
+| Temperature | below ~70 °C | above 80 °C → check the fan, reduce load |
+| Clock | 2000 MHz | higher → `arm_freq=2000` missing in `config.txt` |
 
-Am 28.10. lief zweimal ein sinnloser nvidia-Treiberbau (DKMS) im Hintergrund,
-ausgelöst durch einen hängenden `dpkg --configure -a`. Die nvidia-Pakete sind
-seitdem entfernt. Wer am Pi etwas mit `apt` installiert, tut das bitte nicht
-während eines Tests und prüft hinterher `dpkg --audit` (leer = gut).
+On 28.10. a pointless nvidia driver build (DKMS) ran twice in the
+background, triggered by a hanging `dpkg --configure -a`. The nvidia
+packages have been removed since. Anyone installing something on the Pi
+with `apt`, please do not do it during a test, and check `dpkg --audit`
+afterwards (empty = good).
 
-**Stresstest am 28.10. (Akku voll mit 12,0 V, Orbbec abgezogen).** In Ruhe
-(Lidar, Board, Lautsprecher) kam minutenlang keine Meldung. Beim Fahren
-kamen in 4,5 min 160 Over-Current-Meldungen und 83 USB-Abmeldungen, und
-**jede begann 0–5 s nach dem Start einer Drehung** (omega ±0,6, alle vier
-Motoren laufen gleichzeitig an). Geradeaus mit 0,1 m/s blieb ruhig.
-Temperatur 55–62 °C, keine Drosselung. Der Auslöser ist also der
-Anlaufstrom der Motoren. Er zieht die 5-V-Versorgung herunter, an der Pi
-bzw. Hub hängen. Punkte 1 und 2 unten reichen deshalb nicht, **Punkt 4 ist
-nötig**.
+**Stress test on 28.10. (battery full at 12.0 V, Orbbec unplugged).** At
+rest (lidar, board, speaker) there was no message for minutes. While
+driving there were 160 over-current messages and 83 USB disconnects in
+4.5 min, and **every one started 0–5 s after the start of a turn** (omega
+±0.6, all four motors start at the same time). Driving straight at 0.1 m/s
+stayed quiet. Temperature 55–62 °C, no throttling. So the trigger is the
+inrush current of the motors. It pulls down the 5 V supply that the Pi or
+the hub hang on. Points 1 and 2 below are therefore not enough, **point 4
+is necessary**.
 
-Die Software übersteht die Aussetzer (Board und Lidar verbinden sich neu,
-das Board immer über `/dev/myserial`, nie über den Lidar-Port), aber
-zuverlässig fährt der Roboter so nicht.
+The software survives the dropouts (board and lidar reconnect, the board
+always via `/dev/myserial`, never via the lidar port), but the robot does
+not drive reliably like this.
 
-Der Lidar kann die Schleife auch im Stand antreiben: Sein Motor läuft nach
-jedem Neu-Verbinden an. Deshalb wartet der Server länger und länger, wenn
-der Lidar kurz nach dem Neu-Verbinden wieder ausfällt (`LIDAR_STABIL_S`).
-Meldet sich der Lidar gar nicht mehr an (`dmesg`: immer wieder „new
-full-speed USB device“ an 1-1.4), Lidar-Kabel neu stecken.
+The lidar can also drive the loop while standing still: its motor starts
+after every reconnect. That is why the server waits longer and longer if
+the lidar fails again shortly after reconnecting (`LIDAR_STABLE_S`). If the
+lidar does not register at all any more (`dmesg`: repeated "new full-speed
+USB device" on 1-1.4), re-plug the lidar cable.
 
-**Gegenproben am 29.10. auf dem Podest.** Der Roboter stand dabei auf
-einem Podest, die Räder drehten frei in der Luft, also ohne Last. Gleicher
-Test wie am 28.10.: 5 min, davon 210 s Fahren mit denselben Drehungen.
+**Cross-checks on 29.10. on the stand.** The robot stood on a stand, the
+wheels spun freely in the air, i.e. without load. Same test as on 28.10.:
+5 min, of which 210 s driving with the same turns.
 
-| Versorgung | Geräte | Over-Current / Abmeldungen |
+| Supply | Devices | Over-current / disconnects |
 |---|---|---|
-| Labornetzteil | Orbbec, ohne C270 | 0 / 0 |
-| Akku, 100 % (12,3 V) | Orbbec und C270 (Bilder laufend) | 0 / 0 |
+| Lab power supply | Orbbec, without C270 | 0 / 0 |
+| Battery, 100 % (12.3 V) | Orbbec and C270 (images streaming) | 0 / 0 |
 
-Lidar und Kamera verbanden sich in beiden Läufen kein einziges Mal neu,
-51–53 °C, keine Drosselung. Am 28.10. stand der Roboter nicht auf dem
-Podest, die Räder hatten also Last: +160 Meldungen in 4,5 min. **Ohne Last
-reicht also auch der Akku.** Die Resets kommen vom Anlaufstrom der Motoren
-*unter Last*, der deutlich höher ist als bei frei drehenden Rädern. Ob ein
-Netzteil das abfängt, zeigt erst ein Test am Boden. Bis dahin bleibt
-Punkt 4 unten der sichere Weg.
+Lidar and camera did not reconnect a single time in either run, 51–53 °C,
+no throttling. On 28.10. the robot was not on the stand, so the wheels had
+load: +160 messages in 4.5 min. **So without load the battery is enough
+too.** The resets come from the motors' inrush current *under load*, which
+is considerably higher than with freely spinning wheels. Whether a power
+supply can absorb that will only be shown by a test on the floor. Until
+then, point 4 below remains the safe route.
 
-**Over-Current beim Beenden des Servers (behoben 29.10.).** Zweimal fielen
-genau beim Beenden alle USB-Geräte für etwa 2 s ab. Ursache: Der Pose-Thread
-(`sensors/pose.py`) wurde von `stop()` geweckt und öffnete dann noch den
-Hailo, statt sich zu beenden. Das Hochfahren des Hailo („Creating vdevice“
-im HailoRT-Log, in derselben Sekunde wie die Überlast) zieht kurz so viel
-Strom, dass der gemeinsame 1,6-A-Schalter auslöst. Jetzt prüft der Thread
-nach dem Aufwecken zuerst, ob er aufhören soll. Am Pi zweimal geprüft:
-keine Meldung mehr beim Beenden. Daraus folgt auch: Das Öffnen des Hailo
-ist ein Lastsprung. Beim Einschalten der Interaktion während der Fahrt auf
-neue Meldungen achten.
+**Over-current when stopping the server (fixed 29.10.).** Twice, all USB
+devices dropped off for about 2 s exactly when the server was stopped.
+Cause: the pose thread (`sensors/pose.py`) was woken by `stop()` and then
+still opened the Hailo instead of exiting. Starting up the Hailo ("Creating
+vdevice" in the HailoRT log, in the same second as the overload) briefly
+draws so much current that the shared 1.6 A switch trips. Now the thread
+first checks after waking up whether it should stop. Checked twice on the
+Pi: no more messages when stopping. This also means: opening the Hailo is a
+load spike. When switching on interaction while driving, watch for new
+messages.
 
-**„Random Abstürze“ am anderen Board (Befund vom 29.10.).** Nach dem
-Umstecken auf das andere Expansion-Board gab es weiter scheinbar zufällige
-Abstürze, am Netzteil und auf dem Podest. Per SSH gemessen, **ohne
-laufenden Server** und ohne dass sich ein Rad drehte:
+**"Random crashes" with the other board (findings from 29.10.).** After
+switching to the other Expansion Board, seemingly random crashes continued,
+on the power supply and on the stand. Measured via SSH, **without the
+server running** and without any wheel turning:
 
-| Messung | Wert |
+| Measurement | Value |
 |---|---|
-| `vcgencmd get_throttled` | `0x0` (nie Unterspannung, nie gedrosselt) |
-| Pi-Versorgung (PMIC `EXT5V`) | 5,05–5,08 V |
-| Temperatur, freier RAM | 47 °C, 14 GB frei |
-| Over-Current-Meldungen im Leerlauf | **49–65 pro 10 s**, ununterbrochen |
-| Zähler `over_current_count` | alle 6 Root-Ports zählen hoch (160–325), die Ports der Hubs bleiben bei 0 |
-| Beginn | in der ersten Sekunde nach dem Booten |
-| Lidar | meldet sich nicht an (`device descriptor read … error -32`, dazu `-71`), `/dev/rplidar` fehlt |
+| `vcgencmd get_throttled` | `0x0` (never undervoltage, never throttled) |
+| Pi supply (PMIC `EXT5V`) | 5.05–5.08 V |
+| Temperature, free RAM | 47 °C, 14 GB free |
+| Over-current messages at idle | **49–65 per 10 s**, continuously |
+| Counter `over_current_count` | all 6 root ports count up (160–325), the hub ports stay at 0 |
+| Onset | within the first second after booting |
+| Lidar | does not register (`device descriptor read … error -32`, plus `-71`), `/dev/rplidar` missing |
 
-Daraus folgt:
+Conclusions:
 
-- **Der Code ist nicht die Ursache.** Die Überlast läuft schon, bevor der
-  Server startet, und ohne jede Rechen- oder Fahrlast. Der Pi selbst hat
-  genug Spannung und ist kühl.
-- Dass *alle* Root-Ports zählen, passt zum gemeinsamen Stromschalter des
-  Pi 5 (siehe oben): Ein Gerät oder Kabel zieht zu viel bzw. speist zurück,
-  und der Schalter meldet es für alle. Verdächtig sind der Hub auf dem Board
-  (VIA 2109, Rückspeisung über VBUS) und der Lidar bzw. sein Kabel, der sich
-  gar nicht erst anmeldet.
-- Jede Überlast trennt kurz die Geräte. Für den Server sieht das aus wie ein
-  Absturz: Lidar, Board und Kamera fallen weg, die App zeigt „Keine
-  Verbindung zum Antrieb“.
+- **The code is not the cause.** The overload is already running before the
+  server starts, and without any computing or driving load. The Pi itself
+  has enough voltage and is cool.
+- That *all* root ports count matches the shared power switch of the Pi 5
+  (see above): one device or cable draws too much or feeds back, and the
+  switch reports it for all. Suspects are the hub on the board (VIA 2109,
+  backfeed via VBUS) and the lidar or its cable, which does not even
+  register.
+- Every overload briefly disconnects the devices. To the server this looks
+  like a crash: lidar, board and camera disappear, the app shows "Keine
+  Verbindung zum Antrieb" ("no connection to the drive").
 
-**Eingrenzen (am Roboter, in dieser Reihenfolge).** Nach jedem Schritt auf
-`/diagnose` unter „Abstürze & Hänger“ den Wert *USB-Überlast pro Minute*
-ansehen (bzw. `dmesg -w`):
+**Narrowing it down (on the robot, in this order).** After each step, check
+the value *USB-Überlast pro Minute* (USB overload per minute) on `/diagnose`
+under "Abstürze & Hänger" (crashes & hangs), or use `dmesg -w`:
 
-1. Alle USB-Geräte vom Pi abziehen. Hört die Überlast auf, liegt es an
-   einem Gerät; zählt sie weiter, am Pi bzw. seiner Versorgung.
-2. Geräte einzeln wieder anstecken, den Lidar zuletzt. Das Gerät, nach dem
-   die Zähler wieder laufen, ist der Verursacher.
-3. Lidar mit einem anderen Kabel bzw. am anderen Adapter testen.
-4. Das USB-Kabel vom Board zum Pi abziehen (Rückspeisung über das Board
-   ausschließen). Bleibt es dann ruhig, Punkt 4 unten umsetzen.
+1. Unplug all USB devices from the Pi. If the overload stops, a device is
+   the cause; if it keeps counting, it is the Pi or its supply.
+2. Plug the devices back in one by one, the lidar last. The device after
+   which the counters start running again is the culprit.
+3. Test the lidar with a different cable or on the other adapter.
+4. Unplug the USB cable from the board to the Pi (rules out backfeed via the
+   board). If it then stays quiet, implement point 4 below.
 
-Damit beim nächsten Mal auch nach einem Neustart das Kernel-Log noch da ist,
-das Journal dauerhaft machen (am Pi war es nur im RAM):
+So that the kernel log is still there after a reboot next time, make the
+journal persistent (on the Pi it was only in RAM):
 
 ```bash
 sudo mkdir -p /var/log/journal/$(cat /etc/machine-id)
@@ -580,78 +583,79 @@ sudo systemd-tmpfiles --create --prefix /var/log/journal
 sudo systemctl restart systemd-journald
 ```
 
-Der Server schreibt außerdem selbst mit (`~/.rosmaster/diagnose/`): jeden
-Lauf mit Boot-ID (`laeufe.json`), das Log als Datei (`server.log`),
-Segfaults (`absturz.txt`) und Hänger der Ereignisschleife
-(`blockiert.txt`). Die Seite `/diagnose` ordnet beim nächsten Start ein, ob
-der Pi neu gestartet ist, der Server hart beendet wurde oder abgestürzt ist.
+The server also records things itself (`~/.rosmaster/diagnose/`): every run
+with boot ID (`laeufe.json`), the log as a file (`server.log`), segfaults
+(`absturz.txt`) and hangs of the event loop (`blockiert.txt`). On the next
+start, the `/diagnose` page classifies whether the Pi rebooted, the server
+was killed hard, or it crashed.
 
-**Befund vom 03.11. (im Stand, Orbbec wieder angesteckt).** Über 400
-Over-Current-Meldungen in 15 min, immer alle Root-Ports gleichzeitig.
-Unterspannung lag keine vor (`throttled=0x0`, EXT5V 5,09 V), und
-`usb_max_current_enable=1` und `PSU_MAX_CURRENT=5000` waren schon gesetzt.
-Schon beim Booten kamen 24 Meldungen. Der erste Zusammenbruch im Serverlauf
-kam beim Start, wo Hailo, Lidar-Motor, Kameras und die erste Ansage in
-derselben Sekunde anlaufen. Danach lief eine Dauerschleife. Fazit: wie
-oben, Punkt 4 ist nötig, bis dahin die Orbbec abziehen. Beim Lesen der Logs
-beachten: Der Pi hat keine Echtzeituhr, bis zur Netzwerkzeit stehen alte
-Uhrzeiten im Log.
+**Findings from 03.11. (standing still, Orbbec plugged in again).** Over 400
+over-current messages in 15 min, always all root ports at the same time.
+There was no undervoltage (`throttled=0x0`, EXT5V 5.09 V), and
+`usb_max_current_enable=1` and `PSU_MAX_CURRENT=5000` were already set. Even
+during boot there were 24 messages. The first collapse during the server
+run came at startup, where the Hailo, lidar motor, cameras and the first
+announcement all start in the same second. After that an endless loop ran.
+Conclusion: as above, point 4 is necessary; until then unplug the Orbbec.
+When reading the logs, note: the Pi has no real-time clock, so until network
+time is available the log shows old timestamps.
 
-**Der Hub.** Der USB-Hub am X3 ist ein VIA VL817 (`2109:2817` USB 2,
-`2109:0817` USB 3, Firmware 0.50). Laut Deskriptor ist er *self powered*
-(0 mA vom Pi), versorgt also über das Expansion-Board. Uns wurde gesagt, es
-sei die alte Version V1 mit bekannten Stromproblemen. Das passt zum Muster
-oben: Ein selbstversorgter Hub, dessen Schiene einbricht oder zurückspeist,
-lässt den gemeinsamen Schalter des Pi auf allen Ports auslösen, auch auf
-leeren und an der C270, die nicht am Hub hängt. Der Genesys-Hub
-(`05e3:0608`) dahinter ist der interne Hub der Orbbec, kein zweiter Hub.
-Gegenprobe: Hub ab, Board und Lidar direkt an den Pi (Orbbec ab). Verschwinden
-die Meldungen, ist der Hub die Ursache.
+**The hub.** The USB hub on the X3 is a VIA VL817 (`2109:2817` USB 2,
+`2109:0817` USB 3, firmware 0.50). According to its descriptor it is *self
+powered* (0 mA from the Pi), so it is supplied via the Expansion Board. We
+were told it is the old version V1 with known power problems. That matches
+the pattern above: a self-powered hub whose rail collapses or feeds back
+makes the Pi's shared switch trip on all ports, including empty ones and the
+C270, which is not on the hub. The Genesys hub (`05e3:0608`) behind it is the
+Orbbec's internal hub, not a second hub. Cross-check: remove the hub,
+connect board and lidar directly to the Pi (Orbbec unplugged). If the
+messages disappear, the hub is the cause.
 
-**Das Treiberboard (Expansion-Board).** Uns wurde gesagt, es sei die
-Version V1. Laut Yahboom kann erst V3.0 das Stromprotokoll des Pi 5
-(5,1 V/5 A über Type-C), V1.0 liefert nur „5 V“ ohne Angabe des Stroms. Am
-Pi bestätigt (03.11.): `/proc/device-tree/chosen/power/usbpd_power_data_objects`
-ist komplett 0, es wurde nichts ausgehandelt. Die 5 A „kennt“ der Pi nur,
-weil `PSU_MAX_CURRENT=5000` von Hand im EEPROM steht. Damit gibt er 1,6 A
-für USB frei, die das V1-Board unter Last nicht sicher liefert, und bei jedem
-Lastsprung löst der Schalter aus. Board-Firmware: 2.4 (`get_version()`).
+**The driver board (Expansion Board).** We were told it is version V1.
+According to Yahboom, only V3.0 supports the Pi 5 power protocol (5.1 V/5 A
+via Type-C); V1.0 only supplies "5 V" without stating the current. Confirmed
+on the Pi (03.11.): `/proc/device-tree/chosen/power/usbpd_power_data_objects`
+is all 0, nothing was negotiated. The Pi only "knows" the 5 A because
+`PSU_MAX_CURRENT=5000` was set by hand in the EEPROM. With that it allows
+1.6 A for USB, which the V1 board cannot reliably deliver under load, and on
+every load spike the switch trips. Board firmware: 2.4 (`get_version()`).
 
-Ein **Firmware-Update hilft dagegen nicht.** Die Firmware läuft auf dem STM32
-(Motoren, IMU, Servos), die 5-V-Versorgung und das Pi-5-Protokoll sind
-Hardware (Spannungswandler bzw. Protokoll-Chip von V3.0). Yahboom rät ohne
-Not vom Flashen ab (Windows-Werkzeug mcuisp/FlyMcu, BOOT0 + RESET von Hand),
-und eine neue Firmware kann das Protokoll zu `Rosmaster_Lib` und unserem
-Treiber ändern. Abhilfe: Board V3.0, oder den Pi aus einem eigenen
-5-V/5-A-Wandler mit Pi-5-Protokoll (USB-PD) aus dem Akku versorgen.
+A **firmware update does not help here.** The firmware runs on the STM32
+(motors, IMU, servos); the 5 V supply and the Pi 5 protocol are hardware
+(voltage regulator and protocol chip of V3.0). Yahboom advises against
+flashing without need (Windows tool mcuisp/FlyMcu, BOOT0 + RESET by hand),
+and new firmware may change the protocol to `Rosmaster_Lib` and our driver.
+Remedy: board V3.0, or supply the Pi from the battery via a separate
+5 V/5 A converter with the Pi 5 protocol (USB PD).
 
-### Was am Roboter tun (Hardware)
+### What to do on the robot (hardware)
 
-Nach Wirkung sortiert, das Einfachste zuerst:
+Sorted by effect, simplest first:
 
-1. **Akku laden.** Beim Sensor-Check lag er bei 10,1–10,3 V, also fast leer
-   (3S-Akku). Hub und Board werden vermutlich über das Expansion-Board aus
-   dem Akku versorgt. Sackt diese Schiene ab, holen sich die Geräte den Strom
-   über das USB-Kabel vom Pi, und der 1,6-A-Schalter löst aus. Das ist eine
-   Vermutung, sie lässt sich aber leicht prüfen: mit vollem Akku testen.
-   *Am 28.10. geprüft: Mit vollem Akku bleiben die Resets beim Drehen.*
-2. **Orbbec abziehen, solange sie niemand nutzt.** Sie ist der größte
-   Verbraucher am Hub (Tiefensensor mit Projektor, eigener interner Hub),
-   und unser Code verwendet sie nicht. *Seit 28.10. abgezogen, reicht
-   allein nicht.*
-3. **Nur nötige Geräte direkt am Pi.** Alles an den vier Pi-Buchsen teilt
-   sich 1,6 A. Momentan sind es C270, Lautsprecher, USB-Mikrofon und der Hub.
-   Die C270 hat selbst ein Mikrofon. Treten die Resets weiter auf, testweise
-   das zusätzliche Mikrofon abziehen und den Lautsprecher nicht voll aufdrehen.
-4. **Hub sauber versorgen (die eigentliche Lösung):** einen aktiven Hub mit
-   eigenem 5-V-Netzteil verwenden, am Roboter über einen DC/DC-Wandler aus
-   dem Akku (5 V, mindestens 3 A). Der Hub darf nicht rückspeisen. Ist der Hub
-   schon über das Board versorgt, kann man alternativ im Kabel vom Pi zum Hub
-   die 5-V-Ader (VBUS, rot) trennen, z. B. mit einem USB-Adapter „nur Daten“.
-   Dann fließt zwischen Pi und Hub kein Strom mehr.
-5. **Board und Lidar** nicht über die Orbbec bzw. eine Hub-Kaskade, sondern
-   direkt an den (versorgten) Hub.
-6. **Kühlung prüfen:** Der Lüfter des Pi muss laufen. 83 °C beim Kompilieren
-   deuten auf zu wenig Kühlung hin.
+1. **Charge the battery.** During the sensor check it was at 10.1–10.3 V,
+   i.e. almost empty (3S battery). Hub and board are probably supplied from
+   the battery via the Expansion Board. If this rail sags, the devices draw
+   their current through the USB cable from the Pi, and the 1.6 A switch
+   trips. This is a hypothesis, but it is easy to check: test with a full
+   battery. *Checked on 28.10.: with a full battery the resets during turns
+   remain.*
+2. **Unplug the Orbbec while nobody uses it.** It is the biggest consumer on
+   the hub (depth sensor with projector, own internal hub), and our code
+   does not use it. *Unplugged since 28.10., not enough on its own.*
+3. **Only necessary devices directly on the Pi.** Everything on the four Pi
+   sockets shares 1.6 A. Currently these are the C270, speaker, USB
+   microphone and the hub. The C270 has its own microphone. If the resets
+   continue, try unplugging the additional microphone and not turning the
+   speaker all the way up.
+4. **Power the hub properly (the real fix):** use an active hub with its own
+   5 V power supply, on the robot fed from the battery via a DC/DC converter
+   (5 V, at least 3 A). The hub must not feed back. If the hub is already
+   powered via the board, an alternative is to cut the 5 V wire (VBUS, red)
+   in the cable from the Pi to the hub, e.g. with a "data only" USB adapter.
+   Then no current flows between Pi and hub any more.
+5. **Board and lidar** directly on the (powered) hub, not via the Orbbec or
+   a hub cascade.
+6. **Check cooling:** the Pi's fan must run. 83 °C while compiling indicates
+   insufficient cooling.
 
-Messungen und Herleitung: `Marlon/sensorcheck_2026-10-28/ZUSAMMENFASSUNG.md`.
+Measurements and derivation: `Marlon/sensorcheck_2026-10-28/SUMMARY.md`.

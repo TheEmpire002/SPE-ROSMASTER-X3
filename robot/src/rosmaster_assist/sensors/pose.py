@@ -1,23 +1,23 @@
-"""Körperpose im Kamerabild (YOLOv8-Pose auf dem Hailo-10H).
+"""Body pose in the camera image (YOLOv8-Pose on the Hailo-10H).
 
-Für Gesten reicht eine Box um die Person nicht -- man muss wissen, wo
-Schultern und Handgelenke sind. Das Modell ``yolov8s_pose_h10.hef`` liefert
-pro Person 17 Körperpunkte (COCO-Reihenfolge, siehe ``KP_*``).
+For gestures a box around the person is not enough -- you need to know where
+the shoulders and wrists are. The model ``yolov8s_pose_h10.hef`` delivers
+17 keypoints per person (COCO order, see ``KP_*``).
 
-Gerechnet wird auf dem AI HAT+ 2, nicht auf der CPU: Die CPU des Pi bleibt
-frei, und CPU-Lastsprünge lösen am X3 USB-Resets aus (Sensor-Check
-28.10.2026). Die Auswertung der Modellausgaben (Boxen, Punkte, NMS) ist
-dagegen wenig Arbeit und läuft hier in numpy.
+Inference runs on the AI HAT+ 2, not on the CPU: the Pi's CPU stays free,
+and CPU load spikes trigger USB resets on the X3 (sensor check
+28.10.2026). Decoding the model outputs (boxes, points, NMS), on the other
+hand, is little work and runs here in numpy.
 
-Das Muster ist dasselbe wie bei ``personen.py``: eigener Thread, rechnet nur,
-solange jemand ``aktivieren(True)`` gesagt hat, und meldet über ``status()``,
-warum es gerade nicht geht. Fällt der Hailo aus, wird er nach einer Pause
-neu geöffnet -- der Rest des Servers merkt davon nur, dass kurz niemand
-erkannt wird.
+The pattern is the same as in ``people.py``: its own thread, computes only
+while someone has called ``activate(True)``, and reports via ``status()``
+why it is not working right now. If the Hailo fails, it is reopened after a
+pause -- the rest of the server only notices that nobody is detected for a
+moment.
 
-Mit ``mock=True`` (``main.py --mock``) entsteht eine simulierte Person, die
-nacheinander alle Gesten zeigt. So lässt sich die ganze Kette bis zum
-Fahren ohne Roboter ausprobieren.
+With ``mock=True`` (``main.py --mock``) a simulated person appears that
+shows all gestures one after another. That way the whole chain up to
+driving can be tried without a robot.
 """
 
 from __future__ import annotations
@@ -33,91 +33,91 @@ from .camera import CameraService
 
 log = logging.getLogger(__name__)
 
-# COCO-Körperpunkte. "links" ist die linke Seite der Person -- schaut sie in
-# die Kamera, liegt sie im Bild rechts.
-KP_NASE = 0
-KP_SCHULTER_L, KP_SCHULTER_R = 5, 6
-KP_ELLBOGEN_L, KP_ELLBOGEN_R = 7, 8
+# COCO keypoints. "left" is the person's left side -- if they face the
+# camera, it is on the right in the image.
+KP_NOSE = 0
+KP_SHOULDER_L, KP_SHOULDER_R = 5, 6
+KP_ELBOW_L, KP_ELBOW_R = 7, 8
 KP_HAND_L, KP_HAND_R = 9, 10
-KP_HUEFTE_L, KP_HUEFTE_R = 11, 12
+KP_HIP_L, KP_HIP_R = 11, 12
 
-#: Linien des Skeletts, zum Zeichnen in der App (Paare von Punktnummern).
-SKELETT = [
+#: Skeleton lines, for drawing in the app (pairs of point indices).
+SKELETON = [
     (5, 6), (5, 7), (7, 9), (6, 8), (8, 10), (5, 11), (6, 12), (11, 12),
     (11, 13), (13, 15), (12, 14), (14, 16), (0, 5), (0, 6),
 ]
 
-#: Ältere Ergebnisse zählen nicht mehr -- die Person kann längst weg sein.
-_MAX_ALTER_S = 1.0
+#: Older results no longer count -- the person may be long gone.
+_MAX_AGE_S = 1.0
 
-#: Pause, bevor ein ausgefallener Hailo neu geöffnet wird.
-_NEU_OEFFNEN_S = 2.0
+#: Pause before a failed Hailo is reopened.
+_REOPEN_S = 2.0
 
-#: Überlappen sich zwei Boxen stärker, ist es dieselbe Person (NMS).
+#: If two boxes overlap more than this, it is the same person (NMS).
 _NMS_IOU = 0.7
 
 
-class Posenerkennung:
+class PoseDetection:
     def __init__(self, camera: CameraService | None, mock: bool = False) -> None:
         self._camera = camera
         self._mock = mock
         self._lock = threading.Lock()
-        self._aktiv = threading.Event()
+        self._active = threading.Event()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
-        self._personen: list[dict] = []
-        self._zeit = 0.0
-        self._fehler: str | None = None
-        self._bilder = 0
+        self._people: list[dict] = []
+        self._time = 0.0
+        self._error: str | None = None
+        self._frame_buffer = 0
         self._fps = 0.0
-        self._neu_geoeffnet = 0
+        self._reopened = 0
         self._np = None
         self._cv2 = None
-        self._verfuegbar = False
+        self._available = False
 
         if not config.POSE_ENABLED:
-            self._fehler = "abgeschaltet (config.POSE_ENABLED)"
+            self._error = "abgeschaltet (config.POSE_ENABLED)"
             return
         try:
             import numpy as np
 
             self._np = np
         except ImportError:
-            self._fehler = "numpy fehlt"
+            self._error = "numpy fehlt"
             return
         if mock:
-            self._verfuegbar = True
+            self._available = True
             return
         if camera is None:
-            self._fehler = "keine Kamera"
+            self._error = "keine Kamera"
             return
         try:
             import cv2
-            import hailo_platform  # noqa: F401 -- nur prüfen, ob es da ist
+            import hailo_platform  # noqa: F401 -- only check that it is there
 
             self._cv2 = cv2
-        except Exception as exc:  # ImportError oder kaputte Installation
-            self._fehler = f"nicht verfügbar ({exc.__class__.__name__}: {exc})"
-            log.warning("Posenerkennung %s", self._fehler)
+        except Exception as exc:  # ImportError or broken installation
+            self._error = f"nicht verfügbar ({exc.__class__.__name__}: {exc})"
+            log.warning("Pose detection unavailable (%s: %s)", exc.__class__.__name__, exc)
             return
         if not os.path.exists(config.POSE_HEF):
-            self._fehler = f"Modell fehlt: {config.POSE_HEF}"
-            log.warning("Posenerkennung: %s", self._fehler)
+            self._error = f"Modell fehlt: {config.POSE_HEF}"
+            log.warning("Pose detection: model missing: %s", config.POSE_HEF)
             return
-        self._verfuegbar = True
+        self._available = True
 
-    # --- Bedienung (wie Personenerkennung) ----------------------------------------
-
-    @property
-    def verfuegbar(self) -> bool:
-        return self._verfuegbar
+    # --- Control (like PersonDetection) -------------------------------------------
 
     @property
-    def simuliert(self) -> bool:
+    def available(self) -> bool:
+        return self._available
+
+    @property
+    def simulated(self) -> bool:
         return self._mock
 
     def start(self) -> None:
-        if not self.verfuegbar or self._thread is not None:
+        if not self.available or self._thread is not None:
             return
         self._stop.clear()
         self._thread = threading.Thread(target=self._loop, name="pose", daemon=True)
@@ -125,253 +125,253 @@ class Posenerkennung:
 
     def stop(self) -> None:
         self._stop.set()
-        self._aktiv.set()  # aus dem Warten wecken
+        self._active.set()  # wake it from waiting
         if self._thread is not None:
             self._thread.join(timeout=3.0)
             self._thread = None
 
-    def aktivieren(self, an: bool) -> None:
-        """Nur rechnen, solange die Interaktion läuft."""
+    def activate(self, an: bool) -> None:
+        """Only compute while the interaction is running."""
         if an:
-            self._aktiv.set()
+            self._active.set()
         else:
-            self._aktiv.clear()
+            self._active.clear()
             with self._lock:
-                self._personen = []
+                self._people = []
 
     @property
-    def aktiv(self) -> bool:
-        return self._aktiv.is_set() and self.verfuegbar
+    def active(self) -> bool:
+        return self._active.is_set() and self.available
 
-    def personen(self) -> list[dict]:
-        """Aktuell gesehene Personen, die größte (= nächste) zuerst.
+    def people(self) -> list[dict]:
+        """Currently seen people, the largest (= closest) first.
 
-        Jede Person: ``box`` [x1, y1, x2, y2] und ``kp`` (17 × [x, y, sicherheit])
-        relativ zur Bildgröße (0..1, y nach unten), ``score``, ``winkel``
-        (Grad, links positiv wie beim Lidar), ``seitenverhaeltnis`` (Breite/Höhe
-        des Bildes, damit Abstände in x und y vergleichbar werden) und ``zeit``.
+        Each person: ``box`` [x1, y1, x2, y2] and ``kp`` (17 × [x, y, confidence])
+        relative to the image size (0..1, y pointing down), ``score``, ``winkel``
+        (degrees, left positive as with the lidar), ``seitenverhaeltnis`` (width/height
+        of the image, so distances in x and y become comparable) and ``zeit``.
         """
         with self._lock:
-            if time.monotonic() - self._zeit > _MAX_ALTER_S:
+            if time.monotonic() - self._time > _MAX_AGE_S:
                 return []
-            return list(self._personen)
+            return list(self._people)
 
-    def winkelbereiche(self) -> list[tuple[float, float]]:
-        """Richtungen (von, bis) in Grad -- dieselbe Form wie bei ``Personenerkennung``."""
+    def angle_ranges(self) -> list[tuple[float, float]]:
+        """Directions (from, to) in degrees -- the same form as in ``PersonDetection``."""
         fov = self.fov_deg
-        return [((0.5 - p["box"][2]) * fov, (0.5 - p["box"][0]) * fov) for p in self.personen()]
+        return [((0.5 - p["box"][2]) * fov, (0.5 - p["box"][0]) * fov) for p in self.people()]
 
     @property
     def fov_deg(self) -> float:
-        """Bildwinkel der Kamera, durch die geschaut wird -- die C270 sieht
-        schmaler als der allgemeine Standard (config.CAMERA_FOV_DEG)."""
+        """Field of view of the camera being looked through -- the C270 sees
+        narrower than the general default (config.CAMERA_FOV_DEG)."""
         return self._camera.fov_deg if self._camera is not None else config.CAMERA_FOV_DEG
 
     def status(self) -> dict:
         with self._lock:
             return {
-                "verfuegbar": self.verfuegbar,
+                "verfuegbar": self.available,
                 "simuliert": self._mock,
-                "aktiv": self.aktiv,
-                "fehler": self._fehler,
+                "aktiv": self.active,
+                "fehler": self._error,
                 "fps": round(self._fps, 1),
-                "bilder": self._bilder,
-                "neu_geoeffnet": self._neu_geoeffnet,
-                # Auf welchem Kamerabild die Punkte liegen -- die App
-                # blendet das Skelett nur dort ein.
+                "bilder": self._frame_buffer,
+                "neu_geoeffnet": self._reopened,
+                # Which camera image the points belong to -- the app
+                # overlays the skeleton only there.
                 "kamera": self._camera.name if self._camera is not None else None,
-                "letzte_erkennung_vor_s": round(time.monotonic() - self._zeit, 1) if self._zeit else None,
+                "letzte_erkennung_vor_s": round(time.monotonic() - self._time, 1) if self._time else None,
             }
 
-    # --- Rechenschleife -------------------------------------------------------------
+    # --- Compute loop ---------------------------------------------------------------
 
     def _loop(self) -> None:
         hailo: _Hailo | None = None
-        if not self._mock and config.POSE_WARM_HALTEN:
-            # Gleich beim Serverstart öffnen, solange der Roboter steht.
-            # Das Öffnen (Gerät + Modell laden) ist eine Lastspitze; kam sie
-            # erst beim Start der Gestensteuerung, setzte sie am X3 öfter den
-            # USB-Hub zurück -- "Keine Verbindung zum Antrieb" (29.10.2026).
-            hailo = self._oeffnen()
+        if not self._mock and config.POSE_KEEP_WARM:
+            # Open right at server start, while the robot is standing still.
+            # Opening (device + loading the model) is a load spike; when it
+            # only came at the start of gesture control, it often reset the
+            # USB hub on the X3 -- "Keine Verbindung zum Antrieb" (29.10.2026).
+            hailo = self._open_device()
         try:
             while not self._stop.is_set():
-                if not self._aktiv.wait(timeout=1.0):
-                    # Nicht gebraucht. Warm halten ist der Normalfall (siehe
-                    # oben); sonst freigeben, damit andere Programme
-                    # (hailo-apps) den Chip allein haben.
-                    if hailo is not None and not config.POSE_WARM_HALTEN:
-                        hailo.schliessen()
+                if not self._active.wait(timeout=1.0):
+                    # Not needed. Keeping warm is the normal case (see
+                    # above); otherwise release it so other programs
+                    # (hailo-apps) have the chip to themselves.
+                    if hailo is not None and not config.POSE_KEEP_WARM:
+                        hailo.close()
                         hailo = None
                     continue
                 if self._stop.is_set():
-                    # stop() weckt uns über _aktiv auf. Ohne diese Prüfung
-                    # würde der Thread beim Beenden noch den Hailo öffnen --
-                    # am 29.10. fiel genau dabei die USB-Versorgung kurz aus.
+                    # stop() wakes us via _active. Without this check the
+                    # thread would still open the Hailo while shutting down --
+                    # on 29.10. exactly that briefly cut the USB power.
                     break
-                beginn = time.monotonic()
+                begin = time.monotonic()
                 try:
                     if self._mock:
-                        personen = _simulierte_personen(beginn)
+                        people = _simulated_people(begin)
                     else:
                         if hailo is None:
                             hailo = _Hailo(self._np)
-                            log.info("Posenerkennung: Hailo bereit (%s)", config.POSE_HEF)
+                            log.info("Pose detection: Hailo ready (%s)", config.POSE_HEF)
                             if self._stop.is_set():
-                                break  # beim Beenden geöffnet -- gleich wieder zu
-                        personen = self._erkennen(hailo)
-                    if personen is not None:
-                        self._merken(personen, beginn)
+                                break  # opened during shutdown -- close it right away
+                        people = self._detect(hailo)
+                    if people is not None:
+                        self._remember(people, begin)
                 except Exception as exc:
                     with self._lock:
-                        self._fehler = f"{exc.__class__.__name__}: {exc}"
+                        self._error = f"{exc.__class__.__name__}: {exc}"
                     if hailo is not None or not self._mock:
-                        # Hailo weg (USB/PCIe-Aussetzer, anderes Programm
-                        # hält ihn) -- schließen und nach einer Pause neu.
-                        log.warning("Posenerkennung: %s -- öffne den Hailo neu", self._fehler)
+                        # Hailo gone (USB/PCIe dropout, another program
+                        # holds it) -- close it and reopen after a pause.
+                        log.warning("Pose detection: %s -- reopening the Hailo", self._error)
                         if hailo is not None:
-                            hailo.schliessen()
+                            hailo.close()
                             hailo = None
-                        self._neu_geoeffnet += 1
-                        self._stop.wait(_NEU_OEFFNEN_S)
+                        self._reopened += 1
+                        self._stop.wait(_REOPEN_S)
                         continue
-                # Jedes Mal neu lesen: auf der Einstellungsseite verstellbar.
-                takt = 1.0 / max(0.5, config.POSE_HZ)
-                rest = takt - (time.monotonic() - beginn)
+                # Re-read every time: adjustable on the settings page.
+                tick = 1.0 / max(0.5, config.POSE_HZ)
+                rest = tick - (time.monotonic() - begin)
                 if rest > 0:
                     self._stop.wait(rest)
         finally:
             if hailo is not None:
-                hailo.schliessen()
+                hailo.close()
 
-    def _oeffnen(self) -> "_Hailo | None":
-        """Hailo vorab öffnen. Misslingt es, versucht es die Schleife später."""
+    def _open_device(self) -> "_Hailo | None":
+        """Open the Hailo in advance. If that fails, the loop tries again later."""
         if self._stop.is_set():
             return None
         try:
             hailo = _Hailo(self._np)
         except Exception as exc:
             with self._lock:
-                self._fehler = f"{exc.__class__.__name__}: {exc}"
-            log.warning("Posenerkennung: Hailo lässt sich nicht öffnen (%s) -- später neu", self._fehler)
+                self._error = f"{exc.__class__.__name__}: {exc}"
+            log.warning("Pose detection: cannot open the Hailo (%s) -- retrying later", self._error)
             return None
-        log.info("Posenerkennung: Hailo vorab geöffnet (%s)", config.POSE_HEF)
+        log.info("Pose detection: Hailo opened in advance (%s)", config.POSE_HEF)
         return hailo
 
-    def _merken(self, personen: list[dict], beginn: float) -> None:
-        jetzt = time.monotonic()
+    def _remember(self, people: list[dict], begin: float) -> None:
+        now = time.monotonic()
         with self._lock:
-            if self._zeit:
-                # Geglättete Bildrate für den Status
-                momentan = 1.0 / max(1e-3, jetzt - self._zeit)
-                self._fps = 0.8 * self._fps + 0.2 * momentan if self._fps else momentan
-            self._personen = personen
-            self._zeit = jetzt
-            self._bilder += 1
-            self._fehler = None
+            if self._time:
+                # Smoothed frame rate for the status
+                instant = 1.0 / max(1e-3, now - self._time)
+                self._fps = 0.8 * self._fps + 0.2 * instant if self._fps else instant
+            self._people = people
+            self._time = now
+            self._frame_buffer += 1
+            self._error = None
 
-    def _erkennen(self, hailo: "_Hailo") -> list[dict] | None:
+    def _detect(self, hailo: "_Hailo") -> list[dict] | None:
         if self._camera is None:
             return None
-        # Mit Aufnahmezeit, wo die Kamera sie kennt: "zeit" einer Person soll
-        # sagen, wann das Bild entstand, nicht wann der Hailo fertig war --
-        # sonst rechnet das Folgen mit einem bis zu ~100 ms zu späten Winkel.
-        if hasattr(self._camera, "latest_mit_zeit"):
-            frame, aufnahme = self._camera.latest_mit_zeit()
+        # With capture time where the camera knows it: a person's "zeit" should
+        # say when the image was taken, not when the Hailo finished --
+        # otherwise following works with an angle up to ~100 ms too late.
+        if hasattr(self._camera, "latest_with_time"):
+            frame, captured_at = self._camera.latest_with_time()
         else:
-            frame, aufnahme = self._camera.latest(), 0.0
+            frame, captured_at = self._camera.latest(), 0.0
         if frame is None:
             return None
         cv2, np = self._cv2, self._np
-        bild = cv2.imdecode(np.frombuffer(frame[0], dtype=np.uint8), cv2.IMREAD_COLOR)
-        if bild is None:
+        image = cv2.imdecode(np.frombuffer(frame[0], dtype=np.uint8), cv2.IMREAD_COLOR)
+        if image is None:
             return None
-        h, w = bild.shape[:2]
-        groesse = hailo.groesse
+        h, w = image.shape[:2]
+        size = hailo.size
 
-        # Letterbox wie beim Training: Seitenverhältnis behalten, Rand grau.
-        # Verzerrt man stattdessen, werden Arme kürzer oder länger.
-        skala = min(groesse / w, groesse / h)
-        nw, nh = int(round(w * skala)), int(round(h * skala))
-        dx, dy = (groesse - nw) // 2, (groesse - nh) // 2
-        eingang = np.full((groesse, groesse, 3), 114, dtype=np.uint8)
-        klein = cv2.resize(bild, (nw, nh), interpolation=cv2.INTER_CUBIC)
-        eingang[dy:dy + nh, dx:dx + nw] = cv2.cvtColor(klein, cv2.COLOR_BGR2RGB)
+        # Letterbox as in training: keep the aspect ratio, grey border.
+        # Stretching instead would make arms shorter or longer.
+        scale = min(size / w, size / h)
+        nw, nh = int(round(w * scale)), int(round(h * scale))
+        dx, dy = (size - nw) // 2, (size - nh) // 2
+        model_input = np.full((size, size, 3), 114, dtype=np.uint8)
+        small = cv2.resize(image, (nw, nh), interpolation=cv2.INTER_CUBIC)
+        model_input[dy:dy + nh, dx:dx + nw] = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
 
-        treffer = dekodieren(np, hailo.rechnen(eingang), groesse, config.POSE_MIN_SCORE)
+        hits = decode_poses(np, hailo.infer(model_input), size, config.POSE_MIN_SCORE)
 
-        personen = []
-        for score, box, kp in treffer:
-            # Zurück ins Originalbild, dann auf 0..1
-            bx = ((box[[0, 2]] - dx) / skala / w).clip(0, 1)
-            by = ((box[[1, 3]] - dy) / skala / h).clip(0, 1)
-            kx = ((kp[:, 0] - dx) / skala / w).clip(0, 1)
-            ky = ((kp[:, 1] - dy) / skala / h).clip(0, 1)
-            personen.append(_person(
+        people = []
+        for score, box, kp in hits:
+            # Back into the original image, then to 0..1
+            bx = ((box[[0, 2]] - dx) / scale / w).clip(0, 1)
+            by = ((box[[1, 3]] - dy) / scale / h).clip(0, 1)
+            kx = ((kp[:, 0] - dx) / scale / w).clip(0, 1)
+            ky = ((kp[:, 1] - dy) / scale / h).clip(0, 1)
+            people.append(_person(
                 [bx[0], by[0], bx[1], by[1]],
                 [[float(x), float(y), float(c)] for x, y, c in zip(kx, ky, kp[:, 2])],
-                float(score), w / h, self.fov_deg, aufnahme or None,
+                float(score), w / h, self.fov_deg, captured_at or None,
             ))
-            # Aussehen für den Ziel-Lock (interaktion/ziel.py). Hier, weil
-            # nur der Pose-Thread das dekodierte Bild hat.
-            merkmal = rumpf_merkmal(cv2, np, bild, personen[-1]["kp"])
-            if merkmal is not None:
-                personen[-1]["merkmal"] = merkmal
-        personen.sort(key=lambda p: -(p["box"][3] - p["box"][1]))
-        return personen
+            # Appearance for the target lock (interaction/target.py). Here,
+            # because only the pose thread has the decoded image.
+            feature = torso_feature(cv2, np, image, people[-1]["kp"])
+            if feature is not None:
+                people[-1]["merkmal"] = feature
+        people.sort(key=lambda p: -(p["box"][3] - p["box"][1]))
+        return people
 
 
 def _person(
-    box, kp, score: float, seitenverhaeltnis: float, fov: float | None = None,
-    zeit: float | None = None,
+    box, kp, score: float, aspect_ratio: float, fov: float | None = None,
+    timestamp: float | None = None,
 ) -> dict:
-    mitte = (box[0] + box[2]) / 2
+    center = (box[0] + box[2]) / 2
     return {
         "box": [round(float(v), 3) for v in box],
         "kp": [[round(x, 3), round(y, 3), round(c, 2)] for x, y, c in kp],
         "score": round(score, 2),
-        "winkel": round((0.5 - mitte) * (fov if fov is not None else config.CAMERA_FOV_DEG), 1),
-        "seitenverhaeltnis": round(seitenverhaeltnis, 3),
-        "zeit": zeit if zeit is not None else time.monotonic(),
+        "winkel": round((0.5 - center) * (fov if fov is not None else config.CAMERA_FOV_DEG), 1),
+        "seitenverhaeltnis": round(aspect_ratio, 3),
+        "zeit": timestamp if timestamp is not None else time.monotonic(),
     }
 
 
-def rumpf_merkmal(cv2, np, bild, kp) -> list[float] | None:
-    """Farbhistogramm (H-S, 16x8) des Oberkörpers, normiert auf Summe 1.
+def torso_feature(cv2, np, image, kp) -> list[float] | None:
+    """Color histogram (H-S, 16x8) of the upper body, normalized to sum 1.
 
-    Der Rumpf zwischen Schultern und Hüften ist von vorn wie von hinten
-    sichtbar und trägt meist die markanteste Farbe (Oberteil). Gesichter
-    werden bewusst nicht genutzt. None, wenn Schultern/Hüften nicht sicher
-    erkannt sind -- ein Histogramm vom Hintergrund wäre schlimmer als keins.
+    The torso between shoulders and hips is visible from the front as well
+    as from behind and usually carries the most distinctive color (the top).
+    Faces are deliberately not used. None if shoulders/hips are not detected
+    reliably -- a histogram of the background would be worse than none.
     """
-    punkte = [kp[i] for i in (KP_SCHULTER_L, KP_SCHULTER_R, KP_HUEFTE_L, KP_HUEFTE_R)]
-    if any(c < 0.3 for _, _, c in punkte):
+    points = [kp[i] for i in (KP_SHOULDER_L, KP_SHOULDER_R, KP_HIP_L, KP_HIP_R)]
+    if any(c < 0.3 for _, _, c in points):
         return None
-    h, w = bild.shape[:2]
-    xs = [x * w for x, _, _ in punkte]
-    ys = [y * h for _, y, _ in punkte]
-    # Etwas nach innen, damit Arme und Hintergrund am Rand nicht mitzählen.
-    rand_x = (max(xs) - min(xs)) * 0.15
-    x1, x2 = int(min(xs) + rand_x), int(max(xs) - rand_x)
+    h, w = image.shape[:2]
+    xs = [x * w for x, _, _ in points]
+    ys = [y * h for _, y, _ in points]
+    # Shrink inward a bit so arms and background at the edge do not count.
+    margin_x = (max(xs) - min(xs)) * 0.15
+    x1, x2 = int(min(xs) + margin_x), int(max(xs) - margin_x)
     y1, y2 = int(min(ys)), int(max(ys))
     if x2 - x1 < 4 or y2 - y1 < 4:
         return None
-    hsv = cv2.cvtColor(bild[y1:y2, x1:x2], cv2.COLOR_BGR2HSV)
+    hsv = cv2.cvtColor(image[y1:y2, x1:x2], cv2.COLOR_BGR2HSV)
     hist = cv2.calcHist([hsv], [0, 1], None, [16, 8], [0, 180, 0, 256]).flatten()
-    summe = float(hist.sum())
-    if summe <= 0:
+    total = float(hist.sum())
+    if total <= 0:
         return None
-    return [round(float(v) / summe, 4) for v in hist]
+    return [round(float(v) / total, 4) for v in hist]
 
 
 # --- Hailo -----------------------------------------------------------------------
 
 
 class _Hailo:
-    """Ein geöffnetes Modell auf dem Hailo. Nur aus einem Thread benutzen.
+    """An opened model on the Hailo. Use from one thread only.
 
-    Die Ausgaben werden als FLOAT32 angefordert: Dann rechnet HailoRT die
-    Quantisierung selbst zurück, und die Auswertung muss keine Skalen und
-    Nullpunkte je Ausgabe kennen.
+    The outputs are requested as FLOAT32: then HailoRT undoes the
+    quantization itself, and decoding does not need to know scales and
+    zero points per output.
     """
 
     def __init__(self, np) -> None:
@@ -379,227 +379,227 @@ class _Hailo:
 
         self._np = np
         params = VDevice.create_params()
-        # "SHARED" + Round-Robin: andere Programme (z. B. hailo-apps) dürfen
-        # den Chip gleichzeitig nutzen, statt dass einer ihn blockiert.
+        # "SHARED" + round robin: other programs (e.g. hailo-apps) may use
+        # the chip at the same time instead of one blocking it.
         params.scheduling_algorithm = HailoSchedulingAlgorithm.ROUND_ROBIN
         params.group_id = "SHARED"
         self._vdev = VDevice(params)
         self._ctx = None
         try:
-            modell = self._vdev.create_infer_model(config.POSE_HEF)
-            modell.set_batch_size(1)
-            namen = [i.name for i in HEF(config.POSE_HEF).get_output_vstream_infos()]
-            for name in namen:
-                modell.output(name).set_format_type(FormatType.FLOAT32)
-            self.groesse = int(modell.input().shape[0])
-            self._ctx = modell.configure()
-            self._konf = self._ctx.__enter__()
-            self._namen = namen
-            self._bindings = self._konf.create_bindings(output_buffers={
-                name: np.empty(modell.output(name).shape, dtype=np.float32) for name in namen
+            model = self._vdev.create_infer_model(config.POSE_HEF)
+            model.set_batch_size(1)
+            names = [i.name for i in HEF(config.POSE_HEF).get_output_vstream_infos()]
+            for name in names:
+                model.output(name).set_format_type(FormatType.FLOAT32)
+            self.size = int(model.input().shape[0])
+            self._ctx = model.configure()
+            self._conf = self._ctx.__enter__()
+            self._names = names
+            self._bindings = self._conf.create_bindings(output_buffers={
+                name: np.empty(model.output(name).shape, dtype=np.float32) for name in names
             })
         except Exception:
-            self.schliessen()
+            self.close()
             raise
 
-    def rechnen(self, eingang) -> list:
-        self._bindings.input().set_buffer(self._np.ascontiguousarray(eingang))
-        self._konf.run([self._bindings], 2000)
-        return [self._bindings.output(name).get_buffer() for name in self._namen]
+    def infer(self, model_input) -> list:
+        self._bindings.input().set_buffer(self._np.ascontiguousarray(model_input))
+        self._conf.run([self._bindings], 2000)
+        return [self._bindings.output(name).get_buffer() for name in self._names]
 
-    def schliessen(self) -> None:
+    def close(self) -> None:
         try:
             if self._ctx is not None:
                 self._ctx.__exit__(None, None, None)
                 self._ctx = None
         except Exception:
-            log.debug("Hailo-Modell schließen misslungen", exc_info=True)
+            log.debug("Closing the Hailo model failed", exc_info=True)
         try:
             self._vdev.release()
         except Exception:
-            log.debug("Hailo freigeben misslungen", exc_info=True)
+            log.debug("Releasing the Hailo failed", exc_info=True)
 
 
-def dekodieren(np, ausgaben: list, groesse: int, min_score: float) -> list:
-    """Rohausgaben von YOLOv8-Pose -> [(score, box[4], kp[17, 3])] in Eingangspixeln.
+def decode_poses(np, outputs: list, size: int, min_score: float) -> list:
+    """Raw YOLOv8-Pose outputs -> [(score, box[4], kp[17, 3])] in input pixels.
 
-    Das Modell hat je Raster (80, 40, 20 Zellen bei 640 px) drei Ausgaben,
-    erkannt an der Kanalzahl: 64 (Box als Verteilung über 16 Abstände je
-    Seite, "DFL"), 1 (Personen-Wahrscheinlichkeit) und 51 (17 Punkte × x, y,
-    Sicherheit). Die Reihenfolge der Ausgaben im HEF ist nicht garantiert,
-    deshalb wird nach Form sortiert statt nach Name.
+    The model has three outputs per grid (80, 40, 20 cells at 640 px),
+    recognized by their channel count: 64 (box as a distribution over 16
+    distances per side, "DFL"), 1 (person probability) and 51 (17 points × x,
+    y, confidence). The order of the outputs in the HEF is not guaranteed,
+    so they are sorted by shape instead of by name.
     """
-    je_raster: dict[int, dict[int, object]] = {}
-    for a in ausgaben:
+    per_grid: dict[int, dict[int, object]] = {}
+    for a in outputs:
         a = np.asarray(a, dtype=np.float32)
-        kanaele = a.shape[-1]
-        a = a.reshape(-1, kanaele)
-        raster = int(round(math.sqrt(a.shape[0])))
-        je_raster.setdefault(raster, {})[kanaele] = a
+        channels = a.shape[-1]
+        a = a.reshape(-1, channels)
+        grid = int(round(math.sqrt(a.shape[0])))
+        per_grid.setdefault(grid, {})[channels] = a
 
-    scores, boxen, punkte = [], [], []
-    for raster, teile in je_raster.items():
-        if not {64, 1, 51} <= teile.keys():
+    scores, boxes, points = [], [], []
+    for grid, parts in per_grid.items():
+        if not {64, 1, 51} <= parts.keys():
             continue
-        schritt = groesse / raster
-        s = teile[1][:, 0]
-        if s.min() < 0.0 or s.max() > 1.0:  # Logits statt Wahrscheinlichkeiten
+        step = size / grid
+        s = parts[1][:, 0]
+        if s.min() < 0.0 or s.max() > 1.0:  # logits instead of probabilities
             s = 1.0 / (1.0 + np.exp(-s))
-        auswahl = s >= min_score
-        if not auswahl.any():
+        selection = s >= min_score
+        if not selection.any():
             continue
-        gy, gx = np.meshgrid(np.arange(raster), np.arange(raster), indexing="ij")
-        mitte = np.column_stack(((gx.ravel() + 0.5) * schritt, (gy.ravel() + 0.5) * schritt))[auswahl]
+        gy, gx = np.meshgrid(np.arange(grid), np.arange(grid), indexing="ij")
+        center = np.column_stack(((gx.ravel() + 0.5) * step, (gy.ravel() + 0.5) * step))[selection]
 
-        # Box: je Seite eine Verteilung über 16 Abstände -> Erwartungswert
-        verteilung = teile[64][auswahl].reshape(-1, 4, 16)
-        verteilung = np.exp(verteilung - verteilung.max(axis=2, keepdims=True))
-        verteilung /= verteilung.sum(axis=2, keepdims=True)
-        abst = (verteilung @ np.arange(16, dtype=np.float32)) * schritt  # l, o, r, u
-        box = np.column_stack((mitte - abst[:, :2], mitte + abst[:, 2:]))
+        # Box: per side a distribution over 16 distances -> expected value
+        distribution = parts[64][selection].reshape(-1, 4, 16)
+        distribution = np.exp(distribution - distribution.max(axis=2, keepdims=True))
+        distribution /= distribution.sum(axis=2, keepdims=True)
+        dist = (distribution @ np.arange(16, dtype=np.float32)) * step  # left, top, right, bottom
+        box = np.column_stack((center - dist[:, :2], center + dist[:, 2:]))
 
-        kp = teile[51][auswahl].reshape(-1, 17, 3).copy()
-        kp[:, :, :2] = kp[:, :, :2] * 2.0 * schritt + (mitte[:, None, :] - 0.5 * schritt)
+        kp = parts[51][selection].reshape(-1, 17, 3).copy()
+        kp[:, :, :2] = kp[:, :, :2] * 2.0 * step + (center[:, None, :] - 0.5 * step)
         kp[:, :, 2] = 1.0 / (1.0 + np.exp(-kp[:, :, 2]))
 
-        scores.append(s[auswahl])
-        boxen.append(box)
-        punkte.append(kp)
+        scores.append(s[selection])
+        boxes.append(box)
+        points.append(kp)
 
     if not scores:
         return []
     scores = np.concatenate(scores)
-    boxen = np.concatenate(boxen)
-    punkte = np.concatenate(punkte)
-    return [(float(scores[i]), boxen[i], punkte[i]) for i in _nms(np, boxen, scores, _NMS_IOU)]
+    boxes = np.concatenate(boxes)
+    points = np.concatenate(points)
+    return [(float(scores[i]), boxes[i], points[i]) for i in _nms(np, boxes, scores, _NMS_IOU)]
 
 
-def _nms(np, boxen, scores, iou_grenze: float) -> list[int]:
-    """Doppelte Treffer derselben Person entfernen (bester bleibt)."""
-    reihenfolge = list(np.argsort(-scores))
-    flaeche = (boxen[:, 2] - boxen[:, 0]).clip(0) * (boxen[:, 3] - boxen[:, 1]).clip(0)
-    behalten = []
-    while reihenfolge:
-        i = reihenfolge.pop(0)
-        behalten.append(int(i))
-        if not reihenfolge:
+def _nms(np, boxes, scores, iou_limit: float) -> list[int]:
+    """Remove duplicate hits of the same person (the best one stays)."""
+    order = list(np.argsort(-scores))
+    area = (boxes[:, 2] - boxes[:, 0]).clip(0) * (boxes[:, 3] - boxes[:, 1]).clip(0)
+    keep = []
+    while order:
+        i = order.pop(0)
+        keep.append(int(i))
+        if not order:
             break
-        rest = np.array(reihenfolge)
-        x1 = np.maximum(boxen[i, 0], boxen[rest, 0])
-        y1 = np.maximum(boxen[i, 1], boxen[rest, 1])
-        x2 = np.minimum(boxen[i, 2], boxen[rest, 2])
-        y2 = np.minimum(boxen[i, 3], boxen[rest, 3])
-        schnitt = (x2 - x1).clip(0) * (y2 - y1).clip(0)
-        iou = schnitt / np.maximum(1e-6, flaeche[i] + flaeche[rest] - schnitt)
-        reihenfolge = [int(j) for j, u in zip(rest, iou) if u < iou_grenze]
-    return behalten
+        rest = np.array(order)
+        x1 = np.maximum(boxes[i, 0], boxes[rest, 0])
+        y1 = np.maximum(boxes[i, 1], boxes[rest, 1])
+        x2 = np.minimum(boxes[i, 2], boxes[rest, 2])
+        y2 = np.minimum(boxes[i, 3], boxes[rest, 3])
+        intersection = (x2 - x1).clip(0) * (y2 - y1).clip(0)
+        iou = intersection / np.maximum(1e-6, area[i] + area[rest] - intersection)
+        order = [int(j) for j, u in zip(rest, iou) if u < iou_limit]
+    return keep
 
 
 # --- Simulation (--mock) ------------------------------------------------------------
 
-#: Ablauf der simulierten Person: (Dauer in s, Geste). Ein Durchlauf dauert
-#: 40 s, jede Geste kommt einmal vor, dazwischen steht sie ruhig.
-_SIM_ABLAUF = [
+#: Sequence of the simulated person: (duration in s, gesture). One cycle takes
+#: 40 s, each gesture occurs once, in between the person stands still.
+_SIM_SEQUENCE = [
     (6.0, None), (3.0, "folgen"), (5.0, None), (2.0, "stopp"), (5.0, None),
     (3.0, "herkommen"), (5.0, None), (3.0, "weggehen"), (8.0, None),
 ]
 
 
-#: Zweite, kleinere (weiter entfernte) Person: läuft in diesem Abschnitt
-#: des Durchlaufs einmal quer durchs Bild und kreuzt dabei die erste. So
-#: lässt sich der Ziel-Lock auch ohne Roboter beobachten.
-_SIM_ZWEITE = (20.0, 34.0)
+#: Second, smaller (farther away) person: walks across the image once in
+#: this part of the cycle, crossing the first one. That way the target lock
+#: can be observed without a robot too.
+_SIM_SECOND = (20.0, 34.0)
 
 
-def _sim_merkmal(farbton: int, saettigung: int) -> list[float]:
-    """Künstliches Rumpf-Histogramm (16x8): eine Farbe, etwas verschmiert."""
+def _sim_feature(hue: int, saturation: int) -> list[float]:
+    """Artificial torso histogram (16x8): one color, slightly smeared."""
     hist = [0.0] * 128
-    for dh, ds, anteil in ((0, 0, 0.6), (1, 0, 0.15), (-1, 0, 0.15), (0, -1, 0.1)):
-        h = (farbton + dh) % 16
-        s_ = max(0, min(7, saettigung + ds))
-        hist[h * 8 + s_] += anteil
+    for dh, ds, share in ((0, 0, 0.6), (1, 0, 0.15), (-1, 0, 0.15), (0, -1, 0.1)):
+        h = (hue + dh) % 16
+        s_ = max(0, min(7, saturation + ds))
+        hist[h * 8 + s_] += share
     return hist
 
 
-def _simulierte_personen(t: float) -> list[dict]:
-    """Eine Person, die langsam hin und her geht und Gesten zeigt.
+def _simulated_people(t: float) -> list[dict]:
+    """One person who slowly walks back and forth and shows gestures.
 
-    Zeitweise läuft eine zweite, kleinere vorbei (``_SIM_ZWEITE``). Die
-    erste bleibt die größte und steht daher immer vorn in der Liste.
+    At times a second, smaller one walks past (``_SIM_SECOND``). The
+    first stays the largest and is therefore always first in the list.
     """
-    personen = [_sim_hauptperson(t)]
-    rest = t % sum(d for d, _ in _SIM_ABLAUF)
-    von, bis = _SIM_ZWEITE
-    if von <= rest < bis:
-        anteil = (rest - von) / (bis - von)
-        mx = 0.9 - 0.8 * anteil
-        kp, box = _sim_koerper(mx, 0.3, 0.45, 0.04)
-        zweite = _person(box, [[x, yy, 0.9] for x, yy in kp], 0.85,
+    people = [_sim_main_person(t)]
+    rest = t % sum(d for d, _ in _SIM_SEQUENCE)
+    from_, until = _SIM_SECOND
+    if from_ <= rest < until:
+        share = (rest - from_) / (until - from_)
+        mx = 0.9 - 0.8 * share
+        kp, box = _sim_body(mx, 0.3, 0.45, 0.04)
+        second = _person(box, [[x, yy, 0.9] for x, yy in kp], 0.85,
                          config.CAMERA_WIDTH / config.CAMERA_HEIGHT)
-        zweite["merkmal"] = _sim_merkmal(10, 5)  # blaues Oberteil
-        personen.append(zweite)
-    return personen
+        second["merkmal"] = _sim_feature(10, 5)  # blue top
+        people.append(second)
+    return people
 
 
-def _sim_koerper(mx: float, oben: float, hoehe: float, e: float):
-    """Körperpunkte (ohne Geste) und Box einer stehenden Person."""
+def _sim_body(mx: float, top: float, height: float, e: float):
+    """Keypoints (without gesture) and box of a standing person."""
 
-    def y(anteil: float) -> float:
-        return oben + anteil * hoehe
+    def y(share: float) -> float:
+        return top + share * height
 
     kp = [[mx, y(0.07)], [mx + e * 0.3, y(0.05)], [mx - e * 0.3, y(0.05)],
           [mx + e * 0.6, y(0.06)], [mx - e * 0.6, y(0.06)],
-          [mx + e, y(0.2)], [mx - e, y(0.2)],             # Schultern L, R
-          [mx + e * 1.2, y(0.35)], [mx - e * 1.2, y(0.35)],  # Ellbogen
-          [mx + e * 1.1, y(0.5)], [mx - e * 1.1, y(0.5)],    # Handgelenke
-          [mx + e * 0.7, y(0.52)], [mx - e * 0.7, y(0.52)],  # Hüften
+          [mx + e, y(0.2)], [mx - e, y(0.2)],             # shoulders L, R
+          [mx + e * 1.2, y(0.35)], [mx - e * 1.2, y(0.35)],  # elbows
+          [mx + e * 1.1, y(0.5)], [mx - e * 1.1, y(0.5)],    # wrists
+          [mx + e * 0.7, y(0.52)], [mx - e * 0.7, y(0.52)],  # hips
           [mx + e * 0.7, y(0.74)], [mx - e * 0.7, y(0.74)],
           [mx + e * 0.7, y(0.96)], [mx - e * 0.7, y(0.96)]]
-    box = [mx - e * 2.5, oben, mx + e * 2.5, oben + hoehe]
+    box = [mx - e * 2.5, top, mx + e * 2.5, top + height]
     return kp, box
 
 
-def _sim_hauptperson(t: float) -> dict:
-    """Die erste Person: geht langsam hin und her und zeigt die Gesten."""
-    dauer = sum(d for d, _ in _SIM_ABLAUF)
-    rest = t % dauer
-    geste, seit = None, 0.0
-    for d, g in _SIM_ABLAUF:
+def _sim_main_person(t: float) -> dict:
+    """The first person: walks slowly back and forth and shows the gestures."""
+    duration = sum(d for d, _ in _SIM_SEQUENCE)
+    rest = t % duration
+    gesture, since = None, 0.0
+    for d, g in _SIM_SEQUENCE:
         if rest < d:
-            geste, seit = g, rest
+            gesture, since = g, rest
             break
         rest -= d
 
-    # Bildkoordinaten 0..1; das Testbild ist 4:3. "e" ist eine halbe
-    # Schulterbreite in x, in y entsprechend umgerechnet.
-    seitenverhaeltnis = config.CAMERA_WIDTH / config.CAMERA_HEIGHT
+    # Image coordinates 0..1; the test image is 4:3. "e" is half a
+    # shoulder width in x, converted accordingly for y.
+    aspect_ratio = config.CAMERA_WIDTH / config.CAMERA_HEIGHT
     mx = 0.5 + 0.15 * math.sin(t / 6.0)
-    oben, hoehe = 0.12, 0.8
+    top, height = 0.12, 0.8
     e = 0.06
-    ey = e * seitenverhaeltnis
+    ey = e * aspect_ratio
 
-    def y(anteil: float) -> float:
-        return oben + anteil * hoehe
+    def y(share: float) -> float:
+        return top + share * height
 
-    kp, box = _sim_koerper(mx, oben, hoehe, e)
-    schulter_y = y(0.2)
-    if geste == "folgen":  # rechter Arm gestreckt über den Kopf
-        kp[KP_ELLBOGEN_R] = [mx - e * 1.2, schulter_y - ey * 1.2]
+    kp, box = _sim_body(mx, top, height, e)
+    shoulder_y = y(0.2)
+    if gesture == "folgen":  # right arm stretched above the head
+        kp[KP_ELBOW_R] = [mx - e * 1.2, shoulder_y - ey * 1.2]
         kp[KP_HAND_R] = [mx - e * 1.1, y(0.07) - ey * 1.5]
-    elif geste == "stopp":  # beide Arme hoch
-        kp[KP_ELLBOGEN_L] = [mx + e * 1.4, schulter_y - ey * 1.0]
-        kp[KP_ELLBOGEN_R] = [mx - e * 1.4, schulter_y - ey * 1.0]
-        kp[KP_HAND_L] = [mx + e * 1.4, schulter_y - ey * 2.2]
-        kp[KP_HAND_R] = [mx - e * 1.4, schulter_y - ey * 2.2]
-    elif geste == "herkommen":  # Hand winkt vor der Brust auf und ab
-        kp[KP_ELLBOGEN_R] = [mx - e * 1.6, y(0.33)]
-        hub = math.sin(seit * 2 * math.pi * 1.5) * ey * 0.7
-        kp[KP_HAND_R] = [mx - e * 1.3, schulter_y + ey * 0.3 + hub]
-    elif geste == "weggehen":  # Hand wischt immer wieder nach außen
-        kp[KP_ELLBOGEN_R] = [mx - e * 1.5, y(0.33)]
-        anteil = (seit * 1.2) % 1.0  # Sägezahn: raus, schnell zurück
-        kp[KP_HAND_R] = [mx - e * (0.5 + 3.0 * anteil), schulter_y + ey * 0.8]
+    elif gesture == "stopp":  # both arms up
+        kp[KP_ELBOW_L] = [mx + e * 1.4, shoulder_y - ey * 1.0]
+        kp[KP_ELBOW_R] = [mx - e * 1.4, shoulder_y - ey * 1.0]
+        kp[KP_HAND_L] = [mx + e * 1.4, shoulder_y - ey * 2.2]
+        kp[KP_HAND_R] = [mx - e * 1.4, shoulder_y - ey * 2.2]
+    elif gesture == "herkommen":  # hand waves up and down in front of the chest
+        kp[KP_ELBOW_R] = [mx - e * 1.6, y(0.33)]
+        hub = math.sin(since * 2 * math.pi * 1.5) * ey * 0.7
+        kp[KP_HAND_R] = [mx - e * 1.3, shoulder_y + ey * 0.3 + hub]
+    elif gesture == "weggehen":  # hand keeps sweeping outward
+        kp[KP_ELBOW_R] = [mx - e * 1.5, y(0.33)]
+        share = (since * 1.2) % 1.0  # sawtooth: out, quickly back
+        kp[KP_HAND_R] = [mx - e * (0.5 + 3.0 * share), shoulder_y + ey * 0.8]
 
-    person = _person(box, [[x, yy, 0.9] for x, yy in kp], 0.9, seitenverhaeltnis)
-    person["merkmal"] = _sim_merkmal(1, 6)  # rotes Oberteil
+    person = _person(box, [[x, yy, 0.9] for x, yy in kp], 0.9, aspect_ratio)
+    person["merkmal"] = _sim_feature(1, 6)  # red top
     return person

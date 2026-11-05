@@ -1,12 +1,12 @@
 /*
- * Web-App zur Fernsteuerung des ROSMASTER X3.
+ * Web app for remote-controlling the ROSMASTER X3.
  *
- * Arbeitsweise: Tasten und Buttons setzen nur, in welche Richtung gefahren
- * werden soll. Ein Timer schickt daraus 10-mal pro Sekunde einen Fahrbefehl.
+ * How it works: keys and buttons only set the direction to drive in.
+ * A timer turns that into a drive command 10 times per second.
  *
- * Der Dauertakt ist Absicht und kein verschwendeter Traffic: der Watchdog auf
- * dem Roboter hält an, sobald die Befehle ausbleiben. Hängt die App oder
- * bricht das WLAN ab, bleibt der Roboter dadurch von selbst stehen.
+ * The constant rate is intentional and not wasted traffic: the watchdog on
+ * the robot stops as soon as the commands stop arriving. If the app hangs
+ * or the Wi-Fi drops, the robot therefore stops by itself.
  */
 
 const SEND_HZ = 10;
@@ -14,34 +14,34 @@ const SEND_HZ = 10;
 const RECONNECT_MS = 1500;
 
 /*
- * Obergrenzen. Der Server schickt sie direkt nach dem Verbinden und
- * überschreibt diese Werte -- sie sind nur das, womit wir in der ersten
- * Sekunde rechnen. Einzustellen sind die Grenzen in config.py auf dem
- * Roboter, nicht hier.
+ * Upper limits. The server sends them right after connecting and
+ * overwrites these values -- they are only what we work with during the
+ * first second. The limits are configured in config.py on the robot,
+ * not here.
  */
 const limits = { vx: 0.4, vy: 0.4, omega: 1.5 };
 
 /*
- * Selbst gewähltes Maximum in m/s. Immer <= limits.vx -- der Roboter kappt
- * ohnehin auf sein eigenes Limit, aber die App soll gar nicht erst mehr
- * anfordern, sonst stimmt die Anzeige nicht mehr mit der Fahrt überein.
+ * User-chosen maximum in m/s. Always <= limits.vx -- the robot caps to its
+ * own limit anyway, but the app should not even request more, otherwise
+ * the display no longer matches the actual motion.
  *
- * Wird im Browser gespeichert, damit die Einstellung einen Neuladen
- * übersteht -- sonst steht man nach jedem Reload wieder auf Vollgas.
+ * Stored in the browser so the setting survives a reload -- otherwise you
+ * would be back at full throttle after every reload.
  */
 const STORAGE_KEY = "rosmaster.maxSpeed";
 let userMax = 0.4;
 
-// --- Zustand -----------------------------------------------------------------
+// --- State -------------------------------------------------------------------
 
-/** Richtung als -1/0/1 je Achse; wird mit dem Tempo multipliziert. */
+/** Direction as -1/0/1 per axis; multiplied by the speed. */
 const dir = { x: 0, y: 0, rot: 0 };
 
 let speed = 0.4;          // 0..1
 let socket = null;
 let sendTimer = null;
 
-// --- Oberfläche --------------------------------------------------------------
+// --- User interface ----------------------------------------------------------
 
 const el = (id) => document.getElementById(id);
 
@@ -53,11 +53,11 @@ const ui = {
   maxSpeed: el("maxspeed"),
   maxSpeedOut: el("maxspeed-out"),
   camPanel: el("cam-panel"),
-  camFeld: el("cam-feld"),
-  einstDialog: el("einst-dialog"),
+  camGrid: el("cam-feld"),
+  settingsDialog: el("einst-dialog"),
   dist: el("val-dist"),
   pos: el("val-pos"),
-  winkel: el("val-winkel"),
+  heading: el("val-winkel"),
   btnHome: el("btn-home"),
   btnSetHome: el("btn-sethome"),
   collision: el("collision"),
@@ -74,25 +74,25 @@ const ui = {
   motion: el("val-motion"),
   btnExplore: el("btn-explore"),
   btnRecord: el("btn-record"),
-  autoZustand: el("val-auto-zustand"),
-  autoFrei: el("val-auto-frei"),
-  autoDauer: el("val-auto-dauer"),
-  autoMenschen: el("val-auto-menschen"),
-  autoKamera: el("val-auto-kamera"),
+  autoState: el("val-auto-zustand"),
+  autoFree: el("val-auto-frei"),
+  autoDuration: el("val-auto-dauer"),
+  autoPeople: el("val-auto-menschen"),
+  autoCamera: el("val-auto-kamera"),
   autoText: el("auto-text"),
-  hindernisse: el("hindernisse"),
-  camWahl: el("cam-wahl"),
-  btnInteraktion: el("btn-interaktion"),
-  btnFolgen: el("btn-folgen"),
-  iaModus: el("val-ia-modus"),
+  obstacles: el("hindernisse"),
+  camSelect: el("cam-wahl"),
+  btnInteraction: el("btn-interaktion"),
+  btnFollow: el("btn-folgen"),
+  iaMode: el("val-ia-modus"),
   iaPerson: el("val-ia-person"),
-  iaGeste: el("val-ia-geste"),
-  iaZiel: el("val-ia-ziel"),
+  iaGesture: el("val-ia-geste"),
+  iaTarget: el("val-ia-ziel"),
   btnIaPause: el("btn-ia-pause"),
-  btnIaLoslassen: el("btn-ia-loslassen"),
+  btnIaRelease: el("btn-ia-loslassen"),
   iaText: el("ia-text"),
-  stimme: el("val-stimme"),
-  sprache: el("val-sprache"),
+  voice: el("val-stimme"),
+  speech: el("val-sprache"),
   speechForm: el("speech-form"),
   speechText: el("speech-text"),
   sayForm: el("say-form"),
@@ -114,7 +114,7 @@ function setConnected(connected) {
   onConnectionChange(connected);
 }
 
-// --- Verbindung ---------------------------------------------------------------
+// --- Connection ---------------------------------------------------------------
 
 function connect() {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
@@ -133,7 +133,7 @@ function connect() {
   };
 
   socket.onerror = () => {
-    // onclose folgt direkt danach und kümmert sich um den Neuaufbau.
+    // onclose follows right after and takes care of reconnecting.
   };
 
   socket.onmessage = (event) => handleMessage(JSON.parse(event.data));
@@ -154,17 +154,17 @@ function handleMessage(msg) {
       ui.vy.textContent = `${msg.vy.toFixed(2)} m/s`;
       ui.omega.textContent = `${msg.omega.toFixed(2)} rad/s`;
       ui.driver.textContent = msg.driver + (msg.connected ? "" : " (getrennt)");
-      zeigePose(msg.pose);
-      setzeHomeKnopf(msg.homing === true);
-      zeigeKollision(msg.collision);
-      zeigeAutonomie(msg.autonomie);
-      zeigeInteraktion(msg.interaktion);
-      zeigeStimme(msg.stimme);
-      zeigeSprache(msg.sprache);
+      showPose(msg.pose);
+      setHomeButton(msg.homing === true);
+      showCollision(msg.collision);
+      showAutonomy(msg.autonomie);
+      showInteraction(msg.interaktion);
+      showVoice(msg.stimme);
+      showSpeech(msg.sprache);
       break;
 
     case "collision":
-      zeigeKollision(msg);
+      showCollision(msg);
       break;
 
     case "vitals":
@@ -195,12 +195,12 @@ function send(message) {
   }
 }
 
-// --- Fahrbefehle --------------------------------------------------------------
+// --- Drive commands -----------------------------------------------------------
 
 function sendDrive() {
-  // Seitwärts und Drehen werden im gleichen Verhältnis gedrosselt wie
-  // vorwärts. Sonst würde ein zahmes Max-Tempo trotzdem zu einem
-  // Roboter führen, der sich hektisch um die eigene Achse dreht.
+  // Sideways and rotation are throttled in the same ratio as forward.
+  // Otherwise a tame max speed would still lead to a robot that spins
+  // frantically around its own axis.
   const factor = limits.vx > 0 ? userMax / limits.vx : 0;
 
   send({
@@ -219,7 +219,7 @@ function stopAll() {
   send({ type: "stop" });
 }
 
-// --- Buttons (Maus und Touch) ---------------------------------------------------
+// --- Buttons (mouse and touch) --------------------------------------------------
 
 function press(btn) {
   btn.classList.add("active");
@@ -234,11 +234,11 @@ function release(btn) {
 }
 
 document.querySelectorAll(".pad-btn[data-vx], .pad-btn[data-omega]").forEach((btn) => {
-  // Pointer-Events decken Maus, Touch und Stift gemeinsam ab.
+  // Pointer events cover mouse, touch and pen together.
   btn.addEventListener("pointerdown", (e) => {
     e.preventDefault();
-    // Sorgt dafür, dass pointerup auch ankommt, wenn der Finger den
-    // Button verlässt -- sonst fährt der Roboter weiter.
+    // Makes sure pointerup still arrives when the finger leaves the
+    // button -- otherwise the robot keeps driving.
     btn.setPointerCapture(e.pointerId);
     press(btn);
   });
@@ -252,7 +252,7 @@ el("stop").addEventListener("click", () => {
   logLine("Not-Stopp ausgelöst", "warning");
 });
 
-// --- Tastatur -------------------------------------------------------------------
+// --- Keyboard -------------------------------------------------------------------
 
 const KEYS = {
   KeyW: () => (dir.x = 1),
@@ -274,10 +274,10 @@ const KEYS_UP = {
 
 window.addEventListener("keydown", (e) => {
   if (e.repeat) return;
-  // In einem offenen Fenster (Einstellungen, MUKKE) wird getippt -- ein
-  // "e" im Zahlenfeld oder ein "w" im YouTube-Link darf den Roboter nicht
-  // bewegen. Ebenso in Textfeldern (Schieberegler ausgenommen, mit denen
-  // man nebenbei das Tempo stellt).
+  // In an open dialog (settings, MUKKE) the user is typing -- an "e" in a
+  // number field or a "w" in a YouTube link must not move the robot.
+  // Same in text fields (except sliders, which you use to set the speed
+  // on the side).
   if (document.querySelector("dialog[open]")) return;
   if (e.target.closest?.("input:not([type=range]):not([type=checkbox]), textarea, select")) return;
   if (e.code === "Space") {
@@ -297,15 +297,15 @@ window.addEventListener("keyup", (e) => {
   if (fn) fn();
 });
 
-// Fenster verlassen oder Tab wechseln: anhalten. Sonst fährt der Roboter
-// weiter, obwohl niemand mehr hinschaut.
+// Leaving the window or switching tabs: stop. Otherwise the robot keeps
+// driving although nobody is watching anymore.
 //
-// Ausnahme autonomes Fahren: Da steuert niemand von Hand, und ein Stopp
-// würde die Fahrt beenden, sobald man z. B. ins Terminal klickt. Die
-// Handeingabe wird trotzdem gelöscht. Bricht die Verbindung ab, hält der
-// Server den Roboter ohnehin an.
-function fensterVerlassen() {
-  if (autonomAktiv) {
+// Exception autonomous driving: nobody is steering by hand, and a stop
+// would end the drive as soon as you e.g. click into the terminal. The
+// manual input is cleared anyway. If the connection drops, the server
+// stops the robot regardless.
+function onWindowLeave() {
+  if (autonomyActive) {
     dir.x = dir.y = dir.rot = 0;
     document.querySelectorAll(".pad-btn.active").forEach((b) =>
       b.classList.remove("active")
@@ -314,12 +314,12 @@ function fensterVerlassen() {
   }
   stopAll();
 }
-window.addEventListener("blur", fensterVerlassen);
+window.addEventListener("blur", onWindowLeave);
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) fensterVerlassen();
+  if (document.hidden) onWindowLeave();
 });
 
-// --- Tempo ------------------------------------------------------------------------
+// --- Speed ------------------------------------------------------------------------
 
 ui.speed.addEventListener("input", () => {
   speed = Number(ui.speed.value) / 100;
@@ -331,51 +331,51 @@ ui.maxSpeed.addEventListener("input", () => {
   try {
     localStorage.setItem(STORAGE_KEY, String(userMax));
   } catch {
-    // Privater Modus o.Ä. -- dann gilt die Einstellung nur diese Sitzung.
+    // Private mode or similar -- then the setting only lasts this session.
   }
   updateLabels();
 });
 
 function updateLabels() {
   ui.maxSpeedOut.textContent = `${userMax.toFixed(2)} m/s`;
-  // Prozent allein sagt wenig, deshalb die resultierende Geschwindigkeit dazu.
+  // A percentage alone says little, so add the resulting speed.
   ui.speedOut.textContent =
     `${ui.speed.value} % · ${(userMax * speed).toFixed(2)} m/s`;
 }
 
 /**
- * Uebernimmt die Grenzwerte des Roboters in den Max-Tempo-Regler.
+ * Applies the robot's limits to the max-speed slider.
  *
- * Laeuft erst, wenn der Server seine Limits gemeldet hat -- vorher weiss die
- * App nicht, wie weit der Regler ueberhaupt gehen darf.
+ * Runs only once the server has reported its limits -- before that the
+ * app does not know how far the slider may go at all.
  */
 function applyLimits() {
   ui.maxSpeed.max = String(limits.vx);
 
-  let wunsch = limits.vx;
+  let wanted = limits.vx;
   try {
-    const gespeichert = Number(localStorage.getItem(STORAGE_KEY));
-    if (gespeichert > 0) wunsch = gespeichert;
+    const stored = Number(localStorage.getItem(STORAGE_KEY));
+    if (stored > 0) wanted = stored;
   } catch {
-    // kein localStorage -- dann gilt das Roboterlimit
+    // no localStorage -- then the robot limit applies
   }
 
-  // Nie ueber das, was der Roboter erlaubt: ein gespeicherter Wert kann aus
-  // einer Konfiguration mit hoeherem Limit stammen.
-  userMax = Math.min(wunsch, limits.vx);
+  // Never above what the robot allows: a stored value may come from a
+  // configuration with a higher limit.
+  userMax = Math.min(wanted, limits.vx);
   ui.maxSpeed.value = String(userMax);
   updateLabels();
 }
 
-// --- Kollisionsvermeidung ----------------------------------------------------------
+// --- Collision avoidance -----------------------------------------------------------
 
 /*
- * Die Einstellung gehört dem Server, nicht dem Browser: sie greift in die
- * Sicherheit ein, und bei mehreren offenen Tabs muss klar sein, was gilt.
- * Die Bedienelemente schicken also nur Wünsche und zeigen danach an, was
- * der Server zurückmeldet.
+ * The setting belongs to the server, not the browser: it affects safety,
+ * and with several open tabs it must be clear which value applies.
+ * So the controls only send requests and then display what the server
+ * reports back.
  */
-function sendeKollision() {
+function sendCollision() {
   send({
     type: "collision",
     enabled: ui.collision.checked,
@@ -383,122 +383,122 @@ function sendeKollision() {
   });
 }
 
-ui.collision.addEventListener("change", sendeKollision);
-ui.collisionDist.addEventListener("change", sendeKollision);
+ui.collision.addEventListener("change", sendCollision);
+ui.collisionDist.addEventListener("change", sendCollision);
 ui.collisionDist.addEventListener("input", () => {
   ui.collisionOut.textContent = `${Number(ui.collisionDist.value).toFixed(2)} m`;
 });
 
-function zeigeKollision(z) {
-  if (!z) return;
-  ui.collision.checked = z.enabled === true;
-  ui.collisionRow.hidden = !z.enabled;
-  if (typeof z.distance === "number") {
-    ui.collisionDist.value = String(z.distance);
-    ui.collisionOut.textContent = `${z.distance.toFixed(2)} m`;
+function showCollision(c) {
+  if (!c) return;
+  ui.collision.checked = c.enabled === true;
+  ui.collisionRow.hidden = !c.enabled;
+  if (typeof c.distance === "number") {
+    ui.collisionDist.value = String(c.distance);
+    ui.collisionOut.textContent = `${c.distance.toFixed(2)} m`;
   }
 
   let text = "aus";
-  let klasse = "switch-state";
-  if (z.enabled && z.verfuegbar === false) {
-    // Eingeschaltet ohne Sensor wäre trügerisch -- das muss man sehen.
+  let cls = "switch-state";
+  if (c.enabled && c.verfuegbar === false) {
+    // Switched on without a sensor would be deceptive -- that must be visible.
     text = "kein Lidar!";
-    klasse += " blockiert";
-  } else if (z.blockiert) {
+    cls += " blockiert";
+  } else if (c.blockiert) {
     text = "hält";
-    klasse += " blockiert";
-  } else if (z.enabled) {
+    cls += " blockiert";
+  } else if (c.enabled) {
     text = "an";
-    klasse += " an";
+    cls += " an";
   }
   ui.collisionState.textContent = text;
-  ui.collisionState.className = klasse;
+  ui.collisionState.className = cls;
 }
 
-// --- Lidar-Anzeige ---------------------------------------------------------------
+// --- Lidar view ------------------------------------------------------------------
 
 /*
- * Draufsicht: der Roboter in der Mitte, vorn ist oben. Die Punkte kommen
- * per HTTP statt über den WebSocket -- eine Umdrehung sind einige hundert
- * Werte, und die würden den Steuerkanal unnötig belasten.
+ * Top view: the robot in the middle, forward is up. The points come via
+ * HTTP instead of the WebSocket -- one revolution is several hundred
+ * values, and they would needlessly load the control channel.
  */
 const LIDAR_HZ = 3;
-const LIDAR_REICHWEITE_M = 5;
+const LIDAR_RANGE_M = 5;
 
 const lidarCanvas = el("lidar");
 const lidarInfo = el("lidar-info");
 const lidarCtx = lidarCanvas ? lidarCanvas.getContext("2d") : null;
 
-async function lidarHolen() {
+async function fetchLidar() {
   if (!lidarCtx) return;
   try {
-    const antwort = await fetch(`/lidar/scan?t=${Date.now()}`);
-    const daten = await antwort.json();
-    lidarZeichnen(daten.punkte || []);
-    lidarInfo.textContent = daten.punkte && daten.punkte.length
-      ? `${daten.punkte.length} Punkte · Kreise alle 1 m · Reichweite ${LIDAR_REICHWEITE_M} m`
-      : (daten.hinweis || "keine Daten");
+    const response = await fetch(`/lidar/scan?t=${Date.now()}`);
+    const data = await response.json();
+    drawLidar(data.punkte || []);
+    lidarInfo.textContent = data.punkte && data.punkte.length
+      ? `${data.punkte.length} Punkte · Kreise alle 1 m · Reichweite ${LIDAR_RANGE_M} m`
+      : (data.hinweis || "keine Daten");
   } catch {
     lidarInfo.textContent = "Lidar nicht erreichbar";
   }
 }
 
-function lidarZeichnen(punkte) {
+function drawLidar(points) {
   const b = lidarCanvas.width;
-  const mitte = b / 2;
-  const skala = (b / 2 - 10) / LIDAR_REICHWEITE_M;
+  const center = b / 2;
+  const scale = (b / 2 - 10) / LIDAR_RANGE_M;
 
   lidarCtx.clearRect(0, 0, b, b);
 
-  // Entfernungsringe als Maßstab, sonst sagt die Punktwolke nichts.
+  // Distance rings as a scale, otherwise the point cloud says nothing.
   lidarCtx.strokeStyle = "#2e323c";
   lidarCtx.lineWidth = 1;
-  for (let m = 1; m <= LIDAR_REICHWEITE_M; m++) {
+  for (let m = 1; m <= LIDAR_RANGE_M; m++) {
     lidarCtx.beginPath();
-    lidarCtx.arc(mitte, mitte, m * skala, 0, Math.PI * 2);
+    lidarCtx.arc(center, center, m * scale, 0, Math.PI * 2);
     lidarCtx.stroke();
   }
 
   lidarCtx.fillStyle = "#4da3ff";
-  for (const [grad, meter] of punkte) {
-    const a = (grad * Math.PI) / 180;
-    // Bildschirm: x nach rechts, y nach unten. Roboter: x vorwärts,
-    // y links. Deshalb vertauscht und gespiegelt, damit "vorn" oben ist.
-    const px = mitte - meter * Math.sin(a) * skala;
-    const py = mitte - meter * Math.cos(a) * skala;
+  for (const [deg, dist] of points) {
+    const a = (deg * Math.PI) / 180;
+    // Screen: x to the right, y down. Robot: x forward, y left.
+    // Hence swapped and mirrored, so that "forward" is up.
+    const px = center - dist * Math.sin(a) * scale;
+    const py = center - dist * Math.cos(a) * scale;
     lidarCtx.fillRect(px - 1, py - 1, 2, 2);
   }
 
-  hindernisseZeichnen(mitte, skala);
+  drawObstacles(center, scale);
 
-  // Der Roboter selbst, mit Blickrichtung nach oben.
+  // The robot itself, facing up.
   lidarCtx.fillStyle = "#3ecf8e";
   lidarCtx.beginPath();
-  lidarCtx.moveTo(mitte, mitte - 7);
-  lidarCtx.lineTo(mitte - 5, mitte + 5);
-  lidarCtx.lineTo(mitte + 5, mitte + 5);
+  lidarCtx.moveTo(center, center - 7);
+  lidarCtx.lineTo(center - 5, center + 5);
+  lidarCtx.lineTo(center + 5, center + 5);
   lidarCtx.closePath();
   lidarCtx.fill();
 }
 
-if (lidarCtx) setInterval(lidarHolen, 1000 / LIDAR_HZ);
+if (lidarCtx) setInterval(fetchLidar, 1000 / LIDAR_HZ);
 
-// --- Autonomes Fahren ----------------------------------------------------------
+// --- Autonomous driving --------------------------------------------------------
 
 /*
- * Der Server schickt den Zustand in jeder state-Nachricht mit
- * (state.autonomie). Die App zeigt nur an und schickt explore /
- * explore_stop -- entschieden wird auf dem Roboter.
+ * The server sends the state with every state message
+ * (state.autonomie). The app only displays it and sends explore /
+ * explore_stop -- decisions are made on the robot.
  */
-let autonomAktiv = false;
-let hindernisse = [];
-let personenBoxen = [];
-// Auf welchem Kamerabild die Personenrahmen liegen (vom Server gemeldet).
-// null = unbekannt, etwa bei einem älteren Server -- dann wie bisher immer.
-let personenKamera = null;
+let autonomyActive = false;
+let obstacles = [];
+let personBoxes = [];
+// Which camera image the person boxes belong to (reported by the server).
+// null = unknown, e.g. with an older server -- then always, as before.
+let personCamera = null;
 
-/** Farbe je Hindernisart, gleich in Liste, Lidar-Bild und Kamera. */
-const ART_FARBE = {
+/** Color per obstacle kind, the same in the list, lidar view and camera. */
+const KIND_COLOR = {
   "Wand": "#9aa1ad",
   "Stuhl": "#f5a524",
   "Tisch": "#c58af9",
@@ -507,46 +507,46 @@ const ART_FARBE = {
   "Bein (Stuhl/Tisch?)": "#e8c56a",
   "Objekt": "#4da3ff",
 };
-const farbe = (art) => ART_FARBE[art] || "#4da3ff";
+const kindColor = (kind) => KIND_COLOR[kind] || "#4da3ff";
 
-function setzeExploreKnopf(aktiv) {
-  autonomAktiv = aktiv;
-  ui.btnExplore.textContent = aktiv ? "Autonomes Fahren beenden" : "Autonom fahren";
-  ui.btnExplore.classList.toggle("aktiv", aktiv);
+function setExploreButton(active) {
+  autonomyActive = active;
+  ui.btnExplore.textContent = active ? "Autonomes Fahren beenden" : "Autonom fahren";
+  ui.btnExplore.classList.toggle("aktiv", active);
 }
 
 ui.btnExplore.addEventListener("click", () => {
-  send({ type: autonomAktiv ? "explore_stop" : "explore" });
-  // Wie beim Home-Knopf: sofort umschalten, die nächste Statusmeldung
-  // korrigiert, falls der Server ablehnt (z. B. kein Lidar).
-  setzeExploreKnopf(!autonomAktiv);
+  send({ type: autonomyActive ? "explore_stop" : "explore" });
+  // Like the home button: toggle immediately, the next status message
+  // corrects it if the server refuses (e.g. no lidar).
+  setExploreButton(!autonomyActive);
 });
 
-// Fahrtenschreiber: Der Server antwortet mit einer Meldung (Dateiname).
+// Drive recorder: the server replies with a message (file name).
 ui.btnRecord.addEventListener("click", () => {
   send({ type: "record_save" });
 });
 
-function zeigeAutonomie(a) {
+function showAutonomy(a) {
   if (!a) return;
-  setzeExploreKnopf(a.aktiv === true);
+  setExploreButton(a.aktiv === true);
   ui.btnExplore.disabled = a.verfuegbar === false;
 
-  ui.autoZustand.textContent = a.aktiv ? a.zustand : (a.verfuegbar === false ? "kein Lidar" : "aus");
-  ui.autoFrei.textContent = typeof a.frei_vorn === "number" ? `${a.frei_vorn.toFixed(2)} m` : "—";
-  ui.autoDauer.textContent = a.aktiv && typeof a.dauer_s === "number"
+  ui.autoState.textContent = a.aktiv ? a.zustand : (a.verfuegbar === false ? "kein Lidar" : "aus");
+  ui.autoFree.textContent = typeof a.frei_vorn === "number" ? `${a.frei_vorn.toFixed(2)} m` : "—";
+  ui.autoDuration.textContent = a.aktiv && typeof a.dauer_s === "number"
     ? `${Math.floor(a.dauer_s / 60)}:${String(Math.floor(a.dauer_s % 60)).padStart(2, "0")} min · ${a.ausweichen ?? 0}× ausgewichen`
     : "—";
 
-  hindernisse = a.hindernisse || [];
-  personenBoxen = a.personen || [];
+  obstacles = a.hindernisse || [];
+  personBoxes = a.personen || [];
 
-  const menschen = hindernisse.filter((h) => h.art === "Mensch").length;
-  ui.autoMenschen.textContent = `${menschen} im Lidar · ${personenBoxen.length} im Bild`;
+  const humans = obstacles.filter((h) => h.art === "Mensch").length;
+  ui.autoPeople.textContent = `${humans} im Lidar · ${personBoxes.length} im Bild`;
 
   const pe = a.personenerkennung;
-  if (pe && pe.kamera) personenKamera = pe.kamera;
-  ui.autoKamera.textContent = !pe ? "—"
+  if (pe && pe.kamera) personCamera = pe.kamera;
+  ui.autoCamera.textContent = !pe ? "—"
     : !pe.verfuegbar ? (pe.fehler || "nicht verfügbar")
     : pe.aktiv ? "erkennt Personen" : "bereit (läuft beim Fahren)";
 
@@ -554,94 +554,94 @@ function zeigeAutonomie(a) {
   if (!a.aktiv && a.grund) text = `Zuletzt beendet: ${a.grund}`;
   ui.autoText.textContent = text;
 
-  zeigeHindernisListe();
-  personenZeichnen();
+  showObstacleList();
+  drawPersons();
 }
 
-function zeigeHindernisListe() {
-  ui.hindernisse.replaceChildren(...hindernisse.map((h) => {
+function showObstacleList() {
+  ui.obstacles.replaceChildren(...obstacles.map((h) => {
     const li = document.createElement("li");
-    const art = document.createElement("span");
-    art.className = "art";
-    const punkt = document.createElement("span");
-    punkt.className = "farbe";
-    punkt.style.background = farbe(h.art);
-    art.append(punkt, document.createTextNode(h.art));
-    const wo = document.createElement("span");
-    wo.className = "wo";
-    // Winkel wie beim Lidar: positiv = links. Für Menschen lesbarer als Grad.
-    const seite = Math.abs(h.winkel) < 15 ? "vorn"
+    const kind = document.createElement("span");
+    kind.className = "art";
+    const dot = document.createElement("span");
+    dot.className = "farbe";
+    dot.style.background = kindColor(h.art);
+    kind.append(dot, document.createTextNode(h.art));
+    const where = document.createElement("span");
+    where.className = "wo";
+    // Angle as with the lidar: positive = left. More readable for humans than degrees.
+    const side = Math.abs(h.winkel) < 15 ? "vorn"
       : Math.abs(h.winkel) > 165 ? "hinten"
       : h.winkel > 0 ? "links" : "rechts";
-    wo.textContent = `${h.abstand.toFixed(2)} m · ${seite} (${h.winkel.toFixed(0)}°)`;
-    li.append(art, wo);
+    where.textContent = `${h.abstand.toFixed(2)} m · ${side} (${h.winkel.toFixed(0)}°)`;
+    li.append(kind, where);
     return li;
   }));
-  if (!hindernisse.length) {
+  if (!obstacles.length) {
     const li = document.createElement("li");
     li.textContent = "keine im Umkreis";
-    ui.hindernisse.append(li);
+    ui.obstacles.append(li);
   }
 }
 
-/** Markierungen ins Lidar-Bild, gleiche Umrechnung wie die Punkte. */
-function hindernisseZeichnen(mitte, skala) {
+/** Markers in the lidar view, same conversion as for the points. */
+function drawObstacles(center, scale) {
   lidarCtx.font = "10px system-ui, sans-serif";
-  for (const h of hindernisse) {
-    if (h.art === "Wand") continue; // Wände sieht man an der Punktreihe
-    const px = mitte - h.y * skala;
-    const py = mitte - h.x * skala;
-    const r = Math.max(5, (h.breite / 2) * skala + 3);
-    lidarCtx.strokeStyle = farbe(h.art);
+  for (const h of obstacles) {
+    if (h.art === "Wand") continue; // walls are visible as the row of points
+    const px = center - h.y * scale;
+    const py = center - h.x * scale;
+    const r = Math.max(5, (h.breite / 2) * scale + 3);
+    lidarCtx.strokeStyle = kindColor(h.art);
     lidarCtx.lineWidth = 2;
     lidarCtx.beginPath();
     lidarCtx.arc(px, py, r, 0, Math.PI * 2);
     lidarCtx.stroke();
-    lidarCtx.fillStyle = farbe(h.art);
+    lidarCtx.fillStyle = kindColor(h.art);
     lidarCtx.fillText(h.art, px + r + 2, py + 3);
   }
 }
 
 /*
- * Personenrahmen über dem Kamerabild. Das Bild ist mit object-fit:
- * contain eingepasst, also kann es links/rechts oder oben/unten Rand
- * geben -- die Rahmen müssen auf die tatsächliche Bildfläche.
+ * Person boxes over the camera image. The image is fitted with object-fit:
+ * contain, so there may be margins left/right or top/bottom -- the boxes
+ * must go onto the actual image area.
  */
-function personenZeichnen() {
-  kacheln.forEach((k, i) => {
-    const passt = zeigtPersonenKamera(k, i);
-    rahmenZeichnen(k, passt ? personenBoxen : [], passt);
-    // Antippen nur dort, wo die Skelette auch liegen.
-    k.el.classList.toggle("waehlbar", passt && interaktionAktiv && skelette.length > 0);
+function drawPersons() {
+  tiles.forEach((t, i) => {
+    const matches = showsPersonCamera(t, i);
+    drawBoxes(t, matches ? personBoxes : [], matches);
+    // Tapping only where the skeletons actually are.
+    t.el.classList.toggle("waehlbar", matches && interactionActive && skeletons.length > 0);
   });
 }
 
-// Die Rahmen gehören zum Bild der Personenkamera. Über einer anderen
-// Kamera stünden sie an der falschen Stelle. Kennt der Server keine
-// Personenkamera (älterer Stand), dann wie früher über die erste.
-function zeigtPersonenKamera(kachel, i) {
-  return personenKamera
-    ? (kachel.name ?? camStandard) === personenKamera
+// The boxes belong to the person camera's image. Over another camera
+// they would be in the wrong place. If the server does not know a
+// person camera (older version), then over the first one as before.
+function showsPersonCamera(tile, i) {
+  return personCamera
+    ? (tile.name ?? camDefault) === personCamera
     : i === 0;
 }
 
-/** Wo das Bild in der Kachel liegt (eingepasst, mit Rand). */
-function bildFlaeche(kachel, w, h) {
-  const img = kachel.img;
-  const bildVerh = img.naturalWidth / img.naturalHeight;
-  let bw = w, bh = w / bildVerh;
+/** Where the image lies within the tile (fitted, with margins). */
+function imageArea(tile, w, h) {
+  const img = tile.img;
+  const aspect = img.naturalWidth / img.naturalHeight;
+  let bw = w, bh = w / aspect;
   if (bh > h) {
     bh = h;
-    bw = h * bildVerh;
+    bw = h * aspect;
   }
   return { ox: (w - bw) / 2, oy: (h - bh) / 2, bw, bh };
 }
 
-// zeigtPersonen: diese Kachel zeigt die Personenkamera -- nur dort gehören
-// Rahmen und Skelette hin (beide kommen aus der C270).
-function rahmenZeichnen(kachel, boxen, zeigtPersonen) {
-  const c = kachel.overlay;
-  const img = kachel.img;
+// showsPersons: this tile shows the person camera -- only there do boxes
+// and skeletons belong (both come from the C270).
+function drawBoxes(tile, boxes, showsPersons) {
+  const c = tile.overlay;
+  const img = tile.img;
   const w = c.clientWidth;
   const h = c.clientHeight;
   if (c.width !== w || c.height !== h) {
@@ -650,44 +650,45 @@ function rahmenZeichnen(kachel, boxen, zeigtPersonen) {
   }
   const ctx = c.getContext("2d");
   ctx.clearRect(0, 0, w, h);
-  const skelettHier = zeigtPersonen && skelette.length > 0;
-  if ((!boxen.length && !skelettHier) || !img.naturalWidth) return;
+  const skeletonHere = showsPersons && skeletons.length > 0;
+  if ((!boxes.length && !skeletonHere) || !img.naturalWidth) return;
 
-  const { ox, oy, bw, bh } = bildFlaeche(kachel, w, h);
+  const { ox, oy, bw, bh } = imageArea(tile, w, h);
 
-  ctx.strokeStyle = farbe("Mensch");
-  ctx.fillStyle = farbe("Mensch");
+  ctx.strokeStyle = kindColor("Mensch");
+  ctx.fillStyle = kindColor("Mensch");
   ctx.lineWidth = 2;
   ctx.font = "12px system-ui, sans-serif";
-  for (const b of boxen) {
+  for (const b of boxes) {
     const x = ox + b.x1 * bw;
     const y = oy + b.y1 * bh;
     ctx.strokeRect(x, y, (b.x2 - b.x1) * bw, (b.y2 - b.y1) * bh);
     ctx.fillText(`Mensch ${b.score.toFixed(1)}`, x + 3, y + 14);
   }
 
-  if (skelettHier) skeletteZeichnen(ctx, ox, oy, bw, bh);
+  if (skeletonHere) drawSkeletons(ctx, ox, oy, bw, bh);
 }
 
-window.addEventListener("resize", personenZeichnen);
+window.addEventListener("resize", drawPersons);
 
-// --- Interaktion --------------------------------------------------------------
+// --- Interaction --------------------------------------------------------------
 
 /*
- * Wie beim autonomen Fahren: Der Roboter entscheidet, die App zeigt an und
- * schickt interaction_start / interaction_stop / follow / follow_stop.
- * Die Skelette holt sie sich nur, solange die Interaktion läuft -- sonst
- * rechnet der Hailo ohnehin nicht.
+ * As with autonomous driving: the robot decides, the app displays and
+ * sends interaction_start / interaction_stop / follow / follow_stop.
+ * It only fetches the skeletons while the interaction is running --
+ * otherwise the Hailo is not computing anyway.
  *
- * Ziel-Lock: Tippen auf eine Person schickt follow mit ihrer Track-ID. Nur
- * so wird bei mehreren Personen eine bestimmte zum Ziel; der Roboter wechselt
- * nie von selbst. Pause hält an und behält das Ziel, Loslassen gibt es frei.
+ * Target lock: tapping a person sends follow with their track ID. Only
+ * this way does a specific one become the target when there are several
+ * people; the robot never switches by itself. Pause stops and keeps the
+ * target, release frees it.
  */
 const POSE_HZ = 8;
-/** Körperpunkte unter dieser Sicherheit werden nicht gezeichnet. */
+/** Keypoints below this confidence are not drawn. */
 const KP_MIN = 0.3;
 
-const MODUS_TEXT = {
+const MODE_TEXT = {
   bereit: "wartet auf Handzeichen",
   folgen: "folgt",
   herkommen: "kommt her",
@@ -695,8 +696,8 @@ const MODUS_TEXT = {
   sucht: "sucht",
 };
 
-/** Zustände des Ziel-Locks (state.interaktion.ziel.zustand). */
-const ZIEL_TEXT = {
+/** States of the target lock (state.interaktion.ziel.zustand). */
+const TARGET_TEXT = {
   idle: () => "kein Ziel",
   acquiring_target: (id) => `erfasst Person ${id} …`,
   following: (id) => `folgt Person ${id}`,
@@ -705,132 +706,132 @@ const ZIEL_TEXT = {
   safe_stop: () => "sicher angehalten – bitte neu wählen",
 };
 
-let interaktionAktiv = false;
-let interaktionModus = null;
-let interaktionPausiert = false;
-let skelette = [];
-let skelettLinien = [];
-let poseLaeuft = false;
+let interactionActive = false;
+let interactionMode = null;
+let interactionPaused = false;
+let skeletons = [];
+let skeletonLines = [];
+let poseFetchRunning = false;
 
-function setzeInteraktionKnoepfe(aktiv, modus) {
-  interaktionAktiv = aktiv;
-  interaktionModus = modus;
-  ui.btnInteraktion.textContent = aktiv ? "Interaktion aus" : "Interaktion an";
-  ui.btnInteraktion.classList.toggle("aktiv", aktiv);
-  const folgt = aktiv && modus === "folgen";
-  ui.btnFolgen.textContent = folgt ? "Nicht mehr folgen" : "Folge mir";
+function setInteractionButtons(active, mode) {
+  interactionActive = active;
+  interactionMode = mode;
+  ui.btnInteraction.textContent = active ? "Interaktion aus" : "Interaktion an";
+  ui.btnInteraction.classList.toggle("aktiv", active);
+  const following = active && mode === "folgen";
+  ui.btnFollow.textContent = following ? "Nicht mehr folgen" : "Folge mir";
 }
 
-ui.btnInteraktion.addEventListener("click", () => {
-  send({ type: interaktionAktiv ? "interaction_stop" : "interaction_start" });
-  // Sofort umschalten, die nächste Statusmeldung rückt es gerade.
-  setzeInteraktionKnoepfe(!interaktionAktiv, interaktionAktiv ? null : "bereit");
+ui.btnInteraction.addEventListener("click", () => {
+  send({ type: interactionActive ? "interaction_stop" : "interaction_start" });
+  // Toggle immediately, the next status message sets it straight.
+  setInteractionButtons(!interactionActive, interactionActive ? null : "bereit");
 });
 
-ui.btnFolgen.addEventListener("click", () => {
-  const folgt = interaktionAktiv && interaktionModus === "folgen";
-  send({ type: folgt ? "follow_stop" : "follow" });
-  setzeInteraktionKnoepfe(true, folgt ? "bereit" : "folgen");
+ui.btnFollow.addEventListener("click", () => {
+  const following = interactionActive && interactionMode === "folgen";
+  send({ type: following ? "follow_stop" : "follow" });
+  setInteractionButtons(true, following ? "bereit" : "folgen");
 });
 
 ui.btnIaPause.addEventListener("click", () => {
-  send({ type: interaktionPausiert ? "follow_resume" : "follow_pause" });
+  send({ type: interactionPaused ? "follow_resume" : "follow_pause" });
 });
 
-ui.btnIaLoslassen.addEventListener("click", () => send({ type: "follow_stop" }));
+ui.btnIaRelease.addEventListener("click", () => send({ type: "follow_stop" }));
 
-/** Tippen ins Kamerabild: die getroffene Person wird zum Ziel. */
-function personAntippen(kachel, ev) {
-  if (!interaktionAktiv || !skelette.length) return;
-  if (!zeigtPersonenKamera(kachel, kacheln.indexOf(kachel))) return;
-  if (!kachel.img.naturalWidth) return;
-  const r = kachel.overlay.getBoundingClientRect();
-  const { ox, oy, bw, bh } = bildFlaeche(kachel, r.width, r.height);
+/** Tap into the camera image: the person hit becomes the target. */
+function tapPerson(tile, ev) {
+  if (!interactionActive || !skeletons.length) return;
+  if (!showsPersonCamera(tile, tiles.indexOf(tile))) return;
+  if (!tile.img.naturalWidth) return;
+  const r = tile.overlay.getBoundingClientRect();
+  const { ox, oy, bw, bh } = imageArea(tile, r.width, r.height);
   const x = (ev.clientX - r.left - ox) / bw;
   const y = (ev.clientY - r.top - oy) / bh;
-  // Etwas Rand zugeben (Finger sind breit). Bei Überlappung die kleinere
-  // Box nehmen -- das ist meist die weiter hinten stehende, gezielt gemeinte.
-  const RAND = 0.03;
-  let treffer = null;
-  let flaeche = Infinity;
-  for (const s of skelette) {
+  // Allow some margin (fingers are wide). On overlap take the smaller
+  // box -- that is usually the one standing further back, meant on purpose.
+  const MARGIN = 0.03;
+  let hit = null;
+  let area = Infinity;
+  for (const s of skeletons) {
     const b = s.box;
-    if (!b || x < b[0] - RAND || x > b[2] + RAND || y < b[1] - RAND || y > b[3] + RAND) continue;
+    if (!b || x < b[0] - MARGIN || x > b[2] + MARGIN || y < b[1] - MARGIN || y > b[3] + MARGIN) continue;
     const f = (b[2] - b[0]) * (b[3] - b[1]);
-    if (f < flaeche) {
-      flaeche = f;
-      treffer = s;
+    if (f < area) {
+      area = f;
+      hit = s;
     }
   }
-  if (!treffer) return;
-  if (treffer.id == null) {
+  if (!hit) return;
+  if (hit.id == null) {
     logLine("Person noch nicht erfasst – gleich noch einmal antippen", "warning");
     return;
   }
-  send({ type: "follow", ziel_id: treffer.id });
-  logLine(`Folge Person ${treffer.id}`);
+  send({ type: "follow", ziel_id: hit.id });
+  logLine(`Folge Person ${hit.id}`);
 }
 
-function zeigeZiel(ia) {
+function showTarget(ia) {
   const z = ia.ziel;
-  const fahrend = ia.aktiv === true && !!ia.modus && ia.modus !== "bereit";
-  interaktionPausiert = ia.pausiert === true;
-  ui.btnIaPause.textContent = interaktionPausiert ? "Weiter" : "Pause";
-  ui.btnIaPause.classList.toggle("aktiv", interaktionPausiert);
-  ui.btnIaPause.disabled = !fahrend;
-  // Älterer Server ohne Ziel-Lock: keine Zielanzeige.
+  const driving = ia.aktiv === true && !!ia.modus && ia.modus !== "bereit";
+  interactionPaused = ia.pausiert === true;
+  ui.btnIaPause.textContent = interactionPaused ? "Weiter" : "Pause";
+  ui.btnIaPause.classList.toggle("aktiv", interactionPaused);
+  ui.btnIaPause.disabled = !driving;
+  // Older server without target lock: no target display.
   if (!z || !ia.aktiv) {
-    ui.iaZiel.textContent = "—";
-    ui.btnIaLoslassen.disabled = !fahrend;
+    ui.iaTarget.textContent = "—";
+    ui.btnIaRelease.disabled = !driving;
     return;
   }
-  let text = (ZIEL_TEXT[z.zustand] || (() => z.zustand))(z.id);
+  let text = (TARGET_TEXT[z.zustand] || (() => z.zustand))(z.id);
   if (z.id != null && z.zustand !== "idle" && z.zustand !== "safe_stop") {
     text += ` · ${Math.round((z.sicherheit || 0) * 100)} %`;
   }
-  if (interaktionPausiert) text += " · pausiert";
+  if (interactionPaused) text += " · pausiert";
   if (z.grund && (z.zustand === "idle" || z.zustand === "safe_stop")) text += ` (${z.grund})`;
-  ui.iaZiel.textContent = text;
-  ui.btnIaLoslassen.disabled = !fahrend && z.zustand === "idle";
+  ui.iaTarget.textContent = text;
+  ui.btnIaRelease.disabled = !driving && z.zustand === "idle";
 }
 
-function zeigeInteraktion(ia) {
+function showInteraction(ia) {
   if (!ia) return;
-  setzeInteraktionKnoepfe(ia.aktiv === true, ia.modus);
-  ui.btnInteraktion.disabled = ui.btnFolgen.disabled = ia.verfuegbar === false;
-  zeigeZiel(ia);
+  setInteractionButtons(ia.aktiv === true, ia.modus);
+  ui.btnInteraction.disabled = ui.btnFollow.disabled = ia.verfuegbar === false;
+  showTarget(ia);
 
-  ui.iaModus.textContent = ia.aktiv
-    ? (MODUS_TEXT[ia.modus] || ia.modus)
+  ui.iaMode.textContent = ia.aktiv
+    ? (MODE_TEXT[ia.modus] || ia.modus)
     : (ia.verfuegbar === false ? "nicht verfügbar" : "aus");
 
   const p = ia.person;
   if (p) {
-    const seite = Math.abs(p.winkel) < 5 ? "mittig" : p.winkel > 0 ? "links" : "rechts";
-    const abstand = typeof p.abstand === "number" ? `${p.abstand.toFixed(2)} m · ` : "";
-    ui.iaPerson.textContent = `${abstand}${seite} (${p.winkel.toFixed(0)}°) · ${ia.personen} im Bild`;
+    const side = Math.abs(p.winkel) < 5 ? "mittig" : p.winkel > 0 ? "links" : "rechts";
+    const distance = typeof p.abstand === "number" ? `${p.abstand.toFixed(2)} m · ` : "";
+    ui.iaPerson.textContent = `${distance}${side} (${p.winkel.toFixed(0)}°) · ${ia.personen} im Bild`;
   } else {
     ui.iaPerson.textContent = ia.aktiv ? `${ia.personen} im Bild` : "—";
   }
-  ui.iaGeste.textContent = ia.geste || "—";
+  ui.iaGesture.textContent = ia.geste || "—";
 
   let text = ia.text || "—";
   if (!ia.aktiv && ia.grund) text = `Zuletzt beendet: ${ia.grund}`;
   if (ia.verfuegbar === false) text = "Braucht Lidar und Posenerkennung — Details unter /interaktion/status";
   ui.iaText.textContent = text;
 
-  if (!ia.aktiv && skelette.length) {
-    skelette = [];
-    personenZeichnen();
+  if (!ia.aktiv && skeletons.length) {
+    skeletons = [];
+    drawPersons();
   }
 }
 
-// --- Stimme -----------------------------------------------------------------
+// --- Voice ------------------------------------------------------------------
 
 /*
- * Der Roboter spricht selbst (Gesten, Moduswechsel); hier lässt sich
- * zusätzlich ein eigener Satz vorlesen. Ohne Lautsprecher landet er nur im
- * Log des Roboters -- das zeigt die Anzeige an.
+ * The robot speaks by itself (gestures, mode changes); here you can also
+ * have your own sentence read out. Without a speaker it only ends up in
+ * the robot's log -- the display shows that.
  */
 ui.sayForm.addEventListener("submit", (ev) => {
   ev.preventDefault();
@@ -840,7 +841,7 @@ ui.sayForm.addEventListener("submit", (ev) => {
   ui.sayText.value = "";
 });
 
-// Wie ins Mikrofon gesprochen -- zum Ausprobieren ohne Mikrofon.
+// As if spoken into the microphone -- for trying things out without a microphone.
 ui.speechForm.addEventListener("submit", (ev) => {
   ev.preventDefault();
   const text = ui.speechText.value.trim();
@@ -849,71 +850,71 @@ ui.speechForm.addEventListener("submit", (ev) => {
   ui.speechText.value = "";
 });
 
-function zeigeSprache(sp) {
+function showSpeech(sp) {
   if (!sp) return;
   if (sp.pause) {
-    ui.sprache.textContent = `Mikrofon aus: ${sp.pause}`;
+    ui.speech.textContent = `Mikrofon aus: ${sp.pause}`;
   } else if (!sp.verfuegbar) {
-    ui.sprache.textContent = "kein Mikrofon (/sprache/status)";
+    ui.speech.textContent = "kein Mikrofon (/sprache/status)";
   } else if (sp.befehl) {
-    ui.sprache.textContent = `Befehl: ${sp.befehl}`;
+    ui.speech.textContent = `Befehl: ${sp.befehl}`;
   } else if (sp.geweckt) {
-    ui.sprache.textContent = "hört zu …";
+    ui.speech.textContent = "hört zu …";
   } else {
-    ui.sprache.textContent = sp.gehoert ? `gehört: „${sp.gehoert}“` : "wartet auf „Robi“";
+    ui.speech.textContent = sp.gehoert ? `gehört: „${sp.gehoert}“` : "wartet auf „Robi“";
   }
 }
 
-function zeigeStimme(st) {
+function showVoice(st) {
   if (!st) return;
   if (st.verfuegbar === false) {
-    ui.stimme.textContent = "kein Lautsprecher (/stimme/status)";
+    ui.voice.textContent = "kein Lautsprecher (/stimme/status)";
   } else if (st.spricht) {
-    ui.stimme.textContent = `spricht: „${st.text || ""}“`;
+    ui.voice.textContent = `spricht: „${st.text || ""}“`;
   } else {
-    ui.stimme.textContent = st.text ? `zuletzt: „${st.text}“` : "bereit";
+    ui.voice.textContent = st.text ? `zuletzt: „${st.text}“` : "bereit";
   }
 }
 
-async function poseHolen() {
-  if (!interaktionAktiv || poseLaeuft) return;
-  poseLaeuft = true; // keine Anfragen auftürmen, wenn das WLAN hängt
+async function fetchPose() {
+  if (!interactionActive || poseFetchRunning) return;
+  poseFetchRunning = true; // do not pile up requests when the Wi-Fi hangs
   try {
     const r = await fetch("/interaktion/pose", { cache: "no-store" });
     if (r.ok) {
       const d = await r.json();
-      skelette = d.personen || [];
-      skelettLinien = d.skelett || [];
-      personenZeichnen();
+      skeletons = d.personen || [];
+      skeletonLines = d.skelett || [];
+      drawPersons();
     }
   } catch {
-    // Verbindung kurz weg: beim nächsten Takt neu versuchen.
+    // Connection briefly gone: try again on the next tick.
   } finally {
-    poseLaeuft = false;
+    poseFetchRunning = false;
   }
 }
 
-setInterval(poseHolen, 1000 / POSE_HZ);
+setInterval(fetchPose, 1000 / POSE_HZ);
 
-/** Skelette auf die eingepasste Bildfläche (ox/oy/bw/bh aus personenZeichnen). */
-function skeletteZeichnen(ctx, ox, oy, bw, bh) {
-  if (!skelette.length) return;
+/** Skeletons onto the fitted image area (ox/oy/bw/bh from drawPersons). */
+function drawSkeletons(ctx, ox, oy, bw, bh) {
+  if (!skeletons.length) return;
   ctx.lineWidth = 3;
   ctx.font = "13px system-ui, sans-serif";
-  // Das gesperrte Ziel grün, alle anderen grau. Ältere Server ohne Ziel-Lock
-  // liefern kein "ziel" -- dann wie früher die größte Person (vorn).
-  const mitZiel = skelette.some((s) => "ziel" in s);
-  skelette.forEach((s, i) => {
-    const istZiel = mitZiel ? s.ziel === true : i === 0;
-    const col = istZiel ? "#3ddc97" : "#9aa1ad";
+  // The locked target green, all others grey. Older servers without target
+  // lock deliver no "ziel" -- then the largest person (front) as before.
+  const withTarget = skeletons.some((s) => "ziel" in s);
+  skeletons.forEach((s, i) => {
+    const isTarget = withTarget ? s.ziel === true : i === 0;
+    const col = isTarget ? "#3ddc97" : "#9aa1ad";
     ctx.strokeStyle = col;
     ctx.fillStyle = col;
-    // Nummer über dem Kopf, damit „folgt Person 3“ zuzuordnen ist.
+    // Number above the head, so that "folgt Person 3" can be matched.
     if (s.id != null && s.box) {
       ctx.fillText(`Person ${s.id}`, ox + s.box[0] * bw + 3, Math.max(oy + 14, oy + s.box[1] * bh - 4));
     }
     const kp = s.kp || [];
-    for (const [a, b] of skelettLinien) {
+    for (const [a, b] of skeletonLines) {
       const pa = kp[a];
       const pb = kp[b];
       if (!pa || !pb || pa[2] < KP_MIN || pb[2] < KP_MIN) continue;
@@ -931,379 +932,379 @@ function skeletteZeichnen(ctx, ox, oy, bw, bh) {
   });
 }
 
-// --- Heimfahrt ----------------------------------------------------------------
+// --- Return home --------------------------------------------------------------
 
-let faehrtHeim = false;
+let homing = false;
 
-function zeigePose(pose) {
+function showPose(pose) {
   if (!pose) {
-    ui.dist.textContent = ui.pos.textContent = ui.winkel.textContent = "—";
+    ui.dist.textContent = ui.pos.textContent = ui.heading.textContent = "—";
     return;
   }
-  const entfernung = Math.hypot(pose.x, pose.y);
-  // Ohne Messung stammt die Position nur aus den Fahrbefehlen. Das muss
-  // man sehen, bevor man dem Home-Knopf vertraut.
-  const güte = pose.gemessen === false ? " (geschätzt)" : "";
-  ui.dist.textContent = `${entfernung.toFixed(2)} m${güte}`;
+  const distance = Math.hypot(pose.x, pose.y);
+  // Without measurement the position comes only from the drive commands.
+  // You need to see that before trusting the home button.
+  const quality = pose.gemessen === false ? " (geschätzt)" : "";
+  ui.dist.textContent = `${distance.toFixed(2)} m${quality}`;
   ui.pos.textContent = `${pose.x.toFixed(2)} / ${pose.y.toFixed(2)} m`;
-  ui.winkel.textContent = `${pose.winkel.toFixed(0)}°`;
+  ui.heading.textContent = `${pose.winkel.toFixed(0)}°`;
 }
 
 /*
- * Derselbe Knopf startet und bricht ab. Zwei getrennte Knöpfe wären ein
- * Risiko: wer den Roboter stoppen will, soll nicht erst den richtigen
- * suchen müssen.
+ * The same button starts and cancels. Two separate buttons would be a
+ * risk: whoever wants to stop the robot should not have to look for the
+ * right one first.
  */
-function setzeHomeKnopf(aktiv) {
-  if (aktiv === faehrtHeim) return;
-  faehrtHeim = aktiv;
-  ui.btnHome.textContent = aktiv ? "Heimfahrt abbrechen" : "Nach Hause";
-  ui.btnHome.classList.toggle("aktiv", aktiv);
+function setHomeButton(active) {
+  if (active === homing) return;
+  homing = active;
+  ui.btnHome.textContent = active ? "Heimfahrt abbrechen" : "Nach Hause";
+  ui.btnHome.classList.toggle("aktiv", active);
 }
 
 ui.btnHome.addEventListener("click", () => {
-  if (faehrtHeim) {
+  if (homing) {
     send({ type: "home_cancel" });
   } else {
     send({ type: "home" });
   }
-  // Nicht auf die Antwort warten: der Knopf soll sofort reagieren. Die
-  // nächste Statusmeldung rückt die Anzeige gerade, falls es schiefging.
-  setzeHomeKnopf(!faehrtHeim);
+  // Do not wait for the response: the button should react immediately. The
+  // next status message sets the display straight if something went wrong.
+  setHomeButton(!homing);
 });
 
 ui.btnSetHome.addEventListener("click", () => {
   send({ type: "set_home" });
 });
 
-// --- Kamera ----------------------------------------------------------------
+// --- Camera ----------------------------------------------------------------
 
 /*
- * Zwei Wege zum Bild:
+ * Two ways to get the image:
  *
- *   MJPEG     Ein Dauerstrom in einem <img>. Sparsam, aber nicht jeder
- *             Browser kann multipart/x-mixed-replace -- Safari auf
- *             iPhone und iPad zeigt dann einfach nichts an.
- *   Einzelbilder  Immer wieder .../snapshot laden. Funktioniert
- *             überall, kostet etwas mehr Overhead.
+ *   MJPEG     A continuous stream in an <img>. Economical, but not every
+ *             browser handles multipart/x-mixed-replace -- Safari on
+ *             iPhone and iPad then simply shows nothing.
+ *   Snapshots Load .../snapshot over and over. Works everywhere, costs
+ *             a bit more overhead.
  *
- * Erst wird MJPEG versucht. Hat der Browser nach PRUEFZEIT_MS nichts
- * dekodiert, wird automatisch auf Einzelbilder umgeschaltet.
+ * MJPEG is tried first. If the browser has decoded nothing after
+ * CHECK_TIME_MS, it automatically switches to snapshots.
  *
- * Jede angezeigte Kamera ist eine eigene Kachel mit eigenem Bild,
- * eigener Fehleranzeige und eigenem Rahmen-Overlay. So lassen sich auch
- * alle Kameras nebeneinander zeigen.
+ * Each displayed camera is a tile of its own with its own image, its own
+ * error display and its own box overlay. That way all cameras can also
+ * be shown side by side.
  */
-const PRUEFZEIT_MS = 4000;
-const EINZELBILD_FPS = 10;
+const CHECK_TIME_MS = 4000;
+const SNAPSHOT_FPS = 10;
 
-class CamKachel {
+class CamTile {
   constructor() {
     this.el = document.createElement("div");
     this.el.className = "cam-wrap";
 
-    // MJPEG: der Browser zeigt den Stream direkt an, ohne JavaScript.
+    // MJPEG: the browser displays the stream directly, without JavaScript.
     this.img = document.createElement("img");
     this.img.className = "cam";
     this.img.alt = "Kamerabild";
-    // Rahmen um erkannte Personen beim autonomen Fahren.
+    // Boxes around detected persons during autonomous driving.
     this.overlay = document.createElement("canvas");
     this.overlay.className = "cam-overlay";
-    this.titel = document.createElement("span");
-    this.titel.className = "cam-titel";
-    this.titel.hidden = true;
+    this.label = document.createElement("span");
+    this.label.className = "cam-titel";
+    this.label.hidden = true;
 
-    this.fehler = document.createElement("p");
-    this.fehler.className = "cam-error";
-    this.fehler.hidden = true;
-    const nochmal = document.createElement("button");
-    nochmal.type = "button";
-    nochmal.textContent = "Erneut versuchen";
-    nochmal.addEventListener("click", () => {
-      ladeKameras(); // vielleicht ist die Kamera inzwischen da
+    this.errorBox = document.createElement("p");
+    this.errorBox.className = "cam-error";
+    this.errorBox.hidden = true;
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.textContent = "Erneut versuchen";
+    retry.addEventListener("click", () => {
+      loadCameras(); // maybe the camera is there by now
       this.start(this.name);
     });
-    this.fehler.append("Kein Bild. ", nochmal);
+    this.errorBox.append("Kein Bild. ", retry);
 
-    this.el.append(this.img, this.overlay, this.titel, this.fehler);
-    this.el.addEventListener("click", (ev) => personAntippen(this, ev));
+    this.el.append(this.img, this.overlay, this.label, this.errorBox);
+    this.el.addEventListener("click", (ev) => tapPerson(this, ev));
 
-    this.name = null; // null = Standardkamera über /camera/...
-    this.modus = "aus";
+    this.name = null; // null = default camera via /camera/...
+    this.mode = "aus";
     this.timer = null;
-    this.pruefung = null;
+    this.checkTimer = null;
 
     this.img.addEventListener("error", () => {
-      if (this.modus !== "mjpeg") return; // Einzelbildmodus hat eigene Behandlung
-      this.fehler.hidden = false;
+      if (this.mode !== "mjpeg") return; // snapshot mode has its own handling
+      this.errorBox.hidden = false;
       logLine(`Kamerabild abgerissen${this.name ? ` (${this.name})` : ""}`, "warning");
     });
   }
 
-  /* Ohne Kameranamen die alten Endpunkte -- die kennt auch ein Server
-     ohne /cameras. */
-  basis() {
-    const tiefe = tiefenAnsichten.find((a) => a.name === this.name);
-    if (tiefe) return tiefe.basis;
+  /* Without a camera name the old endpoints -- a server without /cameras
+     knows those too. */
+  base() {
+    const depth = depthViews.find((a) => a.name === this.name);
+    if (depth) return depth.basis;
     return this.name ? `/camera/${encodeURIComponent(this.name)}` : "/camera";
   }
 
   stop() {
     clearTimeout(this.timer);
-    clearTimeout(this.pruefung);
-    this.timer = this.pruefung = null;
-    this.modus = "aus";
+    clearTimeout(this.checkTimer);
+    this.timer = this.checkTimer = null;
+    this.mode = "aus";
     this.img.onload = null;
     this.img.onerror = null;
-    // Die Quelle wirklich wegnehmen: ein entferntes <img> hielte seinen
-    // MJPEG-Strom sonst offen, und der Browser erlaubt nur wenige
-    // gleichzeitige Verbindungen zum selben Rechner.
+    // Really remove the source: a removed <img> would otherwise keep its
+    // MJPEG stream open, and the browser only allows a few simultaneous
+    // connections to the same host.
     this.img.src = "data:,";
   }
 
   /*
-   * Der Zeitstempel in der URL ist nötig, weil der Browser sonst die
-   * abgebrochene Antwort aus dem Cache nimmt und das Bild schwarz bleibt.
+   * The timestamp in the URL is needed because the browser would otherwise
+   * take the aborted response from the cache and the image would stay black.
    */
   start(name) {
     this.stop();
     this.name = name;
-    this.fehler.hidden = true;
-    this.modus = "mjpeg";
-    this.gestartetMit = this.basis(); // ändert sich, sobald /cameras geladen ist
-    this.img.src = `${this.basis()}/stream?t=${Date.now()}`;
+    this.errorBox.hidden = true;
+    this.mode = "mjpeg";
+    this.startedWith = this.base(); // changes as soon as /cameras is loaded
+    this.img.src = `${this.base()}/stream?t=${Date.now()}`;
 
-    // naturalWidth > 0 heißt: mindestens ein Bild wurde dekodiert. Das
-    // load-Ereignis taugt hier nicht -- bei einem Dauerstrom feuert es
-    // je nach Browser nie.
-    this.pruefung = setTimeout(() => {
-      if (this.modus === "mjpeg" && this.img.naturalWidth === 0) {
+    // naturalWidth > 0 means: at least one frame was decoded. The load
+    // event is no good here -- with a continuous stream it never fires
+    // in some browsers.
+    this.checkTimer = setTimeout(() => {
+      if (this.mode === "mjpeg" && this.img.naturalWidth === 0) {
         logLine("Dauerstrom zeigt nichts — wechsle auf Einzelbilder", "warning");
-        this.einzelbilder();
+        this.startSnapshots();
       }
-    }, PRUEFZEIT_MS);
+    }, CHECK_TIME_MS);
   }
 
-  einzelbilder() {
-    clearTimeout(this.pruefung);
-    this.fehler.hidden = true;
-    this.modus = "einzelbild";
+  startSnapshots() {
+    clearTimeout(this.checkTimer);
+    this.errorBox.hidden = true;
+    this.mode = "einzelbild";
 
-    // Das nächste Bild erst anfordern, wenn das vorige da ist. Ein fester
-    // Takt würde bei langsamer Verbindung Anfragen auftürmen.
-    const naechstes = () => {
-      if (this.modus !== "einzelbild") return;
+    // Request the next image only once the previous one has arrived. A
+    // fixed rate would pile up requests on a slow connection.
+    const next = () => {
+      if (this.mode !== "einzelbild") return;
       this.timer = setTimeout(() => {
-        this.img.src = `${this.basis()}/snapshot?t=${Date.now()}`;
-      }, 1000 / EINZELBILD_FPS);
+        this.img.src = `${this.base()}/snapshot?t=${Date.now()}`;
+      }, 1000 / SNAPSHOT_FPS);
     };
 
-    this.img.onload = naechstes;
+    this.img.onload = next;
     this.img.onerror = () => {
-      this.fehler.hidden = false;
-      naechstes();
+      this.errorBox.hidden = false;
+      next();
     };
-    this.img.src = `${this.basis()}/snapshot?t=${Date.now()}`;
+    this.img.src = `${this.base()}/snapshot?t=${Date.now()}`;
   }
 }
 
 /*
- * Mehrere Kameras: /cameras sagt, welche es gibt. Angezeigt wird
- *   null     die Standardkamera (/camera/stream) -- geht auch mit einem
- *            Server, der /cameras noch nicht kennt,
- *   "alle"   alle Kameras nebeneinander,
- *   <name>   genau diese eine.
- * Die Wahl bleibt im Browser gespeichert.
+ * Several cameras: /cameras says which exist. Displayed is
+ *   null     the default camera (/camera/stream) -- also works with a
+ *            server that does not know /cameras yet,
+ *   "alle"   all cameras side by side,
+ *   <name>   exactly this one.
+ * The choice is stored in the browser.
  */
-const ALLE = "alle";
-let camAnsicht = localStorage.getItem("camAnsicht");
-let camStandard = null;
-let camListe = [];
-let kacheln = [];
-// Ansichten der Tiefenkamera (/tiefe/stream, über dem Farbbild): wie
-// Kameras wählbar, aber nicht bei "alle" -- jede schaltet den Projektor
-// ein, und der zieht viel Strom am USB-Hub.
-let tiefenAnsichten = [];
+const ALL_VIEW = "alle";
+let camView = localStorage.getItem("camAnsicht");
+let camDefault = null;
+let camList = [];
+let tiles = [];
+// Views of the depth camera (/tiefe/stream, above the color image):
+// selectable like cameras, but not with "alle" -- each one switches the
+// projector on, and that draws a lot of current from the USB hub.
+let depthViews = [];
 
-function anzuzeigen() {
-  if (camAnsicht === ALLE) {
-    return camListe.length ? camListe.map((k) => k.name) : [null];
+function camerasToShow() {
+  if (camView === ALL_VIEW) {
+    return camList.length ? camList.map((k) => k.name) : [null];
   }
-  return [camAnsicht];
+  return [camView];
 }
 
-function waehleAnsicht(ansicht) {
-  camAnsicht = ansicht;
-  if (ansicht) localStorage.setItem("camAnsicht", ansicht);
+function selectView(view) {
+  camView = view;
+  if (view) localStorage.setItem("camAnsicht", view);
   else localStorage.removeItem("camAnsicht");
-  zeigeKameras();
+  showCameras();
 }
 
-function kameraTitel(name) {
-  const info = camListe.find((c) => c.name === name)
-    || tiefenAnsichten.find((c) => c.name === name);
+function cameraTitle(name) {
+  const info = camList.find((c) => c.name === name)
+    || depthViews.find((c) => c.name === name);
   return info ? (info.kamera || info.name) : (name || "");
 }
 
-function zeigeKameras() {
-  for (const k of kacheln) k.stop();
-  kacheln = anzuzeigen().map((name) => {
-    const k = new CamKachel();
+function showCameras() {
+  for (const k of tiles) k.stop();
+  tiles = camerasToShow().map((name) => {
+    const k = new CamTile();
     k.start(name);
     return k;
   });
-  ui.camFeld.replaceChildren(...kacheln.map((k) => k.el));
+  ui.camGrid.replaceChildren(...tiles.map((k) => k.el));
 
-  // Mehrere Bilder brauchen Platz: dann über die ganze Breite.
-  const mehrere = kacheln.length > 1;
-  ui.camFeld.classList.toggle("mehrere", mehrere);
-  ui.camPanel.classList.toggle("wide-panel", mehrere);
-  for (const k of kacheln) {
-    k.titel.textContent = kameraTitel(k.name);
-    k.titel.hidden = !mehrere;
+  // Several images need space: then use the full width.
+  const several = tiles.length > 1;
+  ui.camGrid.classList.toggle("mehrere", several);
+  ui.camPanel.classList.toggle("wide-panel", several);
+  for (const k of tiles) {
+    k.label.textContent = cameraTitle(k.name);
+    k.label.hidden = !several;
   }
-  markiereKamera();
-  personenZeichnen();
+  markCamera();
+  drawPersons();
 }
 
-function markiereKamera() {
-  const aktiv = camAnsicht ?? camStandard;
-  for (const b of ui.camWahl.children) {
-    b.classList.toggle("aktiv", b.dataset.name === aktiv);
+function markCamera() {
+  const active = camView ?? camDefault;
+  for (const b of ui.camSelect.children) {
+    b.classList.toggle("aktiv", b.dataset.name === active);
   }
 }
 
-function wahlKnopf(name, text, titel) {
+function selectButton(name, text, title) {
   const b = document.createElement("button");
   b.type = "button";
   b.dataset.name = name;
   b.textContent = text;
-  if (titel) b.title = titel;
-  b.addEventListener("click", () => waehleAnsicht(name));
+  if (title) b.title = title;
+  b.addEventListener("click", () => selectView(name));
   return b;
 }
 
-async function ladeKameras() {
-  let daten;
+async function loadCameras() {
+  let data;
   try {
-    const antwort = await fetch("/cameras", { cache: "no-store" });
-    if (!antwort.ok) return;
-    daten = await antwort.json();
+    const response = await fetch("/cameras", { cache: "no-store" });
+    if (!response.ok) return;
+    data = await response.json();
   } catch {
-    return; // Server nicht erreichbar -- beim nächsten Verbinden erneut
+    return; // server not reachable -- try again on the next connect
   }
-  camListe = daten.kameras || [];
-  camStandard = daten.standard;
-  if (daten.personen) personenKamera = daten.personen;
-  tiefenAnsichten = daten.tiefe || [];
+  camList = data.kameras || [];
+  camDefault = data.standard;
+  if (data.personen) personCamera = data.personen;
+  depthViews = data.tiefe || [];
 
-  // Nach einem Neustart des Roboters kann die gewählte Kamera fehlen.
-  if (camAnsicht && camAnsicht !== ALLE && !camListe.some((k) => k.name === camAnsicht)
-      && !tiefenAnsichten.some((k) => k.name === camAnsicht)) {
-    camAnsicht = null;
+  // After a robot restart the selected camera may be missing.
+  if (camView && camView !== ALL_VIEW && !camList.some((k) => k.name === camView)
+      && !depthViews.some((k) => k.name === camView)) {
+    camView = null;
     localStorage.removeItem("camAnsicht");
   }
 
-  const knoepfe = camListe.map((k) => {
+  const buttons = camList.map((k) => {
     let text = k.kamera || k.name;
-    if (k.name === daten.personen) text += " · Personen";
+    if (k.name === data.personen) text += " · Personen";
     if (!k.geoeffnet) text += " (kein Bild)";
-    return wahlKnopf(k.name, text,
+    return selectButton(k.name, text,
       k.geoeffnet ? (k.geraet || k.name) : (k.letzter_fehler || "nicht geöffnet"));
   });
-  if (camListe.length > 1) {
-    knoepfe.push(wahlKnopf(ALLE, camListe.length === 2 ? "Beide" : "Alle",
+  if (camList.length > 1) {
+    buttons.push(selectButton(ALL_VIEW, camList.length === 2 ? "Beide" : "Alle",
       "Alle Kameras nebeneinander"));
   }
-  for (const t of tiefenAnsichten) {
-    knoepfe.push(wahlKnopf(t.name, t.kamera,
+  for (const t of depthViews) {
+    buttons.push(selectButton(t.name, t.kamera,
       "Was die Tiefenkamera misst: rot nah, blau fern, magenta Hindernis"));
   }
-  ui.camWahl.replaceChildren(...knoepfe);
-  ui.camWahl.hidden = camListe.length + tiefenAnsichten.length < 2;
+  ui.camSelect.replaceChildren(...buttons);
+  ui.camSelect.hidden = camList.length + depthViews.length < 2;
 
-  // Nur neu aufbauen, wenn sich wirklich etwas ändert -- sonst risse
-  // jedes Nachladen alle Ströme kurz ab.
-  const soll = anzuzeigen().join("|");
-  const ist = kacheln.map((k) => k.name).join("|");
-  if (soll !== ist || kacheln.some((k) => k.gestartetMit !== k.basis())) {
-    zeigeKameras();
+  // Only rebuild if something really changes -- otherwise every reload
+  // would briefly tear down all streams.
+  const wanted = camerasToShow().join("|");
+  const current = tiles.map((k) => k.name).join("|");
+  if (wanted !== current || tiles.some((k) => k.startedWith !== k.base())) {
+    showCameras();
     return;
   }
-  for (const k of kacheln) k.titel.textContent = kameraTitel(k.name);
-  markiereKamera();
+  for (const k of tiles) k.label.textContent = cameraTitle(k.name);
+  markCamera();
 }
 
-// Der Stream reißt ab, wenn der Roboter neu startet oder das WLAN kurz
-// weg war. Sobald die Steuerverbindung wieder steht, lohnt ein neuer
-// Versuch -- sonst müsste man die Seite von Hand neu laden.
-// Startet als true, weil der Stream beim Laden der Seite schon angestoßen
-// wird -- sonst liefe er direkt zweimal los.
+// The stream breaks off when the robot restarts or the Wi-Fi was briefly
+// gone. As soon as the control connection is back, a new attempt is
+// worthwhile -- otherwise you would have to reload the page by hand.
+// Starts as true because the stream is already kicked off when the page
+// loads -- otherwise it would start twice right away.
 let camWasConnected = true;
 
 function onConnectionChange(connected) {
   if (connected && !camWasConnected) {
-    for (const k of kacheln) k.start(k.name);
-    ladeKameras();
+    for (const k of tiles) k.start(k.name);
+    loadCameras();
   }
   camWasConnected = connected;
 }
 
-// --- Einstellungen (Modal) ----------------------------------------------------
+// --- Settings (modal) ---------------------------------------------------------
 
 el("btn-einst").addEventListener("click", () => {
-  // Handeingaben loslassen: Tasten, die beim Öffnen gedrückt waren,
-  // bekämen ihr keyup sonst nicht mehr mit, und er führe weiter.
+  // Release manual inputs: keys held down when opening would otherwise
+  // never get their keyup, and the robot would keep driving.
   dir.x = dir.y = dir.rot = 0;
-  ui.einstDialog.showModal();
+  ui.settingsDialog.showModal();
   window.einstellungenLaden?.();
 });
 
-el("einst-schliessen").addEventListener("click", () => ui.einstDialog.close());
+el("einst-schliessen").addEventListener("click", () => ui.settingsDialog.close());
 
-// Klick auf den abgedunkelten Rand schließt -- wie man es gewohnt ist.
-ui.einstDialog.addEventListener("click", (e) => {
-  if (e.target === ui.einstDialog) ui.einstDialog.close();
+// Clicking the dimmed backdrop closes it -- as people are used to.
+ui.settingsDialog.addEventListener("click", (e) => {
+  if (e.target === ui.settingsDialog) ui.settingsDialog.close();
 });
 
-// Nach dem Schließen die Kameraliste auffrischen: Auflösung oder
-// Bildrate können sich geändert haben.
-ui.einstDialog.addEventListener("close", () => ladeKameras());
+// After closing, refresh the camera list: resolution or frame rate may
+// have changed.
+ui.settingsDialog.addEventListener("close", () => loadCameras());
 
 // --- Start ----------------------------------------------------------------
 
-// Steuerverbindung zuerst: sie ist das Wichtigste, und ein Fehler in der
-// Kameraanzeige darf sie nicht verhindern.
+// Control connection first: it is the most important thing, and an error
+// in the camera display must not prevent it.
 applyLimits();
 sendTimer = setInterval(sendDrive, 1000 / SEND_HZ);
 connect();
 
 try {
-  zeigeKameras(); // sofort die gewählte Ansicht, die Liste kommt hinterher
+  showCameras(); // show the selected view right away, the list follows
 } catch (err) {
   logLine(`Kameraanzeige gestört: ${err.message}`, "error");
 }
-ladeKameras();
+loadCameras();
 
-// --- Diagnose-Punkt -------------------------------------------------------
+// --- Diagnostics dot -------------------------------------------------------
 
-// Ein farbiger Punkt am Diagnoseknopf, solange es offene Probleme gibt --
-// so merkt man USB-Ausfälle oder schwachen Akku auch ohne die Seite zu
-// öffnen. Selten abfragen: die Steuerung hat Vorrang.
-async function diagnosePunkt() {
-  const punkt = document.getElementById("diag-punkt");
-  if (!punkt) return;
+// A colored dot on the diagnostics button as long as there are open
+// problems -- so you notice USB failures or a weak battery without opening
+// the page. Poll rarely: driving control has priority.
+async function diagnosticsDot() {
+  const dot = document.getElementById("diag-punkt");
+  if (!dot) return;
   try {
-    const antwort = await fetch("/diagnose/status", { cache: "no-store" });
-    if (!antwort.ok) throw new Error(`HTTP ${antwort.status}`);
-    const st = await antwort.json();
-    const stufe = st.gesamt.stufe;
-    punkt.hidden = stufe === "ok";
-    punkt.classList.toggle("kritisch", stufe === "kritisch");
+    const response = await fetch("/diagnose/status", { cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const st = await response.json();
+    const level = st.gesamt.stufe;
+    dot.hidden = level === "ok";
+    dot.classList.toggle("kritisch", level === "kritisch");
     el("btn-diagnose").title = `Diagnose & Logs: ${st.gesamt.text}`;
   } catch {
-    punkt.hidden = true; // keine Verbindung zeigt schon die Statusanzeige
+    dot.hidden = true; // no connection is already shown by the status display
   }
 }
-diagnosePunkt();
-setInterval(diagnosePunkt, 10000);
+diagnosticsDot();
+setInterval(diagnosticsDot, 10000);
