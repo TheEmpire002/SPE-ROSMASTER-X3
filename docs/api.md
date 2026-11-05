@@ -245,7 +245,7 @@ it only turns.
 | `interaktion` | interaction mode (hand signals, following), see "Interaction in detail". Missing on older servers. |
 | `stimme` | voice output: `verfuegbar` (sound comes out), `spricht` (speaking a sentence right now), `text` (last sentence spoken, or `null`). See "Voice in detail". Missing on older servers. |
 | `sprache` | speech commands: `verfuegbar` (microphone and model ready), `geweckt` (awake: „Robi“ was just said on its own, the next sentence needs no name), `gehoert` (last sentence understood, or `null`), `befehl` (recognized command, for a few seconds, otherwise `null`), `pause` (why the microphone is deliberately closed right now, e.g. „Mapping läuft“; then `verfuegbar` is `false`, otherwise `null`). See "Speech commands in detail". Missing on older servers. |
-| `karte` | Only present when a map exists (new 04.11.): `name` (saved map, `null` for the live map during mapping), `live`, `pose` (pose **in the map frame**, not to be confused with `pose` above in the odometry frame; `null` while unknown), `sicher` (confident; `goto` only works then), `text`, `fahrt` (running or last map-based drive: `art` (kind) `"heim"` (home) / `"ziel"` (goal) / `"zurueck"` (way back, new 05.11.), `ziel` (goal), `rest_m` (remaining distance), `grund` (reason), `wartet` (new 05.11.: „wartet auf Ortung“ while it stands and searches for its pose, otherwise `null`)). New 05.11.: `kartieren` (always-on mapping: `aktiv`, `zustand` `"integriert"` (writing) / `"bestaetigt"` (confirming the pose) / `"eingefroren"` (frozen, the map does not change) / `"pausiert"` (paused) / `"start"` (no map yet, founding one at standstill) / `"aus"` (off), `grund` (German reason); `null` when switched off), `mission` (anchor `[x, y, radians]` or `null`), `spur_m` (trail length in m since the mission start, else in total). See "Using the map" under Mapping. |
+| `karte` | Only present when a map exists (new 04.11.): `name` (saved map, `null` for the live map during mapping), `live`, `pose` (pose **in the map frame**, not to be confused with `pose` above in the odometry frame; `null` while unknown), `sicher` (confident; `goto` only works then), `text`, `fahrt` (running or last map-based drive: `art` (kind) `"heim"` (home) / `"ziel"` (goal) / `"zurueck"` (way back, new 05.11.), `ziel` (goal), `rest_m` (remaining distance), `grund` (reason), `wartet` (new 05.11.: „wartet auf Ortung“ while it stands and searches for its pose, otherwise `null`), `vermutet` (new 05.11.: `true` while it follows a guessed path through the unknown, see "Guessed paths")). New 05.11.: `kartieren` (always-on mapping: `aktiv`, `zustand` `"integriert"` (writing) / `"bestaetigt"` (confirming the pose) / `"eingefroren"` (frozen, the map does not change) / `"pausiert"` (paused) / `"start"` (no map yet, founding one at standstill) / `"aus"` (off), `grund` (German reason); `null` when switched off), `mission` (anchor `[x, y, radians]` or `null`), `spur_m` (trail length in m since the mission start, else in total). See "Using the map" under Mapping. |
 
 **`collision`**: on connect and after every change, fields as in
 `state.collision`.
@@ -1148,7 +1148,22 @@ a lost pose breaks the trail. `mission_start` sets the anchor `mission`;
 `return` drives back along the trail: the planner prefers the cells along
 the strict trail and lets the robot pass there with 0.20 m instead of 0.25 m
 wall clearance (walls always stay walls); if it finds no path at all, it
-drives the trail backwards. If the pose gets unsure on any map drive, it no
+drives the trail backwards. On every goal drive the cells along the trail
+driven with a confident pose count as passable.
+
+**Guessed paths (new 05.11.).** If no path leads through known free space --
+e.g. two areas were mapped but the link between them was never scanned --
+the planner guesses the likely one: unknown cells and narrow spots down to
+`NAV_GUESS_CLEARANCE_M` (0.20 m) become drivable, unknown ones at
+`NAV_GUESS_UNKNOWN_COST` (4×) the price. The robot drives it
+(`fahrt.vermutet: true`, drawn in orange on `/map`) and replans every
+`NAV_GUESS_REPLAN_S` (2 s) without stopping, while the map grows on site: as
+soon as a sure path exists it takes it; if something is in the way it plans
+around it; if not even a guess is left it stops with „kein Weg -- vor Ort ist
+dort kein Durchgang“. Collision avoidance applies as always. Off with
+`NAV_GUESS_PATHS = False`.
+
+If the pose gets unsure on any map drive, it no
 longer gives up after 4 s: it stops (`fahrt.wartet`), searches near the
 trail, turns ±30° after 5 s, and continues after 3 good matches; after
 `NAV_RELOCALIZE_WAIT_S` (20 s) it gives up and asks to be shown with „Hier

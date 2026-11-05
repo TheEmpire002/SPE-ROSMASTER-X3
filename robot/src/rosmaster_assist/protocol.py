@@ -72,7 +72,7 @@ From the robot to the app
                     with a loaded map additionally "karte": {"name":…,
                     "live":…, "pose": {"x","y","winkel"}|null, "sicher":…,
                     "text":…, "fahrt": {"aktiv","art","ziel","rest_m","grund",
-                    "wartet"}, "kartieren": {"aktiv","zustand","grund"}|null,
+                    "wartet","vermutet"}, "kartieren": {"aktiv","zustand","grund"}|null,
                     "mission": [x, y, rad]|null, "spur_m":…};
                     fahrt.art "heim"|"ziel"|"zurueck", fahrt.wartet "wartet auf
                     Ortung"|null; kartieren.zustand "integriert"|"bestaetigt"|

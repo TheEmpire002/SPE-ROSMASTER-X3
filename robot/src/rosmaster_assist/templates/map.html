@@ -222,6 +222,7 @@
             <span><i style="background:#25b879"></i>Roboter</span>
             <span><i style="background:#4fa3ff"></i>gefahrene Spur</span>
             <span><i style="background:#9be15d"></i>geplanter Weg / Ziel</span>
+            <span><i style="background:#f0a020;border-radius:2px"></i>vermuteter Weg</span>
             <span><i style="background:#f0a020"></i>unbekannte Stelle</span>
             <span><i style="background:#c792ea"></i>Ausgangspunkt</span>
             <span><i style="background:#3dd6c6"></i>Rückweg-Spur</span>
@@ -499,7 +500,9 @@
         const mappingDrive = localization.kartierfahrt || {};
         const route = drive.aktiv ? drive.weg : mappingDrive.weg;
         const goal = drive.aktiv ? drive.ziel : mappingDrive.ziel;
-        if (o.pose && route && route.length) drawLine([[o.pose.x, o.pose.y], ...route], '#9be15d', 2.5, [7, 5]);
+        // a guessed path (through the unknown) in orange: it is checked on site
+        const routeColor = drive.aktiv && drive.vermutet ? '#f0a020' : '#9be15d';
+        if (o.pose && route && route.length) drawLine([[o.pose.x, o.pose.y], ...route], routeColor, 2.5, [7, 5]);
         if (goal) {
           drawDot(goal[0], goal[1], '#9be15d', 6);
           drawDot(goal[0], goal[1], '#101720', 2.5);
@@ -548,7 +551,8 @@
           const what = { heim: 'fährt zum Ausgangspunkt', zurueck: 'fährt zurück' }[drive.art] || 'fährt zum Ziel';
           text += ` · ${what}`
             + (drive.rest_m != null ? `, noch ${drive.rest_m.toFixed(1)} m` : '')
-            + (drive.wartet ? ` -- hält an, ${drive.wartet}` : '');
+            + (drive.wartet ? ` -- hält an, ${drive.wartet}` : '')
+            + (drive.vermutet ? ' · Weg nur vermutet (durch Unbekanntes), schaut vor Ort nach' : '');
         } else if (drive.grund) {
           text += ` · letzte Fahrt: ${drive.grund}`;
         }

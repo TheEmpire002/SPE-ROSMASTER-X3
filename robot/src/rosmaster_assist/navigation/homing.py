@@ -83,6 +83,7 @@ class Homing:
         self._corridor = None                     # breadcrumb trail for the planner
         self._fallback: list[tuple[float, float]] = []
         self._waiting: str | None = None
+        self._guessed = False                     # path through unknown, looked at on site
         self._by_map = False
         self._follower = pf.PathFollower()
         self._path: list[tuple[float, float]] = []
@@ -164,6 +165,7 @@ class Homing:
             "rest_m": round(self._follower.rest_m, 2) if active and self._by_map else None,
             "grund": None if active else self._reason,
             "wartet": self._waiting if active else None,
+            "vermutet": self._guessed if active else False,
         }
 
     def cancel(self, reason: str = "abgebrochen") -> None:
@@ -284,10 +286,14 @@ class Homing:
             if path is None:
                 self._shutdown("kein Weg durch die bekannte Karte", warning=True)
                 return
-            log.info("%s by map -- %.1f m path, %d waypoints", name, path.length, len(path.points))
+            log.info("%s by map -- %.1f m path, %d waypoints%s", name, path.length,
+                     len(path.points), " (guessed, looking on site)" if path.guessed else "")
             deadline = time.monotonic() + max(config.NAV_DRIVE_MIN_S,
                                            path.length * config.NAV_DRIVE_S_PER_M)
             self._set_path(path, angle)
+            # a guessed path is replanned while driving: the map grows on site
+            update = None
+            update_time = time.monotonic()
 
             while True:
                 now = time.monotonic()
@@ -335,6 +341,22 @@ class Homing:
                         return
                     self._set_path(path, angle)
                     continue
+
+                if self._guessed:
+                    if update is not None and update.done():
+                        fresh, update = update.result(), None
+                        if fresh is None:
+                            self._shutdown("kein Weg -- vor Ort ist dort kein Durchgang",
+                                           warning=True)
+                            return
+                        if not fresh.guessed:
+                            log.info("%s: the map now shows a sure path (%.1f m)", name,
+                                     fresh.length)
+                        self._set_path(fresh, angle)
+                        deadline = max(deadline, now + fresh.length * config.NAV_DRIVE_S_PER_M)
+                    elif update is None and now - update_time >= config.NAV_GUESS_REPLAN_S:
+                        update_time = now
+                        update = self._plan_future(target)
 
                 self._memory.advance(tick)
                 scan = self._localizer.scan() if self._localizer is not None else None
@@ -434,24 +456,30 @@ class Homing:
 
     def _shutdown(self, reason: str, warning: bool = False) -> None:
         self._waiting = None
+        self._guessed = False
         self._watchdog.stop()
         self._reason = reason
         (log.warning if warning else log.info)("%s finished -- %s", self.label, reason)
 
     def _set_path(self, path, angle: float | None) -> None:
         self._path = list(path.points)
+        self._guessed = bool(getattr(path, "guessed", False))
         self._follower.apply(path.points, from_=self._localization.pose(), goal_angle=angle)
 
     async def _plan(self, target):
+        future = self._plan_future(target)
+        return None if future is None else await asyncio.wrap_future(future)
+
+    def _plan_future(self, target):
+        """Start planning in the background; None without pose or map."""
         pose = self._localization.pose()
         occ_map = self._localization.occ_map
         if pose is None or occ_map is None:
             return None
         now = time.monotonic()
         self._blocks = [s for s in self._blocks if s[2] > now]
-        future = self._planner.path(occ_map, (pose[0], pose[1]), target,
-                                   [(s[0], s[1]) for s in self._blocks], self._corridor)
-        return await asyncio.wrap_future(future)
+        return self._planner.path(occ_map, (pose[0], pose[1]), target,
+                                  [(s[0], s[1]) for s in self._blocks], self._corridor)
 
     def _set_block(self, pose, points) -> None:
         """Enter the spot blocking the path as a wall for a while.

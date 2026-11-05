@@ -568,6 +568,13 @@ BREADCRUMB_FILL_GAP_M = 0.5
 # crumbs sent to the /map page and kept in the saved map
 BREADCRUMB_DISPLAY_MAX = 600
 BREADCRUMB_SAVE_MAX = 2000
+# no sure path to the goal: plan the likely one through the unknown and
+# narrow spots, drive it and look on site (replanning every NAV_GUESS_REPLAN_S
+# while the map grows there); unknown cells cost this many times as much
+NAV_GUESS_PATHS = True
+NAV_GUESS_UNKNOWN_COST = 4.0
+NAV_GUESS_CLEARANCE_M = 0.20
+NAV_GUESS_REPLAN_S = 2.0
 # map drives that lose the pose stop, relocalize and continue
 NAV_RELOCALIZE_WAIT_S = 20.0
 NAV_RELOCALIZE_TURN = True

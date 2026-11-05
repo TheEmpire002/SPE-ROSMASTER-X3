@@ -231,7 +231,9 @@ class MapControl:
         if occ_map.nearest_free(x, y, config.NAV_GOAL_KNOWN_M) is None:
             return "Ziel liegt außerhalb der bekannten Karte"
         self._cancel_others("neues Ziel")
-        if not self._homing.start(target=(x, y), angle=angle):
+        # where it drove with a confident pose, it fits through
+        if not self._homing.start(target=(x, y), angle=angle,
+                                  corridor=self.crumbs.corridor(strict=False)):
             return self._homing.last_reason or "Fahrt zum Ziel ließ sich nicht starten"
         self._report("info", f"Fahrt zum Ziel ({x:.2f}, {y:.2f}) gestartet")
         return None
@@ -325,7 +327,7 @@ class MapControl:
             since = None
         self._cancel_others("Rückfahrt")
         if not self._homing.start(target=(anchor[0], anchor[1]), angle=anchor[2], kind="zurueck",
-                                  corridor=self.crumbs.corridor(since),
+                                  corridor=self.crumbs.corridor(since, strict=False),
                                   fallback_points=self.crumbs.reversed_path(since)):
             return self._homing.last_reason or "Rückfahrt ließ sich nicht starten"
         where = "zum Missionsstart" if goal == "mission" else "zum Ausgangspunkt"
@@ -511,7 +513,8 @@ class MapControl:
             "pose": o["pose"],
             "sicher": o["sicher"],
             "text": o["text"],
-            "fahrt": {k: f[k] for k in ("aktiv", "art", "ziel", "rest_m", "grund", "wartet")},
+            "fahrt": {k: f[k] for k in ("aktiv", "art", "ziel", "rest_m", "grund", "wartet",
+                                        "vermutet")},
             "kartieren": self._live_brief(),
             "mission": [round(v, 3) for v in mission] if mission else None,
             "spur_m": round(self.crumbs.length_m("mission" if mission else None), 1),

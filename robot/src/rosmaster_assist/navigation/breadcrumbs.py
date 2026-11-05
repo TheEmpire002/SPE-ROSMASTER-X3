@@ -111,10 +111,11 @@ class Breadcrumbs:
         first = a["seit"] if a else -1
         return [c for c in self._crumbs if c[4] >= first]
 
-    def corridor(self, since: str | None = None) -> np.ndarray:
-        """Strict crumbs since the anchor, filled in between neighbours (Nx2)."""
+    def corridor(self, since: str | None = None, strict: bool = True) -> np.ndarray:
+        """Crumbs since the anchor (only strict ones by default), filled in between
+        neighbours (Nx2)."""
         with self._lock:
-            crumbs = [c for c in self._since(since) if c[2]]
+            crumbs = [c for c in self._since(since) if c[2] or not strict]
         if not crumbs:
             return np.zeros((0, 2))
         step = config.NAV_PLAN_RESOLUTION_M / 2   # no planning cell is skipped

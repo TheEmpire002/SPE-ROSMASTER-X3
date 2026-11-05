@@ -13,7 +13,9 @@ Cases:
   broken json gives an empty trail;
 * planning: a gap too narrow for the normal wall clearance is passable along
   the trail -- but never through a wall;
-* homing's fallback starts at the crumb nearest to the robot.
+* homing's fallback starts at the crumb nearest to the robot;
+* two mapped areas without a known link: a guessed path through the unknown,
+  a known link is a sure path.
 """
 
 import math
@@ -152,10 +154,12 @@ occupancy[28:37, 50] = 0                             # ... with a 0.45 m gap
 occ_map = OccupancyMap(occupancy, res, (0.0, 0.0))
 start, goal = (1.0, 1.5), (4.0, 1.5)
 gap_y = 32.5 * res
-check("without the trail the gap is too narrow", pp.plan_path(occ_map, start, goal) is None)
+narrow = pp.plan_path(occ_map, start, goal)
+check("without the trail the gap is too narrow for a sure path -- only a guessed one",
+      narrow is not None and narrow.guessed)
 trail = [(x, gap_y) for x in np.arange(1.0, 4.01, 0.05)]
 along = pp.plan_path(occ_map, start, goal, corridor=trail)
-check("along the trail the robot passes the gap", along is not None)
+check("along the trail the robot passes the gap, sure", along is not None and not along.guessed)
 if along is not None:
     near_gap = [p for p in along.points if abs(p[0] - 2.5) < 0.15]
     check("... through the gap, not elsewhere",
@@ -163,8 +167,29 @@ if along is not None:
 
 walled = occupancy.copy()
 walled[28:37, 50] = 100                              # gap closed
-check("a trail never leads through a wall",
+check("a trail never leads through a wall, nor does a guess",
       pp.plan_path(OccupancyMap(walled, res, (0.0, 0.0)), start, goal, corridor=trail) is None)
+
+# --- two mapped areas, the unknown in between ------------------------------------------------
+
+two = np.full((60, 140), -1, dtype=np.int8)          # 7 m x 3 m, all unknown
+two[10:50, 5:45] = 0                                 # room A mapped
+two[10:50, 95:135] = 0                               # room B mapped
+two[9, 5:45] = two[50, 5:45] = 100                   # their long walls
+two[9, 95:135] = two[50, 95:135] = 100
+areas = OccupancyMap(two, res, (0.0, 0.0))
+a, b = (1.0, 1.5), (5.7, 1.5)
+config.NAV_GUESS_PATHS = False
+check("two areas without a known link: no sure path", pp.plan_path(areas, a, b) is None)
+config.NAV_GUESS_PATHS = True
+guess = pp.plan_path(areas, a, b)
+check("... but the likely path through the unknown is guessed", guess is not None and guess.guessed)
+if guess is not None:
+    check("... straight across, not around", guess.length < 5.5, f"{guess.length:.2f} m")
+sure = two.copy()
+sure[25:35, 45:95] = 0                               # a known corridor between them
+detour = pp.plan_path(OccupancyMap(sure, res, (0.0, 0.0)), a, b)
+check("a known link is taken as a sure path", detour is not None and not detour.guessed)
 
 # --- homing's fallback ----------------------------------------------------------------------
 

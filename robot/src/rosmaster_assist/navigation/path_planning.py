@@ -8,10 +8,15 @@ Unknown is never drivable: what the map does not know could be a wall.
 Proximity to walls costs extra (up to ``NAV_PREFERRED_DISTANCE_M``), so
 paths lead through the middle of doors.
 
-With a breadcrumb trail (``corridor``, the way back): the cells along it
-cost only ``BREADCRUMB_COST_FACTOR`` and are drivable from
-``BREADCRUMB_MIN_CLEARANCE_M`` on -- the robot was physically there.
-Occupied stays blocked in any case.
+With a breadcrumb trail (``corridor``): the cells along it cost only
+``BREADCRUMB_COST_FACTOR`` and are drivable from ``BREADCRUMB_MIN_CLEARANCE_M``
+on -- the robot was physically there. Occupied stays blocked in any case.
+
+If no path leads through known free space, ``plan_path`` guesses
+(``NAV_GUESS_PATHS``): unknown cells and spots down to
+``NAV_GUESS_CLEARANCE_M`` from a wall become drivable, unknown ones at
+``NAV_GUESS_UNKNOWN_COST`` times the price. The result is marked
+``guessed`` -- the robot drives it and looks on site whether it is free.
 
 Frontiers are free spots that border on the unknown: open doors,
 corridors, shadows behind furniture. When the mapping drive heads for the
@@ -45,12 +50,13 @@ class PlannedPath(NamedTuple):
     length: float                       # metres
     target: tuple[float, float]           # actual goal (possibly shifted)
     gap: tuple[float, float] | None = None  # centre of the frontier being approached
+    guessed: bool = False               # leads through unknown or narrow spots
 
 
 class Grid:
     """Planning grid built from a map, with drivable cells and costs."""
 
-    def __init__(self, occ_map, blocked=(), corridor=None) -> None:
+    def __init__(self, occ_map, blocked=(), corridor=None, guess: bool = False) -> None:
         f = max(1, int(round(config.NAV_PLAN_RESOLUTION_M / occ_map.resolution)))
         self.resolution = occ_map.resolution * f
         self.origin = occ_map.origin
@@ -82,6 +88,13 @@ class Grid:
         span = max(config.NAV_PREFERRED_DISTANCE_M - config.NAV_SAFETY_M, 1e-3)
         proximity = np.clip((config.NAV_PREFERRED_DISTANCE_M - distance) / span, 0.0, 1.0)
         self.cost = 1.0 + config.NAV_WALL_COST * proximity
+        if guess:
+            # what the map does not know may well be free: allowed, but dear
+            maybe = (self.free | self.unknown) & ~self.occupied & (
+                distance >= config.NAV_GUESS_CLEARANCE_M)
+            self.drivable |= maybe
+            self.cost = np.where(self.unknown, self.cost * config.NAV_GUESS_UNKNOWN_COST,
+                                 self.cost)
         if corridor is not None and len(corridor):
             trail = self._along(np.asarray(corridor, dtype=float).reshape(-1, 2))
             self.drivable |= (trail & self.free & ~self.occupied
@@ -280,8 +293,16 @@ def _path_from(grid: Grid, start_xy, cells, end=None) -> PlannedPath:
 
 
 def plan_path(occ_map, start_xy, goal_xy, blocked=(), corridor=None) -> PlannedPath | None:
-    """Path from the robot to the goal; None if none leads through known territory."""
-    grid = Grid(occ_map, blocked, corridor)
+    """Path from the robot to the goal: a sure one, else a guessed one; None if neither."""
+    path = _plan(Grid(occ_map, blocked, corridor), start_xy, goal_xy)
+    if path is None and config.NAV_GUESS_PATHS:
+        path = _plan(Grid(occ_map, blocked, corridor, guess=True), start_xy, goal_xy)
+        if path is not None:
+            path = path._replace(guessed=True)
+    return path
+
+
+def _plan(grid: Grid, start_xy, goal_xy) -> PlannedPath | None:
     start = grid.nearest_drivable(*grid.cell(*start_xy), config.NAV_GOAL_SNAP_M)
     target = grid.nearest_drivable(*grid.cell(*goal_xy), config.NAV_GOAL_SNAP_M)
     if start is None or target is None:
