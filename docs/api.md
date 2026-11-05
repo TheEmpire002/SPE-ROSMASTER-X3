@@ -1146,6 +1146,7 @@ disconnects. The verdict lists hits per wheel condition, e.g.
 | `POST /tests/notiz` | `{"name": "<run>", "text": "…"}`: note on a run (what stood out); counts as a change, so the run is uploaded again |
 | `GET /tests/zip?name=<run>` | the run folder as a ZIP |
 | `POST /tests/hochladen` | `{"namen": [...]}` (optional, without = all new ones) uploads runs to GitHub; `{ok, hochgeladen[], commit, fehler}` |
+| `POST /tests/loeschen` | `{"namen": [...]}` or `{"alle": true}` deletes runs on the robot (copies on the `testdaten` branch stay); refused while a test runs or an upload is in progress; `{ok, geloescht[], fehler}`, 400 if nothing was deleted |
 
 **Storage.** Each run is a folder `~/.rosmaster/tests/<date>_<time>_<test>/`
 on the Pi (`TESTS_FOLDER`) with `ergebnis.json` (readings, summary per phase,

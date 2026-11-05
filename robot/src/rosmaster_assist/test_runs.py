@@ -47,6 +47,7 @@ import math
 import os
 import queue
 import re
+import shutil
 import socket
 import statistics
 import subprocess
@@ -592,6 +593,46 @@ class TestRuns:
         (d / _UPLOADED_FILE).unlink(missing_ok=True)
         self._auto_upload()
         return None
+
+    def delete(self, names: list[str] | None) -> dict:
+        """Delete stored runs on the robot (blocking, call in a thread).
+
+        ``names`` None = all runs. Copies already on the testdaten branch
+        stay there. Result: ``{"ok": bool, "geloescht": [...], "fehler": str|None}``.
+        """
+        if self.active:
+            # the running test still writes into its folder
+            return {"ok": False, "geloescht": [], "fehler": "Erst den laufenden Test beenden."}
+        if names is None:
+            folders = ([d for d in self.folder.iterdir() if d.is_dir() and _NAME.match(d.name)]
+                       if self.folder.is_dir() else [])
+        else:
+            folders = [self._folder_of(n) for n in names]
+            if any(f is None for f in folders):
+                return {"ok": False, "geloescht": [], "fehler": "unbekannter Lauf in der Liste"}
+        # git reads the folders while uploading
+        if not self._upload_lock.acquire(blocking=False):
+            return {"ok": False, "geloescht": [], "fehler": "es wird gerade hochgeladen, gleich nochmal versuchen"}
+        try:
+            done, failed = [], []
+            for f in folders:
+                try:
+                    shutil.rmtree(f)
+                    done.append(f.name)
+                except OSError as e:
+                    log.warning("Deleting test run %s failed: %s", f.name, e)
+                    failed.append(f.name)
+        finally:
+            self._upload_lock.release()
+        if self._last in done:
+            self._last = None
+        if not self._pending_names():
+            # nothing left to retry, an old upload error would only confuse
+            self._upload_error = None
+        if done:
+            log.info("Deleted %d test runs", len(done))
+        error = f"nicht gelöscht: {', '.join(failed)}" if failed else None
+        return {"ok": not failed, "geloescht": sorted(done), "fehler": error}
 
     def save_health_record(self, record: dict) -> str:
         """Store a healthbot record as its own run (typ "health"); returns the folder name."""

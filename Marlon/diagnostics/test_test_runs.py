@@ -10,6 +10,8 @@ Checked with dummies for pose, camera, lidar and microphone:
   commands meanwhile
 * note, zip, list, guard against foreign paths (../)
 * health records are stored as their own runs (typ "health")
+* delete: single runs, all runs, unknown names refused, refused while a
+  test runs or an upload holds the lock
 * upload without a token: clear message, nothing happens
 * upload into a local bare repo (file://): first commit without parent,
   later ones with; index.json and README.md in the branch; HEAD and index
@@ -26,6 +28,7 @@ import queue
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import wave
 import zipfile
@@ -377,6 +380,38 @@ try:
           and wd.log[-1] == ("stop",), wd.log[n - 2:])
 finally:
     motor_test["phasen"] = full_phases
+
+# --- delete ------------------------------------------------------------------------
+dele = tl.TestRuns(mock=True, folder=tmp / "del")
+d1 = dele.save_health_record({"outcome": "ok"})
+d2 = dele.save_health_record({"outcome": "ok"})
+d3 = dele.save_health_record({"outcome": "ok"})
+dele._last = d1
+r = dele.delete(["../x"])
+check("delete: unknown run refused", not r["ok"] and r["geloescht"] == [], r)
+check("delete: nothing removed after a refusal", len(dele.list_runs()) == 3, len(dele.list_runs()))
+r = dele.delete([d1])
+check("delete: single run removed", r["ok"] and r["geloescht"] == [d1]
+      and {e["name"] for e in dele.list_runs()} == {d2, d3}, r)
+check("delete: last run reference cleared", dele._last is None)
+dele._upload_lock.acquire()
+try:
+    r = dele.delete(None)
+    check("delete: refused while uploading", not r["ok"] and len(dele.list_runs()) == 2, r)
+finally:
+    dele._upload_lock.release()
+busy = threading.Event()
+dele._thread = threading.Thread(target=busy.wait, daemon=True)
+dele._thread.start()
+r = dele.delete(None)
+check("delete: refused while a test runs", not r["ok"] and len(dele.list_runs()) == 2, r)
+busy.set()
+dele._thread.join()
+r = dele.delete(None)
+check("delete: all runs removed", r["ok"] and sorted(r["geloescht"]) == sorted([d2, d3])
+      and dele.list_runs() == [], r)
+check("delete: empty folder is fine", dele.delete(None)["ok"])
+dele.shutdown()
 
 # --- upload without a token ------------------------------------------------------
 config.TESTS_GIT_TOKEN_FILE = str(tmp / "no_token")

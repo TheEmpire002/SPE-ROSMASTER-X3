@@ -29,6 +29,8 @@ const ui = {
   uploadNew: el("ts-upload-new"),
   uploadText: el("ts-upload-text"),
   uploadStatus: el("ts-upload-status"),
+  deleteSelected: el("ts-delete-selected"),
+  deleteAll: el("ts-delete-all"),
   token: el("ts-token"),
   tokenState: el("ts-token-state"),
 };
@@ -346,7 +348,10 @@ function renderRun(run) {
   const zip = node("a", "btn", `ZIP ${size(run.bytes)}`.trim());
   zip.href = `/tests/zip?name=${encodeURIComponent(run.name)}`;
   zip.setAttribute("download", `${run.name}.zip`);
-  row.append(note, save, zip);
+  const remove = node("button", "btn", "Löschen");
+  remove.type = "button";
+  remove.addEventListener("click", () => deleteRuns([run.name]));
+  row.append(note, save, zip, remove);
   card.append(row);
   return card;
 }
@@ -362,6 +367,7 @@ async function loadList() {
     for (const k of ui.runs.querySelectorAll(".ts-pick")) k.checked = picked.has(k.value);
     ui.none.hidden = laeufe.length > 0;
     ui.uploadNew.disabled = uploading || !laeufe.some((l) => !l.hochgeladen);
+    ui.deleteAll.disabled = ui.deleteSelected.disabled = laeufe.length === 0;
   } catch (e) {
     ui.uploadText.textContent = `Liste nicht abrufbar: ${e.message}`;
   }
@@ -403,6 +409,39 @@ ui.uploadSelected.addEventListener("click", () => {
     return;
   }
   upload(names);
+});
+// names null = all runs; deleting only affects the robot, not the testdaten branch
+async function deleteRuns(names) {
+  const what = names ? (names.length === 1 ? "diesen Lauf" : `${names.length} Läufe`) : "ALLE gespeicherten Läufe";
+  if (!confirm(`${what} auf dem Roboter löschen?
+
+Das lässt sich nicht rückgängig machen. `
+    + "Bereits hochgeladene Läufe bleiben auf dem Branch testdaten erhalten.")) return;
+  ui.uploadText.className = "hb-note";
+  ui.uploadText.textContent = "Lösche …";
+  try {
+    const r = await post("/tests/loeschen", names ? { namen: names } : { alle: true });
+    ui.uploadText.className = r.ok ? "hb-note ts-ok" : "hb-note ts-error";
+    ui.uploadText.textContent = r.ok
+      ? `Gelöscht: ${r.geloescht.length} Lauf/Läufe.`
+      : `Löschen unvollständig: ${r.fehler}`;
+  } catch (e) {
+    ui.uploadText.className = "hb-note ts-error";
+    ui.uploadText.textContent = `Löschen fehlgeschlagen: ${e.message}`;
+  } finally {
+    loadList();
+  }
+}
+
+ui.deleteAll.addEventListener("click", () => deleteRuns(null));
+ui.deleteSelected.addEventListener("click", () => {
+  const names = [...ui.runs.querySelectorAll(".ts-pick:checked")].map((k) => k.value);
+  if (!names.length) {
+    ui.uploadText.className = "hb-note ts-warn";
+    ui.uploadText.textContent = "Erst Läufe anhaken.";
+    return;
+  }
+  deleteRuns(names);
 });
 ui.token.addEventListener("toggle", () => { ui.token.dataset.touched = "1"; });
 

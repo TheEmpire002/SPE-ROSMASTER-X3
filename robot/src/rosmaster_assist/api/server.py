@@ -630,6 +630,20 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         # git push takes seconds, not in the event loop
         return JSONResponse(await asyncio.to_thread(test_runs.upload, names))
 
+    @app.post("/tests/loeschen")
+    async def tests_delete(request: Request) -> JSONResponse:
+        body = await _json_body(request)
+        if isinstance(body, JSONResponse):
+            return body
+        names = body.get("namen")
+        # deleting everything needs an explicit flag, an empty body must not wipe the folder
+        if body.get("alle") is True and names is None:
+            names = None
+        elif not isinstance(names, list) or not names or not all(isinstance(n, str) for n in names):
+            return JSONResponse({"fehler": "namen (Liste von Namen) oder alle: true angeben"}, status_code=400)
+        result = await asyncio.to_thread(test_runs.delete, names)
+        return JSONResponse(result, status_code=200 if result["ok"] or result["geloescht"] else 400)
+
     # --- Camera ---
     #
     # MJPEG: a never-ending HTTP response of concatenated images. The

@@ -824,6 +824,14 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Problems:** None beyond the known flaky smoke-test check.
 - **Open:** Run on the robot on its stand, then evaluate the results on the `testdaten` branch.
 
+### 05.11.2026 – Delete stored test runs from the web page (with Claude)
+- **What:** Stored test runs can now be deleted from the tests web page: a per-run "Löschen" button, "Ausgewählte löschen" and "Alle löschen" with a confirmation. Backend: `TestRuns.delete()` in `robot/src/rosmaster_assist/test_runs.py` and a new endpoint `POST /tests/loeschen` (`{"namen": [...]}` or `{"alle": true}`; an empty body is rejected so nothing gets wiped by accident).
+- **Why:** Old test runs from development piled up in `~/.rosmaster/tests` on the robot; the user wants to clear them without SSH.
+- **Changes:** Deletion is local on the robot only, copies already uploaded to the `testdaten` branch stay. Refused while a test is running or an upload holds the lock.
+- **Result:** 8 new checks in `Marlon/diagnostics/test_test_runs.py` pass; mock smoke test 18/19 (only the known flaky homing check "position is tracked" fails), the three `/tests/loeschen` cases (empty body, unknown name, `alle`) answer as expected.
+- **Problems:** None.
+- **Open:** Not yet deployed to the robot (robot paused).
+
 ---
 
 ## 3. Results and measurements
