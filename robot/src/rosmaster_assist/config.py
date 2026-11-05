@@ -323,6 +323,8 @@ NAV_LOCALIZATION_HZ = 4.0
 # field ends at NAV_DISTANCE_MAX_M.
 NAV_HIT_M = 0.15
 NAV_DISTANCE_MAX_M = 1.0
+# corridor check: scan points this close (m) count as the same wall piece
+NAV_NORMAL_REACH_M = 0.3
 # Minimum share of points hit for a match to count. Furniture that was moved
 # and people hit nothing -- hence not 100 %.
 NAV_MIN_SHARE = 0.45
@@ -502,11 +504,18 @@ LIVE_GATE_WINDOW_DEG = 2.5
 # ... plus this much per metre driven inside the window (odometry drift)
 LIVE_GATE_DRIFT_M_PER_M = 0.10
 LIVE_GATE_DRIFT_DEG_PER_M = 4.0
+# ... and per radian turned (it drifts most while turning on the spot)
+LIVE_GATE_DRIFT_DEG_PER_RAD = 4.0
 # after the lidar was gone (usb dropout) nothing is written for this long (s)
 LIVE_GATE_RECONNECT_HOLD_S = 5.0
-# a1 scans are distorted while turning (0.18 s per revolution)
-LIVE_GATE_MAX_OMEGA = 0.35
+# a1 scans are distorted while turning (0.18 s per revolution: at 0.15 rad/s
+# the robot turns 1.5° within one scan); faster turns are only skipped
+LIVE_GATE_MAX_OMEGA = 0.15
 LIVE_GATE_MAX_SPEED = 0.35
+# carried: the lidar odometry moves faster than this (m/s) and the wheels
+# less than this share of it
+LIVE_GATE_CARRY_MIN_SPEED = 0.08
+LIVE_GATE_CARRY_WHEEL_SHARE = 0.25
 # lidar odometry healthy: this many good icp matches in a row
 LIVE_GATE_ODO_GOOD_N = 3
 LIVE_GATE_MAX_AGE_S = 0.4

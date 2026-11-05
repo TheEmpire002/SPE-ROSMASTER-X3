@@ -306,7 +306,7 @@ class LiveMapper:
         if track is None or self.gate.state == ig.OFF:
             return False
         now = time.monotonic() if now is None else now
-        omega, speed = self._motion(track)
+        omega, speed, wheel_speed = self._motion(track)
         lifted = self._lifted(track)
         a = track.match
         inp = ig.GateInputs(
@@ -322,6 +322,7 @@ class LiveMapper:
             turn_deg=math.degrees(track.turn_rad),
             omega=omega,
             speed=speed,
+            wheel_speed=wheel_speed,
             odo_good=track.odo_good,
             odo_streak=track.odo_streak,
             gap=track.gap,
@@ -358,17 +359,22 @@ class LiveMapper:
         return (math.hypot(pose[0] - last[0], pose[1] - last[1]) >= config.LIVE_MAP_MIN_MOVE_M
                 or abs(math.degrees(_normalize(pose[2] - last[2]))) >= config.LIVE_MAP_MIN_MOVE_DEG)
 
-    def _motion(self, track) -> tuple[float, float]:
-        """Turn rate and speed from the lidar odometry between two steps."""
+    def _motion(self, track) -> tuple[float, float, float | None]:
+        """Turn rate and speed from the lidar odometry, speed of the wheels (None: unknown)."""
         prev = self._prev_track
         self._prev_track = track
         if prev is None or prev.timestamp is None or track.timestamp is None:
-            return 0.0, 0.0
+            return 0.0, 0.0, None
         dt = track.timestamp - prev.timestamp
         if dt <= 1e-3:
-            return 0.0, 0.0
+            return 0.0, 0.0, None
         rel = _relative(prev.odo_pose, track.odo_pose)
-        return rel[2] / dt, math.hypot(rel[0], rel[1]) / dt
+        wheel_speed = None
+        if self._wheel_pose_at is not None:
+            w0, w1 = self._wheel_pose_at(prev.timestamp), self._wheel_pose_at(track.timestamp)
+            if w0 is not None and w1 is not None:
+                wheel_speed = math.hypot(w1[0] - w0[0], w1[1] - w0[1]) / dt
+        return rel[2] / dt, math.hypot(rel[0], rel[1]) / dt, wheel_speed
 
     def _lifted(self, track) -> bool:
         """Lift detection with wheel travel and lidar rotation.

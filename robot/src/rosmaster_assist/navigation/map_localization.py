@@ -190,30 +190,44 @@ def constraint(occ_map, points, pose) -> float:
     the normals point every way, in a long corridor all of them point across
     it -- sliding along the corridor then changes nothing in the match, and
     the result there is a guess
+
+    the wall directions come from the scan itself (a line through each point
+    and its neighbours), not from the map: in a growing map walls end where
+    the lidar's reach ended, and the distance field bends around those ends
+    as if there were cross walls. Only points on known walls count.
     """
+    pts = np.asarray(points, dtype=float).reshape(-1, 2)
+    if len(pts) < _MIN_POINTS:
+        return 0.0
     c, s = math.cos(pose[2]), math.sin(pose[2])
-    qx = c * points[:, 0] - s * points[:, 1] + pose[0]
-    qy = s * points[:, 0] + c * points[:, 1] + pose[1]
-    d, _, inside = occ_map.sample(qx, qy, with_gradient=False)
+    qx = c * pts[:, 0] - s * pts[:, 1] + pose[0]
+    qy = s * pts[:, 0] + c * pts[:, 1] + pose[1]
     # near an occupied cell is on a known wall, whatever its own cell says
     # (as in score: growing maps have walls one cell thin)
-    on_wall = inside & (d < config.NAV_HIT_M)
-    # on the wall the distance field has its minimum and no gradient; a step
-    # back along the ray lands in front of the wall, where it is the normal
-    r = np.maximum(np.hypot(points[:, 0], points[:, 1]), 1e-6)
-    back = 2 * occ_map.resolution
-    bx = qx - back * (qx - pose[0]) / r
-    by = qy - back * (qy - pose[1]) / r
-    db, (gx, gy), inside_b = occ_map.sample(bx, by)
-    usable = on_wall & inside_b & (db > 0.5 * occ_map.resolution)
+    on_wall = occ_map.distance_at(qx, qy) < config.NAV_HIT_M
+    order = np.argsort(np.arctan2(pts[:, 1], pts[:, 0]))
+    p, on_wall = pts[order], on_wall[order]
+    # neighbours by angle, only those close enough to be the same wall
+    near = [np.roll(p, k, axis=0) for k in (-2, -1, 0, 1, 2)]
+    close = np.stack([np.hypot(*(q - p).T) <= config.NAV_NORMAL_REACH_M for q in near])
+    count = close.sum(axis=0)
+    stack = np.stack(near)                                  # 5 x n x 2
+    w = close[..., None]
+    mean = (stack * w).sum(axis=0) / np.maximum(count, 1)[:, None]
+    dev = (stack - mean) * w
+    sxx = (dev[..., 0] ** 2).sum(axis=0)
+    syy = (dev[..., 1] ** 2).sum(axis=0)
+    sxy = (dev[..., 0] * dev[..., 1]).sum(axis=0)
+    # smallest and largest spread: a wall is a thin line, a corner is not
+    spread = np.sqrt(((sxx - syy) / 2) ** 2 + sxy ** 2)
+    small, large = (sxx + syy) / 2 - spread, (sxx + syy) / 2 + spread
+    line = (count >= 4) & (large > 1e-6) & (small <= 0.05 * large)
+    usable = on_wall & line
     if int(usable.sum()) < _MIN_POINTS:
         return 0.0
-    gx, gy = gx[usable], gy[usable]
-    norm = np.hypot(gx, gy)
-    ok = norm > 1e-6
-    if int(ok.sum()) < _MIN_POINTS:
-        return 0.0
-    gx, gy = gx[ok] / norm[ok], gy[ok] / norm[ok]
+    # normal = across the line
+    along = 0.5 * np.arctan2(2 * sxy[usable], (sxx - syy)[usable])
+    gx, gy = -np.sin(along), np.cos(along)
     h = np.array([[np.sum(gx * gx), np.sum(gx * gy)], [np.sum(gx * gy), np.sum(gy * gy)]])
     trace = float(np.trace(h))
     if trace <= 0.0:

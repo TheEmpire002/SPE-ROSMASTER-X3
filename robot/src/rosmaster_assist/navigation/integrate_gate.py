@@ -69,6 +69,7 @@ class GateInputs:
     gap: bool = False
     age_s: float | None = None
     lifted: bool = False
+    wheel_speed: float | None = None  # m/s, None: wheels not measured
     map_gen: int = 0
     match_pose: tuple | None = None
     odo_pose: tuple | None = None
@@ -89,6 +90,13 @@ def check(inp: GateInputs) -> list[tuple[str, str]]:
         issues.append((HARD, "Lidar war kurz weg"))
     if inp.lifted:
         issues.append((HARD, "hochgehoben oder verschoben"))
+    elif (inp.wheel_speed is not None and inp.speed > config.LIVE_GATE_CARRY_MIN_SPEED
+          and inp.wheel_speed < config.LIVE_GATE_CARRY_WHEEL_SHARE * inp.speed
+          and abs(inp.omega) <= config.LIVE_GATE_MAX_OMEGA):
+        # the room moves, the wheels do not: carried or pushed -- earlier
+        # than the lift detection, which needs several scans in a row. Not
+        # while turning: then the lidar odometry shows a little false travel
+        issues.append((HARD, "bewegt sich ohne die Räder (getragen?)"))
     if not inp.odo_good or inp.odo_streak < config.LIVE_GATE_ODO_GOOD_N:
         # soft: the scan is written at the map match, not at the odometry
         # pose -- but a shaky odometry makes the prediction shaky
@@ -282,7 +290,8 @@ class IntegrateGate:
         """Does this match agree with the earlier ones, given the odometry in between?
 
         The oldest match of the window plus the odometry since then predicts
-        where this one should be; drift is allowed per metre driven. A wrong
+        where this one should be; drift is allowed per metre driven and per
+        radian turned. A wrong
         match (a similar spot in the next room) agrees with nothing.
         """
         if inp.match_pose is None or inp.odo_pose is None or not self._window:
@@ -296,7 +305,9 @@ class IntegrateGate:
         err = math.hypot(inp.match_pose[0] - expected[0], inp.match_pose[1] - expected[1])
         err_deg = abs(math.degrees(_normalize(inp.match_pose[2] - expected[2])))
         allowed = config.LIVE_GATE_WINDOW_M + config.LIVE_GATE_DRIFT_M_PER_M * travel
-        allowed_deg = config.LIVE_GATE_WINDOW_DEG + config.LIVE_GATE_DRIFT_DEG_PER_M * travel
+        # the lidar odometry drifts most while turning on the spot
+        allowed_deg = (config.LIVE_GATE_WINDOW_DEG + config.LIVE_GATE_DRIFT_DEG_PER_M * travel
+                       + config.LIVE_GATE_DRIFT_DEG_PER_RAD * abs(rel[2]))
         if err > allowed or err_deg > allowed_deg:
             return f"Abgleich widerspricht der Odometrie ({100 * err:.0f} cm, {err_deg:.0f}°)"
         return None

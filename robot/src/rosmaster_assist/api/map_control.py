@@ -389,6 +389,12 @@ class MapControl:
             self._mapper.load_array(saved["lo"], saved["origin"], saved["resolution"],
                                     saved["frame_id"])
         else:
+            # a map without grid (slam_toolbox, an old pgm) grows from now on and
+            # will be overwritten: keep the original
+            try:
+                self._store.backup(name)
+            except OSError:
+                log.warning("No backup of map '%s' before mapping on", name, exc_info=True)
             self._mapper.import_occupancy(saved["occ_map"], saved["frame_id"])
         self._live_name = name
         self._mapper.name = name

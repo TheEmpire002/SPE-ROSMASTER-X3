@@ -114,6 +114,19 @@ for name, over in soft_cases.items():
 
 d = Drive()
 gate = integrating_gate()
+gate.update(d.step(wheel_speed=0.2))
+passed = gate.update(d.step(wheel_speed=0.0))
+check("carried (the room moves, the wheels do not) freezes at once",
+      not passed and gate.state == ig.FROZEN, gate.reason)
+
+d = Drive()
+gate = integrating_gate()
+passed = gate.update(d.step(wheel_speed=0.0, omega=0.6))
+check("... but not while turning on the spot (false travel of the lidar odometry)",
+      gate.state == ig.INTEGRATING, gate.reason)
+
+d = Drive()
+gate = integrating_gate()
 passed = gate.update(d.step(omega=0.6))
 check("turning fast skips the scan, stays integrating",
       not passed and gate.state == ig.INTEGRATING, gate.reason)
