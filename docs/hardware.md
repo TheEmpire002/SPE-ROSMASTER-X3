@@ -433,6 +433,9 @@ The microphone carries only speech commands, so every block passes
 The settings are `SPEECH_FILTER_*`, and `SPEECH_FILTER_ENABLED = False`
 falls back to raw audio. `/sprache/status` shows `filter` with
 `verstaerkung_db`, `snr_db` and `uebersteuert` (share of clipped samples).
+Microphone test runs save both the filtered (`ton.wav`) and the raw
+(`ton_roh.wav`) recording, so clipping and filter settings can be checked
+offline.
 
 What the three runs `mikro_pegel`, `mikro_befehle` and `mikro_fahrt`
 showed:

@@ -6,7 +6,7 @@ Checked with dummies for pose, camera, lidar and microphone:
 
 * a short sight test creates folder, ergebnis.json and images, the summary
   matches the dummies, and meta (code commit, settings, definition) is stored
-* a microphone test writes ton.wav, collects recognized sentences and blocks
+* a microphone test writes ton.wav and ton_roh.wav, summarizes the filter values, collects recognized sentences and blocks
   commands meanwhile
 * note, zip, list, guard against foreign paths (../)
 * health records are stored as their own runs (typ "health")
@@ -123,14 +123,18 @@ class Speech:
         self.start = time.time()
         self.sentence_time = None  # like the real one: a recognized sentence keeps its time
 
-    def sound_subscribe(self):
+    def sound_subscribe(self, raw=False):
         q = queue.Queue()
-        q.put(b"\x01\x00" * 1600)
+        # raw feed louder than the filtered one, so the files are told apart
+        q.put((b"\x05\x00" if raw else b"\x01\x00") * 1600)
         self.subscriptions.append(q)
         return q
 
     def sound_unsubscribe(self, q):
         self.subscriptions.remove(q)
+
+    def filter_stats(self):
+        return {"aktiv": True, "verstaerkung_db": 12.0, "snr_db": 20.0, "uebersteuert": 0.01}
 
     def live(self):
         self.sentence_time = self.sentence_time or time.time()
@@ -302,12 +306,18 @@ dm = micro.folder / m["name"]
 dm_data = json.loads((dm / "ergebnis.json").read_text(encoding="utf-8"))
 with wave.open(str(dm / "ton.wav")) as w:
     check("ton.wav written", w.getframerate() == 16000 and w.getnframes() > 0, w.getnframes())
+    filtered = w.readframes(1)
+with wave.open(str(dm / "ton_roh.wav")) as w:
+    check("ton_roh.wav holds the unfiltered feed", w.getnframes() > 0 and w.readframes(1) != filtered)
+check("both recordings listed", dm_data["ton"] == "ton.wav" and dm_data["ton_roh"] == "ton_roh.wav")
 check("sound subscription released", speech.subscriptions == [])
 check("only sentences since the run start", [e["text"] for e in dm_data["ereignisse"]] == ["robi stopp"],
       dm_data["ereignisse"])
 z = dm_data["phasen"][0]["zusammenfassung"]
 check("command recognized", z["treffer"] is True, z["kurz"])
 check("level measured", bool(z["pegel"]) and z["pegel"]["median"] == 0.3)
+check("filter values summarized", z.get("uebersteuert_max") == 0.01 and z["verstaerkung_db"]["median"] == 12.0,
+      (z.get("uebersteuert_max"), z.get("verstaerkung_db")))
 check("microphone verdict", m["urteil"] == "1/1 Befehle erkannt", m["urteil"])
 
 # --- microphone test with spinning wheels ---------------------------------------

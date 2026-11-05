@@ -11,7 +11,8 @@ date and time::
         ergebnis.json   phases, samples (~5 per second), summary, plus
                         "meta": code commit, settings, timestamps, test definition
         bilder/*.jpg    a few camera images, the skeleton is in the JSON
-        ton.wav         microphone tests only
+        ton.wav         microphone tests only: what the speech recognition hears
+        ton_roh.wav     microphone tests only: unfiltered, shows clipping
 
 Health check records from the healthbot are stored the same way as their
 own run (``<date>_<time>_health``, ``typ`` "health") so they can get a note,
@@ -724,6 +725,7 @@ class TestRuns:
         }
         start_mono, start_unix = time.monotonic(), time.time()
         subscription = wav = sound_thread = motor_thread = None
+        recordings: list = []  # (subscription, wav, thread) per audio file
         sound_end = threading.Event()
         motor_end = threading.Event()
         if test.get("faehrt") and self._watchdog is not None:
@@ -739,17 +741,20 @@ class TestRuns:
             self._people.activate(True, _POSE_USER)
         if kind == "mikro" and self._speech is not None and self._speech.sound_rate:
             rate = self._speech.sound_rate
-            subscription = self._speech.sound_subscribe()
-            wav = wave.open(str(target / "ton.wav"), "wb")
-            wav.setnchannels(1)
-            wav.setsampwidth(2)
-            wav.setframerate(rate)
-            # own thread: nothing is sampled during announcements, the audio
-            # queue (2 s) would overflow and pieces would be missing
-            sound_thread = threading.Thread(target=self._write_sound, args=(subscription, wav, sound_end),
-                                            name="test-run-sound", daemon=True)
-            sound_thread.start()
-        data["ton"] = "ton.wav" if wav is not None else None
+            for file, raw in (("ton.wav", False), ("ton_roh.wav", True)):
+                subscription = self._speech.sound_subscribe(raw=raw)
+                wav = wave.open(str(target / file), "wb")
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(rate)
+                # own thread: nothing is sampled during announcements, the audio
+                # queue (2 s) would overflow and pieces would be missing
+                sound_thread = threading.Thread(target=self._write_sound, args=(subscription, wav, sound_end),
+                                                name="test-run-sound", daemon=True)
+                sound_thread.start()
+                recordings.append((subscription, wav, sound_thread))
+        data["ton"] = "ton.wav" if recordings else None
+        data["ton_roh"] = "ton_roh.wav" if recordings else None
         images_per_phase = max(1, config.TESTS_MAX_IMAGES // max(1, len(test["phasen"])))
         try:
             self._say(f"Test {test['titel']} beginnt.")
@@ -831,12 +836,10 @@ class TestRuns:
                 self._pose.activate(False, _POSE_USER)
             if kind == "personen" and self._people is not None:
                 self._people.activate(False, _POSE_USER)
-            if sound_thread is not None:
-                sound_end.set()
+            sound_end.set()
+            for subscription, wav, sound_thread in recordings:
                 sound_thread.join(timeout=2.0)
-            if subscription is not None:
                 self._speech.sound_unsubscribe(subscription)
-            if wav is not None:
                 wav.close()
         # times relative to the run start (t), like the samples
         data["ereignisse"] = sorted(events.values(), key=lambda e: e["t"])
@@ -919,7 +922,7 @@ class TestRuns:
                 events[(e["zeit"], e.get("text"))] = {**e, "t": _r(e["zeit"] - start_unix, 2)}
         self._set(gehoert=max(events.values(), key=lambda e: e["t"], default=None))
         return {"pegel": live.get("pegel"), "teil": live.get("teil") or "", "taub": live.get("taub"),
-                "zustand": live.get("zustand")}
+                "zustand": live.get("zustand"), "filter": self._speech.filter_stats()}
 
     def _points(self):
         scan = self._lidar.latest() if self._lidar is not None else None
@@ -1203,6 +1206,11 @@ def summarize(kind: str, phase: dict, data: dict) -> dict:
     z: dict = {"proben": len(samples)}
     if kind == "mikro":
         z["pegel"] = _distribution([p.get("pegel") for p in samples])
+        stats = [p["filter"] for p in samples if p.get("filter")]
+        if stats:
+            # share of clipped raw samples: above 0 the ALSA capture gain is too high
+            z["uebersteuert_max"] = max(f["uebersteuert"] for f in stats)
+            z["verstaerkung_db"] = _distribution([f["verstaerkung_db"] for f in stats])
         start, end = phase.get("von_s") or 0.0, phase.get("bis_s") or 0.0
         heard = [e for e in data.get("ereignisse", []) if start - 0.5 <= e.get("t", -1) <= end + 1.0]
         z["gehoert"] = [{k: e.get(k) for k in ("text", "ergebnis", "befehl", "grund", "konfidenz")}

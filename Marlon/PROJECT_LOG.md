@@ -847,6 +847,14 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Problems:** Fast driving and turning clip the raw signal (-1 to -3 dBFS); this cannot be recovered in software, the ALSA capture gain of the USB microphone needs lowering on the robot (control name still to be checked with `amixer`) until `uebersteuert` stays 0. Commands from farther away mostly fail, so speak closer. The small model is unsure on a quiet "stopp" (confidence 0.4–0.5) and often hears the command word as a second "ruby"/"robbie".
 - **Open:** Not yet tested live on the robot (robot paused).
 
+### 05.11.2026 – Raw recording alongside the filtered one in microphone tests (with Claude)
+- **What:** Microphone test runs (`mikro_pegel`, `mikro_befehle`, `mikro_fahrt`) now save two recordings: `ton.wav` (what Vosk hears, after the `SpeechFilter`) and `ton_roh.wav` (unfiltered input). Each microphone sample stores `filter` (`aktiv`, `verstaerkung_db`, `snr_db`, `uebersteuert` from `/sprache/status`), and each phase summary adds `uebersteuert_max` and a `verstaerkung_db` distribution. `SpeechRecognition.sound_subscribe(raw=False)` gained the `raw` option, plus a new `filter_stats()` method; the `/sprache/ton` listen-in now plays filtered audio by default.
+- **Why:** Since the filter commit the test recording only held filtered audio; for the driving test (wheels spinning on the stand) the raw signal is needed to see input clipping (remedy: lower the ALSA capture gain until `uebersteuert` stays 0) and to replay runs offline with other filter settings.
+- **Changes:** `robot/src/rosmaster_assist/test_runs.py` opens one subscription and one WAV file per recording (list instead of single variables); `robot/src/rosmaster_assist/interaction/speech.py` carries a `(queue, wants_raw)` pair per subscription and keeps both the filtered and unfiltered block through `_distribute_audio()`.
+- **Result:** `Marlon/diagnostics/test_test_runs.py` extended for both files and the filter summary, all tests pass.
+- **Problems:** None so far.
+- **Open:** Rerun the three microphone tests on the robot with the filter, compare with the 04.11. runs (offline: raw 0/18 commands, filtered 3–4/18).
+
 ---
 
 ## 3. Results and measurements

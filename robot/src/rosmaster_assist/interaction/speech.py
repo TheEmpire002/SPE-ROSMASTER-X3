@@ -405,7 +405,8 @@ class SpeechRecognition:
         # stats of the speech filter on the open stream, None without filter
         self._filter_stats: dict | None = None
         self._events: collections.deque[dict] = collections.deque(maxlen=config.SPEECH_LIVE_EVENTS)
-        self._audio_subs: list[queue.Queue] = []
+        # (queue, wants raw audio): tests also record the unfiltered signal
+        self._audio_subs: list[tuple[queue.Queue, bool]] = []
 
         # Watchdog over the listening thread (see _monitor_loop()): if it gets
         # stuck in PortAudio, a new one takes over. The old one notices via
@@ -601,21 +602,27 @@ class SpeechRecognition:
         """Sample rate of the microphone (Hz), None while none is open."""
         return self._rate if self._state == LISTENING else None
 
-    def sound_subscribe(self) -> queue.Queue:
-        """Raw audio from the microphone (16 bit, mono, ``live()["rate"]`` Hz) into a queue.
+    def sound_subscribe(self, raw: bool = False) -> queue.Queue:
+        """Microphone audio (16 bit, mono, ``live()["rate"]`` Hz) into a queue.
 
-        For listening in from the app (WebSocket /sprache/ton). If the
-        receiver cannot keep up, blocks are dropped instead of piling up.
+        By default what the speech recognition hears (after the speech
+        filter), e.g. for listening in from the app (WebSocket /sprache/ton).
+        ``raw=True`` gives the unfiltered signal, so test runs can show
+        clipping and compare filter settings later. If the receiver cannot
+        keep up, blocks are dropped instead of piling up.
         """
         subscription: queue.Queue = queue.Queue(maxsize=config.SPEECH_SOUND_BUFFER)
         with self._lock:
-            self._audio_subs.append(subscription)
+            self._audio_subs.append((subscription, raw))
         return subscription
 
     def sound_unsubscribe(self, subscription: queue.Queue) -> None:
         with self._lock:
-            if subscription in self._audio_subs:
-                self._audio_subs.remove(subscription)
+            self._audio_subs = [s for s in self._audio_subs if s[0] is not subscription]
+
+    def filter_stats(self) -> dict | None:
+        """Speech filter values of the last block, None without filter."""
+        return self._filter_stats
 
     def fetch_commands(self) -> list[dict]:
         with self._lock:
@@ -796,6 +803,7 @@ class SpeechRecognition:
                 if rank and now >= next_check:
                     next_check = now + config.SPEECH_MICROPHONE_CHECK_S
                     self._check_better(rank, cards_before, now - opened)
+                unfiltered = raw
                 # after the silence check: the filter output is never exact zeros
                 if speech_filter is not None:
                     try:
@@ -813,7 +821,7 @@ class SpeechRecognition:
                         }
                 # Listen-in and level also while it speaks: the microphone
                 # still hears, it is just not evaluated.
-                self._distribute_audio(raw)
+                self._distribute_audio(raw, unfiltered)
                 live = time.monotonic() < self._live_until
                 if live:
                     self._level = _level(raw)
@@ -871,14 +879,14 @@ class SpeechRecognition:
             if part not in cards_before or open_s > config.SPEECH_MICROPHONE_RETRY_S:
                 raise _MicrophoneChange(f"better microphone ({part!r}) is back")
 
-    def _distribute_audio(self, raw: bytes) -> None:
+    def _distribute_audio(self, filtered: bytes, unfiltered: bytes) -> None:
         if not self._audio_subs:
             return
         with self._lock:
             subscriptions = list(self._audio_subs)
-        for subscription in subscriptions:
+        for subscription, wants_raw in subscriptions:
             try:
-                subscription.put_nowait(raw)
+                subscription.put_nowait(unfiltered if wants_raw else filtered)
             except queue.Full:
                 pass  # receiver too slow (Wi-Fi): better a gap than a delay
 
