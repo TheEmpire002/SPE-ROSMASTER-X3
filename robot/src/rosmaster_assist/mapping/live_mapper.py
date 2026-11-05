@@ -37,6 +37,7 @@ import math
 import threading
 import time
 import uuid
+from collections import deque
 
 import numpy as np
 
@@ -87,6 +88,7 @@ class LiveMapper:
         self._pending: list[list] = []           # [points, pose, later passes]
         self._last_candidate: tuple | None = None
         self._prev_track = None
+        self._motion_hist: deque = deque(maxlen=64)   # (time, lidar pose, wheel pose)
         self._lift = LiftDetector()
         self._hybrid: tuple | None = None        # wheel travel + lidar rotation
         self._hybrid_prev: tuple | None = None
@@ -143,6 +145,7 @@ class LiveMapper:
         self._bootstrap.clear()
         self._last_candidate = None
         self._prev_track = None
+        self._motion_hist.clear()
         self._hybrid = None
         self._hybrid_prev = None
 
@@ -306,7 +309,7 @@ class LiveMapper:
         if track is None or self.gate.state == ig.OFF:
             return False
         now = time.monotonic() if now is None else now
-        omega, speed, wheel_speed = self._motion(track)
+        omega, speed, wheel_speed, carry_speed = self._motion(track)
         lifted = self._lifted(track)
         a = track.match
         inp = ig.GateInputs(
@@ -323,6 +326,7 @@ class LiveMapper:
             omega=omega,
             speed=speed,
             wheel_speed=wheel_speed,
+            carry_speed=carry_speed,
             odo_good=track.odo_good,
             odo_streak=track.odo_streak,
             gap=track.gap,
@@ -359,22 +363,34 @@ class LiveMapper:
         return (math.hypot(pose[0] - last[0], pose[1] - last[1]) >= config.LIVE_MAP_MIN_MOVE_M
                 or abs(math.degrees(_normalize(pose[2] - last[2]))) >= config.LIVE_MAP_MIN_MOVE_DEG)
 
-    def _motion(self, track) -> tuple[float, float, float | None]:
-        """Turn rate and speed from the lidar odometry, speed of the wheels (None: unknown)."""
+    def _motion(self, track) -> tuple[float, float, float | None, float | None]:
+        """Turn rate and speed from the lidar odometry per step; wheel and lidar speed
+        over ``LIVE_GATE_CARRY_WINDOW_S`` for the carry check (None: unknown)."""
         prev = self._prev_track
         self._prev_track = track
         if prev is None or prev.timestamp is None or track.timestamp is None:
-            return 0.0, 0.0, None
+            return 0.0, 0.0, None, None
         dt = track.timestamp - prev.timestamp
         if dt <= 1e-3:
-            return 0.0, 0.0, None
+            return 0.0, 0.0, None, None
         rel = _relative(prev.odo_pose, track.odo_pose)
+        step_speed = math.hypot(rel[0], rel[1]) / dt
+        wheel = self._wheel_pose_at(track.timestamp) if self._wheel_pose_at is not None else None
+        hist = self._motion_hist
+        hist.append((track.timestamp, track.odo_pose, wheel))
+        # carried: both speeds over a window, scan-to-scan jitter is too large
+        while len(hist) > 2 and track.timestamp - hist[1][0] >= config.LIVE_GATE_CARRY_WINDOW_S:
+            hist.popleft()
+        t0, o0, w0 = hist[0]
+        span = track.timestamp - t0
+        if span <= 1e-3:
+            return rel[2] / dt, step_speed, None, None
+        moved = _relative(o0, track.odo_pose)
+        carry_speed = math.hypot(moved[0], moved[1]) / span
         wheel_speed = None
-        if self._wheel_pose_at is not None:
-            w0, w1 = self._wheel_pose_at(prev.timestamp), self._wheel_pose_at(track.timestamp)
-            if w0 is not None and w1 is not None:
-                wheel_speed = math.hypot(w1[0] - w0[0], w1[1] - w0[1]) / dt
-        return rel[2] / dt, math.hypot(rel[0], rel[1]) / dt, wheel_speed
+        if w0 is not None and wheel is not None:
+            wheel_speed = math.hypot(wheel[0] - w0[0], wheel[1] - w0[1]) / span
+        return rel[2] / dt, step_speed, wheel_speed, carry_speed
 
     def _lifted(self, track) -> bool:
         """Lift detection with wheel travel and lidar rotation.

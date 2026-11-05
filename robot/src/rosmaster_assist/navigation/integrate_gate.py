@@ -73,6 +73,9 @@ class GateInputs:
     age_s: float | None = None
     lifted: bool = False
     wheel_speed: float | None = None  # m/s, None: wheels not measured
+    # lidar odometry speed over the same window as wheel_speed (m/s), for
+    # the carry check; None: use speed
+    carry_speed: float | None = None
     map_gen: int = 0
     match_pose: tuple | None = None
     odo_pose: tuple | None = None
@@ -93,8 +96,10 @@ def check(inp: GateInputs) -> list[tuple[str, str]]:
         issues.append((HARD, "Lidar war kurz weg"))
     if inp.lifted:
         issues.append((HARD, "hochgehoben oder verschoben"))
-    elif (inp.wheel_speed is not None and inp.speed > config.LIVE_GATE_CARRY_MIN_SPEED
-          and inp.wheel_speed < config.LIVE_GATE_CARRY_WHEEL_SHARE * inp.speed
+    elif (inp.wheel_speed is not None
+          and (carry := inp.speed if inp.carry_speed is None else inp.carry_speed)
+          > config.LIVE_GATE_CARRY_MIN_SPEED
+          and inp.wheel_speed < config.LIVE_GATE_CARRY_WHEEL_SHARE * carry
           and abs(inp.omega) <= config.LIVE_GATE_MAX_OMEGA):
         # the room moves, the wheels do not: carried or pushed -- earlier
         # than the lift detection, which needs several scans in a row. Not

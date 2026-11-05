@@ -519,6 +519,9 @@ LIVE_GATE_MAX_SPEED = 0.35
 # less than this share of it
 LIVE_GATE_CARRY_MIN_SPEED = 0.08
 LIVE_GATE_CARRY_WHEEL_SHARE = 0.25
+# both speeds over this window (s): from one scan to the next the a1's
+# matching jitter of 1-2 cm already looks like 0.1 m/s at standstill
+LIVE_GATE_CARRY_WINDOW_S = 0.6
 # lidar odometry healthy: this many good icp matches in a row
 LIVE_GATE_ODO_GOOD_N = 3
 LIVE_GATE_MAX_AGE_S = 0.4

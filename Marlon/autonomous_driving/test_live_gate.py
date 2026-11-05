@@ -121,6 +121,13 @@ check("carried (the room moves, the wheels do not) freezes at once",
 
 d = Drive()
 gate = integrating_gate()
+gate.update(d.step(wheel_speed=0.0, carry_speed=0.02))
+gate.update(d.step(wheel_speed=0.0, carry_speed=0.02))
+check("... but not on scan-to-scan jitter at standstill (over the window it does not move)",
+      gate.state == ig.INTEGRATING, gate.reason)
+
+d = Drive()
+gate = integrating_gate()
 passed = gate.update(d.step(wheel_speed=0.0, omega=0.6))
 check("... but not while turning on the spot (false travel of the lidar odometry)",
       gate.state == ig.INTEGRATING, gate.reason)

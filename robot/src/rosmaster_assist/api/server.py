@@ -1358,10 +1358,9 @@ async def _handle(
             interaction.cancel("Not-Stopp")
         if maneuver is not None:
             maneuver.cancel("Not-Stopp")
+        # no spoken "Halt": the app also sends stop when it is left, and
+        # hearing that every time is annoying
         watchdog.stop()
-        if voice is not None:
-            # Priority: everything still in the queue is obsolete.
-            voice.say("Halt.", priority=True)
         return None
 
     if kind in ("move", "turn"):
