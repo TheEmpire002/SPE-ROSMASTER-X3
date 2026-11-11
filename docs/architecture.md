@@ -85,7 +85,7 @@ human. It does not assess a health condition.
 | `drive/`       | Driving. `base.py` = interface, plus real driver + mock    |
 | `safety/`      | Watchdog, emergency stop, speed limiting, drive guard based on the footprint (`drive_guard.py`) |
 | `sensors/`     | Lidar, camera, depth camera (`depth.py`, OpenNI2; display `depth_view.py`), person detection, body pose (Hailo) |
-| `navigation/`  | Odometry, lidar localization, homing (with a map also goal drive), explorer, mapping drive, avoidance (`avoidance.py`), obstacle naming, obstacle memory for depth points (`obstacle_memory.py`), progress watch against getting stuck (`progress.py`), pose in the map (`map_localization.py`), paths and frontiers (`path_planning.py`), path following (`path_follower.py`) |
+| `navigation/`  | Odometry, lidar localization, homing (with a map also goal drive), explorer, mapping drive, avoidance (`avoidance.py`), obstacle naming, obstacle memory for depth points (`obstacle_memory.py`), progress watch against getting stuck (`progress.py`), pose in the map (`map_localization.py`), paths and frontiers (`path_planning.py`), path following (`path_follower.py`), line following on tape (`line_follow.py`) |
 | `mapping/`     | Mapping: slam_toolbox in the container including the feed, save/load the map (`occ_map.py`), map in the simulation (`simulation.py`), `/map` page (`web.py`) |
 | `interaction/` | Gestures, behavior (follow, come here, go away), voice (speech output) and speech commands with the wake word "Robi"; planned: mind ("Geist") — see [`interaction.md`](interaction.md) |
 | `diagnostics.py`  | Collects failures (battery, USB, undervoltage, temperature, devices, log) and turns them into understandable problems for the `/diagnose` page |
@@ -208,6 +208,16 @@ frontier into the unknown until the map is complete. Once the map is
 finished (or loaded), `Homing` drives along a planned path to any point of
 the map; the `/map` page shows pose, trail, path and frontiers. Test:
 `Marlon/autonomous_driving/test_map.py`.
+
+**Line following (10.11.):** `navigation/line_follow.py` follows tape or mats
+on the floor with the Orbbec colour image. It projects the image onto the
+floor, learns the line colour at every start, traces the line in steps
+(curves, junctions) and steers by pure pursuit; the traced line is kept in the
+odometry frame so corners are driven through the blind zone from memory. It
+drives only through `SafetyWatchdog.submit(source="autonom")` and is a mode of
+its own next to homing, explorer and interaction (see E15). State:
+`state.linie`, HTTP `/linie/status`, `/linie/bild`. Status: implemented, not
+yet tested on the robot.
 
 ## Interaction
 

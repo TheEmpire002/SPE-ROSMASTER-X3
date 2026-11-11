@@ -60,6 +60,7 @@ from ..navigation.mapping_drive import MappingDrive
 from ..navigation.obstacle_memory import ObstacleMemory
 from ..navigation.path_planning import BackgroundPlanner
 from ..navigation.scan_odometry import ScanOdometry
+from ..navigation.line_follow import LineFollower
 from .map_control import MapControl
 from ..safety import CollisionGuard, DriveGuard, SafetyWatchdog
 from ..sensors.camera import CameraService, create_cameras
@@ -263,6 +264,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         obstacles=obstacles, depth=depth,
     )
     maneuver = Maneuver(watchdog, driver, lidar)
+    # line following looks at the floor through the Orbbec colour image
+    line_follow = LineFollower(watchdog, cameras.get(config.LINE_CAMERA, camera), odometry)
     pose = PoseDetection(person_camera, mock=use_mock_camera)
     mukke = Mukke()
     # Voice and music share the speaker: while the robot speaks, the music
@@ -351,7 +354,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             _status_loop(
                 hub, watchdog, driver, odometry, homing, localizer, guard,
                 explorer, detection, lidar, people, interaction, voice, speech, maneuver,
-                map_control=map_control,
+                map_control=map_control, line_follow=line_follow,
             )
         )
         speech_task = asyncio.create_task(_speech_loop())
@@ -359,7 +362,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         match_task = asyncio.create_task(_match_loop(localizer))
         hw_task = asyncio.create_task(
             _hardware_loop(hub, watchdog, driver, homing, explorer, interaction, maneuver,
-                           map_control=map_control)
+                           map_control=map_control, line_follow=line_follow)
         )
         pulse_task = asyncio.create_task(_pulse_loop(diagnostics))
         map_task = asyncio.create_task(map_control.tick_loop(_loop_error))
@@ -400,6 +403,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             homing.cancel("Server wird beendet")
             explorer.cancel("Server wird beendet")
             maneuver.cancel("Server wird beendet")
+            line_follow.cancel("Server wird beendet")
             interaction.cancel("Server wird beendet")
             await watchdog.shutdown()
             # Only after stopping: shutting down the container can take a
@@ -454,6 +458,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     map_control = MapControl(
         mapping_manager=mapping_manager, localization=localization, explorer=explorer, homing=homing,
         interaction=interaction, maneuver=maneuver, watchdog=watchdog, driver=driver, hub=hub,
+        line_follow=line_follow,
         live_mapper=live_mapper, live_store=LiveStore(mapping_manager.map_service),
         scan_odometry=scan_odometry,
     )
@@ -480,6 +485,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                         msg, watchdog, driver, hub, odometry, homing, localizer, guard,
                         explorer, interaction, voice, speech, recording,
                         maneuver=maneuver, sender=ws, map_control=map_control,
+                        line_follow=line_follow,
                     )
                 except Exception:
                     # A faulty command used to drop the connection -- the
@@ -508,6 +514,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                     homing.cancel("Verbindung verloren")
                     explorer.cancel("Verbindung verloren")
                 maneuver.cancel("Verbindung verloren")
+                line_follow.cancel("Verbindung verloren")
                 interaction.cancel("Verbindung verloren")
                 if with_map:
                     map_control.check_watchers("Verbindung verloren")
@@ -632,6 +639,20 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         if name not in cameras:
             return _unknown(name)
         return cameras[name].status()
+
+    # --- Line following ---
+
+    @app.get("/linie/status")
+    async def line_status():
+        return line_follow.state()
+
+    @app.get("/linie/bild")
+    async def line_picture():
+        """Bird's-eye view of the floor with the detected line (for setting up)."""
+        data = await asyncio.to_thread(line_follow.debug_jpeg)
+        if data is None:
+            return Response("Noch kein Linienbild -- erst Linie folgen starten", status_code=404)
+        return Response(data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
     # --- Lidar ---
 
@@ -1124,6 +1145,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         response = await _handle(
             {"type": kind, **fields}, watchdog, driver, hub, odometry, homing, localizer, guard,
             explorer, interaction, voice, speech, maneuver=maneuver, map_control=map_control,
+            line_follow=line_follow,
         )
         if response is None:
             return True
@@ -1145,6 +1167,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         homing.cancel("Interaktion gestartet")
         explorer.cancel("Interaktion gestartet")
         maneuver.cancel("Interaktion gestartet")
+        line_follow.cancel("Interaktion gestartet")
         if interaction.start(mode):
             await hub.broadcast(alert_message("info", f"Interaktion an -- {text}"))
 
@@ -1157,6 +1180,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                 homing.cancel("Not-Stopp")
                 explorer.cancel("Not-Stopp")
                 maneuver.cancel("Not-Stopp")
+                line_follow.cancel("Not-Stopp")
                 interaction.switch_to(vh.READY, "angehalten (per Sprache)")
                 watchdog.stop()
                 voice.say("Okay, ich halte an.", priority=True)
@@ -1188,6 +1212,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             homing.cancel("vom Nutzer beendet")
             explorer.cancel("vom Nutzer beendet")
             maneuver.cancel("vom Nutzer beendet")
+            line_follow.cancel("vom Nutzer beendet")
             await _issue_command("interaction_stop")
             voice.say("Gute Nacht.")
         elif command == sp.GO_HOME:
@@ -1276,6 +1301,7 @@ async def _handle(
     maneuver: Maneuver | None = None,
     sender: object | None = None,
     map_control: MapControl | None = None,
+    line_follow: LineFollower | None = None,
 ) -> dict[str, Any] | None:
     """Process an incoming message.
 
@@ -1332,6 +1358,12 @@ async def _handle(
                 return None
             maneuver.cancel("von Hand übersteuert")
 
+        # manual input also ends line following
+        if line_follow is not None and line_follow.active:
+            if cmd.is_stop():
+                return None
+            line_follow.cancel("von Hand übersteuert")
+
         allowed, obstacle = guard.check(cmd)
         if obstacle is not None and guard.report():
             await hub.broadcast(
@@ -1358,6 +1390,8 @@ async def _handle(
             interaction.cancel("Not-Stopp")
         if maneuver is not None:
             maneuver.cancel("Not-Stopp")
+        if line_follow is not None:
+            line_follow.cancel("Not-Stopp")
         # no spoken "Halt": the app also sends stop when it is left, and
         # hearing that every time is annoying
         watchdog.stop()
@@ -1376,10 +1410,44 @@ async def _handle(
             explorer.cancel("Fahrbefehl gestartet")
         if interaction is not None:
             interaction.cancel("Fahrbefehl gestartet")
+        if line_follow is not None:
+            line_follow.cancel("Fahrbefehl gestartet")
         error = maneuver.start(category, value)
         if error is not None:
             return alert_message("warning", error)
         await hub.broadcast(alert_message("info", f"Fahrbefehl: {mv.describe(category, float(value))}"))
+        return None
+
+    if kind == "line_follow":
+        if line_follow is None:
+            return alert_message("warning", "Linie folgen geht hier nicht")
+        prefer = msg.get("abzweig")
+        if prefer is not None and prefer not in ("gerade", "links", "rechts"):
+            return alert_message("warning", "abzweig muss gerade, links oder rechts sein")
+        was_active = line_follow.active
+        if not was_active and line_follow.available:
+            # only one program steers
+            homing.cancel("Linie folgen gestartet")
+            if map_control is not None:
+                map_control.stop("Linie folgen gestartet")
+            if explorer is not None:
+                explorer.cancel("Linie folgen gestartet")
+            if interaction is not None:
+                interaction.cancel("Linie folgen gestartet")
+            if maneuver is not None:
+                maneuver.cancel("Linie folgen gestartet")
+        error = line_follow.start(prefer)
+        if error is not None:
+            return alert_message("warning", error)
+        if was_active:
+            return alert_message("info", f"Linie folgen: an Abzweigen {line_follow.prefer}")
+        await hub.broadcast(alert_message("info", "Linie folgen gestartet"))
+        return None
+
+    if kind == "line_follow_stop":
+        if line_follow is not None:
+            line_follow.cancel("vom Nutzer beendet")  # message comes from _status_loop
+        watchdog.stop()
         return None
 
     if kind == "explore":
@@ -1392,6 +1460,8 @@ async def _handle(
             interaction.cancel("autonomes Fahren gestartet")
         if maneuver is not None:
             maneuver.cancel("autonomes Fahren gestartet")
+        if line_follow is not None:
+            line_follow.cancel("autonomes Fahren gestartet")
         if explorer.start():
             await hub.broadcast(alert_message("info", "Autonomes Fahren gestartet"))
         return None
@@ -1415,6 +1485,8 @@ async def _handle(
                 explorer.cancel("Interaktion gestartet")
             if maneuver is not None:
                 maneuver.cancel("Interaktion gestartet")
+            if line_follow is not None:
+                line_follow.cancel("Interaktion gestartet")
         if kind == "follow":
             was_active = interaction.active
             target_id = msg.get("ziel_id")
@@ -1470,6 +1542,8 @@ async def _handle(
             interaction.cancel("Heimfahrt gestartet")
         if maneuver is not None:
             maneuver.cancel("Heimfahrt gestartet")
+        if line_follow is not None:
+            line_follow.cancel("Heimfahrt gestartet")
         if homing.start():
             text = (
                 "Heimfahrt nach Karte gestartet (zum Ausgangspunkt der Karte)"
@@ -1547,6 +1621,8 @@ async def _handle(
             interaction.cancel("Startpunkt wurde verschoben")
         if maneuver is not None:
             maneuver.cancel("Startpunkt wurde verschoben")
+        if line_follow is not None:
+            line_follow.cancel("Startpunkt wurde verschoben")
         # Only present in the simulation: there the imaginary reality also
         # has to go back to the start, otherwise the robot would be outside
         # the simulated room.
@@ -1675,6 +1751,7 @@ async def _hardware_loop(
     interaction: Interaction | None = None,
     maneuver: Maneuver | None = None,
     map_control: MapControl | None = None,
+    line_follow: LineFollower | None = None,
 ) -> None:
     """Keeps the connection to the driver alive.
 
@@ -1703,6 +1780,8 @@ async def _hardware_loop(
                     explorer.cancel("Verbindung zum Antrieb verloren")
                 if maneuver is not None:
                     maneuver.cancel("Verbindung zum Antrieb verloren")
+                if line_follow is not None:
+                    line_follow.cancel("Verbindung zum Antrieb verloren")
                 if interaction is not None:
                     # Do not end it, only stop: gesture control stays on and
                     # is ready again right after reconnecting. It used to be
@@ -1811,12 +1890,14 @@ async def _status_loop(
     speech: SpeechRecognition | None = None,
     maneuver: Maneuver | None = None,
     map_control: MapControl | None = None,
+    line_follow: LineFollower | None = None,
 ) -> None:
     """Regularly sends the state to all clients."""
     last_active = False
     last_explored = False
     last_interacted = False
     last_maneuver = 0
+    last_line = 0
     while True:
         await asyncio.sleep(config.STATUS_INTERVAL_S)
         try:
@@ -1863,6 +1944,15 @@ async def _status_loop(
                     if not maneuver.succeeded and voice is not None:
                         voice.say(maneuver.announcement or "Das hat nicht ganz geklappt.")
 
+            # line following ends by itself (end of the course, line lost)
+            if line_follow is not None and line_follow.finished != last_line:
+                last_line = line_follow.finished
+                if line_follow.last_reason:
+                    await hub.broadcast(alert_message(
+                        "info", f"Linie folgen beendet: {line_follow.last_reason}"))
+                    if voice is not None and line_follow.announcement:
+                        voice.say(line_follow.announcement)
+
             if hub.count:
                 autonomy = (
                     _autonomy(explorer, detection, lidar, people)
@@ -1883,6 +1973,7 @@ async def _status_loop(
                         voice=voice.state() if voice is not None else None,
                         speech=speech.state() if speech is not None else None,
                         occ_map=map_control.state_brief() if map_control is not None else None,
+                        line=line_follow.state() if line_follow is not None else None,
                     )
                 )
         except Exception:

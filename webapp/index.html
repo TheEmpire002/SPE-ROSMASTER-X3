@@ -238,6 +238,44 @@
     </p>
   </section>
 
+  <!-- line following (linie.js): {"type": "line_follow"} / {"type": "line_follow_stop"} -->
+  <section class="panel">
+    <h2>Linie folgen</h2>
+
+    <dl class="readout">
+      <dt>Zustand</dt>    <dd id="val-linie-zustand">—</dd>
+      <dt>Linie</dt>      <dd id="val-linie-breite">—</dd>
+      <dt>Strecke</dt>    <dd id="val-linie-strecke">—</dd>
+    </dl>
+
+    <div class="genau-zeile">
+      <label>An Abzweigungen</label>
+      <div class="genau-knoepfe linie-abzweig">
+        <button type="button" class="btn" data-abzweig="links">← links</button>
+        <button type="button" class="btn aktiv" data-abzweig="gerade">↑ gerade</button>
+        <button type="button" class="btn" data-abzweig="rechts">→ rechts</button>
+      </div>
+    </div>
+
+    <div class="home-buttons">
+      <button type="button" id="btn-linie" class="btn btn-primary">Linie folgen</button>
+    </div>
+
+    <p class="hint" id="linie-text">—</p>
+
+    <img id="linie-bild" class="linie-bild" alt="Draufsicht auf den Boden mit erkannter Linie" hidden>
+
+    <p class="hint">
+      Klebeband oder Matten auf den Boden kleben, die Linie soll sich deutlich
+      vom Boden abheben (z.&nbsp;B. schwarzes Band auf hellem Boden). Den
+      Roboter mit Blick entlang der Linie davor stellen, die Linie etwa
+      einen halben Meter vor ihm. Beim Start lernt er die Farbe der Linie.
+      Das Bild zeigt den Boden von oben: grün = als Linie erkannt, rot = der
+      Weg, den er fährt, gelb = sein Zielpunkt. Jede Fahreingabe oder der
+      Not-Stopp beendet die Fahrt.
+    </p>
+  </section>
+
   <section class="panel">
     <h2>Interaktion</h2>
 
@@ -384,5 +422,6 @@
 <script src="/static/mukke.js"></script>
 <script src="/static/mikro.js"></script>
 <script src="/static/genau.js"></script>
+<script src="/static/linie.js"></script>
 </body>
 </html>

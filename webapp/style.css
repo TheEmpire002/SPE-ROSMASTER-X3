@@ -890,3 +890,15 @@ a.einst-knopf { text-decoration: none; }
   margin: 0 0.3rem;
 }
 .genau-knoepfe { display: grid; grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr)); gap: 0.4rem; }
+
+/* --- Line following (linie.js) --- */
+.linie-abzweig .btn.aktiv { background: #30353f; border-color: var(--accent, #4da3ff); }
+.linie-bild {
+  display: block;
+  width: 100%;
+  max-width: 24rem;
+  margin: 0.6rem auto 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  image-rendering: pixelated;
+}

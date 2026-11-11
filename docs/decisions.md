@@ -716,3 +716,51 @@ Other options were not chosen:
 
 **Re-evaluate when:** the map often stays frozen in normal rooms (then loop
 closure or a looser gate), or the CPU load causes dropouts.
+
+
+## E15 — Line following: bird's-eye view, tracing and pure pursuit; colour learned automatically
+
+**Date:** 2026-11-10
+**Status:** implemented (`navigation/line_follow.py`, `LINE_*` in `config.py`),
+compiles, not yet tested on the robot
+
+**Context.** The user wants to stick a course on the floor with tape and have
+the robot follow it, curves included. Yahboom's ROS2 package
+`yahboomcar_linefollow` does this with an HSV range selected by mouse in the
+image, the centroid of a band at the bottom of the image, a PID on `/cmd_vel`
+and QR codes at junctions. We run without ROS and the camera sits
+horizontally at 22 cm, so the floor only shows up in the lower part of the
+image from about 0.5 m on.
+
+**Decision.**
+- *Geometry:* the image is warped onto the floor (bird's-eye view, 1 px = 1 cm)
+  and the line is traced there in 5 cm steps; steering is pure pursuit towards
+  a point one look-ahead distance away on the traced line. The line is stored
+  in the odometry frame, so the robot keeps following it through the blind zone.
+- *Colour:* learned at every start (Lab colour: what contrasts most with the
+  floor closest ahead), the floor colour is re-measured per image.
+
+**Why not centroid + PID.** A centroid of a band cannot tell a curve from a
+junction and says nothing about a corner that has already left the image.
+With the low camera the corner is out of view long before the robot reaches
+it. In the bird's-eye view a fan of directions per step shows branches, so the
+preference (`gerade`, `links`, `rechts`) replaces Yahboom's QR codes, and
+steering works in metres instead of pixels.
+
+**Why not mouse calibration.** The app has no step where someone marks the
+line in an image, and a fixed HSV range breaks with the lighting and with
+other tape colours. Learning at the start needs no setting. The colour adapts
+slowly while driving (`LINE_COLOR_ADAPT`).
+
+**Consequences.**
+- *Bad:* the projection depends on the camera mount
+  (`LINE_CAMERA_HEIGHT_M`, `LINE_CAMERA_TILT_DEG`, taken from `DEPTH_CAMERA_*`);
+  wrong values distort curves.
+- *Bad:* corners are driven from memory in the blind zone, and the wheel
+  odometry heading slips on turns.
+- *Bad:* a floor with a strong pattern or a rug can make learning fail
+  (`LINE_MAX_LINE_SHARE`).
+- *Open:* QR code actions at junctions, voice command.
+
+**Re-evaluate when:** the robot loses the line at corners (then use the lidar
+heading or a camera that looks further down).

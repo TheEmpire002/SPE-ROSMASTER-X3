@@ -854,6 +854,94 @@ MANEUVER_BLOCKED_S = 1.5
 # At most this many lidar points for matching (computing time on the Pi).
 MANEUVER_MAX_POINTS = 300
 
+# --- Line following (tape or mats on the floor) ----------------------------------
+# details in navigation/line_follow.py: the camera image is projected onto the
+# floor (bird's-eye view in metres), the line colour is learned at every start
+# from whatever stands out from the floor closest in front of the robot
+
+# camera role that sees the floor (Orbbec colour image)
+LINE_CAMERA = "orientierung"
+# mounting of that camera: same device as the depth camera, so same values
+LINE_CAMERA_HEIGHT_M = DEPTH_CAMERA_HEIGHT_M
+LINE_CAMERA_FORWARD_M = DEPTH_CAMERA_FORWARD_M
+LINE_CAMERA_TILT_DEG = DEPTH_CAMERA_TILT_DEG   # downward positive
+# bird's-eye view: resolution and floor area in front of the robot (robot
+# frame, m). with the camera horizontal at 22 cm the floor only becomes
+# visible from ~0.5 m; further than ~1.3 m one pixel row covers several cm
+LINE_BEV_RES_M = 0.01
+LINE_VIEW_MIN_M = 0.35
+LINE_VIEW_MAX_M = 1.30
+LINE_VIEW_HALF_WIDTH_M = 0.60
+# colour distance (opencv lab, 0..255 per channel) the line must have from the
+# floor when it is learned; black tape on a light floor has ~100, white tape on
+# light wood ~40
+LINE_MIN_CONTRAST = 30.0
+# while following a pixel counts as line when it is closer to the learned line
+# colour than to the floor and at most this far from the line colour
+LINE_COLOR_TOLERANCE = 50.0
+# the learned line colour slowly follows the lighting (share per frame)
+LINE_COLOR_ADAPT = 0.03
+# more than this share of the visible floor differs from it: floor too busy
+# (pattern, rug) to tell a line apart
+LINE_MAX_LINE_SHARE = 0.35
+# plausible tape/mat widths (m); the default until the first line is measured
+LINE_MIN_WIDTH_M = 0.012
+LINE_MAX_WIDTH_M = 0.25
+LINE_DEFAULT_WIDTH_M = 0.03
+# blobs smaller than this (m²) are noise, not line (2 cm x 2.5 cm)
+LINE_MIN_SPECK_M2 = 0.0005
+# the line is expected this far beyond the nearest visible floor (m)
+LINE_EXPECT_MARGIN_M = 0.04
+# images taken up to this long (s) before the start still count for learning
+LINE_LEARN_GRACE_S = 0.2
+# tracing: step length (at least 1.5 x line width), fan of directions checked
+# per step, how far ahead it traces
+LINE_TRACE_STEP_M = 0.05
+LINE_TRACE_FAN_DEG = 85.0
+LINE_TRACE_FAN_STEP_DEG = 5.0
+LINE_TRACE_MAX_M = 1.2
+# shorter traces are noise, not a line
+LINE_MIN_PATH_M = 0.08
+# where the line is searched in a new image: at most this far from where the
+# remembered line enters the view (m); against jumping to a neighbouring line
+LINE_START_RADIUS_M = 0.20
+# at a junction with "gerade" a branch within this angle counts as straight on;
+# without one (t junction from the stem) it turns to this side
+LINE_STRAIGHT_DEG = 30.0
+LINE_T_JUNCTION = "rechts"     # "links" | "rechts"
+# driving (pure pursuit on the traced line)
+LINE_HZ = 15
+LINE_SPEED = 0.15              # m/s on straight line
+LINE_MIN_SPEED = 0.06          # m/s, below this the motors do not start reliably
+LINE_LOOKAHEAD_M = 0.35
+# speed factor 1 / (1 + this x curvature in 1/m): slower in tight curves
+LINE_CURVE_SLOWDOWN = 0.25
+LINE_MAX_OMEGA = 0.9           # rad/s
+# target further than this to the side: turn on the spot (sharp corner) until
+# it is within half of it again
+LINE_TURN_IN_PLACE_DEG = 55.0
+LINE_TURN_OMEGA = 0.6          # rad/s, below 0.4 the motors do not start reliably
+# no line seen for longer than this (s): drive slower on the remembered line
+LINE_BLIND_S = 0.3
+LINE_BLIND_SPEED_SHARE = 0.6
+# remembered line ends closer than this (m): it is used up
+LINE_END_REST_M = 0.10
+# line used up and not seen for this long (s): search by turning on the spot,
+# at most this far to each side, then give up (end of the course)
+LINE_LOST_S = 0.8
+LINE_SEARCH_DEG = 100.0
+LINE_SEARCH_OMEGA = 0.5
+# camera images older than this (s) are not used for steering
+LINE_FRAME_MAX_AGE_S = 0.5
+# no new camera image for this long (s): stop; this much longer: give up
+LINE_CAMERA_WAIT_S = 1.0
+LINE_CAMERA_GIVE_UP_S = 5.0
+# learning the line colour at the start may take this long (s)
+LINE_LEARN_S = 3.0
+# drive guard blocks continuously for this long (s): give up (someone may walk
+# past, so a bit of patience)
+LINE_BLOCKED_S = 8.0
+
 # --- Camera ---------------------------------------------------------------------
 
 CAMERA_ENABLED = True

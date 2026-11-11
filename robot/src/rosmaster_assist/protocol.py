@@ -55,6 +55,11 @@ From the app / the ESP to the robot
                                                           goto_cancel
 {"type": "map_live", "aktiv": false}                      always-on mapping off/on (the pose
                                                           is still tracked)
+{"type": "line_follow", "abzweig": "gerade"}              follow a tape line on the floor (camera);
+                                                          abzweig "gerade" | "links" | "rechts" at
+                                                          junctions, optional; while running it
+                                                          only changes the preference
+{"type": "line_follow_stop"}                              stop following the line
 {"type": "ping"}                                          keep the connection alive
 
 From the robot to the app
@@ -76,7 +81,11 @@ From the robot to the app
                     "mission": [x, y, rad]|null, "spur_m":…};
                     fahrt.art "heim"|"ziel"|"zurueck", fahrt.wartet "wartet auf
                     Ortung"|null; kartieren.zustand "integriert"|"bestaetigt"|
-                    "eingefroren"|"pausiert"|"start"|"aus")
+                    "eingefroren"|"pausiert"|"start"|"aus";
+                    with camera additionally "linie": {"aktiv":…, "verfuegbar":…,
+                    "zustand":…, "text":…, "grund":…, "abzweig":…, "kreuzungen":…,
+                    "gefahren_m":…, "dauer_s":…, "linie_breite_cm":…, "fehler":…};
+                    linie.zustand "lernt"|"folgt"|"blind"|"dreht"|"wartet"|"sucht"|"aus")
 {"type": "vitals", "bpm":…, "motion":…}                   forwarded ESP data
 {"type": "alert",  "level": "info"|"warning"|"emergency", "text": "…"}
 {"type": "error",  "text": "…"}                           invalid message or similar
@@ -156,6 +165,7 @@ def state_message(
     voice: dict[str, Any] | None = None,
     speech: dict[str, Any] | None = None,
     occ_map: dict[str, Any] | None = None,
+    line: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     msg: dict[str, Any] = {
         "type": "state",
@@ -176,6 +186,8 @@ def state_message(
         msg["sprache"] = speech
     if occ_map is not None:
         msg["karte"] = occ_map
+    if line is not None:
+        msg["linie"] = line
     if pose is not None:
         x, y, angle = pose
         msg["pose"] = {

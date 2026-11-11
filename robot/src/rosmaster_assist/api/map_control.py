@@ -45,13 +45,14 @@ class MapControl:
 
     def __init__(self, *, mapping_manager, localization, explorer, homing, interaction, maneuver,
                  watchdog, driver, hub, live_mapper=None, live_store=None,
-                 scan_odometry=None) -> None:
+                 scan_odometry=None, line_follow=None) -> None:
         self._manager = mapping_manager
         self._localization = localization
         self._explorer = explorer
         self._homing = homing
         self._interaction = interaction
         self._maneuver = maneuver
+        self._line_follow = line_follow
         self._watchdog = watchdog
         self._driver = driver
         self._hub = hub
@@ -120,6 +121,8 @@ class MapControl:
         self._explorer.cancel(reason)
         self._interaction.cancel(reason)
         self._maneuver.cancel(reason)
+        if self._line_follow is not None:
+            self._line_follow.cancel(reason)
 
     def start(self, resume: bool = False) -> str | None:
         if self.active:

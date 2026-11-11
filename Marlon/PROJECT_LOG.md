@@ -828,6 +828,25 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 
 ---
 
+### 10.11.2026 – Line following with the camera (Marlon, with Claude)
+- **What:** New mode „Linie folgen“: the robot follows tape or mats stuck to the floor with the Orbbec colour camera (role `orientierung`), including curves and junctions. Panel „Linie folgen“ in the web app (`webapp/linie.js`).
+- **Why:** The user wants to stick a course on the floor with tape and have the robot follow it. Idea from Yahboom's ROS2 package `yahboomcar_linefollow` (colour learned from a mouse-selected box, centroid of a band at the bottom of the image, PID on `/cmd_vel`, QR codes at junctions), rebuilt without ROS.
+- **Changes:**
+  - `navigation/line_follow.py`: bird's-eye projection onto the floor (camera horizontal at 22 cm, floor visible from about 0.5 m), automatic colour learning at every start (Lab colour, what contrasts most with the floor closest ahead), step-wise fan tracing for curves and junctions (preference `gerade`/`links`/`rechts`), line remembered in the odometry frame through the blind zone, pure pursuit, search by turning when lost, then stop („Ende der Strecke“).
+  - `config.py`: `LINE_*` block. `protocol.py`: `line_follow`, `line_follow_stop`, state field `linie`. `api/server.py`: handlers, `GET /linie/status`, `GET /linie/bild` (JPEG: green = line, red = traced path, yellow = target point).
+  - Drives only via `watchdog.submit(source="autonom")`, so speed limit and drive guard apply. Cancelled by emergency stop, manual driving, other modes, connection loss and drive loss.
+  - Docs: `docs/api.md`, `docs/architecture.md`, decision E15 in `docs/decisions.md`.
+- **Result:** Implemented, compiles. Not yet tested on the robot (the user tests on the Pi), so no measured values yet.
+- **Problems:** None known yet, nothing run on the robot.
+- **Open:**
+  - Check the camera mount values `LINE_CAMERA_HEIGHT_M` / `LINE_CAMERA_TILT_DEG` (taken from `DEPTH_CAMERA_*`) on the robot; the projection depends on them.
+  - The blind zone of about 0.5 m means corners are driven from memory; the wheel odometry heading slips on turns.
+  - No QR code actions at junctions (Yahboom has them), no voice command yet.
+  - A floor with a strong pattern may make colour learning fail.
+
+
+---
+
 ## 3. Results and measurements
 
 | Topic | Result | Source |

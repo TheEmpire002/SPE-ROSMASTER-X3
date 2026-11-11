@@ -180,6 +180,8 @@ Right after connecting, the robot sends on its own, in this order:
 | `follow_pause` | – | Stop, the target stays remembered (new 03.11.). Only in `folgen`, `herkommen`, `weggehen`, `sucht`. | – |
 | `follow_resume` | – | After `follow_pause`, continue to the same target. | – |
 | `follow_stop` | – | End following, stop, release the target; interaction mode stays on. | `alert` to all |
+| `line_follow` | `abzweig`: `"gerade"` (straight, default) / `"links"` (left) / `"rechts"` (right), optional | Follow a tape line or mat on the floor with the colour camera (new 10.11., see "Line following in detail"). Learns the line colour at the start. `abzweig` is the preference at junctions; while running it only changes that preference. Needs the camera; cancels homing, autonomous driving, mapping drive and interaction. | `alert` (info) to all; without camera or with a wrong `abzweig` `alert` (warning) |
+| `line_follow_stop` | – | End line following and stop. | `alert` „Linie folgen beendet: …“ to all |
 | `record_save` | `notiz` (string, optional, at most 200 characters; a note) | Save the last minute of the drive recorder to a file (new 03.11., see "Drive recorder" under HTTP). Does not drive. | `alert` (info) „Fahrt gespeichert: <name>“ (drive saved); when disabled `alert` (warning) |
 | `say` | `text` (string, at most 300 characters), `vorrang` (bool, optional) | Speak through the loudspeaker (see "Voice in detail"). `vorrang: true` (priority) interrupts the current sentence and clears the queue. | none; without `text` `error`, without loudspeaker/synthesis `alert` (warning) |
 | `say_stop` | – | Go silent immediately, clear the queue. | none |
@@ -246,6 +248,7 @@ it only turns.
 | `stimme` | voice output: `verfuegbar` (sound comes out), `spricht` (speaking a sentence right now), `text` (last sentence spoken, or `null`). See "Voice in detail". Missing on older servers. |
 | `sprache` | speech commands: `verfuegbar` (microphone and model ready), `geweckt` (awake: „Robi“ was just said on its own, the next sentence needs no name), `gehoert` (last sentence understood, or `null`), `befehl` (recognized command, for a few seconds, otherwise `null`), `pause` (why the microphone is deliberately closed right now, e.g. „Mapping läuft“; then `verfuegbar` is `false`, otherwise `null`). See "Speech commands in detail". Missing on older servers. |
 | `karte` | Only present when a map exists (new 04.11.): `name` (saved map, `null` for the live map during mapping), `live`, `pose` (pose **in the map frame**, not to be confused with `pose` above in the odometry frame; `null` while unknown), `sicher` (confident; `goto` only works then), `text`, `fahrt` (running or last map-based drive: `art` (kind) `"heim"` (home) / `"ziel"` (goal) / `"zurueck"` (way back, new 05.11.), `ziel` (goal), `rest_m` (remaining distance), `grund` (reason), `wartet` (new 05.11.: „wartet auf Ortung“ while it stands and searches for its pose, otherwise `null`), `vermutet` (new 05.11.: `true` while it follows a guessed path through the unknown, see "Guessed paths")). New 05.11.: `kartieren` (always-on mapping: `aktiv`, `zustand` `"integriert"` (writing) / `"bestaetigt"` (confirming the pose) / `"eingefroren"` (frozen, the map does not change) / `"pausiert"` (paused) / `"start"` (no map yet, founding one at standstill) / `"aus"` (off), `grund` (German reason); `null` when switched off), `mission` (anchor `[x, y, radians]` or `null`), `spur_m` (trail length in m since the mission start, else in total). See "Using the map" under Mapping. |
+| `linie` | Line following (new 10.11.), only present with a camera: `aktiv`, `verfuegbar`, `zustand` (`"lernt"` learning the colour, `"folgt"` following a seen line, `"blind"` driving on the remembered line, `"dreht"` turning on the spot at a sharp corner, `"wartet"` waiting for image or line, `"sucht"` searching by turning, `"aus"`), `text` (German status text), `grund` (why it ended, or `null`), `abzweig` (junction preference), `kreuzungen` (junctions passed), `gefahren_m`, `dauer_s` (`null` when off), `linie_breite_cm` (learned line width, `null` before learning), `fehler` (why it is unavailable, or `null`). See "Line following in detail". |
 
 **`collision`**: on connect and after every change, fields as in
 `state.collision`.
@@ -423,6 +426,38 @@ If OpenCV is installed, the person camera (Logitech C270, see
 | `hindernisse` | the 12 nearest obstacles, nearest first. `art` (kind), `winkel` in degrees as for the lidar, `abstand` (distance, m), `breite` (width, m), `x`/`y` center in robot coordinates (m), `quelle` (source) |
 | `personen` | person boxes in the person camera image, relative to the image size (0..1) |
 | `personenerkennung` | whether camera person detection works; `fehler` (error) e.g. „opencv fehlt“; `kamera`: which camera image the boxes refer to (name as in `/cameras`) |
+
+### Line following in detail
+
+New 10.11. The robot follows tape or mats stuck to the floor (`navigation/line_follow.py`),
+including curves and junctions. Start with `line_follow`, end with
+`line_follow_stop`. Sketch of the idea (details in the module docstring):
+
+- It uses the Orbbec colour image (camera role `orientierung`, `LINE_CAMERA`).
+  The image is projected onto the floor (bird's-eye view, 1 px = 1 cm). With
+  the camera horizontal at 22 cm the floor is only visible from about 0.5 m.
+- **The line colour is learned at every start** (Lab colour): whatever
+  contrasts most with the floor closest in front of the robot. Place the robot
+  so that the line starts about half a metre in front of it, pointing along the
+  line. Learning takes at most `LINE_LEARN_S` (3 s). If the floor is too
+  patterned, learning fails and the mode ends with a reason.
+- The line is traced in 5 cm steps. Several branches mean a junction; the
+  `abzweig` preference decides (`gerade`, `links`, `rechts`).
+- The traced line is remembered in the odometry frame, so corners are driven
+  from memory through the blind zone. Steering is pure pursuit; it turns on the
+  spot at sharp corners.
+- If the line is used up and not seen for `LINE_LOST_S`, it searches by turning
+  (at most `LINE_SEARCH_DEG` to each side), then stops with „Ende der Strecke“
+  (end of the course) in `linie.grund`. Mode ends by itself with an `alert`
+  „Linie folgen beendet: …“ and a spoken sentence.
+- Drives only via `SafetyWatchdog.submit(source="autonom")`: speed limit, dead
+  man's switch and drive guard apply. Speed is `LINE_SPEED` (0.15 m/s).
+- Ended by: emergency stop, `stop`, manual `drive`, other modes (homing,
+  explore, interaction, `move`/`turn`), lost client connection, lost drive
+  connection, drive guard blocking for `LINE_BLOCKED_S`.
+- All numbers are in `config.py` (`LINE_*`). The projection depends on
+  `LINE_CAMERA_HEIGHT_M`, `LINE_CAMERA_FORWARD_M`, `LINE_CAMERA_TILT_DEG`
+  (taken from `DEPTH_CAMERA_*`); check them on the robot.
 
 ### Interaction in detail
 
@@ -818,6 +853,13 @@ sends a new `limits` to all clients. It also reports every change as an
 
 Changes are only possible from a page loaded from the robot itself: CORS
 only allows `GET` for foreign pages.
+
+### Line following
+
+| Endpoint | Returns |
+|---|---|
+| `GET /linie/status` | the same as `state.linie`, for checking without WebSocket |
+| `GET /linie/bild` | JPEG bird's-eye view of the floor in front of the robot for setting up: green = pixels recognised as line, red = traced path, yellow = target point. 404 until line following has been started once. |
 
 ### Interaction
 
