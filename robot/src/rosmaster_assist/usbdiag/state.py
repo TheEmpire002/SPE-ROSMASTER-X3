@@ -377,6 +377,8 @@ class DiagState:
             return "empty", "nichts angeschlossen"
         if tile.id in open_tiles:
             return "bad", "Vorfall läuft"
+        if tile.kind == "mcu" and self._camera_on_board_bus():
+            return "warn", texts.CAPTURE_TEXTS["camera_on_bus"]
         reconnects = self._recent(self.tile_reconnects.get(tile.id, []), now)
         if reconnects:
             age = texts.fmt_short(now - max(reconnects))
@@ -424,6 +426,10 @@ class DiagState:
         if missing:
             names = ", ".join(dict.fromkeys(missing))
             return {"level": "bad", "text": f"Gerade USB-Absturz: {names} fehlen"}
+        cur = self.tracker.current
+        if cur is not None:
+            where = incidents[0].get("where", "") if incidents else ""
+            return {"level": "bad", "text": "Gerade USB-Vorfall" + (f": {where}" if where else "")}
         recent = [e for e in incidents if _clamp(now - e.get("start_mono", now)) <= config.VERDICT_WINDOW_S]
         if recent:
             first = min(recent, key=lambda e: e.get("start_wall", 0.0))
@@ -472,8 +478,14 @@ class DiagState:
         drive = self._latest_drive()
         running = bool(drive and _clamp(now - drive[0]) <= config.MOTOR_WINDOW_S
                        and drive[1].name in ("MOTOR", "MOTION") and self._drive_active(drive[1]))
+        mcu = next((t for t in self.layout.tiles if t.kind == "mcu"), None)
         if self._board() is None:
-            state = texts.CAPTURE_TEXTS["no_board"]
+            if mcu is not None and mcu.id in self.missing_since:
+                state = f"fehlt seit {texts.fmt_clock(self.boot_wall + self.missing_since[mcu.id])}"
+            else:
+                state = texts.CAPTURE_TEXTS["no_board"]
+        elif self._camera_on_board_bus():
+            state = texts.CAPTURE_TEXTS["camera_on_bus"]
         elif running:
             state = "Motoren laufen"
         elif self.capture == "on":
@@ -505,8 +517,6 @@ class DiagState:
 
     @staticmethod
     def _drive_active(cmd) -> bool:
-        if cmd.name == "MOTION":
-            return _speed(cmd)[0] > 0
         return _speed(cmd)[0] > 0
 
     # details
@@ -562,7 +572,9 @@ class DiagState:
                      if tile.id in self.missing_since else "nichts angeschlossen")
         else:
             state = "angeschlossen"
-        if self.capture == "on" and dev is not None:
+        if dev is not None and self._camera_on_board_bus():
+            reports = texts.CAPTURE_TEXTS["camera_on_bus"]
+        elif self.capture == "on" and dev is not None:
             hz = len([t for t in self.reports if 0 <= now - t <= config.TRAFFIC_WINDOW_S]) / config.TRAFFIC_WINDOW_S
             reports = f"{texts.fmt_num(hz)} pro Sekunde – " + ("gut" if hz > 0 else "keine Meldungen")
         else:

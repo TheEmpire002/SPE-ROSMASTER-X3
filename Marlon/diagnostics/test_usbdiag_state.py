@@ -118,6 +118,8 @@ def test_missing_board_turns_red_and_verdict_bad():
     assert tile["level"] == "bad" and p["verdict"]["level"] == "bad"
     assert "Board-Mikrocontroller" in p["verdict"]["text"]
     assert "fehlt seit" in tile["line"]
+    motor_tile = tile_by_id(p, "motor")
+    assert "fehlt seit" in motor_tile["line"] and motor_tile["level"] == "bad"
     assert {"from": "board-p4", "to": "motor", "level": "bad"} in p["links"]
 
 
@@ -126,7 +128,32 @@ def test_capture_refused_when_camera_on_board_bus():
         st = state.DiagState(None, 0.0, 0.0)
         st.apply_topology(fixture_topology(pathlib.Path(d), add={"1-1.1": ("2bc5", "060f", 480)}), now=1.0)
         assert st.capture_target() is None
-        assert "Kamera am selben USB-Bus" in st.page(2.0)["motor"]["capture"]
+        p = st.page(2.0)
+        assert "Kamera am selben USB-Bus" in p["motor"]["capture"]
+        for tid in ("board-p4", "motor"):
+            assert "Kamera am selben USB-Bus" in tile_by_id(p, tid)["line"]
+        rows = " ".join(r["value"] for r in p["details"]["board-p4"]["rows"] + p["details"]["motor"]["rows"])
+        assert "Kamera am selben USB-Bus" in rows
+        assert "kein Mithören" not in rows
+        # traffic is ignored while the camera shares the bus
+        st.set_capture("on")
+        h = motion_hex(0.0, 0.0, 0.3)
+        st.apply_urbs([usbmon.parse_line(f"ffff 1000000 S Bo:1:114:2 -115 12 = {h}")], now=3.0)
+        assert st.last_command_mono is None and not st.traffic
+
+
+def test_verdict_bad_while_incident_open():
+    with tempfile.TemporaryDirectory() as d:
+        st = state.DiagState(None, 0.0, 0.0)
+        st.apply_topology(fixture_topology(pathlib.Path(d)), now=0.5)
+        st.set_capture("on")
+        h = motion_hex(0.0, 0.0, 0.0)
+        for i in range(31):
+            t = 1.0 + i * 0.1
+            st.apply_urbs([usbmon.parse_line(f"ffff {int(t * 1e6)} S Bo:1:114:2 -115 12 = {h}")], now=t)
+            st.tick(t)
+        assert st.tracker.current is not None
+        assert st.page(4.2)["verdict"]["level"] == "bad"
 
 
 def test_capture_target_is_board_and_lidar():
