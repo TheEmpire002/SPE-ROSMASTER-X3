@@ -18,6 +18,8 @@ MOCK_BOOT_ID = "mock"
 
 TOPOLOGY_POLL_S = 1.0
 SAMPLE_INTERVAL_S = 1.0
+# ntp moves the wall clock after boot, smaller drift is uptime rounding
+BOOT_WALL_STEP_S = 2.0
 PROCESS_INTERVAL_S = 5.0
 SUMMARY_INTERVAL_S = 30.0
 
@@ -79,7 +81,6 @@ FRAME_MAX_EXT_LEN = 64  # longer length bytes are noise, not a frame
 FRAME_BUFFER_MAX = 512
 USBMON_ROOT = "/sys/kernel/debug/usb/usbmon"
 USBMON_READ_BYTES = 65536
-MODPROBE_TIMEOUT_S = 5.0
 VCGENCMD_TIMEOUT_S = 2.0
 THERMAL_FILE = "/sys/class/thermal/thermal_zone0/temp"
 CPUFREQ_FILE = "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq"

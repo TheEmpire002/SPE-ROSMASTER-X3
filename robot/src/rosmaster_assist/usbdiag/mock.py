@@ -127,6 +127,10 @@ class MockSources:
     def boot_wall(self) -> float:
         return self._boot_wall
 
+    def refresh_boot_wall(self) -> float:
+        # the mock clock never steps; tests move _boot_wall to fake an ntp step
+        return self._boot_wall
+
     # kernel log
 
     def kmsg_fd(self) -> int | None:

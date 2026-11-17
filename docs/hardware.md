@@ -684,6 +684,13 @@ robot/deploy/usbdiag/install.sh             # copies the package to /opt/rosmast
 robot/deploy/usbdiag/install.sh --uninstall # removes unit and /opt copy, keeps the logs
 ```
 
+**usbmon** is loaded by `install.sh`, not by the daemon: the script writes
+`usbmon` to `/etc/modules-load.d/usbmon.conf` (loaded at every boot) and runs
+`sudo modprobe usbmon` once. The daemon never runs `modprobe`; if the module
+is missing it leaves capture off and the page says "Mithören nicht verfügbar:
+usbmon ist nicht geladen (install.sh erneut ausführen)". `--uninstall` removes
+the conf file but leaves the loaded module alone until the next reboot.
+
 The script prints the page address, `http://<pi-ip>:8001/`. The server's
 `/diagnose` page links to it ("USB-Diagnose"). The script never touches the
 server or `/dev/myserial`. Without the robot, `python -m usbdiag --mock --port 8001`
@@ -705,7 +712,14 @@ Reading an incident file: `time`, `where` and `reason` are the headline;
 take; `events` is the sequence in plain German; `snapshot` holds the vitals
 from shortly before the first event until the end; `technical` has the raw
 kernel lines. `recovered: false` means the devices had not come back when the
-incident was closed (after 120 s at the latest).
+incident was closed (after 120 s at the latest). `duration` runs from the first
+to the last event; the 10 s of quiet that close an incident do not count.
+
+**Wall clock.** Times come from the kernel clock plus the boot time on the wall
+clock. When NTP sets the clock after boot, the daemon notices the step (more
+than 2 s, `BOOT_WALL_STEP_S`) on the next sample, writes one line to `usb.log`
+and shows later times on the corrected clock. Finished incident files keep the
+time they were written with.
 
 **Crash reasons** (the page shows the German titles):
 

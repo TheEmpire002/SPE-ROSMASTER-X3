@@ -5,7 +5,7 @@ from collections import deque
 from dataclasses import asdict, replace
 
 from . import config, texts
-from .incidents import DRIVE_COMMANDS, Context, Incident, IncidentTracker, _speed, classify
+from .incidents import DRIVE_COMMANDS, Context, Incident, IncidentTracker, classify, command_speed
 from .kmsg import Event
 from .layout import Tile, build_layout, tile_for_port
 from .sampler import Sample
@@ -302,7 +302,8 @@ class DiagState:
             "end_mono": end_mono,
             "start_wall": inc.start_wall,
             "tiles": tiles,
-            "snapshot": [asdict(s) for s in self.samples if inc.start_mono - config.SNAPSHOT_BEFORE_S <= s.mono],
+            "snapshot": [asdict(s) for s in self.samples
+                         if inc.start_mono - config.SNAPSHOT_BEFORE_S <= s.mono <= end_mono],
             "technical": [ev.raw for ev in inc.events if ev.raw],
         }
 
@@ -314,7 +315,11 @@ class DiagState:
                      if old.get("boot") == entry.get("boot") and old.get("start_mono") == entry.get("start_mono")),
                     None)
         if same is not None:
-            entry["id"] = self.finished[same]["id"]  # keeps the file name when the wall clock moved
+            old = self.finished[same]
+            if old.get("end_mono") == entry["end_mono"] and old.get("recovered") == entry["recovered"]:
+                # the replay found nothing new, and a fresh boot_wall estimate must not rewrite the file
+                return
+            entry["id"] = old["id"]  # keeps the file name when the wall clock moved
         if self.store is not None:
             self.store.write_incident(entry)
         if same is not None:
@@ -490,7 +495,7 @@ class DiagState:
                     f"Drehung {texts.fmt_num(p.get('vz', 0.0))} rad/s")
         if cmd.name == "CAR_RUN":
             return "Fahrmodus gestartet"
-        return _speed(cmd)[1] or "kein Fahrbefehl"
+        return command_speed(cmd)[1] or "kein Fahrbefehl"
 
     def _capture_text(self, now: float) -> str:
         if self._board() is None:
@@ -545,7 +550,7 @@ class DiagState:
 
     @staticmethod
     def _drive_active(cmd) -> bool:
-        return _speed(cmd)[0] > 0
+        return command_speed(cmd)[0] > 0
 
     # details
 

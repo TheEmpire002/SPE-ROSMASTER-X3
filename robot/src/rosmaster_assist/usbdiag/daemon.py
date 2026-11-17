@@ -33,12 +33,14 @@ class Sources(Protocol):
     def read_capture(self) -> list[Urb]: ...
     def now(self) -> float: ...
     def boot_wall(self) -> float: ...
+    def refresh_boot_wall(self) -> float: ...
 
 
 class RealSources:
     def __init__(self, kmsg_path: str = "/dev/kmsg", usbmon_root: str = config.USBMON_ROOT,
-                 sysfs_root: str = config.SYSFS_USB_ROOT):
+                 sysfs_root: str = config.SYSFS_USB_ROOT, uptime_path: str = "/proc/uptime"):
         self.kmsg_path = kmsg_path
+        self.uptime_path = uptime_path
         self.sysfs_root = sysfs_root
         self._kmsg: KmsgReader | None = None
         self._seen_mono: float | None = None
@@ -96,7 +98,7 @@ class RealSources:
     # usbmon
 
     def ensure_capture(self) -> bool:
-        # never modprobe: usbmon is either there already or capture stays off
+        # never modprobe: install.sh loads usbmon at boot, without it capture stays off
         return os.path.exists(self._tap.root)
 
     def open_capture(self, bus: int) -> None:
@@ -126,10 +128,22 @@ class RealSources:
     def now(self) -> float:
         return time.monotonic()
 
+    def _measure_boot_wall(self) -> float:
+        with open(self.uptime_path, encoding="ascii") as fh:
+            return time.time() - float(fh.read().split()[0])
+
     def boot_wall(self) -> float:
         if self._boot_wall is None:
-            with open("/proc/uptime", encoding="ascii") as fh:
-                self._boot_wall = time.time() - float(fh.read().split()[0])
+            self._boot_wall = self._measure_boot_wall()
+        return self._boot_wall
+
+    def refresh_boot_wall(self) -> float:
+        """Boot time on the wall clock, replaced only when the clock stepped (ntp after boot)."""
+        fresh = self._measure_boot_wall()
+        if self._boot_wall is None or abs(fresh - self._boot_wall) > config.BOOT_WALL_STEP_S:
+            self._boot_wall = fresh
+            if self._kmsg is not None:
+                self._kmsg.boot_wall = fresh
         return self._boot_wall
 
 
@@ -238,17 +252,30 @@ class _Loop:
             self._close_capture(None)
         if self.guard.waiting("capture"):
             return
-        if not self.guard.call("usbmon", self.src.ensure_capture):
+        ready = self.guard.call("usbmon", self.src.ensure_capture)
+        if ready is not _FAILED and not ready:
             if not self.capture_missing_logged and self.logger is not None:
-                self.logger.info("usbmon is not available, board traffic is not captured")
+                self.logger.info("usbmon is not loaded, board traffic is not captured (run install.sh again)")
             self.capture_missing_logged = True
-            self._apply(state.set_capture, "unavailable")
+            self._apply(state.set_capture, "usbmon_missing")
             return
         if self.guard.call("capture", self.src.open_capture, bus) is _FAILED:
             self._apply(state.set_capture, "unavailable")
             return
         self.capture_bus = bus
         self._apply(state.set_capture, "on")
+
+    def _set_boot_wall(self, boot_wall: float) -> None:
+        self.state.boot_wall = boot_wall
+
+    def update_boot_wall(self) -> None:
+        # the source keeps its value until the clock really stepped, so this logs once per step
+        bw = self.guard.call("clock", self.src.refresh_boot_wall)
+        if bw is _FAILED or bw == self.state.boot_wall:
+            return
+        if self.logger is not None:
+            self.logger.info("wall clock stepped by %+.1f s, times follow it", bw - self.state.boot_wall)
+        self._apply(self._set_boot_wall, bw)
 
     def wait(self) -> None:
         fds = [fd for fd in (self.src.kmsg_fd(), self.src.capture_fd()) if fd is not None]
@@ -293,6 +320,7 @@ class _Loop:
                 rescan_at = None  # a failed tap open is retried on this scan too
 
             if now >= next_sample:
+                self.update_boot_wall()
                 s = self.guard.call("sampler", src.sample)
                 if s is not _FAILED:
                     self._apply(self.state.apply_sample, s)

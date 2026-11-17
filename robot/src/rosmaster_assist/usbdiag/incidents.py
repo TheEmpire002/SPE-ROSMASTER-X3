@@ -80,13 +80,17 @@ class IncidentTracker:
         if inc is None:
             return None
         self._update_missing(inc, present)
+        last_mono = max((ev.mono for ev in inc.events), default=inc.last_trigger_mono)
         if inc.baseline <= present and now_mono - inc.last_trigger_mono >= self.quiet_s:
             inc.recovered = True
+            # the quiet wait (and a backlog replayed long after) is not part of the incident
+            inc.end_mono = max(inc.last_trigger_mono, last_mono)
         elif now_mono - inc.start_mono >= self.max_s:
             inc.recovered = False
+            # capped at the limit, or a backlog incident would last until the daemon started
+            inc.end_mono = max(inc.start_mono + self.max_s, min(last_mono, now_mono))
         else:
             return None
-        inc.end_mono = now_mono
         self.current = None
         return inc
 
@@ -108,7 +112,7 @@ def _name(ctx: Context, port: str | None) -> str:
     return ctx.names.get(port, config.UNKNOWN_DEVICE_NAME)
 
 
-def _speed(cmd: Command | None) -> tuple[float, str]:
+def command_speed(cmd: Command | None) -> tuple[float, str]:
     """Magnitude of a command (m/s, rad/s or fraction) and its German wording."""
     if cmd is None:
         return 0.0, ""
@@ -136,8 +140,8 @@ def _motor_start(inc: Incident, ctx: Context) -> Reason | None:
                 started = prev is None or prev.name != "CAR_RUN"
                 text = "Fahrmodus gestartet"
             elif cmd.name in ("MOTOR", "MOTION"):
-                mag, text = _speed(cmd)
-                started = abs(mag - _speed(prev)[0]) >= config.MOTOR_DELTA
+                mag, text = command_speed(cmd)
+                started = abs(mag - command_speed(prev)[0]) >= config.MOTOR_DELTA
             else:
                 started = False
             if started:

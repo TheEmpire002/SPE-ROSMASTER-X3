@@ -806,6 +806,12 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
   - The socket labels are unverified: the page draws the Pi sockets as a 2×2 grid (column `slot // 2`, row `slot % 2`), but which stack is left or right and the names in `PI_SOCKETS` are guesses. The page says "Lage der Buchsen noch nicht geprüft" until `SOCKETS_VERIFIED = True`.
   - usbmon sees nothing while the server is off, and voltages are sampled only once per second (both documented in `docs/hardware.md`).
 - **Open:** install on the Pi, one-time socket check, analyse the first real incident (see section 5).
+- **Final review (17.11.2026):**
+  - An incident's end now comes from its last event, not from the end of the 10 s quiet wait or from when the daemon replayed old kernel lines. A backlog burst now lasts about 5.7 s, and a restart leaves the incident file unchanged.
+  - The daemon no longer loads usbmon itself. `install.sh` writes `/etc/modules-load.d/usbmon.conf` and runs `modprobe usbmon` once. If usbmon is missing, the page says so in German instead of reporting a general capture fault.
+  - Derived wall times follow when NTP moves the clock after boot (a step over 2 s logs one `usb.log` line).
+  - Minors: hub-port over-current is recognised, the snapshot stops at the incident end, a client that resets the connection prints no traceback, the back link works over IPv6, the install script uses `enable` + `restart`, and the unit adds `NoNewPrivileges` and `PrivateTmp`.
+  - Result: all usbdiag tests and the full suite pass; still nothing tested on the real Pi.
 
 ---
 

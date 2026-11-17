@@ -31,6 +31,7 @@ def test_parse_kinds():
         "6,901,100100000,-;usb 1-1.4: new full-speed USB device number 114 using xhci-hcd": ("new_device", "1-1.4"),
         "6,902,100200000,-;usb 1-1.4: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice= 2.64": ("connect", "1-1.4"),
         "4,903,100300000,-;usb usb1-port1: over-current change #54": ("overcurrent", "1-1"),
+        "4,903,100310000,-;usb 1-1-port2: over-current change #3": ("overcurrent", "1-1.2"),
         "3,904,100400000,-;usb 3-1-port2: cannot reset (err = -71)": ("reset_failed", "3-1.2"),
         "3,905,100500000,-;usb 3-1: device descriptor read/64, error -71": ("enum_failed", "3-1"),
         REC: ("protocol_error", "3-2"),

@@ -39,6 +39,8 @@ def test_burst_is_one_incident():
     tr.on_event(ev(103, "connect", "1-1.4"), present)
     done = tr.tick(113.5, present)
     assert done is started and done.recovered and "1-1.4" in done.ports
+    # ends with the reconnect, the quiet wait after it is not part of the incident
+    assert done.end_mono == 103, done.end_mono
     assert tr.current is None
 
 
@@ -52,6 +54,19 @@ def test_timeout_ends_unrecovered():
     tr.on_event(ev(0, "disconnect", "1-1.4"), {"1-1.4"})
     done = tr.tick(121, set())
     assert done and not done.recovered and done.missing == {"1-1.4"}
+    assert done.end_mono == 120, done.end_mono
+
+
+def test_backlog_incident_is_not_stretched_to_the_replay():
+    # a restart replays old kernel records long after they happened
+    tr = incidents.IncidentTracker(10, 120)
+    tr.on_event(ev(100, "disconnect", "1-1.4"), {"1-1.4"})
+    tr.on_event(ev(105.7, "connect", "1-1.4"), {"1-1.4"})
+    done = tr.tick(5000, {"1-1.4"})
+    assert done.recovered and done.end_mono == 105.7, done.end_mono
+    tr.on_event(ev(200, "disconnect", "1-1.4"), set())
+    done = tr.tick(5000, set())
+    assert not done.recovered and done.end_mono == 320, done.end_mono
 
 
 def test_classify_motor_start():

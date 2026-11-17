@@ -564,8 +564,14 @@ async function poll() {
   }
 }
 
+function serverPage(loc) {
+  // an ipv6 address needs brackets in a url, location.hostname has none
+  const host = loc.hostname.includes(":") ? "[" + loc.hostname + "]" : loc.hostname;
+  return loc.protocol + "//" + host + ":8000/diagnose";
+}
+
 function setup() {
-  document.getElementById("back").href = location.protocol + "//" + location.hostname + ":8000/diagnose";
+  document.getElementById("back").href = serverPage(location);
   const svg = document.getElementById("diagram");
   svg.addEventListener("click", (e) => {
     const target = e.target.closest("[data-tile], [data-module]");

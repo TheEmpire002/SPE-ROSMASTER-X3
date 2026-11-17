@@ -110,6 +110,26 @@ console.log(JSON.stringify(placeTiles(JSON.parse(process.argv[2]))));
 """
 
 
+_BACK_JS = r"""
+const fs = require("fs");
+const src = fs.readFileSync(process.argv[1], "utf8").replace(/\nsetup\(\);\s*$/, "\n");
+const serverPage = new Function(src + "; return serverPage;")();
+console.log(JSON.stringify(JSON.parse(process.argv[2]).map(serverPage)));
+"""
+
+
+def test_back_link_works_for_ipv6():
+    node = shutil.which("node")
+    if node is None:
+        print("skip test_back_link_works_for_ipv6: no node on this machine")
+        return
+    js = pathlib.Path(daemon.__file__).parent / "web" / "usbdiag.js"
+    locs = [{"protocol": "http:", "hostname": "10.42.0.62"}, {"protocol": "http:", "hostname": "fe80::1"}]
+    out = subprocess.run([node, "-e", _BACK_JS, str(js), json.dumps(locs)],
+                         capture_output=True, text=True, timeout=30, check=True).stdout
+    assert json.loads(out) == ["http://10.42.0.62:8000/diagnose", "http://[fe80::1]:8000/diagnose"], out
+
+
 def test_pi_sockets_form_a_two_by_two_grid():
     node = shutil.which("node")
     if node is None:
@@ -180,12 +200,14 @@ def reconnects_of(events, port):
 def test_restart_does_not_duplicate_backlog():
     d = tempfile.mkdtemp()
     stop = threading.Event()
-    th = run_in_thread(mock.MockSources(speed=50.0), d, free_port(), stop)
+    src1 = mock.MockSources(speed=50.0)
+    th = run_in_thread(src1, d, free_port(), stop)
     time.sleep(1)
     stop.set()
     th.join(5)
     n1 = len(pathlib.Path(d, "events.jsonl").read_text().splitlines())
     files1 = incident_files(d)
+    contents1 = {f.name: f.read_bytes() for f in files1}
     # second run on the same folder replays the same backlog: no line and no incident may be added for it
     src = mock.MockSources(speed=0.0)  # speed 0: backlog only, no live bursts
     port2 = free_port()
@@ -198,8 +220,10 @@ def test_restart_does_not_duplicate_backlog():
         th2.join(5)
     assert n1 > 0 and files1
     assert len(pathlib.Path(d, "events.jsonl").read_text().splitlines()) == n1
-    # (a) same incident files, (b) the page lists every incident of this boot once
+    # (a) same incident files with the same content, (b) the page lists every incident of this boot once
     assert incident_files(d) == files1, (files1, incident_files(d))
+    changed = [f.name for f in incident_files(d) if f.read_bytes() != contents1[f.name]]
+    assert not changed, changed
     assert page["incident_count"] == len(files1), (page["incident_count"], files1)
     backlog_files = [f for f in files1 if json.loads(f.read_text(encoding="utf-8"))["start_mono"] < config.MOCK_START_MONO]
     assert len(backlog_files) == 1, backlog_files
@@ -209,14 +233,17 @@ def test_restart_does_not_duplicate_backlog():
     assert expected > 0
     rows = {r["label"]: r["value"] for r in page["details"]["board-p4"]["rows"]}
     assert rows["Neu verbunden"] == f"{expected}× seit Boot · 0× seit Start der Diagnose", rows
-    # (d) the backlog incident carries the wall clock of its first kernel record
+    # (d) the backlog incident carries the wall clock of its first kernel record, as the first run saw it
     first = next(e for e in events if e.kind in ("disconnect", "overcurrent", "reset_failed"))
     inc = json.loads(backlog_files[0].read_text(encoding="utf-8"))
     assert inc["start_mono"] == first.mono, (inc["start_mono"], first.mono)
-    # the second run rewrote the file with its own boot_wall estimate
-    assert abs(inc["start_wall"] - (src.boot_wall() + first.mono)) < 1e-6, (inc["start_wall"], src.boot_wall())
-    assert inc["time"] == texts.fmt_clock(src.boot_wall() + first.mono)
-    assert page["incidents"][-1]["time"] == texts.fmt_clock(src.boot_wall() + first.mono)
+    assert abs(inc["start_wall"] - (src1.boot_wall() + first.mono)) < 1e-6, (inc["start_wall"], src1.boot_wall())
+    assert inc["time"] == texts.fmt_clock(src1.boot_wall() + first.mono)
+    assert page["incidents"][-1]["time"] == inc["time"]
+    # (e) the backlog incident lasts as long as its burst, not until the daemon started
+    burst = events[-1].mono - first.mono
+    assert abs(inc["end_mono"] - inc["start_mono"] - burst) < 1e-6, (inc["start_mono"], inc["end_mono"], burst)
+    assert 5 < burst < 6 and inc["duration"] == texts.fmt_duration(burst), (burst, inc["duration"])
 
 
 class ManualLoop(daemon._Loop):
@@ -368,6 +395,81 @@ def test_source_errors_do_not_stop_the_loop():
         assert log.count("topology") == 1, log
     finally:
         stop.set()
+
+
+def test_missing_usbmon_has_its_own_capture_state():
+    d = tempfile.mkdtemp()
+    src = mock.MockSources(speed=0.0)
+    src.ensure_capture = lambda: False
+    opened = []
+    src.open_capture = opened.append
+    loop = ManualLoop(src, d, 0.1, config.MOCK_START_MONO + 3.0)
+    loop.start()
+    loop.run()
+    assert not opened and loop.state.capture == "usbmon_missing"
+    page = loop.state.page(loop.clock[0])
+    assert page["motor"]["capture"] == texts.CAPTURE_TEXTS["usbmon_missing"], page["motor"]["capture"]
+    log = pathlib.Path(d, "usb.log").read_text(encoding="utf-8")
+    assert log.count("usbmon is not loaded") == 1, log
+    # the real source only checks for usbmon and never loads it
+    assert daemon.RealSources(usbmon_root=str(pathlib.Path(d, "no-usbmon"))).ensure_capture() is False
+
+
+def test_wall_clock_step_moves_derived_times():
+    d = tempfile.mkdtemp()
+    src = mock.MockSources(speed=0.0)
+    before = src.boot_wall()
+
+    def ntp_step(loop):
+        if loop.wakes == 10:
+            src._boot_wall += 3600
+    loop = ManualLoop(src, d, 0.1, config.MOCK_START_MONO + 4.0, ntp_step)
+    loop.start()
+    loop.run()
+    assert loop.state.boot_wall == before + 3600, (loop.state.boot_wall, before)
+    log = pathlib.Path(d, "usb.log").read_text(encoding="utf-8")
+    assert log.count("wall clock stepped") == 1, log
+    assert "+3600.0 s" in log, log
+
+
+def test_real_sources_replace_boot_wall_only_on_a_step():
+    d = tempfile.mkdtemp()
+    uptime = pathlib.Path(d, "uptime")
+    uptime.write_text("1000.00 3000.00\n", encoding="ascii")
+    src = daemon.RealSources(uptime_path=str(uptime))
+    bw = src.boot_wall()
+
+    class FakeReader:
+        boot_wall = bw
+    src._kmsg = FakeReader()
+    # uptime rounding and the test runtime stay below the step threshold
+    uptime.write_text("1000.50 3000.00\n", encoding="ascii")
+    assert src.refresh_boot_wall() == bw and src._kmsg.boot_wall == bw
+    # ntp moved the wall clock: uptime looks an hour behind
+    uptime.write_text("-2600.00 3000.00\n", encoding="ascii")
+    stepped = src.refresh_boot_wall()
+    assert abs(stepped - (bw + 3600)) < config.BOOT_WALL_STEP_S, (stepped, bw)
+    assert src.boot_wall() == stepped and src._kmsg.boot_wall == stepped
+
+
+def test_client_reset_prints_no_traceback():
+    import contextlib
+    import io
+    from http.server import BaseHTTPRequestHandler
+    from rosmaster_assist.usbdiag import web
+    srv = web._Server(("127.0.0.1", 0), BaseHTTPRequestHandler)
+    try:
+        for exc, printed in ((ConnectionResetError(10054, "reset"), False), (BrokenPipeError(32, "pipe"), False),
+                             (ValueError("real bug"), True)):
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                try:
+                    raise exc
+                except Exception:  # noqa: BLE001
+                    srv.handle_error(None, ("127.0.0.1", 1))
+            assert bool(err.getvalue()) == printed, (exc, err.getvalue())
+    finally:
+        srv.server_close()
 
 
 if __name__ == "__main__":

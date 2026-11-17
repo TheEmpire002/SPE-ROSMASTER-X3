@@ -3,7 +3,6 @@
 import errno
 import os
 import struct
-import subprocess
 from dataclasses import dataclass, field
 
 from . import config
@@ -159,16 +158,6 @@ class UsbmonTap:
         self.bus: int | None = None
         self._fd: int | None = None
         self._partial = b""
-
-    def ensure_loaded(self) -> bool:
-        if os.path.exists(self.root):
-            return True
-        try:
-            subprocess.run(["modprobe", "usbmon"], timeout=config.MODPROBE_TIMEOUT_S,
-                           capture_output=True, check=False)
-        except (OSError, subprocess.SubprocessError):
-            return False
-        return os.path.exists(self.root)
 
     def open(self, bus: int) -> None:
         self.close()

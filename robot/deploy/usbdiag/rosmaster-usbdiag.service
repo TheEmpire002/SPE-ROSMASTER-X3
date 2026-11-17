@@ -12,6 +12,8 @@ Nice=10
 IOSchedulingClass=idle
 CPUQuota=10%
 MemoryMax=150M
+NoNewPrivileges=yes
+PrivateTmp=yes
 
 [Install]
 WantedBy=multi-user.target

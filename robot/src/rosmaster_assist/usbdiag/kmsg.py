@@ -33,7 +33,8 @@ _PATTERNS = [
      lambda m: {}),
     ("connect", re.compile(r"usb (\S+): New USB device found, idVendor=(\w+), idProduct=(\w+)"), 1,
      lambda m: {"vid": m.group(2), "pid": m.group(3)}),
-    ("overcurrent", re.compile(r"usb (usb\d+-port\d+): over-current change #(\d+)"), 1,
+    # root hub ports read usb1-port1, ports of an external hub 1-1-port2
+    ("overcurrent", re.compile(r"usb (\S+-port\d+): over-current change #(\d+)"), 1,
      lambda m: {}),
     ("reset_failed", re.compile(r"usb (\S+-port\d+): cannot reset \(err = (-\d+)\)"), 1,
      lambda m: {"error": int(m.group(2))}),

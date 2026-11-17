@@ -3,6 +3,7 @@
 import json
 import logging
 import pathlib
+import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -18,6 +19,18 @@ STATIC_FILES = {
 
 NOT_FOUND_TEXT = "Diese Seite gibt es hier nicht. Die USB-Diagnose liegt unter /"
 UNAVAILABLE_TEXT = "Die Diagnose-Daten sind gerade nicht verfügbar, bitte gleich noch einmal laden."
+
+# a browser that closes the tab or reloads mid-reply, not a fault
+CLIENT_GONE = (ConnectionResetError, BrokenPipeError, ConnectionAbortedError)
+
+
+class _Server(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def handle_error(self, request, client_address):
+        if isinstance(sys.exc_info()[1], CLIENT_GONE):
+            return  # no traceback in the journal for every page poll cut short
+        super().handle_error(request, client_address)
 
 
 def make_server(state, host: str, port: int, clock=time.monotonic,
@@ -66,6 +79,4 @@ def make_server(state, host: str, port: int, clock=time.monotonic,
         def log_message(self, format, *args):  # noqa: A002 (stdlib signature)
             pass  # one line per poll would flood the journal
 
-    server = ThreadingHTTPServer((host, port), Handler)
-    server.daemon_threads = True
-    return server
+    return _Server((host, port), Handler)

@@ -12,7 +12,7 @@ import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "robot" / "src"))
 
-from rosmaster_assist.usbdiag import config, kmsg, mock, sampler, state, topology, usbmon  # noqa: E402
+from rosmaster_assist.usbdiag import config, kmsg, mock, sampler, state, texts, topology, usbmon  # noqa: E402
 
 FIXTURES = pathlib.Path(__file__).resolve().parents[2] / "robot/src/rosmaster_assist/usbdiag/fixtures"
 
@@ -254,6 +254,41 @@ def test_capture_without_traffic_says_server_off():
         st.apply_topology(fixture_topology(pathlib.Path(d)), now=1.0)
         st.set_capture("on")
         assert st.page(10.0)["motor"]["capture"] == "kein Verkehr (Server aus)"
+
+
+def test_finished_incident_ends_at_its_last_event():
+    with tempfile.TemporaryDirectory() as d:
+        tmp = pathlib.Path(d)
+        st = state.DiagState(None, 0.0, 0.0)
+        with st.lock:
+            st.apply_topology(fixture_topology(tmp), now=1.0)
+            st.apply_event(kmsg.Event(30.0, 0, "disconnect", "1-1.4", {}, "r"))
+            st.apply_topology(fixture_topology(tmp, drop=["1-1.4"]), now=30.2)
+            st.apply_event(kmsg.Event(32.0, 0, "connect", "1-1.4", {}, "r"))
+            st.apply_topology(fixture_topology(tmp), now=32.1)
+            for t in (28.0, 31.0, 40.0):
+                st.apply_sample(sampler.Sample(t, 0, 5.06, {}, {}, 55.0, 2000.0, 12.0, 0.4))
+            st.tick(32.0 + config.INCIDENT_QUIET_S + 5)
+        now = 32.0 + config.INCIDENT_QUIET_S + 6
+        p = st.page(now)
+        inc = st.finished[0]
+        # past the verdict window: 3635 s since the reconnect, 3625 s if the quiet wait counted
+        later = st.page(32.0 + config.VERDICT_WINDOW_S + 35)
+    assert st.tracker.current is None
+    # duration, snapshot and the stable-since text all end with the reconnect, not after the quiet wait
+    assert inc["end_mono"] == 32.0 and p["incidents"][0]["duration"] == "2 s", inc["duration"]
+    assert [s["mono"] for s in inc["snapshot"]] == [28.0, 31.0], inc["snapshot"]
+    assert later["verdict"]["text"] == "Alles stabil seit 1 h 1 min", later["verdict"]
+
+
+def test_missing_usbmon_has_its_own_text():
+    with tempfile.TemporaryDirectory() as d:
+        st = state.DiagState(None, 0.0, 0.0)
+        st.apply_topology(fixture_topology(pathlib.Path(d)), now=1.0)
+        st.set_capture("usbmon_missing")
+        m = st.page(2.0)["motor"]
+    assert m["capture"] == texts.CAPTURE_TEXTS["usbmon_missing"] != texts.CAPTURE_TEXTS["unavailable"]
+    assert "usbmon ist nicht geladen" in m["capture"]
 
 
 if __name__ == "__main__":

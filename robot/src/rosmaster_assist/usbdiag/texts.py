@@ -133,6 +133,7 @@ CAPTURE_TEXTS = {
     "active": "Mithören aktiv",
     "idle": "kein Verkehr (Server aus)",
     "unavailable": "Mithören nicht verfügbar",
+    "usbmon_missing": "Mithören nicht verfügbar: usbmon ist nicht geladen (install.sh erneut ausführen)",
     "camera_on_bus": "Mithören abgeschaltet: Kamera am selben USB-Bus",
     "no_board": "Board nicht angeschlossen",
 }
