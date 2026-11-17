@@ -10,6 +10,11 @@ LOG_FILE_COUNT = 3
 INCIDENT_FILES_KEEP = 200
 SUMMARY_BOOTS_KEEP = 20
 LOG_OWNER = "pi"
+LOG_FILE_MODE = 0o644
+LOG_DIR_MODE = 0o755
+STORE_TAIL_BYTES = 65536  # enough lines to find the newest mono after a restart
+BOOT_ID_FILE = "/proc/sys/kernel/random/boot_id"
+MOCK_BOOT_ID = "mock"
 
 TOPOLOGY_POLL_S = 1.0
 SAMPLE_INTERVAL_S = 1.0
