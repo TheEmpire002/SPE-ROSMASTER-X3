@@ -20,6 +20,10 @@ def fmt_volts(v: float | None) -> str:
     return f"{v:.2f}".replace(".", ",") + " V"
 
 
+def fmt_num(value: float, decimals: int = 1) -> str:
+    return f"{value:.{decimals}f}".replace(".", ",")
+
+
 def fmt_clock(wall: float) -> str:
     return time.strftime("%H:%M:%S", time.localtime(wall))
 

@@ -85,3 +85,15 @@ UNKNOWN_DEVICE_NAME = "Unbekanntes USB-Gerät"
 NO_DEVICE_NAME = "nichts"
 BOARD_MCU_SUFFIX = "Board-MCU"
 MOTOR_TILE_LABEL = "Motorsteuerung"
+
+# crash reason scores (higher = more likely shown first)
+REASON_SCORES = {
+    "motor_start": 0.9,
+    "reenum_loop": 0.8,
+    "heat": 0.7,
+    "undervoltage": 0.85,
+    "cpu_spike": 0.6,
+    "board_mcu_silent": 0.9,
+    "idle_unclear": 0.5,
+}
+MOTOR_BATTERY_BONUS = 0.1
