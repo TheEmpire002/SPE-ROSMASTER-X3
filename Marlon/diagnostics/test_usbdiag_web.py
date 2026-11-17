@@ -5,7 +5,10 @@
 
 import json
 import pathlib
+import re
+import shutil
 import socket
+import subprocess
 import sys
 import tempfile
 import threading
@@ -92,6 +95,44 @@ def test_page_script_places_sockets_by_slot_and_makes_modules_buttons():
         start = js.index(f'class: "{kind}",')
         assert 'role: "button"' in js[start:start + 200] and 'tabindex: "0"' in js[start:start + 200], kind
     assert 'closest("[data-tile], [data-module]")' in js
+    # column from slot // 2, row from slot % 2
+    assert "Math.floor(slot / 2)" in js and "(slot % 2)" in js
+    cols = re.search(r"const SLOT = \{ cols: \[(\d+), (\d+)\]", js)
+    assert cols and cols.group(1) != cols.group(2)
+
+
+# runs the page's own placeTiles in node, so the check sees what the browser draws
+_PLACE_JS = r"""
+const fs = require("fs");
+const src = fs.readFileSync(process.argv[1], "utf8").replace(/\nsetup\(\);\s*$/, "\n");
+const placeTiles = new Function(src + "; return placeTiles;")();
+console.log(JSON.stringify(placeTiles(JSON.parse(process.argv[2]))));
+"""
+
+
+def test_pi_sockets_form_a_two_by_two_grid():
+    node = shutil.which("node")
+    if node is None:
+        print("skip test_pi_sockets_form_a_two_by_two_grid: no node on this machine")
+        return
+    js = pathlib.Path(daemon.__file__).parent / "web" / "usbdiag.js"
+    tiles = [{"id": s["id"], "label": s["label"], "kind": "socket", "slot": s["slot"]} for s in config.PI_SOCKETS]
+    state = {"modules": [{"id": "pi", "tiles": tiles}]}
+    out = subprocess.run([node, "-e", _PLACE_JS, str(js), json.dumps(state)],
+                         capture_output=True, text=True, timeout=30, check=True).stdout
+    boxes = json.loads(out)
+    by_slot = {s["slot"]: boxes[s["id"]] for s in config.PI_SOCKETS}
+    assert len({b["x"] for b in by_slot.values()}) == 2
+    assert len({b["y"] for b in by_slot.values()}) == 2
+    # same stack shares a column, same row shares a height
+    assert by_slot[0]["x"] == by_slot[1]["x"] and by_slot[2]["x"] == by_slot[3]["x"]
+    assert by_slot[0]["y"] == by_slot[2]["y"] and by_slot[1]["y"] == by_slot[3]["y"]
+    # every cable leaves on its own height, and none of them runs through a socket
+    assert len({b["cy"] for b in by_slot.values()}) == 4
+    for b in by_slot.values():
+        for other in by_slot.values():
+            if other is not b and other["x"] > b["x"]:
+                assert not other["y"] <= b["cy"] <= other["y"] + other["h"]
 
 
 def test_mock_produces_incidents_and_files():

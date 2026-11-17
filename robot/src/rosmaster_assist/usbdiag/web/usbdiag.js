@@ -8,9 +8,12 @@ const RANK = { bad: 4, warn: 3, unknown: 2, ok: 1, empty: 0 };
 
 // fixed drawing geometry, matching the module ids DiagState sends
 const PI = { x: 20, y: 30, w: 200, h: 330 };
-const SOCKET = { x: 176, w: 112, h: 46 };
-// slot // 2 picks the socket pair, slot % 2 the upper or lower socket; pairs sit apart along the pi edge
-const SLOT = { top: 62, row: 58, pair: 140 };
+const SOCKET = { w: 100, h: 46 };
+// 2x2 grid: slot // 2 picks the column (socket stack), slot % 2 the row (oben/unten);
+// column 0 sits on the pi edge, the inner column's cables drop into the free lane below their row,
+// so rows are two lanes apart
+const SLOT = { cols: [188, 76], top: 70, lane: 58 };
+const SOCKET_EDGE = SLOT.cols[0] + SOCKET.w;
 const SOCKET_CHIP_X = 316;
 const BOARD = { x: 520, y: 30, w: 170, h: 300 };
 const PORT = { x: 536, w: 138, h: 46, rows: [74, 134, 194, 254] };
@@ -116,10 +119,12 @@ function placeTiles(state) {
   for (const m of state.modules) {
     m.tiles.forEach((t, i) => {
       if (m.id === "pi") {
-        const y = Number.isInteger(t.slot)
-          ? SLOT.top + Math.floor(t.slot / 2) * SLOT.pair + (t.slot % 2) * SLOT.row
-          : SLOT.top + i * SLOT.row;
-        boxes[t.id] = { x: SOCKET.x, y, w: SOCKET.w, h: SOCKET.h, side: "pi" };
+        const slot = Number.isInteger(t.slot) ? t.slot : i;
+        const col = Math.floor(slot / 2) % SLOT.cols.length;
+        const y = SLOT.top + (slot % 2) * 2 * SLOT.lane;
+        // inner sockets route their cable one lane lower, under the outer socket
+        const cy = y + (col > 0 ? SLOT.lane : 0) + SOCKET.h / 2;
+        boxes[t.id] = { x: SLOT.cols[col], y, w: SOCKET.w, h: SOCKET.h, cy, side: "pi" };
       } else if (m.id === "board") {
         const y = PORT.rows[i] !== undefined ? PORT.rows[i] : 74 + i * 60;
         boxes[t.id] = { x: PORT.x, y, w: PORT.w, h: PORT.h, side: "board" };
@@ -152,7 +157,7 @@ function drawPi(svg, mod) {
     el("svg:rect", { class: "gpio", x: PI.x + 10, y: PI.y + 48 + i * 13, width: 6, height: 6, rx: 1 }, g);
     el("svg:rect", { class: "gpio", x: PI.x + 20, y: PI.y + 48 + i * 13, width: 6, height: 6, rx: 1 }, g);
   }
-  el("svg:rect", { class: "soc", x: PI.x + 50, y: PI.y + 128, width: 76, height: 76, rx: 6 }, g);
+  el("svg:rect", { class: "soc", x: PI.x + 60, y: PI.y + 256, width: 66, height: 66, rx: 6 }, g);
   el("svg:text", { class: "mod-title", x: PI.x + 40, y: PI.y + 28 }, g, mod.title);
   if (mod.note) el("svg:text", { class: "mod-note", x: PI.x, y: PI.y + PI.h + 22 }, g, mod.note);
 }
@@ -221,8 +226,9 @@ function drawTile(svg, tile, box) {
 function drawChip(svg, tile, box) {
   const x = box.side === "pi" ? SOCKET_CHIP_X : BOARD_CHIP_X;
   const w = box.side === "pi" ? CHIP.piW : CHIP.boardW;
-  const cy = box.y + box.h / 2;
-  el("svg:line", { class: "lead", x1: box.x + box.w, y1: cy, x2: x, y2: cy }, svg);
+  const out = exitOf(box);
+  el("svg:path", { class: "lead", d: `${out.start} H${x}` }, svg);
+  const top = out.y - CHIP.h / 2;
   const g = el("svg:g", {
     class: "chip",
     role: "button",
@@ -232,9 +238,9 @@ function drawChip(svg, tile, box) {
     "aria-label": tile.device + ": " + tile.line,
   }, svg);
   const tip = el("svg:title", {}, g, tile.device + ": " + tile.line);
-  el("svg:rect", { class: "chip-face", x, y: box.y, width: w, height: CHIP.h, rx: 6 }, g);
-  fitText(el("svg:text", { class: "chip-name", x: x + 10, y: box.y + 19 }, g), tile.device, w - 20);
-  const line = el("svg:text", { class: "chip-line", x: x + 10, y: box.y + 37 }, g);
+  el("svg:rect", { class: "chip-face", x, y: top, width: w, height: CHIP.h, rx: 6 }, g);
+  fitText(el("svg:text", { class: "chip-name", x: x + 10, y: top + 19 }, g), tile.device, w - 20);
+  const line = el("svg:text", { class: "chip-line", x: x + 10, y: top + 37 }, g);
   fitText(line, tile.line, w - 20);
   view.chips[tile.id] = { g, line, tip, w, device: tile.device };
 }
@@ -251,18 +257,28 @@ function fitText(node, text, maxWidth) {
   }
 }
 
+// where a cable leaves a tile; a socket in the inner column drops into its lane first
+function exitOf(box) {
+  const y = box.cy !== undefined ? box.cy : box.y + box.h / 2;
+  if (y === box.y + box.h / 2) return { start: `M${box.x + box.w},${y}`, x: box.x + box.w, y };
+  const x = box.x + box.w / 2;
+  return { start: `M${x},${box.y + box.h} V${y}`, x, y };
+}
+
 function linkPath(from, to) {
   if (to === "motor") {
     const x = from.x + from.w / 2;
     return { d: `M${x},${from.y + from.h} V${MOTOR.y}`, lx: x + 8, ly: (from.y + from.h + MOTOR.y) / 2 + 4 };
   }
   // cables run straight into the board when the rows line up, otherwise with one jog
-  const sx = from.x + from.w;
-  const sy = from.y + from.h / 2;
+  const out = exitOf(from);
+  const sy = out.y;
   const ty = Math.min(Math.max(sy, BOARD.y + 40), BOARD.y + BOARD.h - 20);
   const mx = BOARD.x - 24;
-  const d = sy === ty ? `M${sx},${sy} H${BOARD.x}` : `M${sx},${sy} H${mx} V${ty} H${BOARD.x}`;
-  return { d, lx: sx + 22, ly: sy - 10 };
+  const d = sy === ty ? `${out.start} H${BOARD.x}` : `${out.start} H${mx} V${ty} H${BOARD.x}`;
+  // labels start right of the socket grid so inner and outer cables line up
+  const lx = (from.side === "pi" ? Math.max(out.x, SOCKET_EDGE) : out.x) + 22;
+  return { d, lx, ly: sy - 10 };
 }
 
 function buildDiagram(state) {
@@ -301,9 +317,14 @@ function buildDiagram(state) {
     if (chips.has(t.id)) {
       drawChip(svg, t, box);
     } else if (isEmpty(t)) {
-      // board ports sit inside the board outline, so their note goes outside it
-      const x = box.side === "board" ? BOARD_CHIP_X : box.x + box.w + 14;
-      el("svg:text", { class: "free", x, y: box.y + box.h / 2 + 4 }, svg, "frei");
+      // board ports sit inside the board outline, so their note goes outside it;
+      // pi sockets have a neighbour on the right, so theirs goes underneath
+      if (box.side === "pi") {
+        el("svg:text", { class: "free", x: box.x + 10, y: box.y + box.h + 16 }, svg, "frei");
+      } else {
+        const x = box.side === "board" ? BOARD_CHIP_X : box.x + box.w + 14;
+        el("svg:text", { class: "free", x, y: box.y + box.h / 2 + 4 }, svg, "frei");
+      }
     }
   }
 
