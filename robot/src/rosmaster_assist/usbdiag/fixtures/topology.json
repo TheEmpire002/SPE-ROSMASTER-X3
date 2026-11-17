@@ -1,0 +1,209 @@
+{
+ "devices": {
+  "1-1": {
+   "idVendor": "2109",
+   "idProduct": "2817",
+   "product": "USB2.0 Hub",
+   "speed": "480",
+   "bMaxPower": "0mA",
+   "devnum": "111",
+   "busnum": "1",
+   "interfaces": {
+    "1.0": {
+     "driver": "hub"
+    }
+   }
+  },
+  "2-1": {
+   "idVendor": "2109",
+   "idProduct": "0817",
+   "product": "USB3.0 Hub",
+   "speed": "5000",
+   "bMaxPower": "0mA",
+   "devnum": "112",
+   "busnum": "2",
+   "interfaces": {
+    "1.0": {
+     "driver": "hub"
+    }
+   }
+  },
+  "1-1.2": {
+   "idVendor": "10c4",
+   "idProduct": "ea60",
+   "product": "CP2102 USB to UART Bridge Controller",
+   "speed": "12",
+   "bMaxPower": "100mA",
+   "devnum": "113",
+   "busnum": "1",
+   "interfaces": {
+    "1.0": {
+     "driver": "cp210x",
+     "tty": "ttyUSB0"
+    }
+   }
+  },
+  "1-1.4": {
+   "idVendor": "1a86",
+   "idProduct": "7523",
+   "product": "USB Serial",
+   "speed": "12",
+   "bMaxPower": "104mA",
+   "devnum": "114",
+   "busnum": "1",
+   "interfaces": {
+    "1.0": {
+     "driver": "ch341",
+     "tty": "ttyUSB1"
+    }
+   }
+  },
+  "3-1": {
+   "idVendor": "05e3",
+   "idProduct": "0608",
+   "product": "USB2.0 Hub",
+   "speed": "480",
+   "bMaxPower": "100mA",
+   "devnum": "115",
+   "busnum": "3",
+   "interfaces": {
+    "1.0": {
+     "driver": "hub"
+    }
+   }
+  },
+  "3-1.1": {
+   "idVendor": "2bc5",
+   "idProduct": "060f",
+   "product": "ORBBEC Depth Sensor",
+   "speed": "480",
+   "bMaxPower": "500mA",
+   "devnum": "116",
+   "busnum": "3"
+  },
+  "3-1.2": {
+   "idVendor": "2bc5",
+   "idProduct": "050f",
+   "product": "USB 2.0 Camera",
+   "speed": "480",
+   "bMaxPower": "500mA",
+   "devnum": "117",
+   "busnum": "3",
+   "interfaces": {
+    "1.0": {
+     "driver": "uvcvideo"
+    }
+   }
+  }
+ },
+ "ports": {
+  "usb1-port1": {
+   "state": "configured",
+   "over_current_count": 54,
+   "peer": "usb2-port1",
+   "device": true
+  },
+  "usb1-port2": {
+   "state": "not attached",
+   "over_current_count": 31,
+   "peer": null,
+   "device": false
+  },
+  "usb2-port1": {
+   "state": "configured",
+   "over_current_count": 62,
+   "peer": null,
+   "device": true
+  },
+  "usb3-port1": {
+   "state": "configured",
+   "over_current_count": 56,
+   "peer": "usb4-port1",
+   "device": true
+  },
+  "usb3-port2": {
+   "state": "not attached",
+   "over_current_count": 34,
+   "peer": null,
+   "device": false
+  },
+  "usb4-port1": {
+   "state": "not attached",
+   "over_current_count": 66,
+   "peer": null,
+   "device": false
+  },
+  "1-1-port1": {
+   "state": "not attached",
+   "over_current_count": 0,
+   "peer": "2-1-port1",
+   "device": false
+  },
+  "2-1-port1": {
+   "state": "not attached",
+   "over_current_count": 0,
+   "peer": "1-1-port1",
+   "device": false
+  },
+  "3-1-port1": {
+   "state": "configured",
+   "over_current_count": 0,
+   "peer": null,
+   "device": true
+  },
+  "1-1-port2": {
+   "state": "configured",
+   "over_current_count": 0,
+   "peer": "2-1-port2",
+   "device": true
+  },
+  "2-1-port2": {
+   "state": "not attached",
+   "over_current_count": 0,
+   "peer": "1-1-port2",
+   "device": false
+  },
+  "3-1-port2": {
+   "state": "configured",
+   "over_current_count": 0,
+   "peer": null,
+   "device": true
+  },
+  "1-1-port3": {
+   "state": "not attached",
+   "over_current_count": 0,
+   "peer": "2-1-port3",
+   "device": false
+  },
+  "2-1-port3": {
+   "state": "not attached",
+   "over_current_count": 0,
+   "peer": "1-1-port3",
+   "device": false
+  },
+  "3-1-port3": {
+   "state": "not attached",
+   "over_current_count": 0,
+   "peer": null,
+   "device": false
+  },
+  "1-1-port4": {
+   "state": "configured",
+   "over_current_count": 0,
+   "peer": "2-1-port4",
+   "device": true
+  },
+  "2-1-port4": {
+   "state": "not attached",
+   "over_current_count": 0,
+   "peer": "1-1-port4",
+   "device": false
+  },
+  "3-1-port4": {
+   "state": "not attached",
+   "over_current_count": 0,
+   "peer": null,
+   "device": false
+  }
+ }
+}

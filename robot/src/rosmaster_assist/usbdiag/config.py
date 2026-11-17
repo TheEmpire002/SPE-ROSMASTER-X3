@@ -78,3 +78,10 @@ MODPROBE_TIMEOUT_S = 5.0
 VCGENCMD_TIMEOUT_S = 2.0
 THERMAL_FILE = "/sys/class/thermal/thermal_zone0/temp"
 CPUFREQ_FILE = "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq"
+
+# sysfs topology scan
+SYSFS_USB_ROOT = "/sys/bus/usb/devices"
+UNKNOWN_DEVICE_NAME = "Unbekanntes USB-Gerät"
+NO_DEVICE_NAME = "nichts"
+BOARD_MCU_SUFFIX = "Board-MCU"
+MOTOR_TILE_LABEL = "Motorsteuerung"
