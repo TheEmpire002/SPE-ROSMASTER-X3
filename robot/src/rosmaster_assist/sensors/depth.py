@@ -58,21 +58,21 @@ _PROP_MIRRORING = 7
 
 
 class _Mode(C.Structure):
-    _fields_ = [("format", C.c_int), ("breite", C.c_int), ("hoehe", C.c_int), ("fps", C.c_int)]
+    _fields_ = [("format", C.c_int), ("width", C.c_int), ("height", C.c_int), ("fps", C.c_int)]
 
 
 class _Frame(C.Structure):
     _fields_ = [
-        ("groesse", C.c_int), ("daten", C.c_void_p), ("sensor", C.c_int),
-        ("zeitstempel", C.c_uint64), ("nummer", C.c_int),
-        ("breite", C.c_int), ("hoehe", C.c_int), ("modus", _Mode),
-        ("zuschnitt", C.c_int), ("zuschnitt_x", C.c_int), ("zuschnitt_y", C.c_int),
-        ("zeilenbreite", C.c_int),
+        ("data_size", C.c_int), ("data", C.c_void_p), ("sensor", C.c_int),
+        ("timestamp", C.c_uint64), ("frame_index", C.c_int),
+        ("width", C.c_int), ("height", C.c_int), ("video_mode", _Mode),
+        ("cropping_enabled", C.c_int), ("crop_origin_x", C.c_int), ("crop_origin_y", C.c_int),
+        ("stride", C.c_int),
     ]
 
 
 class _SensorInfo(C.Structure):
-    _fields_ = [("sensor", C.c_int), ("anzahl", C.c_int), ("modi", C.POINTER(_Mode))]
+    _fields_ = [("sensor", C.c_int), ("count", C.c_int), ("modes", C.POINTER(_Mode))]
 
 
 class _OpenNI:

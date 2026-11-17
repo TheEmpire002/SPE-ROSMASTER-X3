@@ -2,19 +2,19 @@
 
 ## Inventory
 
-| Component       | Model                 | Connection       | Status      |
-|-----------------|-----------------------|------------------|-------------|
-| Computer        | Raspberry Pi 5 (16 GB) + AI HAT+ 2 (Hailo-10H) | PCIe (`/dev/hailo0`) | present, Hailo planned for interaction |
-| Chassis         | Yahboom ROSMASTER X3  | USB serial       | present     |
-| Expansion Board | Yahboom (STM32)       | USB serial       | present     |
-| Lidar           | Slamtec RPLIDAR A1    | USB serial       | integrated (localization + obstacles) |
-| Depth camera    | Orbbec (color + depth channel) | USB (via hub) | color image integrated (camera `orientierung`), depth since 04.11. (obstacles during autonomous driving) |
-| Webcam          | Logitech C270 (front, tilted slightly up) | USB, own bus (directly on the Pi) | integrated (camera `personen`: person detection, gestures) |
-| Microphone      | USB microphone (FongLun, C-Media `0d8c:0016`); more in the C270 and Orbbec | USB audio, own bus | integrated (voice commands "Robi …", `SPEECH_MICROPHONE`) |
-| Speaker         | USB speaker "UACDemoV1.0" | USB audio, directly on the Pi | integrated (MUKKE: music from YouTube; speech output, `VOICE_DEVICE`) |
-| ESP32           | *(enter model)*       | Wi-Fi            | planned     |
-| Pulse sensor    | *(enter model)*       | ESP32            | planned     |
-| Box motor       | *(enter model)*       | servo on the X3  | planned     |
+| Component       | Model                                                                      | Connection                        | Status                                                                                                   |
+| --------------- | -------------------------------------------------------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Computer        | Raspberry Pi 5 (16 GB) + AI HAT+ 2 (Hailo-10H)                             | PCIe (`/dev/hailo0`)              | present, Hailo planned for interaction                                                                   |
+| Chassis         | Yahboom ROSMASTER X3                                                       | USB serial                        | present                                                                                                  |
+| Expansion Board | Yahboom (STM32)                                                            | USB serial                        | present                                                                                                  |
+| Lidar           | Slamtec RPLIDAR A1                                                         | USB serial                        | integrated (localization + obstacles)                                                                    |
+| Depth camera    | Orbbec (color + depth channel)                                             | USB (via hub)                     | color image integrated (camera `orientierung`), depth since 04.11. (obstacles during autonomous driving) |
+| Webcam          | Logitech C270 (front, tilted slightly up)                                  | USB, own bus (directly on the Pi) | integrated (camera `personen`: person detection, gestures)                                               |
+| Microphone      | USB microphone (FongLun, C-Media `0d8c:0016`); more in the C270 and Orbbec | USB audio, own bus                | integrated (voice commands "Robi …", `SPEECH_MICROPHONE`)                                                |
+| Speaker         | USB speaker "UACDemoV1.0"                                                  | USB audio, directly on the Pi     | integrated (MUKKE: music from YouTube; speech output, `VOICE_DEVICE`)                                    |
+| ESP32           | _(enter model)_                                                            | Wi-Fi                             | planned                                                                                                  |
+| Pulse sensor    | _(enter model)_                                                            | ESP32                             | planned                                                                                                  |
+| Box motor       | _(enter model)_                                                            | servo on the X3                   | planned                                                                                                  |
 
 > Please enter the model names here when installing parts. Without them it
 > is impossible to tell later which driver is needed.
@@ -23,15 +23,15 @@
 
 Output of `lsusb` on this robot, explained:
 
-| USB ID | Device | Purpose |
-|---|---|---|
-| `1a86:7523` | QinHeng CH340 | **Expansion Board**: drive |
-| `10c4:ea60` | Silicon Labs CP210x | **RPLIDAR A1** |
-| `2bc5:050f` | Orbbec "USB 2.0 Camera" | RGB image, camera `orientierung` |
-| `2bc5:060f` | Orbbec Depth Sensor | depth channel of the same camera |
-| `046d:0825` | Logitech C270 HD WebCam | camera `personen`, microphone (own USB bus, not on the hub) |
-| `0d8c:0016` | USB microphone (C-Media) | speech input (ALSA "Microphone") |
-| `4c4a:4155` | Jieli "UACDemoV1.0" | USB speaker, speech output (ALSA "UACDemoV10"), not a camera |
+| USB ID      | Device                   | Purpose                                                      |
+| ----------- | ------------------------ | ------------------------------------------------------------ |
+| `1a86:7523` | QinHeng CH340            | **Expansion Board**: drive                                   |
+| `10c4:ea60` | Silicon Labs CP210x      | **RPLIDAR A1**                                               |
+| `2bc5:050f` | Orbbec "USB 2.0 Camera"  | RGB image, camera `orientierung`                             |
+| `2bc5:060f` | Orbbec Depth Sensor      | depth channel of the same camera                             |
+| `046d:0825` | Logitech C270 HD WebCam  | camera `personen`, microphone (own USB bus, not on the hub)  |
+| `0d8c:0016` | USB microphone (C-Media) | speech input (ALSA "Microphone")                             |
+| `4c4a:4155` | Jieli "UACDemoV1.0"      | USB speaker, speech output (ALSA "UACDemoV10"), not a camera |
 
 **The most important consequence:** there are **two** USB serial adapters.
 Board and lidar both show up as `/dev/ttyUSB*`, and which one gets which
@@ -68,10 +68,10 @@ assigns the cameras by their USB ID, not by number (see [Camera](#camera)).
 The X3 has **mecanum wheels**. This lets it drive sideways without turning.
 Drive commands therefore have three values instead of two:
 
-| Value   | Meaning                      | Unit    |
-|---------|------------------------------|---------|
-| `vx`    | forward (+) / backward (−)   | m/s     |
-| `vy`    | left (+) / right (−)         | m/s     |
+| Value   | Meaning                                   | Unit  |
+| ------- | ----------------------------------------- | ----- |
+| `vx`    | forward (+) / backward (−)                | m/s   |
+| `vy`    | left (+) / right (−)                      | m/s   |
 | `omega` | turn counterclockwise (+) / clockwise (−) | rad/s |
 
 Limits and default speed are in `robot/src/rosmaster_assist/config.py`.
@@ -136,11 +136,12 @@ The usual suspects:
   ```
 
   Either ROS2 **or** our server, never both.
+
 - **Yahboom app** (`app.py` with Flask, MakerControl). Starts at boot on
   Yahboom images. `sudo systemctl stop <name>`, additionally `disable` if
   needed.
 - **Serial console** on the GPIO UART. Switch it off via
-  `sudo raspi-config` → *Interface Options* → *Serial Port* → login shell
+  `sudo raspi-config` → _Interface Options_ → _Serial Port_ → login shell
   **no**, hardware **yes**.
 - **ModemManager**, which automatically probes new USB serial devices:
   `sudo systemctl disable --now ModemManager`
@@ -186,7 +187,7 @@ Check the state: `http://<IP-of-the-Pi>:8000/lidar/status`. It shows how many
 revolutions have arrived, whether the start point has been calibrated and
 how well the match fits (`letztes_residuum_m`; below 5 cm is good).
 
-**⚠ Port mix-up: important.** The X3 Expansion Board *also* uses a USB serial
+**⚠ Port mix-up: important.** The X3 Expansion Board _also_ uses a USB serial
 port. With two devices, Linux assigns `/dev/ttyUSB0` and `/dev/ttyUSB1` in
 the order in which they are detected, and that order can change on every
 reboot. Then the drive suddenly receives lidar commands.
@@ -214,11 +215,11 @@ in `robot/src/rosmaster_assist/sensors/__init__.py`.
 
 The software runs **all** cameras it finds, each with its own image:
 
-| Variant | Requirement |
-|---|---|
-| USB cameras | `pip install opencv-python` |
-| CSI camera on the ribbon cable | `picamera2` (included in Raspberry Pi OS) |
-| Test image if there is no camera at all | nothing, runs everywhere |
+| Variant                                 | Requirement                               |
+| --------------------------------------- | ----------------------------------------- |
+| USB cameras                             | `pip install opencv-python`               |
+| CSI camera on the ribbon cable          | `picamera2` (included in Raspberry Pi OS) |
+| Test image if there is no camera at all | nothing, runs everywhere                  |
 
 Which USB camera is used for what is set in `config.py` in `CAMERA_ROLES`:
 `orientierung` is the Orbbec (USB ID `2bc5`), `personen` the Logitech
@@ -268,6 +269,12 @@ container to `~/orbbec_openni2` (`DEPTH_OPENNI_PATH`). The pip package
 of our own. Yahboom's udev rule `56-orbbec-usb.rules` allows access without
 root. If the library is missing, the server keeps running without depth and
 reports this in the log and under `/tiefe/status`.
+
+**Troubleshooting:** a working RGB stream does not prove that depth works;
+the depth channel uses a separate driver path. `AttributeError` for
+`_SensorInfo.count` or `_Frame.data` indicates mismatched internal ctypes
+field names in older server code. Update the server code and restart it,
+then verify with `POST /tiefe/test` followed by `GET /tiefe/status`.
 
 **What you need to know:**
 
@@ -459,7 +466,7 @@ via the Expansion Board. An empty battery is not the cause.
   robot drive while compiling.
 - The real fix is in hardware: a hub without backfeed or a separated VBUS
   line.
-- The C270 is on its own *data bus*, but **not on its own power supply**. On
+- The C270 is on its own _data bus_, but **not on its own power supply**. On
   the Pi 5 all four sockets share one power switch (1.6 A total). If it
   trips, all ports report "over-current" at the same time, and during a
   longer overload the C270 drops off too (as happened on 28.10.).
@@ -472,12 +479,12 @@ otherwise switch the robot off once.
 
 **Quick check before every test** (`python scripts/check_hardware.py`):
 
-| Check | Good | Bad → do |
-|---|---|---|
-| USB supply | `[ok]`, no new messages in 3 s | new over-current messages → do not drive, find the cause (next lines) |
-| Is the Pi installing/compiling? | no warning | `dpkg`/`apt`/`dkms`/`cc1` running → wait or cancel, do not drive |
-| Temperature | below ~70 °C | above 80 °C → check the fan, reduce load |
-| Clock | 2000 MHz | higher → `arm_freq=2000` missing in `config.txt` |
+| Check                           | Good                           | Bad → do                                                              |
+| ------------------------------- | ------------------------------ | --------------------------------------------------------------------- |
+| USB supply                      | `[ok]`, no new messages in 3 s | new over-current messages → do not drive, find the cause (next lines) |
+| Is the Pi installing/compiling? | no warning                     | `dpkg`/`apt`/`dkms`/`cc1` running → wait or cancel, do not drive      |
+| Temperature                     | below ~70 °C                   | above 80 °C → check the fan, reduce load                              |
+| Clock                           | 2000 MHz                       | higher → `arm_freq=2000` missing in `config.txt`                      |
 
 On 28.10. a pointless nvidia driver build (DKMS) ran twice in the
 background, triggered by a hanging `dpkg --configure -a`. The nvidia
@@ -509,15 +516,15 @@ USB device" on 1-1.4), re-plug the lidar cable.
 wheels spun freely in the air, i.e. without load. Same test as on 28.10.:
 5 min, of which 210 s driving with the same turns.
 
-| Supply | Devices | Over-current / disconnects |
-|---|---|---|
-| Lab power supply | Orbbec, without C270 | 0 / 0 |
-| Battery, 100 % (12.3 V) | Orbbec and C270 (images streaming) | 0 / 0 |
+| Supply                  | Devices                            | Over-current / disconnects |
+| ----------------------- | ---------------------------------- | -------------------------- |
+| Lab power supply        | Orbbec, without C270               | 0 / 0                      |
+| Battery, 100 % (12.3 V) | Orbbec and C270 (images streaming) | 0 / 0                      |
 
 Lidar and camera did not reconnect a single time in either run, 51–53 °C,
 no throttling. On 28.10. the robot was not on the stand, so the wheels had
 load: +160 messages in 4.5 min. **So without load the battery is enough
-too.** The resets come from the motors' inrush current *under load*, which
+too.** The resets come from the motors' inrush current _under load_, which
 is considerably higher than with freely spinning wheels. Whether a power
 supply can absorb that will only be shown by a test on the floor. Until
 then, point 4 below remains the safe route.
@@ -538,22 +545,22 @@ switching to the other Expansion Board, seemingly random crashes continued,
 on the power supply and on the stand. Measured via SSH, **without the
 server running** and without any wheel turning:
 
-| Measurement | Value |
-|---|---|
-| `vcgencmd get_throttled` | `0x0` (never undervoltage, never throttled) |
-| Pi supply (PMIC `EXT5V`) | 5.05–5.08 V |
-| Temperature, free RAM | 47 °C, 14 GB free |
-| Over-current messages at idle | **49–65 per 10 s**, continuously |
-| Counter `over_current_count` | all 6 root ports count up (160–325), the hub ports stay at 0 |
-| Onset | within the first second after booting |
-| Lidar | does not register (`device descriptor read … error -32`, plus `-71`), `/dev/rplidar` missing |
+| Measurement                   | Value                                                                                        |
+| ----------------------------- | -------------------------------------------------------------------------------------------- |
+| `vcgencmd get_throttled`      | `0x0` (never undervoltage, never throttled)                                                  |
+| Pi supply (PMIC `EXT5V`)      | 5.05–5.08 V                                                                                  |
+| Temperature, free RAM         | 47 °C, 14 GB free                                                                            |
+| Over-current messages at idle | **49–65 per 10 s**, continuously                                                             |
+| Counter `over_current_count`  | all 6 root ports count up (160–325), the hub ports stay at 0                                 |
+| Onset                         | within the first second after booting                                                        |
+| Lidar                         | does not register (`device descriptor read … error -32`, plus `-71`), `/dev/rplidar` missing |
 
 Conclusions:
 
 - **The code is not the cause.** The overload is already running before the
   server starts, and without any computing or driving load. The Pi itself
   has enough voltage and is cool.
-- That *all* root ports count matches the shared power switch of the Pi 5
+- That _all_ root ports count matches the shared power switch of the Pi 5
   (see above): one device or cable draws too much or feeds back, and the
   switch reports it for all. Suspects are the hub on the board (VIA 2109,
   backfeed via VBUS) and the lidar or its cable, which does not even
@@ -563,7 +570,7 @@ Conclusions:
   Verbindung zum Antrieb" ("no connection to the drive").
 
 **Narrowing it down (on the robot, in this order).** After each step, check
-the value *USB-Überlast pro Minute* (USB overload per minute) on `/diagnose`
+the value _USB-Überlast pro Minute_ (USB overload per minute) on `/diagnose`
 under "Abstürze & Hänger" (crashes & hangs), or use `dmesg -w`:
 
 1. Unplug all USB devices from the Pi. If the overload stops, a device is
@@ -601,8 +608,8 @@ When reading the logs, note: the Pi has no real-time clock, so until network
 time is available the log shows old timestamps.
 
 **The hub.** The USB hub on the X3 is a VIA VL817 (`2109:2817` USB 2,
-`2109:0817` USB 3, firmware 0.50). According to its descriptor it is *self
-powered* (0 mA from the Pi), so it is supplied via the Expansion Board. We
+`2109:0817` USB 3, firmware 0.50). According to its descriptor it is _self
+powered_ (0 mA from the Pi), so it is supplied via the Expansion Board. We
 were told it is the old version V1 with known power problems. That matches
 the pattern above: a self-powered hub whose rail collapses or feeds back
 makes the Pi's shared switch trip on all ports, including empty ones and the
@@ -637,11 +644,11 @@ Sorted by effect, simplest first:
    the battery via the Expansion Board. If this rail sags, the devices draw
    their current through the USB cable from the Pi, and the 1.6 A switch
    trips. This is a hypothesis, but it is easy to check: test with a full
-   battery. *Checked on 28.10.: with a full battery the resets during turns
-   remain.*
+   battery. _Checked on 28.10.: with a full battery the resets during turns
+   remain._
 2. **Unplug the Orbbec while nobody uses it.** It is the biggest consumer on
    the hub (depth sensor with projector, own internal hub), and our code
-   does not use it. *Unplugged since 28.10., not enough on its own.*
+   does not use it. _Unplugged since 28.10., not enough on its own._
 3. **Only necessary devices directly on the Pi.** Everything on the four Pi
    sockets shares 1.6 A. Currently these are the C270, speaker, USB
    microphone and the hub. The C270 has its own microphone. If the resets
