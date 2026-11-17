@@ -9,7 +9,8 @@ const RANK = { bad: 4, warn: 3, unknown: 2, ok: 1, empty: 0 };
 // fixed drawing geometry, matching the module ids DiagState sends
 const PI = { x: 20, y: 30, w: 200, h: 330 };
 const SOCKET = { x: 176, w: 112, h: 46 };
-const SOCKET_ROWS = { "pi-usb3-a": 62, "pi-usb3-b": 120, "pi-usb2-a": 202, "pi-usb2-b": 260 };
+// slot // 2 picks the socket pair, slot % 2 the upper or lower socket; pairs sit apart along the pi edge
+const SLOT = { top: 62, row: 58, pair: 140 };
 const SOCKET_CHIP_X = 316;
 const BOARD = { x: 520, y: 30, w: 170, h: 300 };
 const PORT = { x: 536, w: 138, h: 46, rows: [74, 134, 194, 254] };
@@ -102,7 +103,7 @@ function chipTiles(state) {
 
 function structureSignature(state) {
   return JSON.stringify([
-    state.modules.map((m) => [m.id, m.title, m.note, m.tiles.map((t) => [t.id, t.label, t.kind, isEmpty(t)])]),
+    state.modules.map((m) => [m.id, m.title, m.note, m.tiles.map((t) => [t.id, t.label, t.kind, t.slot, isEmpty(t)])]),
     state.links.map((l) => [l.from, l.to]),
     chipTiles(state).map((t) => [t.id, t.device]),
     state.links.map((l) => (findTile(state, l.from) || {}).device),
@@ -115,7 +116,9 @@ function placeTiles(state) {
   for (const m of state.modules) {
     m.tiles.forEach((t, i) => {
       if (m.id === "pi") {
-        const y = SOCKET_ROWS[t.id] !== undefined ? SOCKET_ROWS[t.id] : 62 + i * 58;
+        const y = Number.isInteger(t.slot)
+          ? SLOT.top + Math.floor(t.slot / 2) * SLOT.pair + (t.slot % 2) * SLOT.row
+          : SLOT.top + i * SLOT.row;
         boxes[t.id] = { x: SOCKET.x, y, w: SOCKET.w, h: SOCKET.h, side: "pi" };
       } else if (m.id === "board") {
         const y = PORT.rows[i] !== undefined ? PORT.rows[i] : 74 + i * 60;
@@ -129,8 +132,20 @@ function placeTiles(state) {
   return boxes;
 }
 
+// a module body is a button too; it opens the detail of its worst socket or port
+function moduleGroup(svg, mod) {
+  return el("svg:g", {
+    class: "module",
+    role: "button",
+    tabindex: "0",
+    "data-module": mod.id,
+    "data-focus": "module:" + mod.id,
+    "aria-label": mod.title + ": Details anzeigen",
+  }, svg);
+}
+
 function drawPi(svg, mod) {
-  const g = el("svg:g", {}, svg);
+  const g = moduleGroup(svg, mod);
   el("svg:rect", { class: "mod-body mod-pi", x: PI.x, y: PI.y, width: PI.w, height: PI.h, rx: 14 }, g);
   // gpio header and soc only hint at the real board so the sockets read as "on the pi"
   for (let i = 0; i < 20; i++) {
@@ -143,7 +158,7 @@ function drawPi(svg, mod) {
 }
 
 function drawBoard(svg, mod) {
-  const g = el("svg:g", {}, svg);
+  const g = moduleGroup(svg, mod);
   el("svg:rect", { class: "mod-body mod-board", x: BOARD.x, y: BOARD.y, width: BOARD.w, height: BOARD.h, rx: 10 }, g);
   el("svg:text", { class: "mod-title", x: BOARD.x + 16, y: BOARD.y + 28 }, g, mod.title);
   if (mod.note) el("svg:text", { class: "mod-note", x: BOARD.x, y: BOARD.y + BOARD.h + 18 }, g, mod.note);
@@ -169,6 +184,7 @@ function drawTile(svg, tile, box) {
     role: "button",
     tabindex: "0",
     "data-tile": tile.id,
+    "data-focus": "tile:" + tile.id,
   }, svg);
   el("svg:rect", { class: "halo", x: box.x - 4, y: box.y - 4, width: box.w + 8, height: box.h + 8, rx: 10 }, g);
   el("svg:rect", { class: "face", x: box.x, y: box.y, width: box.w, height: box.h, rx: 7 }, g);
@@ -207,7 +223,14 @@ function drawChip(svg, tile, box) {
   const w = box.side === "pi" ? CHIP.piW : CHIP.boardW;
   const cy = box.y + box.h / 2;
   el("svg:line", { class: "lead", x1: box.x + box.w, y1: cy, x2: x, y2: cy }, svg);
-  const g = el("svg:g", { class: "chip", "data-tile": tile.id }, svg);
+  const g = el("svg:g", {
+    class: "chip",
+    role: "button",
+    tabindex: "0",
+    "data-tile": tile.id,
+    "data-focus": "chip:" + tile.id,
+    "aria-label": tile.device + ": " + tile.line,
+  }, svg);
   const tip = el("svg:title", {}, g, tile.device + ": " + tile.line);
   el("svg:rect", { class: "chip-face", x, y: box.y, width: w, height: CHIP.h, rx: 6 }, g);
   fitText(el("svg:text", { class: "chip-name", x: x + 10, y: box.y + 19 }, g), tile.device, w - 20);
@@ -245,7 +268,7 @@ function linkPath(from, to) {
 function buildDiagram(state) {
   const svg = document.getElementById("diagram");
   const focused = document.activeElement && document.activeElement.getAttribute
-    ? document.activeElement.getAttribute("data-tile") : null;
+    ? document.activeElement.getAttribute("data-focus") : null;
   svg.replaceChildren();
   svg.setAttribute("viewBox", VIEWBOX);
   view.tiles = {};
@@ -284,7 +307,9 @@ function buildDiagram(state) {
     }
   }
 
-  if (focused && view.tiles[focused]) view.tiles[focused].g.focus();
+  // keyboard focus survives a rebuild of the plan
+  const again = focused ? svg.querySelector(`[data-focus="${focused}"]`) : null;
+  if (again) again.focus();
 }
 
 function updateDiagram(state) {
@@ -300,6 +325,8 @@ function updateDiagram(state) {
       chip.g.setAttribute("class", "chip lv-" + t.level);
       if (chip.line.getAttribute("data-full") !== t.line) fitText(chip.line, t.line, chip.w - 20);
       chip.tip.textContent = chip.device + ": " + t.line;
+      chip.g.setAttribute("aria-label", chip.device + ": " + t.line);
+      chip.g.setAttribute("aria-pressed", t.id === view.selected ? "true" : "false");
     }
   }
   state.links.forEach((l, i) => {
@@ -455,6 +482,28 @@ function renderIncidents(state) {
 
 // wiring it together
 
+function worstOfModule(state, moduleId) {
+  const mod = state.modules.find((m) => m.id === moduleId);
+  if (!mod) return null;
+  let best = null;
+  for (const t of mod.tiles) {
+    if (isEmpty(t)) continue;
+    if (!best || RANK[t.level] > RANK[best.level]) best = t;
+  }
+  return best || mod.tiles[0] || null;
+}
+
+// tiles and chips name their tile, module bodies stand for their worst tile
+function activate(target) {
+  const id = target.getAttribute("data-tile");
+  if (id) {
+    select(id, true);
+    return;
+  }
+  const t = view.state ? worstOfModule(view.state, target.getAttribute("data-module")) : null;
+  if (t) select(t.id, true);
+}
+
 function select(id, byUser) {
   view.selected = id;
   if (byUser) view.userPicked = true;
@@ -498,15 +547,15 @@ function setup() {
   document.getElementById("back").href = location.protocol + "//" + location.hostname + ":8000/diagnose";
   const svg = document.getElementById("diagram");
   svg.addEventListener("click", (e) => {
-    const target = e.target.closest("[data-tile]");
-    if (target) select(target.getAttribute("data-tile"), true);
+    const target = e.target.closest("[data-tile], [data-module]");
+    if (target) activate(target);
   });
   svg.addEventListener("keydown", (e) => {
     if (e.key !== "Enter" && e.key !== " ") return;
-    const target = e.target.closest(".tile");
+    const target = e.target.closest("[data-tile], [data-module]");
     if (!target) return;
     e.preventDefault();
-    select(target.getAttribute("data-tile"), true);
+    activate(target);
   });
   poll();
 }

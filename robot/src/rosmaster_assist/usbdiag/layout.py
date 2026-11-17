@@ -13,6 +13,7 @@ class Tile:
     label: str
     lanes: list[str]  # port paths
     kind: str  # "socket" | "hubport" | "mcu" | "motor"
+    slot: int | None = None  # place of a pi socket in the 2x2 grid, from config
 
 
 @dataclass
@@ -25,7 +26,7 @@ class Layout:
 
 
 def _socket_tiles() -> list[Tile]:
-    return [Tile(s["id"], "pi", s["label"], list(s["lanes"]), "socket") for s in config.PI_SOCKETS]
+    return [Tile(s["id"], "pi", s["label"], list(s["lanes"]), "socket", s.get("slot")) for s in config.PI_SOCKETS]
 
 
 def build_layout(topo: Topology, previous: Layout | None) -> Layout:

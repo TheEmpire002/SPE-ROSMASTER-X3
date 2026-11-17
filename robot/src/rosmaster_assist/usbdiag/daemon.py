@@ -157,21 +157,25 @@ class _Guard:
             return _FAILED
 
     def failed(self, name: str, exc: BaseException) -> None:
-        now = time.monotonic()
-        self.retry_at[name] = now + config.SOURCE_RETRY_S
+        self.retry_at[name] = time.monotonic() + config.SOURCE_RETRY_S
         key = f"{name}: {type(exc).__name__}: {exc}"
-        if now - self.logged.get(key, -config.SOURCE_ERROR_REPEAT_S) < config.SOURCE_ERROR_REPEAT_S:
-            return
+        if self._should_log(key, config.SOURCE_ERROR_REPEAT_S) and self.logger is not None:
+            self.logger.warning("source failed, retry in %g s: %s", config.SOURCE_RETRY_S, key)
+
+    def state_failed(self, method: str, exc: BaseException) -> None:
+        # no backoff: a skipped state call would lose the kernel events already read
+        if self._should_log(f"state.{method}", config.STATE_ERROR_REPEAT_S) and self.logger is not None:
+            self.logger.warning("state update failed, continuing: state.%s: %s: %s",
+                                method, type(exc).__name__, exc)
+
+    def _should_log(self, key: str, repeat_s: float) -> bool:
+        now = time.monotonic()
+        if now - self.logged.get(key, -repeat_s) < repeat_s:
+            return False
         if len(self.logged) >= config.SOURCE_ERROR_KEYS_MAX:
             self.logged = {k: t for k, t in self.logged.items() if now - t < config.SOURCE_ERROR_REPEAT_S}
         self.logged[key] = now
-        if self.logger is not None:
-            self.logger.warning("source failed, retry in %g s: %s", config.SOURCE_RETRY_S, key)
-
-
-def _locked(state: DiagState, fn, *args):
-    with state.lock:
-        return fn(*args)
+        return True
 
 
 class _Loop:
@@ -185,8 +189,13 @@ class _Loop:
         self.capture_bus: int | None = None
         self.capture_missing_logged = False
 
-    def _apply(self, fn, *args) -> None:
-        self.guard.call("state", _locked, self.state, fn, *args)
+    def _apply(self, fn, *args):
+        try:
+            with self.state.lock:
+                return fn(*args)
+        except Exception as exc:  # noqa: BLE001
+            self.guard.state_failed(getattr(fn, "__name__", "call"), exc)
+            return _FAILED
 
     def start(self) -> DiagState:
         src = self.src
@@ -196,6 +205,8 @@ class _Loop:
         if events is not _FAILED:
             for ev in events:
                 self._apply(self.state.apply_event, ev, True)
+        # close a backlog incident that is long over, or the first live event would join it
+        self._apply(self.state.tick, src.now())
         return self.state
 
     def scan_topology(self, now: float) -> None:
@@ -212,7 +223,7 @@ class _Loop:
 
     def update_capture(self) -> None:
         state = self.state
-        target = self.guard.call("state", _locked, state, state.capture_target)
+        target = self._apply(state.capture_target)
         if target is _FAILED:
             return
         if target is None:
@@ -256,6 +267,7 @@ class _Loop:
         next_topo = now + config.TOPOLOGY_POLL_S
         next_sample = now
         next_proc = now
+        next_tick = now
         rescan_at: float | None = None
         while not self.stop.is_set():
             self.wait()
@@ -292,7 +304,13 @@ class _Loop:
                     self._apply(self.state.apply_processes, p)
                 next_proc = now + config.PROCESS_INTERVAL_S
 
-            self._apply(self.state.tick, now)
+            if now >= next_tick:
+                self._apply(self.state.tick, now)
+                next_tick = now + config.TICK_INTERVAL_S
+
+    def shutdown(self) -> None:
+        # same path for ctrl-c and sigterm: an open incident is written before the process ends
+        self._apply(self.state.shutdown, self.src.now())
 
 
 def run(sources, store, host: str, port: int, stop: threading.Event | None = None) -> None:
@@ -313,3 +331,4 @@ def run(sources, store, host: str, port: int, stop: threading.Event | None = Non
         server.server_close()
         thread.join(timeout=2)
         loop.guard.call("capture", sources.close_capture)
+        loop.shutdown()

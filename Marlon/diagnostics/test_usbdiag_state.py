@@ -12,7 +12,7 @@ import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "robot" / "src"))
 
-from rosmaster_assist.usbdiag import kmsg, mock, sampler, state, topology, usbmon  # noqa: E402
+from rosmaster_assist.usbdiag import config, kmsg, mock, sampler, state, topology, usbmon  # noqa: E402
 
 FIXTURES = pathlib.Path(__file__).resolve().parents[2] / "robot/src/rosmaster_assist/usbdiag/fixtures"
 
@@ -88,13 +88,68 @@ def loaded_state(tmp):
 
 def test_page_shape_and_modules():
     with tempfile.TemporaryDirectory() as d:
-        p = loaded_state(pathlib.Path(d)).page(now=20.0)
+        st = loaded_state(pathlib.Path(d))
+        with st.lock:
+            st.tick(130.0)  # the backlog burst is long over
+        p = st.page(now=130.0)
     assert [m["id"] for m in p["modules"]] == ["pi", "board", "motor"]
     assert p["modules"][0]["note"] == "Lage der Buchsen noch nicht geprüft"
     assert {"from": "pi-usb3-a", "to": "board", "level": "ok"} in p["links"]
     assert set(p["details"]) >= {"pi-usb3-a", "board-p4", "motor"}
     v = {x["label"]: x for x in p["vitals"]}
     assert v["5V Pi"]["value"] == "5,07 V" and v["5V Pi"]["judgement"] == "gut"
+
+
+def test_pi_sockets_carry_their_config_slot():
+    with tempfile.TemporaryDirectory() as d:
+        p = loaded_state(pathlib.Path(d)).page(now=20.0)
+    pi = p["modules"][0]["tiles"]
+    assert {t["id"]: t["slot"] for t in pi} == {s["id"]: s["slot"] for s in config.PI_SOCKETS}
+
+
+def test_link_stays_red_while_board_incident_is_open():
+    with tempfile.TemporaryDirectory() as d:
+        tmp = pathlib.Path(d)
+        st = state.DiagState(None, 0.0, 0.0)
+        with st.lock:
+            st.apply_topology(fixture_topology(tmp), now=1.0)
+            st.tick(1.0)
+        assert [x["level"] for x in st.page(1.0)["links"]] == ["ok", "ok"]
+        with st.lock:
+            st.apply_event(kmsg.Event(30.0, 0, "disconnect", "1-1.4", {}, "r"))
+            st.apply_topology(fixture_topology(tmp, drop=["1-1.4"]), now=30.2)
+            st.tick(30.2)
+        p = st.page(30.3)
+        assert [x["level"] for x in p["links"]] == ["bad", "bad"] and tile_by_id(p, "board-p4")["level"] == "bad"
+        # plugged back in, but the incident is still open
+        with st.lock:
+            st.apply_event(kmsg.Event(33.0, 0, "connect", "1-1.4", {}, "r"))
+            st.apply_topology(fixture_topology(tmp), now=33.1)
+            st.tick(35.0)
+        p = st.page(35.0)
+        assert st.tracker.current is not None
+        assert p["links"][0]["level"] == "bad" and tile_by_id(p, "board-p4")["level"] == "bad"
+        with st.lock:
+            st.tick(33.0 + config.INCIDENT_QUIET_S + 1)
+        p = st.page(33.0 + config.INCIDENT_QUIET_S + 1)
+        assert st.tracker.current is None
+        assert [x["level"] for x in p["links"]] == ["ok", "ok"]
+
+
+def test_reconnect_row_counts_since_boot_and_since_start():
+    with tempfile.TemporaryDirectory() as d:
+        st = state.DiagState(None, 0.0, daemon_start_mono=50.0)
+        with st.lock:
+            st.apply_topology(fixture_topology(pathlib.Path(d)), now=1.0)
+        rows = {r["label"]: r["value"] for r in st.page(2.0)["details"]["board-p4"]["rows"]}
+        assert rows["Neu verbunden"] == "nie seit Boot"
+        with st.lock:
+            st.apply_event(kmsg.Event(9.0, 0, "disconnect", "1-1.4", {}, "r"), backlog=True)
+            st.apply_event(kmsg.Event(10.0, 0, "connect", "1-1.4", {}, "r"), backlog=True)
+            st.apply_event(kmsg.Event(59.0, 0, "disconnect", "1-1.4", {}, "r"))
+            st.apply_event(kmsg.Event(60.0, 0, "connect", "1-1.4", {}, "r"))
+        rows = {r["label"]: r["value"] for r in st.page(61.0)["details"]["board-p4"]["rows"]}
+        assert rows["Neu verbunden"] == "2× seit Boot · 1× seit Start der Diagnose", rows
 
 
 def test_main_view_has_no_raw_codes():

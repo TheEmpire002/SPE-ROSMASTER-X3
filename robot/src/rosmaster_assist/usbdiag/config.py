@@ -123,6 +123,8 @@ SOURCE_ERROR_REPEAT_S = 60.0  # the same error is logged at most once per this
 SOURCE_ERROR_KEYS_MAX = 100
 USBMON_PARTIAL_MAX = 8192  # longer unfinished usbmon lines are garbage
 HTTP_POLL_S = 0.25
+TICK_INTERVAL_S = 0.25  # state tick at most 4 Hz, however often usbmon traffic wakes the loop
+STATE_ERROR_REPEAT_S = 60.0  # a failing state method is logged at most once per this
 
 # mock mode
 MOCK_LOG_DIR = "~/.rosmaster/diagnose/usb-mock"

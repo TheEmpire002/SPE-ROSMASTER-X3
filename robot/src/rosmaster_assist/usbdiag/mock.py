@@ -110,7 +110,9 @@ class MockSources:
         self._actions: list = []  # heap of (mono, order, fn)
         self._next_burst = 0
         lines = (FIXTURES / "usbmon_board.txt").read_text(encoding="ascii").splitlines()
-        self._urbs = [u for u in map(parse_line, lines) if u is not None]
+        # the recording turns the car every pass; drive commands come only from the planned motion,
+        # or every burst would look like a motor start
+        self._urbs = [u for u in map(parse_line, lines) if u is not None and not (u.event == "S" and u.xfer == "Bo")]
         self._urb_first = self._urbs[0].ts
         self._urb_period = self._urbs[-1].ts - self._urb_first + config.MOCK_URB_GAP_S
         self._urb_cursor = config.MOCK_START_MONO

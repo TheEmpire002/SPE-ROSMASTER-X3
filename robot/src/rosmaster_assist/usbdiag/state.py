@@ -241,6 +241,16 @@ class DiagState:
             self.last_summary = now
             self._write_summary(now)
 
+    def shutdown(self, now: float) -> None:
+        # the process ends: an open incident is written as not recovered instead of being lost
+        inc = self.tracker.current
+        if inc is not None:
+            self.tracker.current = None
+            inc.end_mono = now
+            inc.recovered = False
+            self._finish(inc)
+        self._write_summary(now)
+
     def _check_board_silent(self, now: float) -> None:
         if self._board() is None or self.capture != "on" or self.silent_raised:
             return
@@ -346,8 +356,8 @@ class DiagState:
                 else:
                     level, line = levels[tile.id], lines[tile.id]
                     device = self.last_device.get(tile.id, config.NO_DEVICE_NAME)
-                tiles.append({"id": tile.id, "label": tile.label, "kind": tile.kind, "level": level,
-                              "device": device, "line": line})
+                tiles.append({"id": tile.id, "label": tile.label, "kind": tile.kind, "slot": tile.slot,
+                              "level": level, "device": device, "line": line})
             note = texts.SOCKETS_UNVERIFIED_NOTE if module == "pi" and not config.SOCKETS_VERIFIED else ""
             modules.append({"id": module, "title": texts.MODULE_TITLES[module], "note": note, "tiles": tiles})
 
@@ -360,7 +370,7 @@ class DiagState:
             "vitals": self._vitals(),
             "sampling_note": texts.SAMPLING_NOTE,
             "modules": modules,
-            "links": self._links(),
+            "links": self._links(levels),
             "details": details,
             "incidents": [{k: e.get(k) for k in ("id", "time", "where", "reason", "duration", "recovered",
                                                  "reasons", "events")}
@@ -397,14 +407,23 @@ class DiagState:
             return "warn", f"{len(errors)}× Übertragungsfehler, zuletzt vor {texts.fmt_short(now - max(errors))}"
         return "ok", "keine Auffälligkeiten"
 
-    def _links(self) -> list[dict]:
+    def _links(self, levels: dict) -> list[dict]:
         lay = self.layout
         if lay.board_socket is None or lay.board_port is None:
             return []
-        level = "ok" if lay.board_present else "bad"
         mcu = next((t.id for t in lay.tiles if t.kind == "mcu"), "")
-        return [{"from": lay.board_socket, "to": "board", "level": level},
-                {"from": mcu, "to": "motor", "level": level}]
+        # the board is back within seconds, so the link stays red while the incident on it is open
+        mcu_bad = not lay.board_present or levels.get(mcu) == "bad"
+        pi_bad = mcu_bad or levels.get(lay.board_socket) == "bad"
+        return [{"from": lay.board_socket, "to": "board", "level": "bad" if pi_bad else "ok"},
+                {"from": mcu, "to": "motor", "level": "bad" if mcu_bad else "ok"}]
+
+    def _reconnect_row(self, tile: Tile) -> dict:
+        monos = self.tile_reconnects.get(tile.id, [])
+        if not monos:
+            return {"label": "Neu verbunden", "value": "nie seit Boot"}
+        live = len([t for t in monos if t >= self.start_mono])
+        return {"label": "Neu verbunden", "value": f"{len(monos)}× seit Boot · {live}× seit Start der Diagnose"}
 
     def _vitals(self) -> list[dict]:
         s = self.sample
@@ -589,6 +608,7 @@ class DiagState:
         else:
             reports = "unbekannt (kein Mithören)"
         return [{"label": "Zustand", "value": state},
+                self._reconnect_row(tile),
                 {"label": "Meldungen vom Board", "value": reports},
                 {"label": "Akku", "value": motor["battery"]},
                 {"label": "Letzter Fahrbefehl", "value": motor["last_command"]}]
@@ -612,10 +632,13 @@ class DiagState:
         port = next((self.topo.ports[lane] for lane in tile.lanes if lane in self.topo.ports), None)
         if port is not None:
             rows.append({"label": "Zustand", "value": texts.PORT_STATE_WORDS.get(port.state, "unbekannt")})
-            over = f"{port.over_current}× seit Start" if port.over_current else "keine"
+            # the kernel counts over-current since boot, not since the daemon started
+            over = f"{port.over_current}× seit Boot" if port.over_current else "keine"
             if tile.module == "pi":
                 over += f" · {texts.PI_OVERCURRENT_NOTE}"
             rows.append({"label": "Überlast", "value": over})
+        if dev is not None or tile.id in self.tile_reconnects:
+            rows.append(self._reconnect_row(tile))
         if dev is not None and dev.devnum in self.traffic:
             rows.append({"label": "Verkehr", "value": texts.fmt_rate(self._rate(self.traffic[dev.devnum], now))})
         if tile.kind == "socket" and self.sample is not None:

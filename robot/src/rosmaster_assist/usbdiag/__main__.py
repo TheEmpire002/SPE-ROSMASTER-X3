@@ -2,8 +2,15 @@
 
 import argparse
 import os
+import signal
+import threading
 
 from . import config, daemon, store
+
+
+def stop_on_sigterm(stop: threading.Event) -> None:
+    # systemd stops the unit with sigterm, it must take the same exit as ctrl-c
+    signal.signal(signal.SIGTERM, lambda _signum, _frame: stop.set())
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -26,8 +33,10 @@ def main(argv: list[str] | None = None) -> None:
     st = store.Store(folder, boot_id, config.LOG_FILE_BYTES, config.LOG_FILE_COUNT,
                      config.INCIDENT_FILES_KEEP, config.SUMMARY_BOOTS_KEEP)
     print(f"USB-Diagnose läuft auf http://{config.HTTP_HOST}:{args.port}/ (Protokoll in {folder})", flush=True)
+    stop = threading.Event()
+    stop_on_sigterm(stop)
     try:
-        daemon.run(sources, st, config.HTTP_HOST, args.port)
+        daemon.run(sources, st, config.HTTP_HOST, args.port, stop)
     except KeyboardInterrupt:
         pass
     finally:

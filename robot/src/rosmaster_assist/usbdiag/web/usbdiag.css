@@ -115,6 +115,10 @@ a { color: var(--accent); }
 .mod-note { fill: var(--muted); font-size: 12px; font-style: italic; }
 .soc { fill: #10161a; stroke: #2a3a32; }
 .gpio { fill: #3a4a40; }
+/* module bodies are buttons: the outline follows the rounded body, not the svg box */
+.module { cursor: pointer; outline: none; }
+.module:hover .mod-body { stroke: var(--muted); }
+.module:focus-visible .mod-body { stroke: var(--accent); stroke-width: 2.5; }
 
 .tile { cursor: pointer; outline: none; }
 .tile .face { fill: var(--bg); stroke: var(--line); stroke-width: 1.5; transition: fill 0.3s, stroke 0.3s; }
@@ -143,7 +147,8 @@ a { color: var(--accent); }
 .wheel { fill: #0d0e11; stroke: #3a3f4a; stroke-width: 1.5; }
 .wheel-roller { stroke: #3a3f4a; stroke-width: 1; }
 
-.chip { cursor: pointer; }
+.chip { cursor: pointer; outline: none; }
+.chip:focus-visible .chip-face { stroke: var(--accent); stroke-width: 2.5; }
 .chip .chip-face { fill: var(--panel); stroke: var(--line); stroke-width: 1.2; }
 .chip .chip-name { fill: var(--text); font-size: 14px; font-weight: 600; }
 .chip .chip-line { fill: var(--muted); font-size: 12.5px; }
