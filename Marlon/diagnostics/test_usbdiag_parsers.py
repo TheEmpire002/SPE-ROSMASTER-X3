@@ -95,7 +95,7 @@ def checksum_report(ext_len, ext_type, data):
 
 def report_0a(vx, vy, vz, batt_dv):
     data = list(struct.pack("<hhhB", int(vx*1000), int(vy*1000), int(vz*1000), batt_dv))
-    ext_len = len(data) + 2
+    ext_len = len(data) + 3
     return bytes([0xFF, 0xFB, ext_len, 0x0A] + data + [checksum_report(ext_len, 0x0A, data)])
 
 

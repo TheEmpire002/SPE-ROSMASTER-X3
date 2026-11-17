@@ -62,7 +62,7 @@ class Frame:
 
 
 class FrameDecoder:
-    """Board to host frames: FF FB ext_len ext_type payload(ext_len-2) checksum."""
+    """Board to host frames: FF FB ext_len ext_type payload(ext_len-3) checksum, the checksum being the last of ext_len-2 bytes."""
 
     def __init__(self):
         self._buf = bytearray()
@@ -81,10 +81,10 @@ class FrameDecoder:
             if len(buf) < 4:
                 break
             ext_len = buf[2]
-            if ext_len < 2 or ext_len > config.FRAME_MAX_EXT_LEN:
+            if ext_len < 3 or ext_len > config.FRAME_MAX_EXT_LEN:
                 del buf[:1]
                 continue
-            total = ext_len + 3
+            total = ext_len + 2
             if len(buf) < total:
                 break
             ext_type = buf[3]
