@@ -117,3 +117,48 @@ REASONS: dict[str, dict] = {
         "action": "Rückspeisung über den Board-Hub prüfen (VBUS trennen oder Hub ohne Rückspeisung)",
     },
 }
+
+
+PI_OVERCURRENT_NOTE = "Pi-Buchsen teilen sich einen 1,6-A-Schalter"
+SAMPLING_NOTE = ("Spannung wird 1× pro Sekunde gemessen; sehr kurze Einbrüche sieht man nur an der "
+                 "Taktbremse-Anzeige.")
+DRIVER_WORDS = {
+    "hub": "Hub-Treiber",
+    "ch341": "Treiber für den Board-Chip",
+    "cp210x": "Treiber für den Lidar-Chip",
+}
+PORT_STATE_WORDS = {"configured": "in Betrieb", "not attached": "nichts angeschlossen"}
+CAPTURE_TEXTS = {
+    "active": "Mithören aktiv",
+    "idle": "kein Verkehr (Server aus)",
+    "unavailable": "Mithören nicht verfügbar",
+    "camera_on_bus": "Mithören abgeschaltet: Kamera am selben USB-Bus",
+    "no_board": "Board nicht angeschlossen",
+}
+
+
+def fmt_short(seconds: float) -> str:
+    """Duration for headlines: seconds below a minute, then whole minutes."""
+    seconds = max(0.0, seconds)
+    if seconds < 60:
+        return f"{int(round(seconds))} s"
+    minutes = int(round(seconds / 60))
+    if minutes < 60:
+        return f"{minutes} min"
+    return f"{minutes // 60} h {minutes % 60} min"
+
+
+def fmt_speed_link(mbps: int) -> str:
+    if mbps >= 1000:
+        return f"{fmt_num(mbps / 1000)} Gbit/s"
+    return f"{mbps} Mbit/s"
+
+
+def fmt_rate(bytes_per_s: float) -> str:
+    if bytes_per_s >= 1000:
+        return f"{fmt_num(bytes_per_s / 1000)} kB/s"
+    return f"{int(round(bytes_per_s))} Byte/s"
+
+
+MODULE_TITLES = {"pi": "Raspberry Pi 5", "board": "Expansion Board", "motor": "Motorsteuerung"}
+SOCKETS_UNVERIFIED_NOTE = "Lage der Buchsen noch nicht geprüft"

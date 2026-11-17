@@ -1,0 +1,187 @@
+"""Tests the usbdiag DiagState and the German page model.
+
+    python Marlon/diagnostics/test_usbdiag_state.py
+"""
+
+import json
+import pathlib
+import re
+import struct
+import sys
+import tempfile
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "robot" / "src"))
+
+from rosmaster_assist.usbdiag import kmsg, mock, sampler, state, topology, usbmon  # noqa: E402
+
+FIXTURES = pathlib.Path(__file__).resolve().parents[2] / "robot/src/rosmaster_assist/usbdiag/fixtures"
+
+RAW_PATTERNS = [r"-\d{2,3}\b", r"\b[0-9a-f]{4}:[0-9a-f]{4}\b", r"\busb\d", r"\b\d-\d(\.\d)*\b",
+                r"ttyUSB", r"error", r"\b200\b"]
+# identifiers that the page script uses but never shows
+HIDDEN_KEYS = {"id", "from", "to", "kind"}
+
+_calls = [0]
+
+
+def fixture_topology(tmp, drop=(), add=None):
+    """Scan the Task 3 fixture with ports removed or devices added (fresh tree per call)."""
+    tree = json.loads((FIXTURES / "topology.json").read_text())
+    for path in drop:
+        tree["devices"].pop(path, None)
+        hub, _, num = path.rpartition(".")
+        port = tree["ports"].get(f"{hub}-port{num}")
+        if port:
+            port.update(state="not attached", device=False)
+    for i, (path, (vid, pid, speed)) in enumerate((add or {}).items()):
+        tree["devices"][path] = {"idVendor": vid, "idProduct": pid, "product": "Camera", "speed": str(speed),
+                                 "bMaxPower": "500mA", "devnum": str(120 + i), "busnum": path.split("-")[0]}
+    _calls[0] += 1
+    root = pathlib.Path(tmp) / f"sys{_calls[0]}"
+    mock.write_fake_sysfs(tree, root)
+    return topology.scan(str(root))
+
+
+def walk_strings(obj, skip=()):
+    if isinstance(obj, str):
+        yield obj
+    elif isinstance(obj, dict):
+        for key, value in obj.items():
+            if key not in skip:
+                yield from walk_strings(value, skip)
+    elif isinstance(obj, (list, tuple)):
+        for value in obj:
+            yield from walk_strings(value, skip)
+
+
+def main_view_strings(page):
+    details = {k: dict(v, technical=[]) for k, v in page["details"].items()}
+    return list(walk_strings({**page, "details": details}, skip=HIDDEN_KEYS))
+
+
+def tile_by_id(page, tile_id):
+    for module in page["modules"]:
+        for tile in module["tiles"]:
+            if tile["id"] == tile_id:
+                return tile
+    raise KeyError(tile_id)
+
+
+def motion_hex(vx, vy, vz, car_type=1):
+    body = bytes([0xFF, 0xFC, 10, 0x12, car_type]) + struct.pack("<hhh", int(vx * 1000), int(vy * 1000),
+                                                                int(vz * 1000))
+    frame = body + bytes([(sum(body) + 257 - 0xFC) & 0xFF])
+    return " ".join(frame[i:i + 4].hex() for i in range(0, len(frame), 4))
+
+
+def loaded_state(tmp):
+    st = state.DiagState(None, boot_wall=1_700_000_000.0, daemon_start_mono=0.0)
+    with st.lock:
+        st.apply_topology(fixture_topology(tmp), now=10.0)
+        for line in (FIXTURES / "kmsg_burst.txt").read_text().splitlines():
+            e = kmsg.parse_record(line, 1_700_000_000.0)
+            if e:
+                st.apply_event(e, backlog=True)
+        st.apply_sample(sampler.Sample(10.0, 0, 5.06788, {}, {}, 61.0, 2000.0, 12.0, 0.4))
+    return st
+
+
+def test_page_shape_and_modules():
+    with tempfile.TemporaryDirectory() as d:
+        p = loaded_state(pathlib.Path(d)).page(now=20.0)
+    assert [m["id"] for m in p["modules"]] == ["pi", "board", "motor"]
+    assert p["modules"][0]["note"] == "Lage der Buchsen noch nicht geprüft"
+    assert {"from": "pi-usb3-a", "to": "board", "level": "ok"} in p["links"]
+    assert set(p["details"]) >= {"pi-usb3-a", "board-p4", "motor"}
+    v = {x["label"]: x for x in p["vitals"]}
+    assert v["5V Pi"]["value"] == "5,07 V" and v["5V Pi"]["judgement"] == "gut"
+
+
+def test_main_view_has_no_raw_codes():
+    with tempfile.TemporaryDirectory() as d:
+        p = loaded_state(pathlib.Path(d)).page(now=20.0)
+    strings = main_view_strings(p)
+    assert strings
+    for s in strings:
+        for pat in RAW_PATTERNS:
+            assert not re.search(pat, s), (pat, s)
+
+
+def test_missing_board_turns_red_and_verdict_bad():
+    with tempfile.TemporaryDirectory() as d:
+        st = loaded_state(pathlib.Path(d))
+        with st.lock:
+            st.apply_event(kmsg.Event(30.0, 0, "disconnect", "1-1.4", {}, "r"))
+            st.apply_topology(fixture_topology(pathlib.Path(d), drop=["1-1.4"]), now=30.5)
+        p = st.page(now=31.0)
+    tile = tile_by_id(p, "board-p4")
+    assert tile["level"] == "bad" and p["verdict"]["level"] == "bad"
+    assert "Board-Mikrocontroller" in p["verdict"]["text"]
+    assert "fehlt seit" in tile["line"]
+    assert {"from": "board-p4", "to": "motor", "level": "bad"} in p["links"]
+
+
+def test_capture_refused_when_camera_on_board_bus():
+    with tempfile.TemporaryDirectory() as d:
+        st = state.DiagState(None, 0.0, 0.0)
+        st.apply_topology(fixture_topology(pathlib.Path(d), add={"1-1.1": ("2bc5", "060f", 480)}), now=1.0)
+        assert st.capture_target() is None
+        assert "Kamera am selben USB-Bus" in st.page(2.0)["motor"]["capture"]
+
+
+def test_capture_target_is_board_and_lidar():
+    with tempfile.TemporaryDirectory() as d:
+        st = state.DiagState(None, 0.0, 0.0)
+        assert st.capture_target() is None
+        st.apply_topology(fixture_topology(pathlib.Path(d)), now=1.0)
+        assert st.capture_target() == (1, {113, 114})
+
+
+def test_board_reports_feed_motor_block():
+    with tempfile.TemporaryDirectory() as d:
+        st = state.DiagState(None, 0.0, 0.0)
+        st.apply_topology(fixture_topology(pathlib.Path(d)), now=1.0)
+        st.set_capture("on")
+        urbs = [usbmon.parse_line(line) for line in (FIXTURES / "usbmon_board.txt").read_text().splitlines()]
+        st.apply_urbs([u for u in urbs if u], now=5.0)
+        m = st.page(6.0)["motor"]
+    assert m["battery"].startswith("11,8 V") and m["capture"] == "Mithören aktiv"
+
+
+def test_board_silent_raises_incident():
+    with tempfile.TemporaryDirectory() as d:
+        st = state.DiagState(None, 0.0, 0.0)
+        st.apply_topology(fixture_topology(pathlib.Path(d)), now=0.5)
+        st.set_capture("on")
+        # standing-still commands keep the board polled without counting as a motor start
+        hexcmd = motion_hex(0.0, 0.0, 0.0)
+        for i in range(31):
+            t = 1.0 + i * 0.1
+            st.apply_urbs([usbmon.parse_line(f"ffff {int(t * 1e6)} S Bo:1:114:2 -115 12 = {hexcmd}")], now=t)
+            st.tick(t)
+        p = st.page(4.2)
+        assert any("sendet keine Meldungen" in e["text"] for e in p["details"]["board-p4"]["events"])
+        st.apply_topology(fixture_topology(pathlib.Path(d)), now=20.0)
+        st.tick(20.0)
+        assert st.page(20.0)["incidents"][0]["reason"] == "Board-Mikrocontroller still"
+
+
+def test_capture_without_traffic_says_server_off():
+    with tempfile.TemporaryDirectory() as d:
+        st = state.DiagState(None, 0.0, 0.0)
+        st.apply_topology(fixture_topology(pathlib.Path(d)), now=1.0)
+        st.set_capture("on")
+        assert st.page(10.0)["motor"]["capture"] == "kein Verkehr (Server aus)"
+
+
+if __name__ == "__main__":
+    failed = 0
+    for name, fn in sorted(globals().items()):
+        if name.startswith("test_") and callable(fn):
+            try:
+                fn()
+                print("ok  ", name)
+            except Exception as exc:  # noqa: BLE001
+                failed += 1
+                print("bad ", name, repr(exc))
+    sys.exit(1 if failed else 0)

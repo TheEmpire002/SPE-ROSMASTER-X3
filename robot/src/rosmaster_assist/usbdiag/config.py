@@ -107,3 +107,10 @@ MOTOR_BATTERY_BONUS = 0.1
 MOTOR_SPEED_SCALE = 100  # raw MOTOR command units per 1.0 of full power
 CAPTURE_IDLE_S = 5.0  # no URB from the board for this long means no traffic
 CAPTURE_MAX_SPEED_MBPS = 5000  # a device this fast on the board bus disables capture
+
+# page model
+TRAFFIC_WINDOW_S = 5.0  # window for bytes/s and report rate
+BATTERY_CURVE_POINTS = 60
+INCIDENTS_ON_PAGE = 30
+VERDICT_WINDOW_S = 3600.0
+TILE_TECHNICAL_LINES = 20
