@@ -1,0 +1,40 @@
+# SYNTHETIC fixture in /dev/kmsg format, replace with a real recording (Task 9)
+6,5201,100037000,-;usb 1-1.2: USB disconnect, device number 112
+ SUBSYSTEM=usb
+4,5203,100082000,-;usb usb1-port1: over-current change #54
+4,5206,100135000,-;usb usb1-port1: over-current condition
+6,5207,100196000,-;usb 1-1.4: USB disconnect, device number 114
+6,5209,100265000,-;ch341-uart ttyUSB1: ch341-uart converter now disconnected from ttyUSB1
+6,5212,100342000,-;cp210x ttyUSB0: cp210x converter now disconnected from ttyUSB0
+3,5213,100427000,-;usb 3-1-port2: cannot reset (err = -71)
+3,5215,100520000,-;usb 1-1-port4: cannot reset (err = -71)
+ SUBSYSTEM=usb
+3,5218,100621000,-;usb 1-1-port2: cannot reset (err = -71)
+6,5219,100730000,-;eth0: link up
+3,5221,100847000,-;usb 3-2: clear tt 1 (85c0) error -71
+3,5224,100972000,-;usb 3-2: clear tt 4 (9032) error -71
+3,5225,101105000,-;usb 1-1: clear tt 1 (85c0) error -71
+4,5227,101246000,-;hwmon hwmon1: Undervoltage detected!
+6,5230,101395000,-;usb 1-1.4: new full-speed USB device number 115 using xhci-hcd
+ SUBSYSTEM=usb
+3,5231,101552000,-;usb 1-1.4: device descriptor read/64, error -71
+3,5233,101717000,-;usb 1-1.2: device descriptor read/64, error -71
+6,5236,101890000,-;usb 1-1.4: new full-speed USB device number 116 using xhci-hcd
+6,5237,102071000,-;usb 1-1.4: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice= 2.64
+6,5239,102260000,-;usb 1-1.4: ch341-uart converter now attached to ttyUSB1
+6,5242,102457000,-;usb 1-1.2: new full-speed USB device number 117 using xhci-hcd
+6,5243,102662000,-;usb 1-1.2: New USB device found, idVendor=10c4, idProduct=ea60, bcdDevice= 1.00
+ SUBSYSTEM=usb
+6,5245,102875000,-;usb 1-1.2: cp210x converter now attached to ttyUSB0
+6,5248,103096000,-;wlan0: associated
+3,5249,103325000,-;usb 3-2: clear tt 1 (85c0) error -71
+3,5251,103562000,-;usb 1-1: clear tt 1 (85c0) error -71
+4,5254,103807000,-;hwmon hwmon1: Undervoltage detected!
+6,5255,104060000,-;usb 3-1: USB disconnect, device number 8
+6,5257,104321000,-;usb 3-1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 1.00
+ SUBSYSTEM=usb
+4,5260,104590000,-;usb usb1-port1: over-current change #55
+6,5261,104867000,-;usb 1-1.4: USB disconnect, device number 116
+6,5263,105152000,-;ch341-uart ttyUSB1: ch341-uart converter now disconnected from ttyUSB1
+6,5266,105445000,-;usb 1-1.4: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice= 2.64
+6,5267,105746000,-;usb 1-1.4: ch341-uart converter now attached to ttyUSB1
