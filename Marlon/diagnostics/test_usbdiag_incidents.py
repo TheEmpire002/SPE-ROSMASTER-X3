@@ -100,6 +100,23 @@ def test_board_silent_and_empty_context():
     assert keys == ["board_mcu_silent"]
 
 
+def test_late_event_does_not_move_quiet_timer_back():
+    tr = incidents.IncidentTracker(10, 120)
+    inc = tr.on_event(ev(100, "overcurrent", "1-1"), {"1-1"})
+    tr.on_event(ev(50, "disconnect", "1-1"), {"1-1"})
+    assert inc.last_trigger_mono == 100
+
+
+def test_idle_evidence_only_without_drive_commands():
+    inc = started_incident(at=50.0)
+    quiet = incidents.Context([sample(49)], [], [], [], True, {})
+    idle = [r for r in incidents.classify(inc, quiet) if r.key == "idle_unclear"][0]
+    assert any("30 s davor" in e for e in idle.evidence)
+    driving = incidents.Context([sample(49)], [(30.0, motion(0.3)), (40.0, motion(0.3))], [], [], True, {})
+    idle = [r for r in incidents.classify(inc, driving) if r.key == "idle_unclear"][0]
+    assert not any("davor" in e for e in idle.evidence)
+
+
 if __name__ == "__main__":
     failed = 0
     for name, fn in sorted(globals().items()):

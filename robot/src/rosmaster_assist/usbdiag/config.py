@@ -102,3 +102,8 @@ REASON_SCORES = {
     "idle_unclear": 0.5,
 }
 MOTOR_BATTERY_BONUS = 0.1
+
+# motor command scale and capture
+MOTOR_SPEED_SCALE = 100  # raw MOTOR command units per 1.0 of full power
+CAPTURE_IDLE_S = 5.0  # no URB from the board for this long means no traffic
+CAPTURE_MAX_SPEED_MBPS = 5000  # a device this fast on the board bus disables capture

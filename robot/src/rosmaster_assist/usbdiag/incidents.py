@@ -66,7 +66,8 @@ class IncidentTracker:
         if ev.port:
             inc.ports.add(ev.port)
         if ev.kind in TRIGGER_KINDS:
-            inc.last_trigger_mono = ev.mono
+            # a late or backlog event must not move the quiet timer back
+            inc.last_trigger_mono = max(inc.last_trigger_mono, ev.mono)
         self._update_missing(inc, present)
         if ev.kind == "disconnect" and ev.port:
             inc.missing.add(ev.port)
@@ -100,6 +101,9 @@ class Context:
     names: dict[str, str]  # port -> German device name
 
 
+DRIVE_COMMANDS = ("MOTOR", "CAR_RUN", "MOTION")
+
+
 def _name(ctx: Context, port: str | None) -> str:
     return ctx.names.get(port, config.UNKNOWN_DEVICE_NAME)
 
@@ -109,14 +113,14 @@ def _speed(cmd: Command | None) -> tuple[float, str]:
     if cmd is None:
         return 0.0, ""
     p = cmd.params
-    if cmd.func == 0x12:
+    if cmd.name == "MOTION":
         axes = [("vz", abs(p.get("vz", 0.0))), ("vx", abs(p.get("vx", 0.0))), ("vy", abs(p.get("vy", 0.0)))]
         axis, mag = max(axes, key=lambda a: a[1])
         unit = "rad/s" if axis == "vz" else "m/s"
         word = {"vz": "Drehung", "vx": "vorwärts/rückwärts", "vy": "seitwärts"}[axis]
         return mag, f"{word} {texts.fmt_num(mag)} {unit}"
-    if cmd.func == 0x10:
-        mag = max((abs(s) for s in p.get("speeds", [])), default=0) / 100
+    if cmd.name == "MOTOR":
+        mag = max((abs(s) for s in p.get("speeds", [])), default=0) / config.MOTOR_SPEED_SCALE
         return mag, f"Motorleistung {round(mag * 100)} %"
     return 0.0, ""
 
@@ -127,11 +131,11 @@ def _motor_start(inc: Incident, ctx: Context) -> Reason | None:
     prev = None
     for t, cmd in sorted(ctx.commands, key=lambda c: c[0]):
         if start - config.MOTOR_WINDOW_S <= t <= start:
-            if cmd.func == 0x11:
+            if cmd.name == "CAR_RUN":
                 # car_run is not decoded, so only its first occurrence counts
-                started = prev is None or prev.func != 0x11
+                started = prev is None or prev.name != "CAR_RUN"
                 text = "Fahrmodus gestartet"
-            elif cmd.func in (0x10, 0x12):
+            elif cmd.name in ("MOTOR", "MOTION"):
                 mag, text = _speed(cmd)
                 started = abs(mag - _speed(prev)[0]) >= config.MOTOR_DELTA
             else:
@@ -239,7 +243,10 @@ def classify(inc: Incident, ctx: Context) -> list[Reason]:
     if loop:
         reasons.append(loop)
     if not causes:
-        evidence = [f"keine Fahrbefehle in den {texts.fmt_num(config.SNAPSHOT_BEFORE_S, 0)} s davor"]
+        evidence = []
+        before = inc.start_mono - config.SNAPSHOT_BEFORE_S
+        if not any(before <= t <= inc.start_mono and cmd.name in DRIVE_COMMANDS for t, cmd in ctx.commands):
+            evidence.append(f"keine Fahrbefehle in den {texts.fmt_num(config.SNAPSHOT_BEFORE_S, 0)} s davor")
         if not ctx.server_running:
             evidence.append("Server lief nicht")
         reasons.append(Reason("idle_unclear", config.REASON_SCORES["idle_unclear"], evidence))
