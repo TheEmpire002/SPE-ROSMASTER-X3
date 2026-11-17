@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>USB-Diagnose</title>
+<link rel="stylesheet" href="usbdiag.css">
+</head>
+<body>
+<header class="top">
+  <div class="top-title">
+    <h1>USB-Diagnose</h1>
+    <p class="top-meta"><span id="running">verbinde …</span><span id="incident-count"></span><span id="uptime"></span></p>
+  </div>
+  <a id="back" class="back" href="/">← Roboter-Diagnose</a>
+</header>
+
+<main>
+  <section id="verdict" class="verdict lv-unknown" aria-live="polite">
+    <p id="verdict-text">Lade Diagnose …</p>
+  </section>
+
+  <section class="vitals" aria-label="Messwerte">
+    <ul id="vitals"></ul>
+    <p id="sampling-note" class="note"></p>
+  </section>
+
+  <div class="work">
+    <section class="plan" aria-label="Verkabelung">
+      <h2>Verkabelung</h2>
+      <p class="hint">Buchse, Port oder Motorsteuerung anklicken, um Einzelheiten zu sehen.</p>
+      <div class="plan-scroll">
+        <svg id="diagram" role="group" aria-label="Schaltplan der USB-Verbindungen"></svg>
+      </div>
+      <ul class="legend" aria-label="Farbbedeutung">
+        <li><span class="swatch lv-ok"></span>in Ordnung</li>
+        <li><span class="swatch lv-warn"></span>hatte Störungen</li>
+        <li><span class="swatch lv-bad"></span>gerade gestört</li>
+        <li><span class="swatch lv-empty"></span>frei</li>
+      </ul>
+    </section>
+
+    <aside id="detail" class="detail" aria-live="polite"></aside>
+  </div>
+
+  <section class="incidents" aria-label="Vorfälle">
+    <h2>Vorfälle</h2>
+    <div id="incidents"></div>
+  </section>
+</main>
+
+<script src="usbdiag.js"></script>
+</body>
+</html>

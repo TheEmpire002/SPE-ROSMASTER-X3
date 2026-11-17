@@ -201,6 +201,8 @@ class UsbmonTap:
             return []
         lines = (self._partial + chunk).split(b"\n")
         self._partial = lines.pop()
+        if len(self._partial) > config.USBMON_PARTIAL_MAX:
+            self._partial = b""  # no real usbmon line is this long, drop it
         urbs = []
         for raw in lines:
             urb = parse_line(raw.decode("ascii", "replace"))

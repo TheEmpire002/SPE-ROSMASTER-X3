@@ -114,3 +114,31 @@ BATTERY_CURVE_POINTS = 60
 INCIDENTS_ON_PAGE = 30
 VERDICT_WINDOW_S = 3600.0
 TILE_TECHNICAL_LINES = 20
+
+# daemon loop
+LOOP_SELECT_S = 0.25
+TOPOLOGY_DEBOUNCE_S = 0.2  # rescan this long after a kernel usb message
+SOURCE_RETRY_S = 5.0  # a failed source is tried again after this
+SOURCE_ERROR_REPEAT_S = 60.0  # the same error is logged at most once per this
+SOURCE_ERROR_KEYS_MAX = 100
+USBMON_PARTIAL_MAX = 8192  # longer unfinished usbmon lines are garbage
+HTTP_POLL_S = 0.25
+
+# mock mode
+MOCK_LOG_DIR = "~/.rosmaster/diagnose/usb-mock"
+MOCK_START_MONO = 160.0  # mock uptime at start, about a minute after the backlog burst
+MOCK_FIRST_BURST_S = 20.0
+MOCK_BURST_PERIOD_S = 90.0
+MOCK_MOTOR_BURST_EVERY = 3
+MOCK_MOTION_LEAD_S = 1.0
+MOCK_MOTION_VX = 0.3
+MOCK_MOTION_HOLD_S = 5.0
+MOCK_RESTORE_S = (2.0, 4.0)
+MOCK_LOOP_DELAY_S = 0.4  # orbbec over-current after its reconnect
+MOCK_LOOP_RESTORE_S = 1.5
+MOCK_URB_GAP_S = 0.05  # pause between two passes of the recorded usbmon lines
+MOCK_CATCH_UP_S = 10.0  # skip recorded lines that are older than this
+MOCK_EXT5V_V = (5.02, 5.07)
+MOCK_TEMP_C = (55.0, 62.0)
+MOCK_CPU_PCT = (10.0, 30.0)
+MOCK_FREQ_MHZ = 2400.0

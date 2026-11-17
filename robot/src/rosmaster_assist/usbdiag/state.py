@@ -299,9 +299,18 @@ class DiagState:
     def _finish(self, inc: Incident) -> None:
         end = inc.end_mono if inc.end_mono is not None else inc.last_trigger_mono
         entry = self._entry(inc, end, inc.recovered)
+        # a restart replays the boot backlog, so the same incident can finish twice
+        same = next((i for i, old in enumerate(self.finished)
+                     if old.get("boot") == entry.get("boot") and old.get("start_mono") == entry.get("start_mono")),
+                    None)
+        if same is not None:
+            entry["id"] = self.finished[same]["id"]  # keeps the file name when the wall clock moved
         if self.store is not None:
             self.store.write_incident(entry)
-        self.finished.insert(0, entry)
+        if same is not None:
+            self.finished[same] = entry
+        else:
+            self.finished.insert(0, entry)
 
     # page model
 
@@ -590,8 +599,10 @@ class DiagState:
             known = self.last_device.get(tile.id)
             rows.append({"label": "Angeschlossen", "value": f"{known} (fehlt)" if known else "nichts"})
         else:
-            value = (f"{device_name(dev)} · {texts.fmt_speed_link(dev.speed_mbps)} · "
-                     f"zieht bis zu {dev.max_power_ma} mA")
+            # self-powered hubs report 0 mA, which would read as "draws nothing"
+            power = (f"zieht bis zu {dev.max_power_ma} mA" if dev.max_power_ma
+                     else "meldet keinen Strombedarf")
+            value = f"{device_name(dev)} · {texts.fmt_speed_link(dev.speed_mbps)} · {power}"
             if dev.driver in texts.DRIVER_WORDS:
                 value += f" · {texts.DRIVER_WORDS[dev.driver]}"
             rows.append({"label": "Angeschlossen", "value": value})

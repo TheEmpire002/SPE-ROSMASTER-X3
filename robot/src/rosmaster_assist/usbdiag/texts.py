@@ -68,6 +68,7 @@ def judge_cpu(pct):
 
 _SENTENCES = {
     "disconnect": "{d} hat sich abgemeldet",
+    "new_device": "{d} wird erkannt",
     "connect": "{d} hat sich angemeldet",
     "overcurrent": "Überlast an den Pi-Buchsen – der gemeinsame Stromschalter hat abgeschaltet",
     "reset_failed": "Neustart des Anschlusses ist fehlgeschlagen (Leitung gestört)",
