@@ -13,6 +13,9 @@
 
 (() => {
 
+// the usb diagnosis runs as its own service, so it is on another port of the same host
+document.getElementById("usb-diag-link").href = location.protocol + "//" + location.hostname + ":8001/";
+
 const INTERVAL_MS = 3000;
 const LOG_MAX = 1000;
 const LEVELS = { DEBUG: 0, INFO: 1, WARNING: 2, ERROR: 3, CRITICAL: 4 };

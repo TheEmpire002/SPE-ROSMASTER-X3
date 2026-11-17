@@ -89,10 +89,13 @@ human. It does not assess a health condition.
 | `mapping/`     | Mapping: slam_toolbox in the container including the feed, save/load the map (`occ_map.py`), map in the simulation (`simulation.py`), `/map` page (`web.py`) |
 | `interaction/` | Gestures, behavior (follow, come here, go away), voice (speech output) and speech commands with the wake word "Robi"; planned: mind ("Geist") — see [`interaction.md`](interaction.md) |
 | `diagnostics.py`  | Collects failures (battery, USB, undervoltage, temperature, devices, log) and turns them into understandable problems for the `/diagnose` page |
+| `usbdiag/`     | Standalone USB diagnosis daemon with its own page on port 8001 (own systemd unit, `robot/deploy/usbdiag/`); see [`hardware.md`](hardware.md#usb-diagnosis) |
 | `recording.py` | Recorder: last minute (scans, commands, odometry, states) in memory, saved to a file at the push of a button; plus loading and replaying for `scripts/replay.py` |
 | `box/`         | Motor/servo of the transport box *(still empty)*           |
 | `api/`         | WebSocket server, also serves the web app; `map_control.py` ties together mapping drive, localization and goal drive for `/map` and the app |
 | `main.py`      | Entry point, wires everything together                     |
+
+`usbdiag/` is deliberately not part of the server: it uses only the standard library, never imports `rosmaster_assist` and is installed as a copy to `/opt/rosmaster-usbdiag`. That way it keeps recording while the server is stopped, updated or crashed, which is exactly when USB dropouts need explaining.
 
 ## Autonomous driving — deliberately later
 

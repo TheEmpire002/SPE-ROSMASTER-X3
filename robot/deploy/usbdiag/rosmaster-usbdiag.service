@@ -1,0 +1,17 @@
+[Unit]
+Description=ROSMASTER X3 USB diagnosis (page on port 8001)
+After=local-fs.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/rosmaster-usbdiag
+ExecStart=/usr/bin/python3 -m usbdiag
+Restart=always
+RestartSec=5
+Nice=10
+IOSchedulingClass=idle
+CPUQuota=10%
+MemoryMax=150M
+
+[Install]
+WantedBy=multi-user.target

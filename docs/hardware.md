@@ -659,3 +659,85 @@ Sorted by effect, simplest first:
    insufficient cooling.
 
 Measurements and derivation: `Marlon/sensorcheck_2026-10-28/SUMMARY.md`.
+
+## USB diagnosis
+
+A small separate service, `usbdiag` (`robot/src/rosmaster_assist/usbdiag/`),
+watches the USB bus and explains why devices drop out. It is a standalone
+Python daemon (standard library only) with its own page on **port 8001**. It
+does not import anything from the server and runs as its own systemd unit
+(`rosmaster-usbdiag`), so it keeps recording while the server is stopped,
+updated or crashed, and the server never depends on it.
+
+What it watches: the kernel log (disconnects, resets, over-current, enumeration
+errors, undervoltage), the USB topology from sysfs, the vitals once per second
+(external 5 V, battery, temperature, CPU load, clock throttling) and, with
+usbmon, the traffic on the board's bus (when the board last spoke, the last
+drive command before a dropout). Events that belong together become one
+**incident**, and a rule-based classifier names the likely cause.
+
+**Install and update** (on the Pi):
+
+```bash
+cd ~/x3 && git pull
+robot/deploy/usbdiag/install.sh             # copies the package to /opt/rosmaster-usbdiag, enables the unit
+robot/deploy/usbdiag/install.sh --uninstall # removes unit and /opt copy, keeps the logs
+```
+
+The script prints the page address, `http://<pi-ip>:8001/`. The server's
+`/diagnose` page links to it ("USB-Diagnose"). The script never touches the
+server or `/dev/myserial`. Without the robot, `python -m usbdiag --mock --port 8001`
+(from `robot/src/rosmaster_assist/`) serves the page with recorded data.
+
+![USB diagnosis page with mock data](images/usbdiag.png)
+
+**Log files** are in `/home/pi/.rosmaster/diagnose/usb/` and survive reboots:
+
+| File | Content |
+|------|---------|
+| `usb.log` (+ rotated copies) | the daemon's own log, size-limited |
+| `events.jsonl` (+ rotated copies) | one JSON line per USB event, with kernel and wall time |
+| `incidents/<id>.json` | one file per finished incident, the newest 200 are kept |
+| `summary.json` | short summary of the last boots |
+
+Reading an incident file: `time`, `where` and `reason` are the headline;
+`reasons` lists every candidate with its `evidence` lines and the `action` to
+take; `events` is the sequence in plain German; `snapshot` holds the vitals
+from shortly before the first event until the end; `technical` has the raw
+kernel lines. `recovered: false` means the devices had not come back when the
+incident was closed (after 120 s at the latest).
+
+**Crash reasons** (the page shows the German titles):
+
+| Reason | Meaning |
+|--------|---------|
+| Motoranlauf | a drive command that changes the speed came up to 2 s before the first event: the motor current sags the rail |
+| Wiedereinschalt-Schleife | a device reconnects again and again |
+| Hitze / Taktbremse | CPU at 80 °C or more, or the clock throttled |
+| Unterspannung Pi-Netzteil | the Pi reports undervoltage |
+| CPU-Lastspitze | CPU load of 80 % or more just before |
+| Board-Mikrocontroller still | the board stays connected but sends nothing any more (the MCU restarted) |
+| Im Stand, Ursache unklar (Rückspeisung?) | nothing else fits and the robot stood still; back-feeding through the board hub is suspected |
+
+Limits:
+
+- **usbmon only sees traffic while the server is running.** With the server off
+  nobody talks to the board, so the page shows "kein Verkehr (Server aus)",
+  and "Motoranlauf" cannot be derived without a drive command. Capture is also
+  switched off when the camera shares the board's USB bus
+  ("Mithören abgeschaltet: Kamera am selben USB-Bus").
+- **Voltages are sampled at 1 Hz.** A dip of a few milliseconds that trips the
+  Pi's switch is invisible in the numbers; only the throttling flag and the
+  kernel messages show it.
+
+**Socket layout and the one-time socket check.** The page draws the four Pi
+sockets as a 2×2 grid: the column comes from `slot // 2` (USB2 stack versus
+USB3 stack), the row from `slot % 2` (oben/unten). Which stack sits left or
+right, and the labels in `PI_SOCKETS` (`usbdiag/config.py`), are **not yet
+verified on the real Pi 5**; until then the page says "Lage der Buchsen noch
+nicht geprüft" (`SOCKETS_VERIFIED = False`). Check once:
+
+1. Plug a USB stick into each Pi socket in turn.
+2. Note which tile lights up on the page.
+3. Fix `label`, `lanes` and `slot` of that entry in `PI_SOCKETS`, set
+   `SOCKETS_VERIFIED = True`, run `install.sh` again.

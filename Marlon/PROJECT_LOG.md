@@ -796,6 +796,16 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
   - A smoke-test check ("Drehen bleibt trotzdem erlaubt") failed only while about 40 Python processes from earlier mock servers were running ("Server hing 1.2 s"); on a quiet machine it passes.
   - Ben's commits from 04.11. (microphone off while mapping, depth camera crash) were made on the old file names; they are contained in the translated files.
 - **Open:** Teammates' branches based on the old names will conflict on merge; merge them soon or rebase. The old-name settings migration in `settings.py` can be removed once all robots have saved settings with the new names.
+### 17.11.2026 – USB diagnosis daemon with its own page (Marlon, with Claude)
+- **What:** New standalone service `usbdiag` (`robot/src/rosmaster_assist/usbdiag/`, standard library only) with its own page on port 8001. It reads the kernel log, the USB topology, the vitals (5 V, battery, temperature, CPU, throttling) and usbmon traffic, groups events into incidents, names the likely cause (motor start, re-enumeration loop, heat, undervoltage, CPU spike, board MCU silent, idle unclear) and writes `usb.log`, `events.jsonl` and `incidents/<id>.json` to `/home/pi/.rosmaster/diagnose/usb/`. Runs as systemd unit `rosmaster-usbdiag` (`robot/deploy/usbdiag/install.sh`, copy in `/opt/rosmaster-usbdiag`); the server's `/diagnose` page links to it.
+- **Why:** The USB resets (see 28.10. and `docs/hardware.md`) are hard to pin down because the evidence is gone after a reboot and the server's own page dies with the server. A separate service keeps recording while the server is off and shows the cause in plain German instead of kernel lines.
+- **Built in order:** config, sampler, kmsg parser, usbmon decoder, topology, incident grouping and classifier, state and store, web page, daemon and `__main__` (clean stop on SIGTERM), then unit, install script, server link and docs.
+- **Result:** `python -m usbdiag --mock --port 8001` serves the page with recorded failures; screenshot with mock data: `docs/images/usbdiag.png`. `python scripts/run_tests.py usbdiag`: 6 scripts, 65 tests, all pass. The copied package also starts on its own outside the repo (`timeout 5 python -m usbdiag --mock`, no ImportError).
+- **Problems:**
+  - The Pi was not reachable over ssh during development, so nothing ran on the real robot yet; sysfs, kmsg and usbmon parsing are tested against fixtures only.
+  - The socket labels are unverified: the page draws the Pi sockets as a 2×2 grid (column `slot // 2`, row `slot % 2`), but which stack is left or right and the names in `PI_SOCKETS` are guesses. The page says "Lage der Buchsen noch nicht geprüft" until `SOCKETS_VERIFIED = True`.
+  - usbmon sees nothing while the server is off, and voltages are sampled only once per second (both documented in `docs/hardware.md`).
+- **Open:** install on the Pi, one-time socket check, analyse the first real incident (see section 5).
 
 ---
 
@@ -859,6 +869,9 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 
 ## 5. Open points and outlook
 
+- **USB diagnosis on the Pi** (17.11.): `git pull`, `robot/deploy/usbdiag/install.sh`, open `http://<pi-ip>:8001/`, check that the vitals and the board bus show up.
+- **Socket check** (17.11.): plug a USB stick into each Pi socket, note which tile lights up, fix `PI_SOCKETS` in `usbdiag/config.py`, set `SOCKETS_VERIFIED = True`.
+- **First real incident** (17.11.): after a dropout on the floor, read `incidents/<id>.json` and check whether the named reason fits what happened.
 - **Narrow down the USB overload at idle** (29.10.): unplug all devices, plug them back in one by one (lidar last), swap the lidar cable, unplug the board USB; value "USB overloads per minute" on `/diagnose`. Make the journal on the Pi persistent.
 - Floor test of the explorer with obstacles.
 - Mapping on the Pi: is slam_toolbox present in the container `x3`? Then start it on `/map`, watch the mapping drive on the floor, save the map (E8, E9).
