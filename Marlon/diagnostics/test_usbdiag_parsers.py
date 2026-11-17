@@ -3,15 +3,17 @@
     python Marlon/diagnostics/test_usbdiag_parsers.py
 
 fixtures/kmsg_burst.txt is synthetic (its first line says so and the parser
-skips it) until a real recording from the Pi replaces it.
+skips it) until a real recording from the Pi replaces it; the same holds for
+fixtures/pmic.txt and fixtures/usbmon_board.txt.
 """
 
 import pathlib
+import struct
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "robot" / "src"))
 
-from rosmaster_assist.usbdiag import kmsg, texts  # noqa: E402
+from rosmaster_assist.usbdiag import kmsg, sampler, texts, usbmon  # noqa: E402
 
 FIXTURES = pathlib.Path(__file__).resolve().parents[2] / "robot/src/rosmaster_assist/usbdiag/fixtures"
 REC = "3,5202,173531911,-;usb 3-2: clear tt 4 (9032) error -71"
@@ -85,6 +87,82 @@ def test_event_sentences_are_plain_german():
     assert set(texts.REASONS) == {"motor_start", "reenum_loop", "heat", "undervoltage",
                                  "cpu_spike", "board_mcu_silent", "idle_unclear"}
     assert all(r["title"] and r["action"] for r in texts.REASONS.values())
+
+
+def checksum_report(ext_len, ext_type, data):
+    return (ext_len + ext_type + sum(data)) % 256
+
+
+def report_0a(vx, vy, vz, batt_dv):
+    data = list(struct.pack("<hhhB", int(vx*1000), int(vy*1000), int(vz*1000), batt_dv))
+    ext_len = len(data) + 2
+    return bytes([0xFF, 0xFB, ext_len, 0x0A] + data + [checksum_report(ext_len, 0x0A, data)])
+
+
+def motion_cmd(vx, vy, vz, car_type=1):
+    body = [0xFF, 0xFC, 0x00, 0x12, car_type] + list(struct.pack("<hhh", int(vx*1000), int(vy*1000), int(vz*1000)))
+    body[2] = len(body) - 1
+    return bytes(body + [(sum(body) + 257 - 0xFC) & 0xFF])  # Rosmaster_Lib: sum(cmd, 257 - DEVICE_ID) & 0xff
+
+
+def test_parse_usbmon_line():
+    u = usbmon.parse_line("ffff8880c2a1e000 3091248115 C Bi:1:114:2 0 11 = fffb090a 00000000 00007601")
+    assert (u.event, u.xfer, u.bus, u.dev, u.ep, u.status, u.length) == ("C", "Bi", 1, 114, 2, 0, 11)
+    assert u.data[:4] == bytes.fromhex("fffb090a")
+    assert usbmon.parse_line("ffff8880c2a1e000 3091248115 S Bi:1:114:2 -115 32 <").data == b""
+    assert usbmon.parse_line("ffff 1 S Ci:1:001:0 s a3 00 0000 0001 0004 4 <").status is None
+    assert usbmon.parse_line("nonsense") is None
+
+
+def test_frame_decoder_report_and_battery():
+    f = usbmon.FrameDecoder().feed(report_0a(0.1, 0.0, -0.6, 118))
+    assert len(f) == 1 and f[0].type == 0x0A
+    r = usbmon.decode_report(f[0])
+    assert abs(r["vx"] - 0.1) < 1e-9 and abs(r["vz"] + 0.6) < 1e-9 and abs(r["battery_v"] - 11.8) < 1e-9
+
+
+def test_frame_decoder_split_and_resync():
+    frame = report_0a(0.0, 0.0, 0.0, 120)
+    d = usbmon.FrameDecoder()
+    assert d.feed(frame[:5]) == [] and len(d.feed(frame[5:])) == 1
+    bad = bytearray(frame); bad[-1] ^= 0xFF
+    out = d.feed(bytes(bad) + b"\x00\x13" + frame)
+    assert len(out) == 1 and usbmon.decode_report(out[0])["battery_v"] == 12.0
+    assert d.feed(frame[:7]) == [] and len(d.feed(frame)) == 1  # truncated urb then a full frame
+
+
+def test_decode_motion_command():
+    cmds = usbmon.decode_commands(motion_cmd(0.0, 0.0, 0.6))
+    assert cmds[0].name == "MOTION" and abs(cmds[0].params["vz"] - 0.6) < 1e-9
+
+
+def test_parse_pmic_and_throttled():
+    rails = sampler.parse_pmic((FIXTURES / "pmic.txt").read_text())
+    assert abs(rails["EXT5V_V"] - 5.06788) < 1e-6 and "VDD_CORE_A" in rails
+    t = sampler.parse_throttled("throttled=0x50005")
+    assert t["under_voltage_now"] and t["throttled_now"] and t["under_voltage_boot"] and t["throttled_boot"]
+    assert not t["freq_capped_now"]
+    assert sampler.parse_throttled("garbage") == {}
+
+
+def test_cpu_percent():
+    assert sampler.cpu_percent((100, 1000), (150, 1100)) == 50.0
+    assert sampler.read_cpu_times("cpu  10 0 10 80 0 0 0 0 0 0\ncpu0 1 1 1 1") == (20, 100)
+
+
+def test_usbmon_fixture_decodes():
+    dec = usbmon.FrameDecoder()
+    frames, cmds = [], []
+    for line in (FIXTURES / "usbmon_board.txt").read_text().splitlines():
+        u = usbmon.parse_line(line)
+        if u is None or u.dev != 114:
+            continue
+        if u.xfer == "Bi" and u.event == "C":
+            frames += dec.feed(u.data)
+        elif u.xfer == "Bo" and u.event == "S":
+            cmds += usbmon.decode_commands(u.data)
+    assert frames and all(abs(usbmon.decode_report(f)["battery_v"] - 11.8) < 1e-9 for f in frames)
+    assert any(c.name == "MOTION" and abs(c.params["vz"] - 0.6) < 1e-9 for c in cmds)
 
 
 if __name__ == "__main__":
