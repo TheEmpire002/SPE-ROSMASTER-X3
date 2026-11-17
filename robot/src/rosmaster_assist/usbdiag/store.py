@@ -44,6 +44,15 @@ def _fix_perms(path: str, mode: int) -> None:
         pass  # perms are cosmetic, never fail a write over them
 
 
+class _PermHandler(logging.handlers.RotatingFileHandler):
+    """Rotating handler whose files get the log mode and owner, also after a rollover."""
+
+    def _open(self):
+        stream = super()._open()
+        _fix_perms(self.baseFilename, config.LOG_FILE_MODE)
+        return stream
+
+
 class Store:
     def __init__(self, folder: str, boot_id: str, file_bytes: int, file_count: int,
                  keep_incidents: int, keep_boots: int):
@@ -80,7 +89,7 @@ class Store:
             h.close()
         path = os.path.join(self.folder, "usb.log")
         try:
-            handler = logging.handlers.RotatingFileHandler(
+            handler = _PermHandler(
                 path, maxBytes=self.file_bytes, backupCount=max(self.file_count - 1, 0),
                 encoding="utf-8", delay=True)
         except OSError:
@@ -110,12 +119,21 @@ class Store:
             self.logger.warning("event log rotation failed: %s", exc)
 
     def append_event(self, ev: Event) -> None:
-        line = json.dumps({
+        try:
+            line = self._event_line(ev)
+        except (TypeError, ValueError) as exc:
+            self.logger.warning("event not serialisable: %s", exc)
+            return
+        self._write_event(line.encode("utf-8"))
+
+    def _event_line(self, ev: Event) -> str:
+        return json.dumps({
             "boot": self.boot_id, "mono": ev.mono, "wall": ev.wall, "kind": ev.kind,
             "port": ev.port, "device": ev.details.get("device", ""),
             "details": ev.details, "raw": ev.raw,
-        }, ensure_ascii=False) + "\n"
-        data = line.encode("utf-8")
+        }, ensure_ascii=False, default=str) + "\n"
+
+    def _write_event(self, data: bytes) -> None:
         try:
             try:
                 size = os.path.getsize(self._events)
@@ -129,7 +147,7 @@ class Store:
             self.logger.warning("event write failed: %s", exc)
 
     def _append(self, data: bytes) -> None:
-        flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT
+        flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_BINARY", 0)
         try:
             fd = os.open(self._events, flags, config.LOG_FILE_MODE)
         except FileNotFoundError:
@@ -181,10 +199,17 @@ class Store:
 
     def _atomic_write(self, path: str, data: dict) -> None:
         tmp = path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=1)
-        _fix_perms(tmp, config.LOG_FILE_MODE)
-        os.replace(tmp, path)
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=1, default=str)
+            _fix_perms(tmp, config.LOG_FILE_MODE)
+            os.replace(tmp, path)
+        except BaseException:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            raise
 
     def write_incident(self, data: dict) -> str:
         name = str(data.get("id") or time.strftime("%Y-%m-%d_%H-%M-%S"))
@@ -194,7 +219,7 @@ class Store:
                 raise OSError(f"cannot create {self._incidents}")
             self._atomic_write(path, data)
             self._prune_incidents()
-        except OSError as exc:
+        except (OSError, TypeError, ValueError) as exc:
             self.logger.error("incident write failed: %s", exc)
             return ""
         return path
@@ -244,5 +269,5 @@ class Store:
             if not self._ensure_dir(self.folder):
                 raise OSError(f"cannot create {self.folder}")
             self._atomic_write(self._summary, {"boots": boots})
-        except OSError as exc:
+        except (OSError, TypeError, ValueError) as exc:
             self.logger.error("summary write failed: %s", exc)
