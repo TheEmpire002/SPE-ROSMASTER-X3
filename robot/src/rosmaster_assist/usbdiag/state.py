@@ -523,8 +523,10 @@ class DiagState:
             state = texts.CAPTURE_TEXTS["camera_on_bus"]
         elif running:
             state = "Motoren laufen"
-        elif self.capture == "on":
+        elif self.capture == "on" and self.last_urb is not None and _clamp(now - self.last_urb) < config.CAPTURE_IDLE_S:
             state = "Motoren stehen"
+        elif self.capture == "on":
+            state = texts.MOTOR_NO_TRAFFIC
         else:
             state = "Zustand unbekannt"
         batt = self.battery[-1][1] if self.battery else None

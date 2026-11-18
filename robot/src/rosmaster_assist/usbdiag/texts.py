@@ -129,6 +129,9 @@ DRIVER_WORDS = {
     "cp210x": "Treiber für den Lidar-Chip",
 }
 PORT_STATE_WORDS = {"configured": "in Betrieb", "not attached": "nichts angeschlossen"}
+# capture is on but the board gets no traffic at all
+MOTOR_NO_TRAFFIC = "Kein Verkehr – Server aus?"
+
 CAPTURE_TEXTS = {
     "active": "Mithören aktiv",
     "idle": "kein Verkehr (Server aus)",

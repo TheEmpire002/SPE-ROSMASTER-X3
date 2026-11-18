@@ -278,6 +278,19 @@ def test_capture_without_traffic_says_server_off():
         assert st.page(10.0)["motor"]["capture"] == "kein Verkehr (Server aus)"
 
 
+def test_motor_without_traffic_says_server_off():
+    with tempfile.TemporaryDirectory() as d:
+        st = state.DiagState(None, 0.0, 0.0)
+        st.apply_topology(fixture_topology(pathlib.Path(d)), now=1.0)
+        st.set_capture("on")
+        now = 100.0
+        assert st.page(now)["motor"]["state"] == texts.MOTOR_NO_TRAFFIC == "Kein Verkehr – Server aus?"
+        st.last_urb = now - 1
+        assert st.page(now)["motor"]["state"] == "Motoren stehen"
+        st.last_urb = now - config.CAPTURE_IDLE_S - 1
+        assert st.page(now)["motor"]["state"] == texts.MOTOR_NO_TRAFFIC
+
+
 def test_finished_incident_ends_at_its_last_event():
     with tempfile.TemporaryDirectory() as d:
         tmp = pathlib.Path(d)
