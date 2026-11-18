@@ -248,7 +248,7 @@ it only turns.
 | `stimme` | voice output: `verfuegbar` (sound comes out), `spricht` (speaking a sentence right now), `text` (last sentence spoken, or `null`). See "Voice in detail". Missing on older servers. |
 | `sprache` | speech commands: `verfuegbar` (microphone and model ready), `geweckt` (awake: „Robi“ was just said on its own, the next sentence needs no name), `gehoert` (last sentence understood, or `null`), `befehl` (recognized command, for a few seconds, otherwise `null`), `pause` (why the microphone is deliberately closed right now, e.g. „Mapping läuft“; then `verfuegbar` is `false`, otherwise `null`). See "Speech commands in detail". Missing on older servers. |
 | `karte` | Only present when a map exists (new 04.11.): `name` (saved map, `null` for the live map during mapping), `live`, `pose` (pose **in the map frame**, not to be confused with `pose` above in the odometry frame; `null` while unknown), `sicher` (confident; `goto` only works then), `text`, `fahrt` (running or last map-based drive: `art` (kind) `"heim"` (home) / `"ziel"` (goal) / `"zurueck"` (way back, new 05.11.), `ziel` (goal), `rest_m` (remaining distance), `grund` (reason), `wartet` (new 05.11.: „wartet auf Ortung“ while it stands and searches for its pose, otherwise `null`), `vermutet` (new 05.11.: `true` while it follows a guessed path through the unknown, see "Guessed paths")). New 05.11.: `kartieren` (always-on mapping: `aktiv`, `zustand` `"integriert"` (writing) / `"bestaetigt"` (confirming the pose) / `"eingefroren"` (frozen, the map does not change) / `"pausiert"` (paused) / `"start"` (no map yet, founding one at standstill) / `"aus"` (off), `grund` (German reason); `null` when switched off), `mission` (anchor `[x, y, radians]` or `null`), `spur_m` (trail length in m since the mission start, else in total). See "Using the map" under Mapping. |
-| `linie` | Line following (new 10.11.), only present with a camera: `aktiv`, `verfuegbar`, `zustand` (`"lernt"` learning the colour, `"folgt"` following a seen line, `"blind"` driving on the remembered line, `"dreht"` turning on the spot at a sharp corner, `"wartet"` waiting for image or line, `"sucht"` searching by turning, `"aus"`), `text` (German status text), `grund` (why it ended, or `null`), `abzweig` (junction preference), `kreuzungen` (junctions passed), `gefahren_m`, `dauer_s` (`null` when off), `linie_breite_cm` (learned line width, `null` before learning), `fehler` (why it is unavailable, or `null`). See "Line following in detail". |
+| `linie` | Line following (new 10.11.), only present with a camera: `aktiv`, `verfuegbar`, `zustand` (`"lernt"` learning the colour, `"folgt"` following a seen line, `"blind"` driving on the remembered line, `"dreht"` turning on the spot at a sharp corner, `"wartet"` waiting for image or line, `"sucht"` searching by turning, `"aus"`), `text` (German status text), `grund` (why it ended, or `null`), `abzweig` (junction preference), `kreuzungen` (junctions passed), `gefahren_m`, `dauer_s` (`null` when off), `linie_breite_cm` (learned line width, `null` before learning), `sicherheit` (new 18.11.: `"hoch"`, or `"niedrig"` when the line was learned with weak contrast to the floor and is driven slower; `null` before learning), `fehler` (why it is unavailable, or `null`). See "Line following in detail". |
 
 **`collision`**: on connect and after every change, fields as in
 `state.collision`.
@@ -441,6 +441,14 @@ including curves and junctions. Start with `line_follow`, end with
   so that the line starts about half a metre in front of it, pointing along the
   line. Learning takes at most `LINE_LEARN_S` (3 s). If the floor is too
   patterned, learning fails and the mode ends with a reason.
+- Since 18.11. mats work too (e.g. dark blue with white edge lines): learning
+  first takes the colour straight ahead if it leads away as a band up to
+  `LINE_MAX_WIDTH_M` wide, then falls back to the nearest contrasting blob.
+  White edge lines beside the line no longer count as "busy floor". Contrast
+  between `LINE_MIN_CONTRAST_LOW` and `LINE_MIN_CONTRAST` is accepted with
+  `sicherheit: "niedrig"` and driven at `LINE_LOW_CONFIDENCE_SPEED_SHARE` of
+  the speed. A failed learning attempt logs what it saw (floor colour,
+  contrast ahead, clutter share).
 - The line is traced in 5 cm steps. Several branches mean a junction; the
   `abzweig` preference decides (`gerade`, `links`, `rechts`).
 - The traced line is remembered in the odometry frame, so corners are driven

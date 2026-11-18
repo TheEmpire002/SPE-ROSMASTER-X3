@@ -148,6 +148,9 @@ class GroundView:
         rows = np.nonzero(self.valid[:, self.cols // 2])[0]
         # nearest visible floor straight ahead
         self.near_x = self.x_max - rows.max() * self.res if len(rows) else self.x_min
+        # floor coordinates of every bev pixel, for masks by region
+        rr, cc = np.mgrid[0:self.rows, 0:self.cols]
+        self.grid_x, self.grid_y = self.to_robot(rr, cc)
 
     def _to_image(self, x: float, y: float) -> tuple[float, float]:
         """Floor point (robot frame) to image pixel (u right, v down)."""
@@ -181,6 +184,9 @@ class LineDetector:
         self._view_key = None
         self.line_lab: np.ndarray | None = None
         self.width_m = config.LINE_DEFAULT_WIDTH_M
+        self.contrast = config.LINE_MIN_CONTRAST
+        # what learning saw, for the log when it fails
+        self.learn_info = ""
         self._debug = None
         # a quick restart can leave the old worker thread still running
         self._work_lock = threading.Lock()
@@ -227,45 +233,109 @@ class LineDetector:
             return self._learn(image, fov_deg)
 
     def _learn(self, image: np.ndarray, fov_deg: float) -> str | None:
-        cv2 = _cv2()
         view, bev, lab = self._prepare(image, fov_deg)
         valid = view.valid
         if valid.sum() < 200:
             return "Kamera sieht keinen Boden (Einbau prüfen)"
         floor = np.median(lab[valid], axis=0)
-        contrast = np.linalg.norm(lab - floor, axis=2)
-        cand = self._clean(valid & (contrast > config.LINE_MIN_CONTRAST))
-        share = cand.sum() / valid.sum()
-        self._store_debug(view, bev, cand, [], None)
-        if share > config.LINE_MAX_LINE_SHARE:
-            return "Boden zu unruhig – keine Linie abgrenzbar"
-        n, labels, stats, _ = cv2.connectedComponentsWithStats(cand.astype(np.uint8), connectivity=8)
-        min_area = config.LINE_MIN_WIDTH_M * 0.10 / view.res ** 2
-        ex, ey = view.near_x + config.LINE_EXPECT_MARGIN_M, 0.0
-        best, best_d = None, None
-        for k in range(1, n):
-            if stats[k, cv2.CC_STAT_AREA] < min_area:
-                continue
-            rows, cols = np.nonzero(labels == k)
-            xs, ys = view.to_robot(rows, cols)
-            d = float(np.min(np.hypot(xs - ex, ys - ey)))
-            if best_d is None or d < best_d:
-                best, best_d = k, d
-        if best is None:
-            return "Keine Linie vor dem Roboter erkannt"
-        pixels = labels == best
-        self.line_lab = np.median(lab[pixels], axis=0)
-        # width from the nearest piece, across the line
-        rows, cols = np.nonzero(pixels)
-        xs, ys = view.to_robot(rows, cols)
-        i = int(np.argmin(np.hypot(xs - ex, ys - ey)))
-        across = self._recenter(view, pixels, float(xs[i]), float(ys[i]), 0.0, 0.15)
-        width = across[2] if across is not None else config.LINE_DEFAULT_WIDTH_M
+        ex = view.near_x + config.LINE_EXPECT_MARGIN_M
+        self.learn_info = f"floor lab={np.round(floor).astype(int).tolist()}"
+        # robot placed on or in front of a mat: its colour is straight ahead,
+        # even when it barely stands out from the floor
+        found, how = self._learn_ahead(view, lab, valid, floor, ex), "ahead"
+        error = None
+        if found is None:
+            (found, error), how = self._learn_blobs(view, bev, lab, valid, floor, ex), "blob"
+        if found is None:
+            return error
+        pixels, line_lab, width, contrast = found
+        self._store_debug(view, bev, pixels, [], None)
+        self.line_lab = line_lab
+        self.contrast = contrast
         self.width_m = float(np.clip(width, config.LINE_MIN_WIDTH_M, config.LINE_MAX_WIDTH_M))
-        log.info("Line following: learned line colour lab=%s (floor %s), width %.0f cm",
-                 np.round(self.line_lab).astype(int).tolist(), np.round(floor).astype(int).tolist(),
-                 self.width_m * 100)
+        self.learn_info = ""
+        log.info("Line following: learned line colour lab=%s (floor %s, contrast %.0f, %s), "
+                 "width %.0f cm (%s)",
+                 np.round(line_lab).astype(int).tolist(), np.round(floor).astype(int).tolist(),
+                 contrast, "sure" if self.confident else "UNSURE", self.width_m * 100, how)
         return None
+
+    def _learn_ahead(self, view, lab, valid, floor, ex):
+        """Line colour from the patch straight ahead, if it leads away as a band."""
+        cv2 = _cv2()
+        gx, gy = view.grid_x, view.grid_y
+        patch = (valid & (gx >= view.near_x) & (gx <= view.near_x + config.LINE_LEARN_PATCH_LENGTH_M)
+                 & (np.abs(gy) <= config.LINE_LEARN_PATCH_HALF_WIDTH_M))
+        if patch.sum() < 20:
+            return None
+        colour = np.median(lab[patch], axis=0)
+        contrast = float(np.linalg.norm(colour - floor))
+        self.learn_info += f", ahead contrast {contrast:.0f}"
+        if contrast < config.LINE_MIN_CONTRAST_LOW:
+            return None
+        d_floor = np.linalg.norm(lab - floor, axis=2)
+        d_line = np.linalg.norm(lab - colour, axis=2)
+        mask = self._clean(valid & (d_line < d_floor) & (d_line < config.LINE_COLOR_TOLERANCE)
+                           & (d_floor > 0.5 * contrast))
+        _, labels = cv2.connectedComponents(mask.astype(np.uint8), connectivity=8)
+        ids = labels[patch & mask]
+        ids = ids[ids > 0]
+        if not len(ids):
+            return None
+        pixels = labels == int(np.bincount(ids).argmax())
+        xs = gx[pixels]
+        if xs.max() - xs.min() < config.LINE_LEARN_MIN_LENGTH_M:
+            self.learn_info += ", ahead too short"
+            return None
+        # a region wider than any mat is the floor itself (or a rug), not a line
+        across = self._recenter(view, pixels, ex, 0.0, 0.0, config.LINE_MAX_WIDTH_M)
+        if across is None or across[2] > config.LINE_MAX_WIDTH_M:
+            self.learn_info += ", ahead too wide"
+            return None
+        line_lab = np.median(lab[pixels], axis=0)
+        return pixels, line_lab, across[2], float(np.linalg.norm(line_lab - floor))
+
+    def _learn_blobs(self, view, bev, lab, valid, floor, ex):
+        """Line colour from the blob nearest in front, strict contrast first."""
+        cv2 = _cv2()
+        contrast_map = np.linalg.norm(lab - floor, axis=2)
+        error = "Keine Linie vor dem Roboter erkannt"
+        margin = 2 * int(round(config.LINE_EDGE_MARGIN_M / view.res)) + 1
+        for threshold in (config.LINE_MIN_CONTRAST, config.LINE_MIN_CONTRAST_LOW):
+            cand = self._clean(valid & (contrast_map > threshold))
+            self._store_debug(view, bev, cand, [], None)
+            n, labels, stats, _ = cv2.connectedComponentsWithStats(cand.astype(np.uint8), connectivity=8)
+            min_area = config.LINE_MIN_WIDTH_M * 0.10 / view.res ** 2
+            best, best_d = None, None
+            for k in range(1, n):
+                if stats[k, cv2.CC_STAT_AREA] < min_area:
+                    continue
+                d = float(np.min(np.hypot(view.grid_x[labels == k] - ex, view.grid_y[labels == k])))
+                if best_d is None or d < best_d:
+                    best, best_d = k, d
+            if best is None:
+                continue
+            pixels = labels == best
+            # only what lies away from the line makes the floor busy; white
+            # edge lines beside a mat are fine
+            near = cv2.dilate(pixels.astype(np.uint8), np.ones((margin, margin), np.uint8)) > 0
+            clutter = (cand & ~near).sum() / valid.sum()
+            self.learn_info += f", contrast>{threshold:.0f}: clutter {clutter:.0%}"
+            if clutter > config.LINE_MAX_LINE_SHARE:
+                error = "Boden zu unruhig – keine Linie abgrenzbar"
+                continue
+            # width from the nearest piece, across the line
+            xs, ys = view.grid_x[pixels], view.grid_y[pixels]
+            i = int(np.argmin(np.hypot(xs - ex, ys)))
+            across = self._recenter(view, pixels, float(xs[i]), float(ys[i]), 0.0, config.LINE_MAX_WIDTH_M)
+            width = across[2] if across is not None else config.LINE_DEFAULT_WIDTH_M
+            line_lab = np.median(lab[pixels], axis=0)
+            return (pixels, line_lab, width, float(np.linalg.norm(line_lab - floor))), None
+        return None, error
+
+    @property
+    def confident(self) -> bool:
+        return self.contrast >= config.LINE_MIN_CONTRAST
 
     # --- following ---
 
@@ -285,7 +355,8 @@ class LineDetector:
         d_line = np.linalg.norm(lab - self.line_lab, axis=2)
         mask = self._clean(
             valid & (d_line < d_floor) & (d_line < config.LINE_COLOR_TOLERANCE)
-            & (d_floor > config.LINE_MIN_CONTRAST * 0.5)
+            # a faint mat must not lose its pixels to a threshold made for tape
+            & (d_floor > 0.5 * min(self.contrast, config.LINE_MIN_CONTRAST))
         )
         path, junction = [], False
         start = self._start(view, mask, expected, heading, radius)
@@ -369,7 +440,7 @@ class LineDetector:
         junction = False
         # the step must be clearly wider than the line, otherwise the fan sees
         # the line's own edges as branches
-        r = max(config.LINE_TRACE_STEP_M, 1.5 * self.width_m)
+        r = min(max(config.LINE_TRACE_STEP_M, 1.5 * self.width_m), config.LINE_TRACE_MAX_STEP_M)
         span = max(2 * self.width_m, 0.04)
         length = 0.0
         while length < config.LINE_TRACE_MAX_M and len(path) < 200:
@@ -523,6 +594,8 @@ class LineFollower:
             "dauer_s": round(time.monotonic() - self._started, 1) if active else None,
             "linie_breite_cm": round(self._detector.width_m * 100, 1)
             if self._detector.line_lab is not None else None,
+            "sicherheit": ("hoch" if self._detector.confident else "niedrig")
+            if self._detector.line_lab is not None else None,
             "fehler": self._error,
         }
 
@@ -575,6 +648,7 @@ class LineFollower:
                     if error is None:
                         return True
             await asyncio.sleep(tick)
+        log.warning("Line following: learning failed (%s)", self._detector.learn_info or "no image")
         self._end(error, "Ich sehe keine Linie vor mir.")
         return False
 
@@ -726,6 +800,8 @@ class LineFollower:
         v = config.LINE_SPEED / (1 + config.LINE_CURVE_SLOWDOWN * abs(curvature))
         if blind:
             v *= config.LINE_BLIND_SPEED_SHARE
+        if not self._detector.confident:
+            v *= config.LINE_LOW_CONFIDENCE_SPEED_SHARE
         v = max(v, config.LINE_MIN_SPEED)
         w = v * curvature
         if abs(w) > config.LINE_MAX_OMEGA:

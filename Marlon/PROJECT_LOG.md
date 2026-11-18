@@ -844,6 +844,18 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
   - No QR code actions at junctions (Yahboom has them), no voice command yet.
   - A floor with a strong pattern may make colour learning fail.
 
+### 18.11.2026 – Line following on dark blue mats (with Claude)
+- **What:** Line following now also starts on mats (dark blue, about 20 cm lane, white edge lines left and right), also with weak contrast to the floor.
+- **Why:** First test with such mats: the robot never started driving. The robot was not reachable over SSH, so no log; the cause was found in the code: (1) the "busy floor" check counted every pixel that differs from the floor, i.e. the mat itself plus both white edge lines, and easily exceeded 35 % → learning aborted after 3 s; (2) dark blue on a grey floor may stay below the fixed contrast of 30 (Lab), and while following, pixels below 15 were discarded.
+- **Changes (`navigation/line_follow.py`, `config.py`):**
+  - Learning first takes the colour straight ahead (robot placed on or in front of the mat) if it leads away as a band of at most `LINE_MAX_WIDTH_M` (now 0.30 m); otherwise the nearest blob, first with contrast 30, then with `LINE_MIN_CONTRAST_LOW` (12).
+  - "Busy floor" only counts what lies further than `LINE_EDGE_MARGIN_M` from the chosen line.
+  - The detection threshold follows the learned contrast; the trace step is capped at `LINE_TRACE_MAX_STEP_M` (wide mats).
+  - Weak contrast: new state field `linie.sicherheit` = `"niedrig"`, speed × `LINE_LOW_CONFIDENCE_SPEED_SHARE` (0.7); the web app shows it. Collision avoidance unchanged via watchdog and lidar drive guard.
+  - A failed learning attempt logs floor colour, contrast ahead and clutter share.
+- **Result:** Compiles; not yet tested on the robot.
+- **Open:** Test on the mats; if it fails, read the line "learning failed (…)" in `server.log` and the picture `/linie/bild`. Following the lane centre between two white lines without a contrasting mat colour is not implemented.
+
 
 ---
 

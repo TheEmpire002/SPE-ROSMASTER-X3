@@ -89,6 +89,7 @@ async function poll() {
         : (STATE_TEXT[st.zustand] || st.zustand || "—");
       widthOut.textContent = typeof st.linie_breite_cm === "number"
         ? `${st.linie_breite_cm.toFixed(1)} cm breit · ${st.kreuzungen ?? 0} Abzweige`
+          + (st.sicherheit === "niedrig" ? " · schwacher Kontrast, fährt langsamer" : "")
         : "—";
       distanceOut.textContent = typeof st.gefahren_m === "number" && (st.aktiv || st.gefahren_m > 0)
         ? `${st.gefahren_m.toFixed(1)} m`

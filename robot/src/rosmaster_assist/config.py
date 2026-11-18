@@ -874,19 +874,30 @@ LINE_VIEW_MAX_M = 1.30
 LINE_VIEW_HALF_WIDTH_M = 0.60
 # colour distance (opencv lab, 0..255 per channel) the line must have from the
 # floor when it is learned; black tape on a light floor has ~100, white tape on
-# light wood ~40
+# light wood ~40. below that down to the low value the line is still taken,
+# but marked as uncertain and driven slower (dark blue mat on grey carpet)
 LINE_MIN_CONTRAST = 30.0
+LINE_MIN_CONTRAST_LOW = 12.0
+# learning first looks at the patch straight ahead (robot placed on or in front
+# of a mat): its length and half width (m) ...
+LINE_LEARN_PATCH_LENGTH_M = 0.12
+LINE_LEARN_PATCH_HALF_WIDTH_M = 0.04
+# ... and the region of that colour must lead at least this far away (m),
+# otherwise it is a stain or shadow
+LINE_LEARN_MIN_LENGTH_M = 0.20
 # while following a pixel counts as line when it is closer to the learned line
 # colour than to the floor and at most this far from the line colour
 LINE_COLOR_TOLERANCE = 50.0
 # the learned line colour slowly follows the lighting (share per frame)
 LINE_COLOR_ADAPT = 0.03
 # more than this share of the visible floor differs from it: floor too busy
-# (pattern, rug) to tell a line apart
+# (pattern, rug) to tell a line apart. the line itself and a margin beside it
+# do not count (white edge lines of a mat)
 LINE_MAX_LINE_SHARE = 0.35
+LINE_EDGE_MARGIN_M = 0.06
 # plausible tape/mat widths (m); the default until the first line is measured
 LINE_MIN_WIDTH_M = 0.012
-LINE_MAX_WIDTH_M = 0.25
+LINE_MAX_WIDTH_M = 0.30
 LINE_DEFAULT_WIDTH_M = 0.03
 # blobs smaller than this (m²) are noise, not line (2 cm x 2.5 cm)
 LINE_MIN_SPECK_M2 = 0.0005
@@ -900,6 +911,8 @@ LINE_TRACE_STEP_M = 0.05
 LINE_TRACE_FAN_DEG = 85.0
 LINE_TRACE_FAN_STEP_DEG = 5.0
 LINE_TRACE_MAX_M = 1.2
+# wide mats would make 1.5 x width steps too coarse for the short view
+LINE_TRACE_MAX_STEP_M = 0.25
 # shorter traces are noise, not a line
 LINE_MIN_PATH_M = 0.08
 # where the line is searched in a new image: at most this far from where the
@@ -924,6 +937,8 @@ LINE_TURN_OMEGA = 0.6          # rad/s, below 0.4 the motors do not start reliab
 # no line seen for longer than this (s): drive slower on the remembered line
 LINE_BLIND_S = 0.3
 LINE_BLIND_SPEED_SHARE = 0.6
+# line learned with low contrast: drive slower so the guesses can settle
+LINE_LOW_CONFIDENCE_SPEED_SHARE = 0.7
 # remembered line ends closer than this (m): it is used up
 LINE_END_REST_M = 0.10
 # line used up and not seen for this long (s): search by turning on the spot,
