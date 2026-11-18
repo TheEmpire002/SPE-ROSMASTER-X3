@@ -228,6 +228,11 @@ MAP_ICP_MAX_RESIDUAL_M = 0.08
 # but the scans overlap less well.
 MAP_REF_M = 0.25
 MAP_REF_DEG = 10.0
+# longer than this (s) between two scans means the lidar was gone (usb
+# dropout): the next scan is flagged, never written into a map
+SCAN_ODO_GAP_S = 1.0
+# wheel travel across such a gap larger than this (m) was a start point reset
+SCAN_ODO_GAP_MAX_M = 2.0
 
 # --- Mapping drive (navigation/mapping_drive.py) ---
 #
@@ -318,6 +323,8 @@ NAV_LOCALIZATION_HZ = 4.0
 # field ends at NAV_DISTANCE_MAX_M.
 NAV_HIT_M = 0.15
 NAV_DISTANCE_MAX_M = 1.0
+# corridor check: scan points this close (m) count as the same wall piece
+NAV_NORMAL_REACH_M = 0.3
 # Minimum share of points hit for a match to count. Furniture that was moved
 # and people hit nothing -- hence not 100 %.
 NAV_MIN_SHARE = 0.45
@@ -362,6 +369,9 @@ NAV_WALL_COST = 3.0
 # If the goal lies in a wall or too close to one, it is moved up to this far
 # (m) to the nearest drivable spot.
 NAV_GOAL_SNAP_M = 0.6
+# a tapped goal needs known free space within this distance (m): what was
+# never scanned could be a wall
+NAV_GOAL_KNOWN_M = 0.3
 
 # Driving along the path.
 NAV_DRIVE_SPEED = 0.25
@@ -407,6 +417,176 @@ MAP_FIRST_MAP_S = 20.0
 
 # The page shows this many last lines of the SLAM log.
 MAP_LOG_LINES = 15
+
+# --- Always-on mapping (mapping/live_mapper.py, E14) ----------------------------
+#
+# the map grows on every drive, but only behind scans the localization is
+# sure about (navigation/integrate_gate.py); one persistent main map
+
+# off: no map is built or changed while driving (a loaded map still works)
+LIVE_MAP_ENABLED = True
+# lidar odometry runs permanently, not only while a map is loaded
+LIVE_LOCALIZATION_ALWAYS = True
+# name of the main map in the map folder
+LIVE_MAP_NAME = "hauptkarte"
+LIVE_MAP_RESOLUTION_M = 0.05
+# grid grows in steps of this many metres, never beyond the maximum size
+LIVE_MAP_GROW_M = 4.0
+LIVE_MAP_MAX_SIZE_M = 60.0
+
+# log-odds per hit / per free pass and their limits
+LIVE_MAP_HIT_LO = 0.85
+LIVE_MAP_MISS_LO = -0.35
+LIVE_MAP_LO_MIN = -2.5
+LIVE_MAP_LO_MAX = 3.5
+# from here a cell counts as wall / as free for localization and planning;
+# one hit (0.85) stays below the wall threshold, so a passing person or a
+# single bad scan never becomes a wall
+LIVE_MAP_OCC_LO = 1.6
+LIVE_MAP_FREE_LO = -1.0
+# walls only up to this range: 1° heading error is 10 cm at 6 m
+LIVE_MAP_HIT_RANGE_M = 6.0
+# free space only along the first metres of each ray, ending before the hit
+LIVE_MAP_FREE_RANGE_M = 4.0
+LIVE_MAP_FREE_MARGIN_M = 0.10
+# cells this sure at session start are established: changes count less and
+# are capped per session, so one bad session can weaken a wall to unknown but
+# never punch a free hole into it
+LIVE_MAP_ESTABLISHED_LO = 2.5
+LIVE_MAP_ESTABLISHED_WEIGHT = 0.3
+LIVE_MAP_SESSION_CHANGE_MAX = 2.0
+# a scan is only a candidate after this much motion since the last one written
+# (a robot standing in front of a person writes the person at most once)
+LIVE_MAP_MIN_MOVE_M = 0.10
+LIVE_MAP_MIN_MOVE_DEG = 5.0
+# seed values when importing a trinary map (pgm, slam_toolbox)
+LIVE_MAP_SEED_OCC_LO = 3.0
+LIVE_MAP_SEED_FREE_LO = -2.0
+# empty map: this many good scans at standstill found it
+LIVE_BOOTSTRAP_SCANS = 3
+# ... moving more than this between them starts the founding again (m, deg)
+LIVE_BOOTSTRAP_MAX_MOVE_M = 0.02
+LIVE_BOOTSTRAP_MAX_TURN_DEG = 1.0
+# free-space rays per scan that are written (hits always all); more cost time and add little
+LIVE_MAP_MAX_RAYS = 240
+
+# new snapshot for localization and planner at most this often (s)
+LIVE_MAP_SNAPSHOT_S = 2.0
+# save when changed at most this often (s), keep this many backups
+LIVE_MAP_SAVE_S = 60.0
+LIVE_MAP_BACKUPS = 3
+# remember the last confident pose for the next start at most this often (s)
+LIVE_POSE_SAVE_S = 10.0
+# ... and only after this much motion since the saved one (m, deg)
+LIVE_POSE_SAVE_MOVE_M = 0.05
+LIVE_POSE_SAVE_MOVE_DEG = 5.0
+# after a start the pose is searched here first: radius around the last pose (m)
+LIVE_START_SEARCH_NEAR_M = 0.5
+
+# --- integrate gate (navigation/integrate_gate.py) ---
+# hard = freeze the map at once and confirm again; soft = skip this scan
+# share of known points that hit a wall (below the hard value: hard)
+LIVE_GATE_MIN_SHARE = 0.70
+LIVE_GATE_HARD_SHARE = 0.50
+# mean distance of the hits to the wall (m); a wall one cell thin already
+# gives half a cell to a cell (2.5-5 cm) without any lidar noise
+LIVE_GATE_MAX_RESIDUAL_M = 0.08
+# overlap with established map: absolute points and share of the scan
+LIVE_GATE_MIN_KNOWN = 70
+LIVE_GATE_MIN_KNOWN_SHARE = 0.35
+# corridor check: weakest direction of the match (0 = unconstrained, 0.5 = ideal)
+LIVE_GATE_MIN_CONSTRAINT = 0.10
+LIVE_GATE_DEGENERATE_S = 3.0
+# raw match vs prediction (twice this: hard)
+LIVE_GATE_MAX_JUMP_M = 0.08
+LIVE_GATE_MAX_JUMP_DEG = 3.0
+# spread of the correction over the last accepted matches; beyond it the
+# scan is skipped, beyond LIVE_GATE_WINDOW_HARD times it the map freezes (on
+# the robot 5-10 cm happen while driving, a wrong match is much further off)
+LIVE_GATE_WINDOW_N = 8
+LIVE_GATE_WINDOW_M = 0.08
+LIVE_GATE_WINDOW_DEG = 3.0
+LIVE_GATE_WINDOW_HARD = 2.0
+# ... plus this much per metre driven inside the window (odometry drift)
+LIVE_GATE_DRIFT_M_PER_M = 0.10
+LIVE_GATE_DRIFT_DEG_PER_M = 4.0
+# ... and per radian turned (it drifts most while turning on the spot)
+LIVE_GATE_DRIFT_DEG_PER_RAD = 4.0
+# after the lidar was gone (usb dropout) nothing is written for this long (s)
+LIVE_GATE_RECONNECT_HOLD_S = 5.0
+# a1 scans are distorted while turning (0.18 s per revolution: at 0.15 rad/s
+# the robot turns 1.5° within one scan); faster turns are only skipped
+LIVE_GATE_MAX_OMEGA = 0.15
+LIVE_GATE_MAX_SPEED = 0.35
+# carried: the lidar odometry moves faster than this (m/s) and the wheels
+# less than this share of it
+LIVE_GATE_CARRY_MIN_SPEED = 0.08
+LIVE_GATE_CARRY_WHEEL_SHARE = 0.25
+# both speeds over this window (s): from one scan to the next the a1's
+# matching jitter of 1-2 cm already looks like 0.1 m/s at standstill
+LIVE_GATE_CARRY_WINDOW_S = 0.4
+# lidar odometry healthy: this many good icp matches in a row
+LIVE_GATE_ODO_GOOD_N = 3
+LIVE_GATE_MAX_AGE_S = 0.4
+# soft failures longer than this freeze as well
+LIVE_GATE_SOFT_MAX_S = 3.0
+# back from frozen: this many strict matches over at least this long (more
+# made the map stand still most of the time on the robot)
+LIVE_GATE_CONFIRM_N = 5
+LIVE_GATE_CONFIRM_SHARE = 0.75
+LIVE_GATE_CONFIRM_MIN_S = 1.5
+# a scan is written only after this many later scans also passed
+LIVE_GATE_LAG_N = 2
+
+# --- localization when unsure ---
+# confident only while the lidar odometry drove at most this far since the
+# last good match (m)
+NAV_BLIND_MAX_M = 0.5
+# after a successful search this many good matches before it counts as sure
+NAV_CONFIRM_AFTER_SEARCH = 2
+# lost: local search radius grows with the distance driven blind
+NAV_LOST_RADIUS_BASE_M = 0.5
+NAV_LOST_RADIUS_PER_M = 0.5
+# search near the breadcrumbs first (m)
+NAV_CRUMB_SEARCH_M = 0.8
+# after this many failed local stages search the whole map, at most this often (s)
+NAV_LOST_GLOBAL_AFTER = 3
+NAV_GLOBAL_SEARCH_S = 10.0
+
+# --- way back (navigation/breadcrumbs.py) ---
+BREADCRUMB_M = 0.2
+BREADCRUMB_MAX = 5000
+BREADCRUMB_SIMPLIFY_M = 0.08
+# cells this close to the driven trail are preferred and stay drivable with a
+# little less wall clearance -- the robot was physically there
+BREADCRUMB_CORRIDOR_M = 0.15
+BREADCRUMB_COST_FACTOR = 0.5
+BREADCRUMB_MIN_CLEARANCE_M = 0.20
+# a guessed path may follow the trail itself (this close to the crumbs, m)
+# even where the map has a wall: the robot drove there, so it was a door
+# leaf, a person or noise -- the lidar checks on site
+BREADCRUMB_CORE_M = 0.1
+# neighbouring strict crumbs further apart than this are not joined in the
+# corridor: something in between was not driven strictly
+BREADCRUMB_FILL_GAP_M = 0.5
+# crumbs sent to the /map page and kept in the saved map
+BREADCRUMB_DISPLAY_MAX = 600
+BREADCRUMB_SAVE_MAX = 2000
+# no sure path to the goal: plan the likely one through the unknown and
+# narrow spots, drive it and look on site (replanning every NAV_GUESS_REPLAN_S
+# while the map grows there); unknown cells cost this many times as much
+NAV_GUESS_PATHS = True
+NAV_GUESS_UNKNOWN_COST = 4.0
+NAV_GUESS_CLEARANCE_M = 0.20
+NAV_GUESS_REPLAN_S = 2.0
+# map drives that lose the pose stop, relocalize and continue
+NAV_RELOCALIZE_WAIT_S = 20.0
+NAV_RELOCALIZE_TURN = True
+NAV_RELOCALIZE_TURN_AFTER_S = 5.0
+NAV_RELOCALIZE_OMEGA = 0.3
+# the search turn: this far left, twice as far right, back to the middle (degrees)
+NAV_RELOCALIZE_TURN_DEG = 30.0
+NAV_RESUME_CONFIRM_N = 3
 
 # --- Collision avoidance during manual control ----------------------------------
 

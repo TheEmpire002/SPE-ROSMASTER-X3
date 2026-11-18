@@ -873,6 +873,35 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 
 ---
 
+### 05.11.2026 – Always-on mapping, reliable localization, tap a goal, way back (Marlon, with Claude)
+- **What:** The main map now grows during every drive, not only in slam mode. Lidar odometry runs permanently; a gate decides which scans are written; the map is saved and loaded at start; tapping a goal on `/map` plans a path through known free space; the way back follows the breadcrumbs. slam_toolbox stays as an optional first mapping ("Als Hauptkarte übernehmen" or "Verwerfen"). 9 commits on `feat/always-on-mapping`. Rationale: E14 in `docs/decisions.md`.
+- **Why:** The map only grew in slam mode, we could not control which scan was written, and "localization confident" only meant "last match under 4 s ago".
+- **Changes:**
+  - `MapLocalization` hardened (`TrackResult`, constraint and degeneracy from scan normals, search stages, blind distance `NAV_BLIND_MAX_M`, confirm after search).
+  - `navigation/integrate_gate.py`: FROZEN → CONFIRMING (10 strict matches, at least 3 s) → INTEGRATING, lag buffer of 2, carried detection by wheel vs lidar speed, max omega 0.15 rad/s.
+  - `mapping/live_mapper.py` (log-odds grid, established-cell cap), `mapping/live_store.py` (npz/pgm/yaml/json, 3 backups, atomic writes), incremental distance field `OccupancyMap.derived`.
+  - Start search: last pose 0.5 m → 1.5 m → home → whole map; new map from 3 still scans.
+  - `navigation/breadcrumbs.py`, corridor planning, homing waits for the pose (turn ±30° after 5 s, give up after 20 s), fallback along the reversed trail.
+  - `/map` page: always-on mapping card, mission buttons, trail and freeze overlay.
+- **Result:**
+  - Simulation test `test_live_sim`: at least 95 % of the wall cells within 10 cm over 6 seeds, pose error 2–4 cm.
+  - Kidnap, dropout, carried and corridor cases leave the map bit-identical until the pose is confirmed.
+  - Smoke test including mission start → return: 0.12–0.14 m off the start.
+  - Slam adopt and discard checked in the mock.
+- **Problems:**
+  - The gate froze at every turn: the odometry consistency check had a fixed limit, but lidar odometry drifts a little with every turn. Fixed by allowing `LIVE_GATE_DRIFT_DEG_PER_RAD` of heading drift per radian turned.
+  - Door turns wrote a rotation error into the map. Fixed with max omega 0.15 rad/s.
+  - Corridor ends gave a false constraint. Fixed by taking the constraint from the scan normals.
+  - A carried robot wrote scans before the lift detector fired. Fixed with the wheel speed vs lidar speed criterion.
+  - Pose saving and autosave wrote the map's json at the same time and collided on the temp file. Fixed with a lock (read-modify-write) and unique temp file names.
+  - `from_json` incremented the segment counter twice.
+- **Open:** Test on the robot: CPU on `/diagnose` (estimate 10–20 % of one core), map grows when driving by hand, lifting the robot → frozen, restart finds the last pose, mission start → next room → return. No loop closure: large loops may freeze; do the first mapping with slam.
+- **First robot test (05.11. afternoon):** the map hardly grew, it froze every few seconds. In the log about half the freezes said "bewegt sich ohne die Räder (getragen?)" at standstill: scans come 0.1–0.15 s apart and the A1's 1–2 cm matching jitter looked like 0.1 m/s; the carry check now measures both speeds over 0.4 s. The other half said "Abgleich widerspricht der Odometrie (5–10 cm)": now such a scan is only skipped, the map freezes only at twice the allowance (8 cm / 3° plus drift) or after 3 s of disagreement; coming back needs 5 strict matches over 1.5 s instead of 10 over 3 s. The spoken "Halt." on every stop is gone (the app sends stop whenever it loses focus).
+- **Guessed paths (05.11.):** after mapping two areas the robot said there was no path, although it had driven there: the planner only used known free cells with 0.25 m wall clearance, and the trail only counted on the way back. Now every goal drive treats the confident trail as passable, and if there is still no sure path, the planner guesses the likely one through the unknown (unknown cells 4× as dear, 0.20 m clearance). The robot drives it and replans every 2 s on site without stopping; a sure path replaces it as soon as the map shows one. Tests: two mapped rooms without a known link give a guessed path straight across, a known corridor gives a sure one, a wall never lets a guess through (without a trail).
+- **Right room not reachable (05.11.):** on the robot's map `first_big_map` the planner found no path into the room on the right, not even a guess. Diagnosed on the Pi with the saved map: the trail goes through the door at x 4.4–5.6 m, y 5.0 m, but the map has wall cells 2–12 cm next to where the robot drove (door leaf or noise from mapping), so the doorway was too narrow. Now a guessed path may follow the trail itself (`BREADCRUMB_CORE_M` = 0.1 m) even over such wall cells; the lidar checks on site. On the real map: about 17 m via that door, planned in 0.1–0.6 s.
+
+---
+
 ## 3. Results and measurements
 
 | Topic                                                                | Result                                                                                                                                                                            | Source                                  |
