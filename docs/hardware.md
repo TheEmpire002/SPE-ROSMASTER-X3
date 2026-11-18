@@ -718,8 +718,10 @@ to the last event; the 10 s of quiet that close an incident do not count.
 **Wall clock.** Times come from the kernel clock plus the boot time on the wall
 clock. When NTP sets the clock after boot, the daemon notices the step (more
 than 2 s, `BOOT_WALL_STEP_S`) on the next sample, writes one line to `usb.log`
-and shows later times on the corrected clock. Finished incident files keep the
-time they were written with.
+and shows all times on the corrected clock: event and incident times are
+computed from the kernel clock at display time, and stored incidents of the
+current boot are re-stamped (also at daemon start) while their ids and file
+names stay.
 
 **Crash reasons** (the page shows the German titles):
 

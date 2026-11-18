@@ -817,6 +817,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
   - Merged crashes: a mid-boot start replays the whole kmsg backlog before the first tick, so four storms became one incident. A trigger after a quiet gap now closes the open incident. The 4.2 s and 11.0 s storms of the real log are only 1.8 s apart and stay one incident.
   - The motor tile said "Motoren stehen" with no traffic at all; it now says "Kein Verkehr – Server aus?".
   - Reconnect counts sat on the wrong tile when the daemon started during a storm (no board hub yet). Events are now stored by port and resolved to tiles at render time.
+  - Clock step (task 11): incident and tile event times were frozen at parse time, so after NTP stepped the clock the page still showed yesterday's time (15:00 instead of 09:01). Times are now computed as `boot_wall + mono` at render time, and `DiagState.set_boot_wall` re-stamps finished incidents of the current boot (also at start, for files an earlier run wrote). Ids and file names stay; jitter below 2 s rewrites nothing.
 
 ---
 

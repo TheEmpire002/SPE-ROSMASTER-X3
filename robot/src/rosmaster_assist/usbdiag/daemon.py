@@ -266,7 +266,7 @@ class _Loop:
         self._apply(state.set_capture, "on")
 
     def _set_boot_wall(self, boot_wall: float) -> None:
-        self.state.boot_wall = boot_wall
+        self.state.set_boot_wall(boot_wall)
 
     def update_boot_wall(self) -> None:
         # the source keeps its value until the clock really stepped, so this logs once per step

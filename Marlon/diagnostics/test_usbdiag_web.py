@@ -460,6 +460,24 @@ def test_wall_clock_step_moves_derived_times():
     assert "+3600.0 s" in log, log
 
 
+def test_wall_clock_step_restamps_finished_incident():
+    src = mock.MockSources(speed=1.0, seed=1)
+    burst = config.MOCK_START_MONO + config.MOCK_FIRST_BURST_S
+    seen = {}
+
+    def ntp_step(loop):
+        if "before" not in seen and loop.clock[0] > burst + 40 and loop.state.finished:
+            seen["before"] = loop.state.page(loop.clock[0])["incidents"][-1]
+            seen["wall"] = loop.state.finished[-1]["start_wall"]
+            src._boot_wall += 3600
+    loop = ManualLoop(src, tempfile.mkdtemp(), 0.1, burst + 70, ntp_step)
+    loop.start()
+    loop.run()
+    assert "before" in seen, "no incident finished before the step"
+    after = next(i for i in loop.state.page(loop.clock[0])["incidents"] if i["id"] == seen["before"]["id"])
+    assert after["time"] == texts.fmt_clock(seen["wall"] + 3600) != seen["before"]["time"], after
+
+
 def test_real_sources_replace_boot_wall_only_on_a_step():
     d = tempfile.mkdtemp()
     uptime = pathlib.Path(d, "uptime")

@@ -349,6 +349,131 @@ def test_missing_usbmon_has_its_own_text():
     assert "usbmon ist nicht geladen" in m["capture"]
 
 
+BW = 1_700_000_000.0
+
+
+def _store(d):
+    from rosmaster_assist.usbdiag import store
+    return store.Store(str(d), "boot-a", 100_000, 3, 50, 2)
+
+
+def _incident_state(tmp, st, finish=True):
+    """One disconnect/connect pair on 1-1.4 at mono 30/32, finished when asked."""
+    with st.lock:
+        st.apply_topology(fixture_topology(tmp), now=1.0)
+        st.apply_event(kmsg.Event(30.0, st.boot_wall + 30.0, "disconnect", "1-1.4", {}, "r1"))
+        st.apply_topology(fixture_topology(tmp, drop=["1-1.4"]), now=30.2)
+        st.apply_event(kmsg.Event(32.0, st.boot_wall + 32.0, "connect", "1-1.4", {}, "r2"))
+        st.apply_topology(fixture_topology(tmp), now=32.1)
+        if finish:
+            st.tick(32.0 + config.INCIDENT_QUIET_S + 5)
+
+
+def _files(store_obj):
+    folder = pathlib.Path(store_obj.folder, "incidents")
+    return sorted(folder.glob("*.json"))
+
+
+def test_finished_incident_follows_a_clock_step():
+    with tempfile.TemporaryDirectory() as d:
+        tmp = pathlib.Path(d)
+        sto = _store(tmp / "log")
+        st = state.DiagState(sto, BW, 0.0)
+        _incident_state(tmp, st)
+        now = 60.0
+        before = json.loads(json.dumps(st.page(now)["incidents"][0]))  # the page shares dicts with finished
+        entry = st.finished[0]
+        old_wall = entry["start_wall"]
+        files = _files(sto)
+        assert len(files) == 1
+        st.set_boot_wall(BW + 3600)
+        after = st.page(now)["incidents"][0]
+        assert st.finished[0]["start_wall"] == old_wall + 3600
+        assert after["time"] == texts.fmt_clock(old_wall + 3600) != before["time"]
+        assert after["id"] == before["id"]
+        for b, a in zip(before["events"], after["events"]):
+            assert a["time"] != b["time"] and a["text"] == b["text"]
+        assert after["events"][0]["time"] == texts.fmt_clock(BW + 3600 + 30.0)
+        assert _files(sto) == files
+        disk = json.loads(files[0].read_text(encoding="utf-8"))
+        assert disk["start_wall"] == old_wall + 3600 and disk["id"] == before["id"]
+
+
+def test_clock_step_leaves_other_boots_alone():
+    with tempfile.TemporaryDirectory() as d:
+        tmp = pathlib.Path(d)
+        sto = _store(tmp / "log")
+        st = state.DiagState(sto, BW, 0.0)
+        other = {"id": "old", "boot": "boot-z", "time": "x", "start_wall": BW - 99999.0, "start_mono": 5.0,
+                 "events": [{"time": "y", "text": "t", "mono": 5.0}]}
+        sto.write_incident(other)
+        st.finished.append(json.loads(json.dumps(other)))
+        path = pathlib.Path(sto.folder, "incidents", "old.json")
+        content, mtime = path.read_text(encoding="utf-8"), path.stat().st_mtime_ns
+        st.set_boot_wall(BW + 3600)
+        assert st.finished[-1] == other
+        assert path.read_text(encoding="utf-8") == content and path.stat().st_mtime_ns == mtime
+
+
+def test_tile_events_and_verdict_follow_a_clock_step():
+    with tempfile.TemporaryDirectory() as d:
+        tmp = pathlib.Path(d)
+        st = state.DiagState(_store(tmp / "log"), BW, 0.0)
+        _incident_state(tmp, st)
+        now = 60.0
+        p0 = st.page(now)
+        assert texts.fmt_clock(BW + 30.0) in p0["verdict"]["text"]
+        st.set_boot_wall(BW + 3600)
+        p1 = st.page(now)
+        assert texts.fmt_clock(BW + 3600 + 30.0) in p1["verdict"]["text"], p1["verdict"]
+        tile = next(t.id for t in st.layout.tiles if "1-1.4" in t.lanes)
+        want = {texts.fmt_clock(BW + 3600 + m) for m in (30.0, 32.0)}
+        got = {e["time"] for e in p1["details"][tile]["events"]}
+        assert got == want, (got, want)
+    # a live incident follows too
+    with tempfile.TemporaryDirectory() as d:
+        tmp = pathlib.Path(d)
+        st = state.DiagState(None, BW, 0.0)
+        _incident_state(tmp, st, finish=False)
+        assert st.tracker.current is not None
+        st.set_boot_wall(BW + 3600)
+        assert st.page(33.0)["incidents"][0]["time"] == texts.fmt_clock(BW + 3600 + 30.0)
+
+
+def test_tiny_boot_wall_jitter_does_not_rewrite_files():
+    with tempfile.TemporaryDirectory() as d:
+        tmp = pathlib.Path(d)
+        sto = _store(tmp / "log")
+        st = state.DiagState(sto, BW, 0.0)
+        _incident_state(tmp, st)
+        calls = []
+        orig = sto.write_incident
+        sto.write_incident = lambda data: calls.append(data) or orig(data)
+        st.set_boot_wall(BW + 0.01)
+        assert calls == []
+        st.set_boot_wall(BW + 3600)
+        assert len(calls) == 1
+
+
+def test_loaded_stale_incident_is_restamped_at_start():
+    with tempfile.TemporaryDirectory() as d:
+        tmp = pathlib.Path(d)
+        sto = _store(tmp / "log")
+        stale = {"id": "2026-11-17_15-00-02", "boot": "boot-a", "time": "stale", "where": "", "reason": "",
+                 "duration": "1 s", "recovered": True, "reasons": [], "tiles": [],
+                 "start_mono": 40.0, "end_mono": 42.0, "start_wall": BW + 40.0 - 64904.6,
+                 "events": [{"time": "stale", "text": "a", "mono": 40.0}, {"time": "keep", "text": "b"}]}
+        sto.write_incident(stale)
+        st = state.DiagState(sto, BW, 0.0)
+        shown = st.page(60.0)["incidents"][0]
+        assert shown["time"] == texts.fmt_clock(BW + 40.0), shown["time"]
+        assert shown["events"][0]["time"] == texts.fmt_clock(BW + 40.0)
+        assert shown["events"][1]["time"] == "keep"
+        files = _files(sto)
+        assert [f.stem for f in files] == ["2026-11-17_15-00-02"]
+        assert json.loads(files[0].read_text(encoding="utf-8"))["start_wall"] == BW + 40.0
+
+
 if __name__ == "__main__":
     failed = 0
     for name, fn in sorted(globals().items()):

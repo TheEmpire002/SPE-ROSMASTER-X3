@@ -69,6 +69,8 @@ class DiagState:
                 self.finished = list(self.store.load_incidents(self.store.boot_id))
             except (OSError, ValueError, TypeError, AttributeError):
                 self.finished = []
+        # an earlier run of this boot may have written files before the wall clock stepped
+        self._restamp_finished()
 
         self.capture = "unavailable"
         self.last_urb: float | None = None
@@ -139,7 +141,7 @@ class DiagState:
             self.store.append_event(ev)
         if port and ev.kind != "new_device":
             ring = self.port_events.setdefault(port, deque(maxlen=config.PORT_EVENT_RING))
-            ring.append((ev.wall, text, ev.raw))
+            ring.append((ev.mono, text, ev.raw))  # mono, so the wall time follows a clock step
         if port and ev.kind == "disconnect":
             self.disconnected_ports.add(port)
         elif port and ev.kind == "connect" and port in self.disconnected_ports:
@@ -153,6 +155,29 @@ class DiagState:
         self.tracker.on_event(ev, set(self.present))
         while self.tracker.closed:
             self._finish(self.tracker.closed.pop(0))
+
+    def set_boot_wall(self, boot_wall: float) -> None:
+        self.boot_wall = boot_wall
+        self._restamp_finished()
+
+    def _restamp_finished(self) -> None:
+        """Move stored incidents of this boot to the current wall clock."""
+        boot = self.store.boot_id if self.store is not None else ""
+        for entry in self.finished:
+            if entry.get("boot") != boot or not isinstance(entry.get("start_mono"), (int, float)):
+                continue
+            start = self.boot_wall + entry["start_mono"]
+            old = entry.get("start_wall")
+            # the boot_wall estimate jitters by milliseconds, which must not rewrite files
+            if isinstance(old, (int, float)) and abs(old - start) <= config.BOOT_WALL_STEP_S:
+                continue
+            entry["start_wall"] = start
+            entry["time"] = texts.fmt_clock(start)
+            for sentence in entry.get("events", []):
+                if isinstance(sentence.get("mono"), (int, float)):
+                    sentence["time"] = texts.fmt_clock(self.boot_wall + sentence["mono"])
+            if self.store is not None:
+                self.store.write_incident(entry)
 
     def apply_urbs(self, urbs: list[Urb], now: float) -> None:
         target = self._target()
@@ -288,10 +313,11 @@ class DiagState:
         sentences = []
         for ev in inc.events:
             name = self.port_names.get(ev.port, config.UNKNOWN_DEVICE_NAME)
-            sentences.append({"time": texts.fmt_clock(ev.wall), "text": texts.event_sentence(ev.kind, name, ev.details)})
+            sentences.append({"time": texts.fmt_clock(self.boot_wall + ev.mono), "mono": ev.mono,
+                              "text": texts.event_sentence(ev.kind, name, ev.details)})
         return {
             "id": inc.id,
-            "time": texts.fmt_clock(inc.start_wall),
+            "time": texts.fmt_clock(self.boot_wall + inc.start_mono),
             "where": where,
             "reason": texts.REASONS[reasons[0].key]["title"] if reasons else "",
             "duration": texts.fmt_duration(_clamp(end_mono - inc.start_mono)),
@@ -302,7 +328,7 @@ class DiagState:
             "boot": self.store.boot_id if self.store is not None else "",
             "start_mono": inc.start_mono,
             "end_mono": end_mono,
-            "start_wall": inc.start_wall,
+            "start_wall": self.boot_wall + inc.start_mono,
             "tiles": tiles,
             "snapshot": [asdict(s) for s in self.samples
                          if inc.start_mono - config.SNAPSHOT_BEFORE_S <= s.mono <= end_mono],
@@ -433,7 +459,7 @@ class DiagState:
         return sorted(m for p in self._ports_of(tile_id, store) for m in store[p])
 
     def _events_of(self, tile_id: str) -> list[tuple]:
-        # merged by wall time, oldest first
+        # merged by mono time, oldest first
         merged = [e for p in self._ports_of(tile_id, self.port_events) for e in self.port_events[p]]
         return sorted(merged, key=lambda e: e[0])[-config.PORT_EVENT_RING:]
 
@@ -593,8 +619,8 @@ class DiagState:
         reasons = [{"title": r["title"], "evidence": r["evidence"], "action": r["action"]}
                    for r in (touching or {}).get("reasons", [])]
         ring = self._events_of(source)
-        events = [{"time": texts.fmt_clock(w), "text": t}
-                  for w, t, _raw in reversed(ring)][:config.TILE_TECHNICAL_LINES]
+        events = [{"time": texts.fmt_clock(self.boot_wall + m), "text": t}
+                  for m, t, _raw in reversed(ring)][:config.TILE_TECHNICAL_LINES]
         technical = [raw for _w, _t, raw in ring if raw][-config.TILE_TECHNICAL_LINES:]
         dev = self._direct(tile) if tile.kind != "motor" else None
         if dev is not None:
