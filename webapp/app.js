@@ -292,7 +292,27 @@ el("stop").addEventListener("click", () => {
 
 // --- Keyboard -------------------------------------------------------------------
 
+// u/i held: tilt the camera in small steps, the robot moves the servo
+// smoothly in between
+const TILT_KEY_STEP_DEG = 3;
+const TILT_KEY_EVERY_MS = 100;
+let tiltTimer = null;
+
+function startTilt(sign) {
+  stopTilt();
+  const step = () => send({ type: "camera_tilt", schritt: sign * TILT_KEY_STEP_DEG });
+  step();
+  tiltTimer = setInterval(step, TILT_KEY_EVERY_MS);
+}
+
+function stopTilt() {
+  if (tiltTimer !== null) clearInterval(tiltTimer);
+  tiltTimer = null;
+}
+
 const KEYS = {
+  KeyU: () => startTilt(1),
+  KeyI: () => startTilt(-1),
   KeyW: () => (dir.x = 1),
   KeyS: () => (dir.x = -1),
   KeyA: () => (dir.y = 1),
@@ -302,6 +322,8 @@ const KEYS = {
 };
 
 const KEYS_UP = {
+  KeyU: stopTilt,
+  KeyI: stopTilt,
   KeyW: () => (dir.x = 0),
   KeyS: () => (dir.x = 0),
   KeyA: () => (dir.y = 0),
@@ -343,6 +365,7 @@ window.addEventListener("keyup", (e) => {
 // manual input is cleared anyway. If the connection drops, the server
 // stops the robot regardless.
 function onWindowLeave() {
+  stopTilt();
   if (autonomyActive) {
     dir.x = dir.y = dir.rot = 0;
     document.querySelectorAll(".pad-btn.active").forEach((b) =>
