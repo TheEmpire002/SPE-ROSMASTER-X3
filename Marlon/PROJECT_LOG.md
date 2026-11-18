@@ -818,6 +818,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
   - The motor tile said "Motoren stehen" with no traffic at all; it now says "Kein Verkehr – Server aus?".
   - Reconnect counts sat on the wrong tile when the daemon started during a storm (no board hub yet). Events are now stored by port and resolved to tiles at render time.
   - Clock step (task 11): incident and tile event times were frozen at parse time, so after NTP stepped the clock the page still showed yesterday's time (15:00 instead of 09:01). Times are now computed as `boot_wall + mono` at render time, and `DiagState.set_boot_wall` re-stamps finished incidents of the current boot (also at start, for files an earlier run wrote). Ids and file names stay; jitter below 2 s rewrites nothing.
+  - Duplicate incident file (task 12): the kernel ring buffer wrapped during a long over-current storm, so a restart replayed a truncated backlog (boot storm start 5.0 s instead of 1.0 s) and `_finish` wrote a second file for the same incident. It matched only an equal start. Now an incident of the same boot whose time range overlaps a stored one is the same incident: inside it, nothing is written; reaching further, the stored file is updated under its old name.
 
 ---
 

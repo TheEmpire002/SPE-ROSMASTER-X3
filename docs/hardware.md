@@ -723,6 +723,10 @@ computed from the kernel clock at display time, and stored incidents of the
 current boot are re-stamped (also at daemon start) while their ids and file
 names stay.
 
+The kernel log buffer wraps during long storms, so a restart may replay a
+truncated backlog. An incident that overlaps a stored one of the same boot
+counts as the same incident and keeps its file name.
+
 **Crash reasons** (the page shows the German titles):
 
 | Reason | Meaning |

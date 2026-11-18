@@ -474,6 +474,71 @@ def test_loaded_stale_incident_is_restamped_at_start():
         assert json.loads(files[0].read_text(encoding="utf-8"))["start_wall"] == BW + 40.0
 
 
+def _stored_boot_storm(sto):
+    stored = {"id": "2026-11-17_15-00-02", "boot": "boot-a", "time": "x", "where": "", "reason": "",
+              "duration": "50 s", "recovered": True, "reasons": [], "tiles": [],
+              "start_mono": 1.0, "end_mono": 50.6, "start_wall": BW + 1.0,
+              "events": [{"time": "x", "text": "a", "mono": 1.0}]}
+    sto.write_incident(stored)
+
+
+def _replay(tmp, st, first, last, step=3.0):
+    """Disconnect/connect pairs on 1-1.4 from first to last, then tick past the quiet period."""
+    with st.lock:
+        st.apply_topology(fixture_topology(tmp), now=1.0)
+        t = first
+        while t <= last:
+            st.apply_event(kmsg.Event(t, st.boot_wall + t, "disconnect", "1-1.4", {}, "d%s" % t), backlog=True)
+            st.apply_event(kmsg.Event(t + 0.3, st.boot_wall + t + 0.3, "connect", "1-1.4", {}, "c%s" % t),
+                           backlog=True)
+            t += step
+        st.tick(last + config.INCIDENT_QUIET_S + 5)
+
+
+def test_truncated_replay_does_not_duplicate_a_stored_incident():
+    with tempfile.TemporaryDirectory() as d:
+        tmp = pathlib.Path(d)
+        sto = _store(tmp / "log")
+        _stored_boot_storm(sto)
+        before = _files(sto)[0].read_text(encoding="utf-8")
+        st = state.DiagState(sto, BW, 0.0)
+        _replay(tmp, st, 5.0, 50.3)
+        files = _files(sto)
+        assert [f.stem for f in files] == ["2026-11-17_15-00-02"], files
+        assert files[0].read_text(encoding="utf-8") == before
+        assert len(st.finished) == 1
+        assert len(st.page(60.0)["incidents"]) == 1
+
+
+def test_replay_reaching_further_keeps_the_stored_file_name():
+    with tempfile.TemporaryDirectory() as d:
+        tmp = pathlib.Path(d)
+        sto = _store(tmp / "log")
+        _stored_boot_storm(sto)
+        st = state.DiagState(sto, BW, 0.0)
+        _replay(tmp, st, 5.0, 59.0)
+        files = _files(sto)
+        assert [f.stem for f in files] == ["2026-11-17_15-00-02"], files
+        assert len(st.finished) == 1
+        disk = json.loads(files[0].read_text(encoding="utf-8"))
+        assert abs(disk["end_mono"] - 59.3) < 1e-6 and disk["end_mono"] == st.finished[0]["end_mono"], disk["end_mono"]
+
+
+def test_later_incident_after_a_stored_one_is_still_written():
+    with tempfile.TemporaryDirectory() as d:
+        tmp = pathlib.Path(d)
+        sto = _store(tmp / "log")
+        _stored_boot_storm(sto)
+        st = state.DiagState(sto, BW, 0.0)
+        with st.lock:
+            st.apply_topology(fixture_topology(tmp), now=1.0)
+            st.apply_event(kmsg.Event(200.0, BW + 200.0, "disconnect", "1-1.4", {}, "r1"), backlog=True)
+            st.apply_event(kmsg.Event(202.0, BW + 202.0, "connect", "1-1.4", {}, "r2"), backlog=True)
+            st.tick(202.0 + config.INCIDENT_QUIET_S + 5)
+        assert len(_files(sto)) == 2
+        assert len(st.finished) == 2
+
+
 if __name__ == "__main__":
     failed = 0
     for name, fn in sorted(globals().items()):

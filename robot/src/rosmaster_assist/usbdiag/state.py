@@ -338,13 +338,26 @@ class DiagState:
     def _finish(self, inc: Incident) -> None:
         end = inc.end_mono if inc.end_mono is not None else inc.last_trigger_mono
         entry = self._entry(inc, end, inc.recovered)
-        # a restart replays the boot backlog, so the same incident can finish twice
-        same = next((i for i, old in enumerate(self.finished)
-                     if old.get("boot") == entry.get("boot") and old.get("start_mono") == entry.get("start_mono")),
-                    None)
+        # a restart replays the boot backlog, which the kernel ring buffer may have truncated at the
+        # start, so the same incident can finish again with a later start; same boot and overlap match
+        new_start, new_end = entry["start_mono"], entry["end_mono"]
+
+        def overlaps(old: dict) -> bool:
+            old_start = old.get("start_mono")
+            if old.get("boot") != entry.get("boot") or not isinstance(old_start, (int, float)):
+                return False
+            old_end = old.get("end_mono")
+            if not isinstance(old_end, (int, float)):
+                old_end = old_start
+            return new_start <= old_end and new_end >= old_start
+
+        same = next((i for i, old in enumerate(self.finished) if overlaps(old)), None)
         if same is not None:
             old = self.finished[same]
-            if old.get("end_mono") == entry["end_mono"] and old.get("recovered") == entry["recovered"]:
+            old_end = old.get("end_mono") if isinstance(old.get("end_mono"), (int, float)) else old["start_mono"]
+            inside = new_start >= old["start_mono"] and new_end <= old_end
+            if inside and (new_start != old["start_mono"] or old_end != new_end
+                           or old.get("recovered") == entry["recovered"]):
                 # the replay found nothing new, and a fresh boot_wall estimate must not rewrite the file
                 return
             entry["id"] = old["id"]  # keeps the file name when the wall clock moved
