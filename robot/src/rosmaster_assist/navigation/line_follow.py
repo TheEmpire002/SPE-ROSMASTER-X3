@@ -352,27 +352,50 @@ class LineDetector:
         valid = view.valid
         floor = np.median(lab[valid], axis=0)
         d_floor = np.linalg.norm(lab - floor, axis=2)
-        d_line = np.linalg.norm(lab - self.line_lab, axis=2)
+        # position on the floor-to-line colour axis (0 floor, 1 line) and the
+        # distance from that axis: a thin line blends with the floor in the
+        # bev, so its pixels sit in between and still have to count
+        axis = self.line_lab - floor
+        rel = lab - floor
+        mix = (rel @ axis) / max(float(axis @ axis), 1.0)
+        off = np.linalg.norm(rel - mix[..., None] * axis, axis=2)
         mask = self._clean(
-            valid & (d_line < d_floor) & (d_line < config.LINE_COLOR_TOLERANCE)
+            valid & (mix > config.LINE_MIX_SHARE) & (off < config.LINE_COLOR_TOLERANCE)
             # a faint mat must not lose its pixels to a threshold made for tape
             & (d_floor > 0.5 * min(self.contrast, config.LINE_MIN_CONTRAST))
         )
         path, junction = [], False
-        start = self._start(view, mask, expected, heading, radius)
+        trace_mask, width = self._thicken(view, mask)
+        start = self._start(view, trace_mask, expected, heading, radius, width)
         if start is not None:
-            path, junction = self._trace(view, mask, start[0], start[1], heading, prefer)
+            path, junction = self._trace(view, trace_mask, start[0], start[1], heading, prefer, width)
         length = sum(math.dist(a, b) for a, b in zip(path, path[1:]))
         ok = length >= config.LINE_MIN_PATH_M
         self._store_debug(view, bev, mask, path if ok else [], None)
         if not ok:
             return None
         # lighting changes along the course: follow the line colour slowly
-        on_line = mask & (d_line < config.LINE_COLOR_TOLERANCE * 0.7)
+        # only clean line pixels, blends would drag the colour towards the floor
+        on_line = mask & (mix > 0.7) & (mix < 1.3)
         if on_line.sum() > 20:
             a = config.LINE_COLOR_ADAPT
             self.line_lab = (1 - a) * self.line_lab + a * np.median(lab[on_line], axis=0)
         return Detection(path, self.width_m, junction)
+
+    def _thicken(self, view, mask):
+        """Mask for tracing and the line width in it.
+
+        a 1 cm line is a one pixel staircase when diagonal, so the fan hits
+        it in single directions only and drops them as noise; widening it
+        symmetrically keeps the centre and gives contiguous hits
+        """
+        missing = config.LINE_TRACE_MIN_WIDTH_M - self.width_m
+        if missing <= 0:
+            return mask, self.width_m
+        grow = int(math.ceil(missing / (2 * view.res)))
+        k = 2 * grow + 1
+        thick = _cv2().dilate(mask.astype(np.uint8), np.ones((k, k), np.uint8)) > 0
+        return thick & view.valid, self.width_m + 2 * grow * view.res
 
     def _hit(self, view: GroundView, mask: np.ndarray, xs, ys) -> np.ndarray:
         r, c = view.to_pixel(xs, ys)
@@ -400,7 +423,7 @@ class LineDetector:
         mid = (offs[lo] + offs[hi]) / 2
         return x + mid * nx, y + mid * ny, float(offs[hi] - offs[lo] + view.res / 2)
 
-    def _start(self, view, mask, expected, heading, radius):
+    def _start(self, view, mask, expected, heading, radius, width):
         rows, cols = np.nonzero(mask)
         if not len(rows):
             return None
@@ -409,7 +432,7 @@ class LineDetector:
         i = int(np.argmin(d))
         if radius is not None and d[i] > radius:
             return None
-        span = max(2 * self.width_m, 0.06)
+        span = max(2 * width, 0.06)
         return self._recenter(view, mask, float(xs[i]), float(ys[i]), heading, span)
 
     def _branches(self, view, mask, x, y, heading, r) -> list[float]:
@@ -435,13 +458,13 @@ class LineDetector:
             return straight
         return max(branches) if config.LINE_T_JUNCTION == LEFT else min(branches)
 
-    def _trace(self, view, mask, x, y, heading, prefer):
+    def _trace(self, view, mask, x, y, heading, prefer, width):
         path = [(x, y)]
         junction = False
         # the step must be clearly wider than the line, otherwise the fan sees
         # the line's own edges as branches
-        r = min(max(config.LINE_TRACE_STEP_M, 1.5 * self.width_m), config.LINE_TRACE_MAX_STEP_M)
-        span = max(2 * self.width_m, 0.04)
+        r = min(max(config.LINE_TRACE_STEP_M, 1.5 * width), config.LINE_TRACE_MAX_STEP_M)
+        span = max(2 * width, 0.04)
         length = 0.0
         while length < config.LINE_TRACE_MAX_M and len(path) < 200:
             branches = self._branches(view, mask, x, y, heading, r)

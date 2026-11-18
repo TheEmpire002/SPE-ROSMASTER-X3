@@ -856,6 +856,13 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Result:** Compiles; not yet tested on the robot.
 - **Open:** Test on the mats; if it fails, read the line "learning failed (…)" in `server.log` and the picture `/linie/bild`. Following the lane centre between two white lines without a contrasting mat colour is not implemented.
 
+### 18.11.2026 – Line following: diagonal lines, curves and corners (with Claude)
+- **What:** The robot lost diagonal lines, curves and corners. Analysed over SSH on the Pi with a real camera image and `/linie/bild`.
+- **Findings:** On the mats the robot learned the thin white line (about 1 cm, Lab L≈156 on floor L≈97), not the blue. (1) Near the robot (0.55–0.65 m) the line blends with the floor in the bird's-eye view and reaches only L≈124: closer to the floor than to the line colour, so it was not masked. Only the far part was seen, and on a diagonal line or in a curve that part leaves the narrow view first → line lost, searching. (2) Even with a full mask, a diagonal 1 cm line is a one-pixel staircase; the tracing fan hit it in single directions only and dropped them as noise ("no detection").
+- **Changes:** Mask by position on the floor-to-line colour axis (`LINE_MIX_SHARE` 0.3) instead of "closer to the line"; colour adaptation only from clean line pixels; for tracing, lines are widened to `LINE_TRACE_MIN_WIDTH_M` (4 cm), centre unchanged.
+- **Result:** Same real image on the Pi: before, the near part was missing and nothing was traced; after, the line is masked down to the robot and traced from 0.57 m to the edge of the view (11 points, no false junction).
+- **Open:** Test driving on the floor. The view only starts 0.53 m ahead and is narrow (horizontal camera), so tight curves are driven from memory with odometry; tilting the camera down (`DEPTH_CAMERA_TILT_DEG`) would help a lot.
+
 
 ---
 

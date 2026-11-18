@@ -449,6 +449,12 @@ including curves and junctions. Start with `line_follow`, end with
   `sicherheit: "niedrig"` and driven at `LINE_LOW_CONFIDENCE_SPEED_SHARE` of
   the speed. A failed learning attempt logs what it saw (floor colour,
   contrast ahead, clutter share).
+- Thin lines (also 18.11.): a 1 cm line blends with the floor in the
+  bird's-eye view, so a pixel counts as line from `LINE_MIX_SHARE` of the way
+  from floor to line colour on (not only when closer to the line colour). For
+  tracing, lines thinner than `LINE_TRACE_MIN_WIDTH_M` are widened
+  symmetrically; otherwise a diagonal one-pixel line gives only single fan
+  hits and is dropped as noise.
 - The line is traced in 5 cm steps. Several branches mean a junction; the
   `abzweig` preference decides (`gerade`, `links`, `rechts`).
 - The traced line is remembered in the odometry frame, so corners are driven

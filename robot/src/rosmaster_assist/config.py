@@ -885,9 +885,12 @@ LINE_LEARN_PATCH_HALF_WIDTH_M = 0.04
 # ... and the region of that colour must lead at least this far away (m),
 # otherwise it is a stain or shadow
 LINE_LEARN_MIN_LENGTH_M = 0.20
-# while following a pixel counts as line when it is closer to the learned line
-# colour than to the floor and at most this far from the line colour
+# while following a pixel counts as line when it lies at most this far from
+# the colour axis between floor and line
 LINE_COLOR_TOLERANCE = 50.0
+# a pixel counts as line from this share of the way from floor to line colour
+# on; a 1 cm line blends with the floor in the bev and reaches only ~0.45
+LINE_MIX_SHARE = 0.3
 # the learned line colour slowly follows the lighting (share per frame)
 LINE_COLOR_ADAPT = 0.03
 # more than this share of the visible floor differs from it: floor too busy
@@ -913,6 +916,8 @@ LINE_TRACE_FAN_STEP_DEG = 5.0
 LINE_TRACE_MAX_M = 1.2
 # wide mats would make 1.5 x width steps too coarse for the short view
 LINE_TRACE_MAX_STEP_M = 0.25
+# thinner lines are widened to this (m) for tracing, the centre stays
+LINE_TRACE_MIN_WIDTH_M = 0.04
 # shorter traces are noise, not a line
 LINE_MIN_PATH_M = 0.08
 # where the line is searched in a new image: at most this far from where the
