@@ -41,10 +41,11 @@ class DiagState:
         self.last_device: dict[str, str] = {}
         self.missing_since: dict[str, float] = {}
         self.tty_port: dict[str, str] = {}
-        self.tile_events: dict[str, deque] = {}
-        self.disconnected: set[str] = set()
-        self.tile_reconnects: dict[str, list[float]] = {}
-        self.proto_errors: dict[str, list[float]] = {}
+        # keyed by port path: the layout can still lack the board hub when the event arrives
+        self.port_events: dict[str, deque] = {}
+        self.disconnected_ports: set[str] = set()
+        self.port_reconnects: dict[str, list[float]] = {}
+        self.port_proto_errors: dict[str, list[float]] = {}
         self.reconnects_boot = 0
         self.reconnects_daemon = 0
         self.urb_errors: dict[int, int] = {}
@@ -132,24 +133,23 @@ class DiagState:
             self.port_names[port] = known[0] if known else config.UNKNOWN_DEVICE_NAME
         if ev.kind == "driver_attached" and port and ev.details.get("tty"):
             self.tty_port[ev.details["tty"]] = port
-        tile = tile_for_port(self.layout, port) if port else None
         text = texts.event_sentence(ev.kind, self.port_names.get(port, config.UNKNOWN_DEVICE_NAME), ev.details)
 
         if self.store is not None and not self.store.seen_event(self.store.boot_id, ev.mono, ev.raw):
             self.store.append_event(ev)
-        if tile and ev.kind != "new_device":
-            ring = self.tile_events.setdefault(tile, deque(maxlen=config.PORT_EVENT_RING))
+        if port and ev.kind != "new_device":
+            ring = self.port_events.setdefault(port, deque(maxlen=config.PORT_EVENT_RING))
             ring.append((ev.wall, text, ev.raw))
-        if tile and ev.kind == "disconnect":
-            self.disconnected.add(tile)
-        elif tile and ev.kind == "connect" and tile in self.disconnected:
-            self.disconnected.discard(tile)
-            self.tile_reconnects.setdefault(tile, []).append(ev.mono)
+        if port and ev.kind == "disconnect":
+            self.disconnected_ports.add(port)
+        elif port and ev.kind == "connect" and port in self.disconnected_ports:
+            self.disconnected_ports.discard(port)
+            self.port_reconnects.setdefault(port, []).append(ev.mono)
             self.reconnects_boot += 1
             if not backlog:
                 self.reconnects_daemon += 1
-        elif tile and ev.kind == "protocol_error":
-            self.proto_errors.setdefault(tile, []).append(ev.mono)
+        elif port and ev.kind == "protocol_error":
+            self.port_proto_errors.setdefault(port, []).append(ev.mono)
         self.tracker.on_event(ev, set(self.present))
         while self.tracker.closed:
             self._finish(self.tracker.closed.pop(0))
@@ -405,11 +405,11 @@ class DiagState:
             return "bad", "Vorfall läuft"
         if tile.kind == "mcu" and self._camera_on_board_bus():
             return "warn", texts.CAPTURE_TEXTS["camera_on_bus"]
-        reconnects = self._recent(self.tile_reconnects.get(tile.id, []), now)
+        reconnects = self._recent(self._monos_of(tile.id, self.port_reconnects), now)
         if reconnects:
             age = texts.fmt_short(now - max(reconnects))
             return "warn", f"{len(reconnects)}× neu verbunden, zuletzt vor {age}"
-        errors = self._recent(self.proto_errors.get(tile.id, []), now)
+        errors = self._recent(self._monos_of(tile.id, self.port_proto_errors), now)
         if errors:
             return "warn", f"{len(errors)}× Übertragungsfehler, zuletzt vor {texts.fmt_short(now - max(errors))}"
         return "ok", "keine Auffälligkeiten"
@@ -425,8 +425,20 @@ class DiagState:
         return [{"from": lay.board_socket, "to": "board", "level": "bad" if pi_bad else "ok"},
                 {"from": mcu, "to": "motor", "level": "bad" if mcu_bad else "ok"}]
 
+    def _ports_of(self, tile_id: str, store) -> list[str]:
+        # resolved with the current layout, so a late board hub still gets its own history
+        return [p for p in store if tile_for_port(self.layout, p) == tile_id]
+
+    def _monos_of(self, tile_id: str, store: dict[str, list[float]]) -> list[float]:
+        return sorted(m for p in self._ports_of(tile_id, store) for m in store[p])
+
+    def _events_of(self, tile_id: str) -> list[tuple]:
+        # merged by wall time, oldest first
+        merged = [e for p in self._ports_of(tile_id, self.port_events) for e in self.port_events[p]]
+        return sorted(merged, key=lambda e: e[0])[-config.PORT_EVENT_RING:]
+
     def _reconnect_row(self, tile: Tile) -> dict:
-        monos = self.tile_reconnects.get(tile.id, [])
+        monos = self._monos_of(tile.id, self.port_reconnects)
         if not monos:
             return {"label": "Neu verbunden", "value": "nie seit Boot"}
         live = len([t for t in monos if t >= self.start_mono])
@@ -580,9 +592,10 @@ class DiagState:
         touching = next((e for e in incidents if source in e.get("tiles", [])), None)
         reasons = [{"title": r["title"], "evidence": r["evidence"], "action": r["action"]}
                    for r in (touching or {}).get("reasons", [])]
+        ring = self._events_of(source)
         events = [{"time": texts.fmt_clock(w), "text": t}
-                  for w, t, _raw in reversed(self.tile_events.get(source, ()))][:config.TILE_TECHNICAL_LINES]
-        technical = [raw for _w, _t, raw in self.tile_events.get(source, ()) if raw][-config.TILE_TECHNICAL_LINES:]
+                  for w, t, _raw in reversed(ring)][:config.TILE_TECHNICAL_LINES]
+        technical = [raw for _w, _t, raw in ring if raw][-config.TILE_TECHNICAL_LINES:]
         dev = self._direct(tile) if tile.kind != "motor" else None
         if dev is not None:
             technical.append(f"path={dev.path} id={dev.vid}:{dev.pid} dev={dev.devnum} bus={dev.busnum} "
@@ -646,7 +659,7 @@ class DiagState:
             if tile.module == "pi":
                 over += f" · {texts.PI_OVERCURRENT_NOTE}"
             rows.append({"label": "Überlast", "value": over})
-        if dev is not None or tile.id in self.tile_reconnects:
+        if dev is not None or self._ports_of(tile.id, self.port_reconnects):
             rows.append(self._reconnect_row(tile))
         if dev is not None and dev.devnum in self.traffic:
             rows.append({"label": "Verkehr", "value": texts.fmt_rate(self._rate(self.traffic[dev.devnum], now))})

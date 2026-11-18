@@ -291,6 +291,29 @@ def test_motor_without_traffic_says_server_off():
         assert st.page(now)["motor"]["state"] == texts.MOTOR_NO_TRAFFIC
 
 
+def test_counts_follow_the_port_when_the_board_returns():
+    with tempfile.TemporaryDirectory() as d:
+        tmp = pathlib.Path(d)
+        st = state.DiagState(None, 0.0, 0.0)
+        # the daemon started during a storm: no board hub in the first scan
+        st.apply_topology(fixture_topology(tmp, drop=["1-1", "1-1.2", "1-1.4"]), now=1.0)
+        for i, port in enumerate(("1-1.4", "1-1.2")):
+            st.apply_event(kmsg.Event(5.0 + i, 0, "disconnect", port, {}, "r"), backlog=True)
+            st.apply_event(kmsg.Event(6.0 + i, 0, "connect", port, {}, "r"), backlog=True)
+        st.apply_topology(fixture_topology(tmp), now=30.0)
+        st.tick(31.0)  # closes the storm incident
+        page = st.page(31.0)
+        for tile_id in ("board-p4", "board-p2"):
+            tile = tile_by_id(page, tile_id)
+            assert "1× neu verbunden" in tile["line"], (tile_id, tile["line"])
+            rows = {r["label"]: r["value"] for r in page["details"][tile_id]["rows"]}
+            assert rows["Neu verbunden"].startswith("1× seit Boot"), (tile_id, rows)
+        usb3 = tile_by_id(page, "pi-usb3-a")
+        assert "neu verbunden" not in usb3["line"], usb3["line"]
+        rows = {r["label"]: r["value"] for r in page["details"]["pi-usb3-a"]["rows"]}
+        assert rows.get("Neu verbunden", "nie seit Boot") == "nie seit Boot", rows
+
+
 def test_finished_incident_ends_at_its_last_event():
     with tempfile.TemporaryDirectory() as d:
         tmp = pathlib.Path(d)
