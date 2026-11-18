@@ -85,6 +85,8 @@ class MapControl:
         self._crumbs_dirty = False
         self._crumb_confident = False
         localization.near_source = self.crumbs.near
+        # photos with position (mapping/photos.py), set by the server
+        self.photos = None
 
     # --- 1. Mapping drive (interface as before for mapping/web.py) --------------------
 
@@ -498,6 +500,7 @@ class MapControl:
             "kartieren": self.live_status(),
             "brotkrumen": self.crumbs.display(),
             "anker": {k: [round(v, 3) for v in a["pose"]] for k, a in self.crumbs.anchors.items()},
+            "fotos": self.photos.brief() if self.photos is not None else None,
         }
 
     def state_brief(self) -> dict[str, Any] | None:
@@ -546,6 +549,8 @@ class MapControl:
                 occ_map = self._localization.occ_map
                 if occ_map is not None:
                     await asyncio.to_thread(self._track)
+                    if self.photos is not None:
+                        self.photos.tick()
                     if self.pages > 0 and time.monotonic() - self._frontiers_time > 5.0:
                         self._frontiers_time = time.monotonic()
                         self._frontiers = await asyncio.to_thread(frontiers_for_display, occ_map)

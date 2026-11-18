@@ -1018,6 +1018,11 @@ User interface: `GET /map`.
 | `POST /api/mapping/hauptkarte/neu` | begin a new main map (the old one goes to `backups/`); it starts at the next standstill; 409 during mapping |
 | `POST /api/mapping/hauptkarte/uebernehmen` | after SLAM: the SLAM map becomes the main map (old one to `backups/`), the pose stays |
 | `POST /api/mapping/hauptkarte/verwerfen` | after SLAM: back to the main map, the pose is searched where the odometry expects it |
+| `GET /api/mapping/fotos` | photos of the current map (new 18.11., see "Photos on the map"): `karte`, `auto`, `verfuegbar`, `fotos` (list of `id`, `datei`, `x`, `y` (m, map frame), `winkel` (heading in degrees, 0 = map x axis, counter-clockwise), `zeit` (unix seconds), `quelle` `"auto"`/`"hand"`, `kamera`, `url`) |
+| `GET /api/mapping/fotos/{karte}/{datei}` | the photo as JPEG; 404 if unknown |
+| `POST /api/mapping/fotos` | take a photo now ("Foto hier"); returns the entry; 409 with reason without a map, with an uncertain pose or without a fresh camera image |
+| `POST /api/mapping/fotos/auto` | body `{"aktiv": false}`: automatic photos off/on (until the server restarts) |
+| `DELETE /api/mapping/fotos/{id}` | delete a photo; 404 if unknown |
 | `WS /api/mapping/ws` | `{"type": "status"}` every 3 s, `{"type": "map"}` on every new map, `{"type": "fahrt"}` on changes of the mapping drive, `{"type": "ortung"}` on changes of the pose (content as `GET /api/mapping/ortung`) |
 
 `GET /api/mapping/map` and the `map` packets deliver the map **the robot is
@@ -1082,6 +1087,21 @@ beendet: Kartierfahrt fertig -- …“. What **no longer** ends it (new 04.11.):
   `true` during that time. A `stop` discards the resumption.
 - *Lidar briefly gone:* it waits up to `MAPPING_DRIVE_LIDAR_WAIT_S` (30 s);
   for random exploring it stays at 3 s.
+
+**Photos on the map (new 18.11.).** While the pose in the main map or a
+loaded map is confident, the robot takes a photo with `MAP_PHOTO_CAMERA`
+(the Orbbec, wide and fixed forward) every `MAP_PHOTO_EVERY_M` (1 m) or
+after turning `MAP_PHOTO_EVERY_DEG` (45°), not while turning faster than
+`MAP_PHOTO_MAX_OMEGA`, and not if a photo from almost the same spot and
+heading exists (`MAP_PHOTO_SIMILAR_M`, `MAP_PHOTO_SIMILAR_DEG`); at most
+`MAP_PHOTO_MAX` per map. "📷 Foto hier" on `/map` takes one by hand. They are
+stored beside the map in `<name>_bilder/` (JPEGs plus `index.json`). The
+index remembers the map's frame id; when the main map is replaced, the old
+folder is set aside as `<name>_bilder.<stamp>.alt`. On `/map` every photo
+is a small yellow arrow (orange: taken by hand) pointing where the camera
+looked; a click shows it. `GET /api/mapping/ortung` contains `fotos`:
+`verfuegbar`, `auto`, `karte`, `anzahl`, `stand` (counter, changes with every
+new or deleted photo), `fehler`.
 
 **Using the map (new 04.11.).** When a map exists, the robot knows where it
 is in it. During mapping this applies immediately; afterwards (mapping

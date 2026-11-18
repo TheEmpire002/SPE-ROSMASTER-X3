@@ -39,6 +39,7 @@ from ..interaction.speech import SpeechRecognition
 from ..interaction.voice import Voice
 from ..mapping.live_mapper import LiveMapper
 from ..mapping.live_store import LiveStore
+from ..mapping.photos import MapPhotos
 from ..mapping.manager import MappingManager
 from ..mapping.web import create_mapping_router
 from ..interaction.behavior import Interaction
@@ -464,6 +465,10 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         interaction=interaction, maneuver=maneuver, watchdog=watchdog, driver=driver, hub=hub,
         live_mapper=live_mapper, live_store=LiveStore(mapping_manager.map_service),
         scan_odometry=scan_odometry,
+    )
+    map_control.photos = MapPhotos(
+        mapping_manager.map_service.storage_dir, localization,
+        cameras.get(config.MAP_PHOTO_CAMERA, camera), odometry=odometry,
     )
     app.state.map_control = map_control
     app.include_router(create_mapping_router(mapping_manager, map_control))
