@@ -854,6 +854,17 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
   - A smoke-test check ("Drehen bleibt trotzdem erlaubt") failed only while about 40 Python processes from earlier mock servers were running ("Server hing 1.2 s"); on a quiet machine it passes.
   - Ben's commits from 04.11. (microphone off while mapping, depth camera crash) were made on the old file names; they are contained in the translated files.
 - **Open:** Teammates' branches based on the old names will conflict on merge; merge them soon or rebase. The old-name settings migration in `settings.py` can be removed once all robots have saved settings with the new names.
+### 18.11.2026 – Tilt servo for the person camera (with Claude)
+- **What:** The Logitech C270 now sits on a servo (port S1) and can be tilted up and down from the server; during person following it keeps the person in the frame by itself.
+- **Why:** The camera is low on the robot. A person standing about 1 m in front of it reaches beyond the top of the picture, head and raised arms (gestures) are cut off.
+- **Changes:**
+  - `drive/`: new optional `set_servo(channel, angle)` in `DriveBase`; `RosmasterDriver` uses `set_pwm_servo`, serial writes of drive and servo are serialised by a lock (stop goes through even if the lock is stuck); mock only logs.
+  - `sensors/camera_tilt.py`: angle 0 = horizontal, + = up, limits ±30°, at most 60°/s, re-sent after a reconnect. Auto mode keeps the head (nose/eyes, otherwise top of the box) of the person from the interaction at 30 % of the image height. The correction starts from the tilt at the time the image was taken, so the delayed pose does not make it overshoot. Nobody in view for 4 s: slowly back to horizontal.
+  - `interaction/behavior.py`: property `target_person` (followed person, in ready mode the largest).
+  - Protocol: command `camera_tilt` (`winkel`, `schritt`, `auto`), state field `kamera_neigung`. Web app: buttons ▲/▼/gerade and the switch „Kamera folgt der Person“ in the interaction panel.
+  - `config.py`: block `CAMERA_TILT_*`. Docs: `docs/api.md`, `docs/hardware.md`, `docs/architecture.md`.
+- **Result:** Compiles; not yet tested on the robot.
+- **Open:** On the robot check the servo centre (90° horizontal?) and the direction (`CAMERA_TILT_SERVO_SIGN`). Check whether gestures still work while the camera moves.
 
 ---
 

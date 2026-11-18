@@ -999,6 +999,44 @@ PERSON_MIN_SCORE = 0.5
 # from CAMERA_ROLES, detection uses the default camera.
 PERSON_CAMERA = "personen"
 
+# --- Camera tilt servo (person camera, up and down) ------------------------------
+# details in sensors/camera_tilt.py. servo on the expansion board, moved with
+# rosmaster_lib's set_pwm_servo (ports s1..s4)
+CAMERA_TILT_ENABLED = True
+CAMERA_TILT_CHANNEL = 1
+# servo angle (0..180) at which the camera looks horizontally, and whether
+# larger servo angles tilt it up (+1) or down (-1); check both on the robot
+CAMERA_TILT_SERVO_CENTER_DEG = 90
+CAMERA_TILT_SERVO_SIGN = 1
+# tilt range (deg, up positive); the servo test went from 60 to 120
+CAMERA_TILT_MIN_DEG = -30.0
+CAMERA_TILT_MAX_DEG = 30.0
+# tilt at startup and where auto mode returns to when nobody is in view
+CAMERA_TILT_HOME_DEG = 0.0
+# step of the up/down buttons in the app (deg)
+CAMERA_TILT_STEP_DEG = 5.0
+# servo moves at most this fast (deg/s): no jerk in the picture, and small
+# current steps on the board instead of one big one (usb dropouts on the x3)
+CAMERA_TILT_SPEED_DEG_S = 60.0
+CAMERA_TILT_HZ = 10
+# auto mode: keep the head of the person in question at this height in the
+# image (0 top .. 1 bottom); room above it for raised arms (gestures)
+CAMERA_TILT_AUTO = True
+CAMERA_TILT_HEAD_Y = 0.3
+# no correction within this band (share of the image height): pose noise
+CAMERA_TILT_DEADBAND = 0.06
+# share of the measured error corrected per new image; the image is already
+# old when the pose arrives, more would overshoot
+CAMERA_TILT_GAIN = 0.5
+# keypoints (nose, eyes) count from this confidence on
+CAMERA_TILT_KP_MIN = 0.4
+# nobody in view for this long (s): auto mode turns back to the home tilt,
+# slowly so a person stepping back into view is not lost again
+CAMERA_TILT_RETURN_S = 4.0
+CAMERA_TILT_RETURN_SPEED_DEG_S = 10.0
+# image height / width of the person camera, for its vertical field of view
+CAMERA_TILT_ASPECT = 0.75
+
 # Horizontal field of view in degrees for cameras without their own entry in
 # CAMERA_ROLES (CSI camera, additional USB cameras).
 CAMERA_FOV_DEG = 60.0

@@ -161,6 +161,7 @@ function handleMessage(msg) {
       showInteraction(msg.interaktion);
       showVoice(msg.stimme);
       showSpeech(msg.sprache);
+      showCameraTilt(msg.kamera_neigung);
       break;
 
     case "collision":
@@ -188,6 +189,30 @@ function handleMessage(msg) {
       logLine(`Unbekannte Nachricht: ${msg.type}`, "warning");
   }
 }
+
+// --- Camera tilt (servo of the person camera) ----------------------------------
+
+const TILT_STEP_DEG = 5;
+
+function showCameraTilt(st) {
+  const on = !!(st && st.verfuegbar);
+  el("neigung").hidden = !on;
+  el("neigung-auto-zeile").hidden = !on;
+  if (!on) {
+    el("val-neigung").textContent = "—";
+    return;
+  }
+  const deg = Math.round(st.winkel);
+  const where = deg > 0 ? `${deg}° hoch` : deg < 0 ? `${-deg}° runter` : "waagerecht";
+  el("val-neigung").textContent = where + (st.auto ? (st.verfolgt ? " · folgt der Person" : " · automatisch") : "");
+  el("neigung-auto").checked = st.auto === true;
+  el("neigung-auto-state").textContent = st.auto ? "an" : "aus";
+}
+
+el("btn-neigung-hoch").addEventListener("click", () => send({ type: "camera_tilt", schritt: TILT_STEP_DEG }));
+el("btn-neigung-runter").addEventListener("click", () => send({ type: "camera_tilt", schritt: -TILT_STEP_DEG }));
+el("btn-neigung-gerade").addEventListener("click", () => send({ type: "camera_tilt", winkel: 0 }));
+el("neigung-auto").addEventListener("change", (e) => send({ type: "camera_tilt", auto: e.target.checked }));
 
 function send(message) {
   if (socket && socket.readyState === WebSocket.OPEN) {

@@ -84,7 +84,7 @@ human. It does not assess a health condition.
 | `protocol.py`  | Message format — the common language of all parties        |
 | `drive/`       | Driving. `base.py` = interface, plus real driver + mock    |
 | `safety/`      | Watchdog, emergency stop, speed limiting, drive guard based on the footprint (`drive_guard.py`) |
-| `sensors/`     | Lidar, camera, depth camera (`depth.py`, OpenNI2; display `depth_view.py`), person detection, body pose (Hailo) |
+| `sensors/`     | Lidar, camera, depth camera (`depth.py`, OpenNI2; display `depth_view.py`), person detection, body pose (Hailo), tilt servo of the person camera (`camera_tilt.py`) |
 | `navigation/`  | Odometry, lidar localization, homing (with a map also goal drive), explorer, mapping drive, avoidance (`avoidance.py`), obstacle naming, obstacle memory for depth points (`obstacle_memory.py`), progress watch against getting stuck (`progress.py`), pose in the map (`map_localization.py`), paths and frontiers (`path_planning.py`), path following (`path_follower.py`) |
 | `mapping/`     | Mapping: slam_toolbox in the container including the feed, save/load the map (`occ_map.py`), map in the simulation (`simulation.py`), `/map` page (`web.py`) |
 | `interaction/` | Gestures, behavior (follow, come here, go away), voice (speech output) and speech commands with the wake word "Robi"; planned: mind ("Geist") — see [`interaction.md`](interaction.md) |

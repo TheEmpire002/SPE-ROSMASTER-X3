@@ -239,7 +239,20 @@
       <dt>Geste</dt>    <dd id="val-ia-geste">—</dd>
       <dt>Stimme</dt>   <dd id="val-stimme">—</dd>
       <dt>Ohr</dt>      <dd id="val-sprache">—</dd>
+      <dt>Kamera</dt>   <dd id="val-neigung">—</dd>
     </dl>
+
+    <!-- Tilt servo of the person camera (camera_tilt). Auto keeps the person in the frame. -->
+    <div id="neigung" class="home-buttons" hidden>
+      <button type="button" id="btn-neigung-hoch" class="btn" title="Kamera nach oben">▲ hoch</button>
+      <button type="button" id="btn-neigung-runter" class="btn" title="Kamera nach unten">▼ runter</button>
+      <button type="button" id="btn-neigung-gerade" class="btn" title="Kamera waagerecht">gerade</button>
+    </div>
+    <label id="neigung-auto-zeile" class="switch" hidden>
+      <input type="checkbox" id="neigung-auto">
+      <span>Kamera folgt der Person</span>
+      <output id="neigung-auto-state" class="switch-state">aus</output>
+    </label>
 
     <!-- Live feed from the microphone (GET /sprache/live, WebSocket /sprache/ton). -->
     <label class="switch">

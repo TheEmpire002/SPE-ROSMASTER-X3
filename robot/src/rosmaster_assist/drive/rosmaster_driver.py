@@ -37,6 +37,9 @@ class RosmasterDriver(DriveBase):
         self._bot = None
         self._last: DriveCommand | None = None
         self._lock = threading.Lock()
+        # servo commands come from the event loop, drive commands from the
+        # watchdog; interleaved bytes on the serial line would garble both
+        self._write_lock = threading.Lock()
         # How a dead connection can be recognized -- see _alive().
         self._device: int | None = None
         self._receivers: list[threading.Thread] = []
@@ -269,7 +272,8 @@ class RosmasterDriver(DriveBase):
             return
         try:
             # Mecanum: set_car_motion(vx, vy, vz) expects m/s, m/s, rad/s.
-            bot.set_car_motion(cmd.vx, cmd.vy, cmd.omega)
+            with self._write_lock:
+                bot.set_car_motion(cmd.vx, cmd.vy, cmd.omega)
         except Exception as exc:
             self._lost(f"write failed: {exc}")
             return
@@ -288,11 +292,17 @@ class RosmasterDriver(DriveBase):
         bot = self._bot
         if bot is None:
             return
+        # stopping goes through even if the lock is stuck: better garbled
+        # bytes than a robot that keeps driving
+        locked = self._write_lock.acquire(timeout=0.2)
         try:
             bot.set_car_motion(0.0, 0.0, 0.0)
         except Exception as exc:
             log.exception("Stopping failed -- check the hardware!")
             self._lost(f"stopping failed: {exc}")
+        finally:
+            if locked:
+                self._write_lock.release()
 
     def beep(self, ms: int = 100) -> None:
         bot = self._bot
@@ -302,6 +312,18 @@ class RosmasterDriver(DriveBase):
             bot.set_beep(ms)
         except Exception:
             log.exception("Buzzer failed")
+
+    def set_servo(self, channel: int, angle: int) -> bool:
+        bot = self._bot
+        if bot is None:
+            return False
+        try:
+            with self._write_lock:
+                bot.set_pwm_servo(channel, angle)
+        except Exception as exc:
+            self._lost(f"servo write failed: {exc}")
+            return False
+        return True
 
     def read_motion(self) -> tuple[float, float, float] | None:
         # Needs the receive thread; without it the library returns zeros

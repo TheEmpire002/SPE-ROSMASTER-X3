@@ -47,6 +47,10 @@ From the app / the ESP to the robot
                                                           in the map there (winkel optional)
 {"type": "map_load", "name": "wohnung"}                   load a saved map to drive
                                                           in it
+{"type": "camera_tilt", "winkel": 10}                      tilt the person camera (degrees, + = up,
+                                                          0 = horizontal); switches auto off
+{"type": "camera_tilt", "schritt": -5}                     tilt by this much; switches auto off
+{"type": "camera_tilt", "auto": true}                      auto: keep the person in the frame
 {"type": "ping"}                                          keep the connection alive
 
 From the robot to the app
@@ -63,7 +67,10 @@ From the robot to the app
                     "geweckt":…, "gehoert":…, "befehl":…};
                     with a loaded map additionally "karte": {"name":…,
                     "live":…, "pose": {"x","y","winkel"}|null, "sicher":…,
-                    "text":…, "fahrt": {"aktiv","art","ziel","rest_m","grund"}})
+                    "text":…, "fahrt": {"aktiv","art","ziel","rest_m","grund"}};
+                    with the tilt servo additionally "kamera_neigung":
+                    {"verfuegbar":…, "winkel":…, "ziel":…, "auto":…, "min":…,
+                    "max":…, "verfolgt":…})
 {"type": "vitals", "bpm":…, "motion":…}                   forwarded ESP data
 {"type": "alert",  "level": "info"|"warning"|"emergency", "text": "…"}
 {"type": "error",  "text": "…"}                           invalid message or similar
@@ -143,6 +150,7 @@ def state_message(
     voice: dict[str, Any] | None = None,
     speech: dict[str, Any] | None = None,
     occ_map: dict[str, Any] | None = None,
+    camera_tilt: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     msg: dict[str, Any] = {
         "type": "state",
@@ -163,6 +171,8 @@ def state_message(
         msg["sprache"] = speech
     if occ_map is not None:
         msg["karte"] = occ_map
+    if camera_tilt is not None:
+        msg["kamera_neigung"] = camera_tilt
     if pose is not None:
         x, y, angle = pose
         msg["pose"] = {

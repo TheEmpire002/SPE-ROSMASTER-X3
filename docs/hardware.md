@@ -256,6 +256,19 @@ The stream is at `/camera/<name>/stream` (MJPEG) and a single frame at
 directly in the browser, even without the app. `/camera/stream` without a
 name shows the default camera (`orientierung`).
 
+### Tilt servo of the person camera
+
+Since 18.11. the Logitech C270 sits on a servo that tilts it up and down.
+It is plugged into the expansion board (port S1, `CAMERA_TILT_CHANNEL`) and
+moved with `Rosmaster_Lib`'s `set_pwm_servo(channel, angle)` (0..180°)
+through the same serial connection as the drive; the driver serialises the
+writes. Standalone test: `testservomotor.py` on the branch
+`test-servomotor` (90° → 60° → 120°).
+
+Check on the robot: at which servo angle the camera looks horizontally
+(`CAMERA_TILT_SERVO_CENTER_DEG`, assumed 90) and whether larger angles tilt
+it up (`CAMERA_TILT_SERVO_SIGN` = 1) or down (-1).
+
 ## Depth camera (Orbbec Astra)
 
 Since 04.11. autonomous driving uses the depth channel (`sensors/depth.py`)

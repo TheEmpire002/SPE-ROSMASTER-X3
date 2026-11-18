@@ -186,6 +186,7 @@ Right after connecting, the robot sends on its own, in this order:
 | `beep` | `ms` (int, default 100) | Buzzer. | none |
 | `vitals` | `bpm` (number/null), `motion` (bool/null) | Readings from the ESP32, relayed to all. | `vitals` to all |
 | `box` | `action`: `"open"` / `"close"` | Not built yet. | `alert` „Box ist noch nicht angebaut“ (box not attached yet) |
+| `camera_tilt` | `winkel` (degrees, 0 = horizontal, + = up) or `schritt` (tilt by this much), and/or `auto` (`true`/`false`) | Tilt the person camera (C270) with its servo (new 18.11., see "Camera tilt in detail"). `winkel`/`schritt` switch auto off. | without servo `alert` (warning); without any field or with a non-number `error` |
 | `ping` | – | Check the connection. | `pong` |
 
 An unknown `type` returns `{"type": "error", "text": "Unbekannter Nachrichtentyp: …"}`.
@@ -239,6 +240,7 @@ it only turns.
 | `interaktion` | interaction mode (hand signals, following), see "Interaction in detail". Missing on older servers. |
 | `stimme` | voice output: `verfuegbar` (sound comes out), `spricht` (speaking a sentence right now), `text` (last sentence spoken, or `null`). See "Voice in detail". Missing on older servers. |
 | `sprache` | speech commands: `verfuegbar` (microphone and model ready), `geweckt` (awake: „Robi“ was just said on its own, the next sentence needs no name), `gehoert` (last sentence understood, or `null`), `befehl` (recognized command, for a few seconds, otherwise `null`), `pause` (why the microphone is deliberately closed right now, e.g. „Mapping läuft“; then `verfuegbar` is `false`, otherwise `null`). See "Speech commands in detail". Missing on older servers. |
+| `kamera_neigung` | Tilt servo of the person camera (new 18.11.), only present when `CAMERA_TILT_ENABLED`: `verfuegbar`, `winkel` (current tilt, degrees, + = up), `ziel` (where it is moving to), `auto`, `min`/`max` (range), `verfolgt` (auto is keeping a person in the frame right now). |
 | `karte` | Only present when a map exists (new 04.11.): `name` (saved map, `null` for the live map during mapping), `live`, `pose` (pose **in the map frame**, not to be confused with `pose` above in the odometry frame; `null` while unknown), `sicher` (confident; `goto` only works then), `text`, `fahrt` (running or last map-based drive: `art` (kind) `"heim"` (home) / `"ziel"` (goal), `ziel` (goal), `rest_m` (remaining distance), `grund` (reason)). See "Using the map" under Mapping. |
 
 **`collision`**: on connect and after every change, fields as in
@@ -487,6 +489,25 @@ power supply collapse.
 | `grund` | why the mode last ended (reason); „hochgehoben -- angehalten“ (new 03.11., F3) if it was lifted while driving -- afterwards `bereit` and the announcement „Ich wurde hochgehoben. Ich bleibe stehen.“ |
 | `pausiert` | `true` after `follow_pause` (paused): stands still, mode and target are kept. Any mode change (including the stop gesture) ends the pause. Missing on older servers. |
 | `ziel` | whom it follows (target lock 03.11., simplified 04.11.): `zustand` (state) is `idle`, `acquiring_target`, `following`, `target_temporarily_lost` or `searching_for_target` (`safe_stop` only from servers before 04.11.). `id` is the internal track ID (changes when the person was briefly out of view; do not display it), `sicherheit` (confidence) is 1 while following, `grund` says why it stopped (e.g. „Person nicht wiedergefunden“). Details in `docs/interaction.md`. Missing on older servers. |
+
+### Camera tilt in detail
+
+New 18.11. A servo on the expansion board (`CAMERA_TILT_CHANNEL`, default
+port S1) tilts the person camera up and down (`sensors/camera_tilt.py`).
+
+- Angle 0 = horizontal, positive = up, range `CAMERA_TILT_MIN_DEG` ..
+  `CAMERA_TILT_MAX_DEG` (±30°). Mapped to the servo with
+  `CAMERA_TILT_SERVO_CENTER_DEG` (90) and `CAMERA_TILT_SERVO_SIGN`.
+- **Auto** (default on, `CAMERA_TILT_AUTO`): while interaction runs
+  (following, come here, ready) it keeps the head of the person in question
+  at `CAMERA_TILT_HEAD_Y` (30 %) of the image height, leaving room for raised
+  arms. Nobody in view for `CAMERA_TILT_RETURN_S`: slowly back to
+  `CAMERA_TILT_HOME_DEG`.
+- Manual tilting (`winkel`, `schritt`) switches auto off; `auto: true`
+  switches it on again.
+- Moves at most `CAMERA_TILT_SPEED_DEG_S` (60°/s). After a USB dropout the
+  angle is sent again. The servo does not move the robot, so it does not go
+  through the watchdog.
 
 ### Voice in detail
 

@@ -61,6 +61,7 @@ from ..navigation.scan_odometry import ScanOdometry
 from .map_control import MapControl
 from ..safety import CollisionGuard, DriveGuard, SafetyWatchdog
 from ..sensors.camera import CameraService, create_cameras
+from ..sensors.camera_tilt import CameraTilt
 from ..sensors.lidar import LidarService, create_lidar
 from ..sensors.people import PersonDetection
 from ..sensors.pose import SKELETON, PoseDetection
@@ -268,6 +269,11 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     interaction = Interaction(
         watchdog, lidar, pose, voice, drive_connected=lambda: driver.connected, odometry=odometry
     )
+    # tilt servo of the person camera: keeps the person in question in the frame
+    camera_tilt = CameraTilt(
+        driver, person_source=lambda: interaction.target_person,
+        fov_deg=person_camera.fov_deg if person_camera is not None else None,
+    )
     # Gets the voice so it can stop listening while the robot itself speaks
     # (otherwise it would understand itself), and MUKKE: while music plays
     # only stop and "Musik aus" count, otherwise the singing turns into
@@ -309,6 +315,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         else:
             log.warning("Driver: %s — the robot can move", driver.name)
         watchdog.start()
+        camera_tilt.start()
         for camera in cameras.values():
             camera.start()
         people.start()
@@ -337,7 +344,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             _status_loop(
                 hub, watchdog, driver, odometry, homing, localizer, guard,
                 explorer, detection, lidar, people, interaction, voice, speech, maneuver,
-                map_control=map_control,
+                map_control=map_control, camera_tilt=camera_tilt,
             )
         )
         speech_task = asyncio.create_task(_speech_loop())
@@ -399,6 +406,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             localization.unload()
             people.stop()
             pose.stop()
+            camera_tilt.stop()
             mukke.stop()
             speech.stop()
             voice.stop()
@@ -462,6 +470,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                         msg, watchdog, driver, hub, odometry, homing, localizer, guard,
                         explorer, interaction, voice, speech, recording,
                         maneuver=maneuver, sender=ws, map_control=map_control,
+                        camera_tilt=camera_tilt,
                     )
                 except Exception:
                     # A faulty command used to drop the connection -- the
@@ -1106,6 +1115,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         response = await _handle(
             {"type": kind, **fields}, watchdog, driver, hub, odometry, homing, localizer, guard,
             explorer, interaction, voice, speech, maneuver=maneuver, map_control=map_control,
+            camera_tilt=camera_tilt,
         )
         if response is None:
             return True
@@ -1258,6 +1268,7 @@ async def _handle(
     maneuver: Maneuver | None = None,
     sender: object | None = None,
     map_control: MapControl | None = None,
+    camera_tilt: CameraTilt | None = None,
 ) -> dict[str, Any] | None:
     """Process an incoming message.
 
@@ -1575,6 +1586,24 @@ async def _handle(
         await hub.broadcast(vitals_message(msg.get("bpm"), msg.get("motion")))
         return None
 
+    if kind == "camera_tilt":
+        if camera_tilt is None or not camera_tilt.available:
+            return alert_message("warning", "Kein Neige-Servo für die Kamera")
+        if not any(k in msg for k in ("winkel", "schritt", "auto")):
+            return error_message("camera_tilt braucht winkel, schritt oder auto")
+        try:
+            winkel = float(msg["winkel"]) if "winkel" in msg else None
+            schritt = float(msg["schritt"]) if "schritt" in msg else None
+        except (TypeError, ValueError):
+            return error_message("camera_tilt: winkel und schritt müssen Zahlen sein")
+        if "auto" in msg:
+            camera_tilt.set_auto(bool(msg["auto"]))
+        if winkel is not None:
+            camera_tilt.set(winkel)
+        elif schritt is not None:
+            camera_tilt.step(schritt)
+        return None
+
     if kind == "box":
         # TODO: implement box/ once the mechanics are in place.
         return alert_message("info", "Box ist noch nicht angebaut")
@@ -1768,6 +1797,7 @@ async def _status_loop(
     speech: SpeechRecognition | None = None,
     maneuver: Maneuver | None = None,
     map_control: MapControl | None = None,
+    camera_tilt: CameraTilt | None = None,
 ) -> None:
     """Regularly sends the state to all clients."""
     last_active = False
@@ -1840,6 +1870,8 @@ async def _status_loop(
                         voice=voice.state() if voice is not None else None,
                         speech=speech.state() if speech is not None else None,
                         occ_map=map_control.state_brief() if map_control is not None else None,
+                        camera_tilt=camera_tilt.state()
+                        if camera_tilt is not None and camera_tilt.available else None,
                     )
                 )
         except Exception:
