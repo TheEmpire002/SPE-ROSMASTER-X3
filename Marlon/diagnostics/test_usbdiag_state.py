@@ -522,6 +522,42 @@ def test_replay_reaching_further_keeps_the_stored_file_name():
         assert len(st.finished) == 1
         disk = json.loads(files[0].read_text(encoding="utf-8"))
         assert abs(disk["end_mono"] - 59.3) < 1e-6 and disk["end_mono"] == st.finished[0]["end_mono"], disk["end_mono"]
+        # the truncated replay must not cost the stored start, the early events or the original time
+        assert disk["start_mono"] == 1.0 and disk["start_wall"] == BW + 1.0 and disk["time"] == "x", disk
+        assert len(disk["events"]) >= 1 and disk["events"][0]["text"] == "a", disk["events"]
+        assert disk == st.finished[0]
+        monos = [e["mono"] for e in disk["events"] if "mono" in e]
+        assert monos == sorted(monos) and len(monos) == len(set(monos)), monos
+
+
+def test_equal_start_shorter_replay_is_not_written():
+    with tempfile.TemporaryDirectory() as d:
+        tmp = pathlib.Path(d)
+        sto = _store(tmp / "log")
+        _stored_boot_storm(sto)
+        st = state.DiagState(sto, BW, 0.0)
+        writes = []
+        real = sto.write_incident
+        sto.write_incident = lambda entry: (writes.append(entry), real(entry))[1]
+        _replay(tmp, st, 1.0, 20.0)
+        assert writes == [], writes
+        assert st.finished[0]["end_mono"] == 50.6
+
+
+def test_recovered_change_at_same_range_rewrites():
+    with tempfile.TemporaryDirectory() as d:
+        tmp = pathlib.Path(d)
+        sto = _store(tmp / "log")
+        _replay(tmp, state.DiagState(sto, BW, 0.0), 5.0, 20.0)
+        first = json.loads(_files(sto)[0].read_text(encoding="utf-8"))
+        flipped = dict(first, recovered=not first["recovered"])
+        sto.write_incident(flipped)
+        st = state.DiagState(sto, BW, 0.0)
+        _replay(tmp, st, 5.0, 20.0)
+        files = _files(sto)
+        assert [f.stem for f in files] == [first["id"]], files
+        disk = json.loads(files[0].read_text(encoding="utf-8"))
+        assert disk["recovered"] == first["recovered"] and disk["id"] == first["id"], disk
 
 
 def test_later_incident_after_a_stored_one_is_still_written():

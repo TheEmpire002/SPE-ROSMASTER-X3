@@ -725,7 +725,9 @@ names stay.
 
 The kernel log buffer wraps during long storms, so a restart may replay a
 truncated backlog. An incident that overlaps a stored one of the same boot
-counts as the same incident and keeps its file name.
+counts as the same incident and keeps its file name. If the replay reaches further, the
+stored entry is extended (later end, new events), not replaced: its start, time and
+early events stay.
 
 **Crash reasons** (the page shows the German titles):
 

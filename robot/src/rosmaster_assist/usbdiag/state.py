@@ -19,6 +19,41 @@ def _clamp(seconds: float) -> float:
     return max(0.0, seconds)
 
 
+def _stored_end(old: dict) -> float:
+    # entries from older files may lack end_mono; the start is then the best known end
+    end = old.get("end_mono")
+    return end if isinstance(end, (int, float)) else old["start_mono"]
+
+
+def _merge_entries(old: dict, new: dict, where_of) -> dict:
+    """Extend a stored entry with a later-reaching replay of the same incident.
+
+    The replay comes from a truncated kmsg backlog, so it starts later and has fewer early facts:
+    start, time, early events, technical lines and snapshot stay from the stored entry.
+    """
+    old_end = _stored_end(old)
+    end = max(old_end, new["end_mono"])
+    snap_end = max((s["mono"] for s in old.get("snapshot", [])), default=old_end)
+    tiles = sorted(set(old.get("tiles", [])) | set(new["tiles"]))
+    technical = list(old.get("technical", []))
+    technical += [line for line in new["technical"] if line not in technical]
+    return {
+        **new,
+        "id": old["id"],
+        "time": old["time"],
+        "boot": old["boot"],
+        "start_mono": old["start_mono"],
+        "start_wall": old["start_wall"],
+        "end_mono": end,
+        "duration": texts.fmt_duration(_clamp(end - old["start_mono"])),
+        "where": where_of(tiles),
+        "tiles": tiles,
+        "events": list(old.get("events", [])) + [e for e in new["events"] if e["mono"] > old_end],
+        "snapshot": list(old.get("snapshot", [])) + [s for s in new["snapshot"] if s["mono"] > snap_end],
+        "technical": technical,
+    }
+
+
 class DiagState:
     """Everything the page shows.
 
@@ -304,12 +339,15 @@ class DiagState:
         return Context(list(self.samples), list(self.commands), list(self.battery), list(self.busy),
                        self.server_running, dict(self.port_names))
 
+    def _where(self, tiles: list[str]) -> str:
+        labels = {t.id: t.label for t in self.layout.tiles}
+        return ", ".join(labels[t] for t in tiles if t in labels) or texts.MODULE_TITLES["pi"]
+
     def _entry(self, inc: Incident, end_mono: float, recovered: bool) -> dict:
         reasons = classify(inc, self._context())
         inc.reasons = reasons
-        labels = {t.id: t.label for t in self.layout.tiles}
         tiles = sorted({t for p in inc.ports if (t := tile_for_port(self.layout, p))})
-        where = ", ".join(labels[t] for t in tiles if t in labels) or texts.MODULE_TITLES["pi"]
+        where = self._where(tiles)
         sentences = []
         for ev in inc.events:
             name = self.port_names.get(ev.port, config.UNKNOWN_DEVICE_NAME)
@@ -346,21 +384,19 @@ class DiagState:
             old_start = old.get("start_mono")
             if old.get("boot") != entry.get("boot") or not isinstance(old_start, (int, float)):
                 return False
-            old_end = old.get("end_mono")
-            if not isinstance(old_end, (int, float)):
-                old_end = old_start
-            return new_start <= old_end and new_end >= old_start
+            return new_start <= _stored_end(old) and new_end >= old_start
 
         same = next((i for i, old in enumerate(self.finished) if overlaps(old)), None)
         if same is not None:
             old = self.finished[same]
-            old_end = old.get("end_mono") if isinstance(old.get("end_mono"), (int, float)) else old["start_mono"]
+            old_end = _stored_end(old)
             inside = new_start >= old["start_mono"] and new_end <= old_end
             if inside and (new_start != old["start_mono"] or old_end != new_end
                            or old.get("recovered") == entry["recovered"]):
                 # the replay found nothing new, and a fresh boot_wall estimate must not rewrite the file
                 return
-            entry["id"] = old["id"]  # keeps the file name when the wall clock moved
+            # extending keeps the id (file name), the stored start and the early facts
+            entry = _merge_entries(old, entry, self._where)
         if self.store is not None:
             self.store.write_incident(entry)
         if same is not None:
