@@ -703,9 +703,11 @@ CAMERA_ROLES = {
     # depth channel (2bc5:060f) is not a video device and needs the Orbbec SDK.
     "orientierung": {"usb_id": "2bc5", "label": "Orbbec (Farbbild)", "fov_deg": 66.0,
                      "flip": None},
-    # Logitech C270: person detection. Mounted the wrong way round (29.10.2026).
+    # Logitech C270: person detection. was mounted mirrored (29.10.2026); on
+    # the tilt servo (18.11.) the raw image is right, the old flip mirrored
+    # it and the robot turned away from the person
     "personen": {"usb_id": "046d", "label": "Logitech C270", "fov_deg": 45.0,
-                 "flip": "horizontal"},
+                 "flip": None},
 }
 
 # Which camera answers under /camera/stream, /camera/snapshot and
