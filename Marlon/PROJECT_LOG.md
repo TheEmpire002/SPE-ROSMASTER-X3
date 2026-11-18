@@ -812,6 +812,11 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
   - Derived wall times follow when NTP moves the clock after boot (a step over 2 s logs one `usb.log` line).
   - Minors: hub-port over-current is recognised, the snapshot stops at the incident end, a client that resets the connection prints no traceback, the back link works over IPv6, the install script uses `enable` + `restart`, and the unit adds `NoNewPrivileges` and `PrivateTmp`.
   - Result: all usbdiag tests and the full suite pass; still nothing tested on the real Pi.
+- **First check on the real Pi (fixes, 17.11.2026):** four bugs found and fixed test first.
+  - CPU busy loop: usbmon text files cannot be polled, so `select()` always returned at once (~20 % CPU). The loop now selects on kmsg only and reads usbmon every `USBMON_POLL_S` (0.2 s).
+  - Merged crashes: a mid-boot start replays the whole kmsg backlog before the first tick, so four storms became one incident. A trigger after a quiet gap now closes the open incident. The 4.2 s and 11.0 s storms of the real log are only 1.8 s apart and stay one incident.
+  - The motor tile said "Motoren stehen" with no traffic at all; it now says "Kein Verkehr – Server aus?".
+  - Reconnect counts sat on the wrong tile when the daemon started during a storm (no board hub yet). Events are now stored by port and resolved to tiles at render time.
 
 ---
 
