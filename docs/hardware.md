@@ -265,6 +265,13 @@ through the same serial connection as the drive; the driver serialises the
 writes. Standalone test: `testservomotor.py` on the branch
 `test-servomotor` (90° → 60° → 120°).
 
+**The camera blinds the lidar when tilted up.** Measured 18.11.: at 0° and
+tilted down the lidar sees ~22 points ahead per scan, at +15° only 7, at
++30° 6 (a 60° blind sector ahead, closer than `LIDAR_MIN_M` is filtered).
+Following then finds no distance to the person and does not drive.
+`CAMERA_TILT_MAX_DEG` is therefore 5°; raise it only once the mount keeps
+the camera out of the lidar plane.
+
 Check on the robot: at which servo angle the camera looks horizontally
 (`CAMERA_TILT_SERVO_CENTER_DEG`, assumed 90) and whether larger angles tilt
 it up (`CAMERA_TILT_SERVO_SIGN` = 1) or down (-1).

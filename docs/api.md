@@ -496,7 +496,8 @@ New 18.11. A servo on the expansion board (`CAMERA_TILT_CHANNEL`, default
 port S1) tilts the person camera up and down (`sensors/camera_tilt.py`).
 
 - Angle 0 = horizontal, positive = up, range `CAMERA_TILT_MIN_DEG` ..
-  `CAMERA_TILT_MAX_DEG` (±30°). Mapped to the servo with
+  `CAMERA_TILT_MAX_DEG` (-30° .. +5°: tilted up further, the camera blinds
+  the lidar ahead and following stops working). Mapped to the servo with
   `CAMERA_TILT_SERVO_CENTER_DEG` (90) and `CAMERA_TILT_SERVO_SIGN`.
 - **Auto** (default on, `CAMERA_TILT_AUTO`): while interaction runs
   (following, come here, ready) it keeps the head of the person in question

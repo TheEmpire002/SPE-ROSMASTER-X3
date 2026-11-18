@@ -865,7 +865,9 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
   - `config.py`: block `CAMERA_TILT_*`. Docs: `docs/api.md`, `docs/hardware.md`, `docs/architecture.md`.
 - **Result:** Compiles; not yet tested on the robot.
 - **Follow-up:** Servo is a Keyestudio 9g micro servo, control works on the robot. It moved in visible jumps (10 updates/s at 60°/s = 6° per update): now 50 updates/s, about 1° each. The 5° step buttons were replaced by a slider.
-- **Open:** Check whether gestures still work while the camera moves.
+- **Problem (18.11. afternoon):** Following stopped working: the robot turned towards the person but never drove forward. Live log of the follow state: mostly „richtet sich aus (Abstand unbekannt)“. The lidar had a 62° blind sector straight ahead (-37° to +25°, no points). Measured over SSH by tilting the camera: 0° and down ~22 points ahead per scan, +15° 7, +30° 6. Tilted up, the camera reaches into the lidar plane; auto mode tilts up when the person is close. Fix for now: `CAMERA_TILT_MAX_DEG` = 5°. Real fix: change the mount so the camera stays out of the lidar plane.
+- **Also fixed:** music did not resume after the robot spoke (`Mukke._start() got an unexpected keyword argument 'quelle'`, left over from the English rename: remembered keys German, parameters English).
+- **Open:** Check whether gestures still work while the camera moves. Find the exact tilt limit (between 0° and 15°).
 
 ---
 
