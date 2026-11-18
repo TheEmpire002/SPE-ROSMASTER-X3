@@ -317,6 +317,34 @@ def test_tick_runs_at_most_at_the_configured_rate():
     assert expected - 1 <= len(ticks) <= expected + 1, len(ticks)
 
 
+def test_capture_is_read_on_a_timer_not_every_wake():
+    src = mock.MockSources(speed=1.0, seed=1)
+    loop = ManualLoop(src, tempfile.mkdtemp(), 0.01, config.MOCK_START_MONO + 2.0)
+    loop.start()
+    assert loop.capture_bus is not None
+    reads = []
+    real_read = src.read_capture
+    src.read_capture = lambda: reads.append(src.now()) or real_read()
+    loop.run()
+    assert loop.wakes >= 199, loop.wakes
+    assert 2 <= len(reads) <= 2.0 / config.USBMON_POLL_S + 2, len(reads)
+
+
+def test_wait_never_selects_on_the_capture_fd():
+    src = mock.MockSources(speed=0.0)
+    src.kmsg_fd = lambda: 11
+    src.capture_fd = lambda: 22
+    loop = daemon._Loop(src, new_store(tempfile.mkdtemp()), threading.Event())
+    seen = []
+    real_select = daemon.select.select
+    daemon.select.select = lambda r, w, x, t: seen.append(list(r)) or ([], [], [])
+    try:
+        loop.wait()
+    finally:
+        daemon.select.select = real_select
+    assert seen == [[11]], seen
+
+
 def test_failing_state_call_does_not_drop_kernel_events():
     d = tempfile.mkdtemp()
     src = mock.MockSources(speed=0.0)

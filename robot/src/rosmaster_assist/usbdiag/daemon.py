@@ -278,12 +278,13 @@ class _Loop:
         self._apply(self._set_boot_wall, bw)
 
     def wait(self) -> None:
-        fds = [fd for fd in (self.src.kmsg_fd(), self.src.capture_fd()) if fd is not None]
-        if not fds:
+        # the capture fd is left out: usbmon has no poll op, so select would return at once and spin
+        fd = self.src.kmsg_fd()
+        if fd is None:
             self.stop.wait(config.LOOP_SELECT_S)
             return
         try:
-            select.select(fds, [], [], config.LOOP_SELECT_S)
+            select.select([fd], [], [], config.LOOP_SELECT_S)
         except (OSError, ValueError) as exc:
             self.guard.failed("select", exc)
             self.stop.wait(config.LOOP_SELECT_S)
@@ -295,6 +296,7 @@ class _Loop:
         next_sample = now
         next_proc = now
         next_tick = now
+        next_capture = now
         rescan_at: float | None = None
         while not self.stop.is_set():
             self.wait()
@@ -307,7 +309,8 @@ class _Loop:
                 if any(ev.port or ev.kind.startswith("driver_") for ev in events) and rescan_at is None:
                     rescan_at = now + config.TOPOLOGY_DEBOUNCE_S
 
-            if self.capture_bus is not None:
+            if self.capture_bus is not None and now >= next_capture:
+                next_capture = now + config.USBMON_POLL_S
                 urbs = self.guard.call("capture", src.read_capture)
                 if urbs is _FAILED:
                     self._close_capture("unavailable")

@@ -118,6 +118,7 @@ TILE_TECHNICAL_LINES = 20
 
 # daemon loop
 LOOP_SELECT_S = 0.25
+USBMON_POLL_S = 0.2  # usbmon text files cannot be polled (select always says readable), so they are read on a timer
 TOPOLOGY_DEBOUNCE_S = 0.2  # rescan this long after a kernel usb message
 SOURCE_RETRY_S = 5.0  # a failed source is tried again after this
 SOURCE_ERROR_REPEAT_S = 60.0  # the same error is logged at most once per this
