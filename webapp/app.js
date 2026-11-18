@@ -192,7 +192,9 @@ function handleMessage(msg) {
 
 // --- Camera tilt (servo of the person camera) ----------------------------------
 
-const TILT_STEP_DEG = 5;
+// while dragging, the slider shows the hand, not the robot's (older) value
+let tiltDragging = false;
+let tiltSent = 0;
 
 function showCameraTilt(st) {
   const on = !!(st && st.verfuegbar);
@@ -205,12 +207,23 @@ function showCameraTilt(st) {
   const deg = Math.round(st.winkel);
   const where = deg > 0 ? `${deg}° hoch` : deg < 0 ? `${-deg}° runter` : "waagerecht";
   el("val-neigung").textContent = where + (st.auto ? (st.verfolgt ? " · folgt der Person" : " · automatisch") : "");
+  const slider = el("neigung-regler");
+  slider.min = st.min;
+  slider.max = st.max;
+  if (!tiltDragging) slider.value = st.auto ? st.winkel : st.ziel;
   el("neigung-auto").checked = st.auto === true;
   el("neigung-auto-state").textContent = st.auto ? "an" : "aus";
 }
 
-el("btn-neigung-hoch").addEventListener("click", () => send({ type: "camera_tilt", schritt: TILT_STEP_DEG }));
-el("btn-neigung-runter").addEventListener("click", () => send({ type: "camera_tilt", schritt: -TILT_STEP_DEG }));
+function sendTilt(force) {
+  // at most ten per second while dragging; the robot moves smoothly in between
+  const now = Date.now();
+  if (!force && now - tiltSent < 100) return;
+  tiltSent = now;
+  send({ type: "camera_tilt", winkel: Number(el("neigung-regler").value) });
+}
+el("neigung-regler").addEventListener("input", () => { tiltDragging = true; sendTilt(false); });
+el("neigung-regler").addEventListener("change", () => { sendTilt(true); tiltDragging = false; });
 el("btn-neigung-gerade").addEventListener("click", () => send({ type: "camera_tilt", winkel: 0 }));
 el("neigung-auto").addEventListener("change", (e) => send({ type: "camera_tilt", auto: e.target.checked }));
 

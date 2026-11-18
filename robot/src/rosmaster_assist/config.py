@@ -1013,12 +1013,12 @@ CAMERA_TILT_MIN_DEG = -30.0
 CAMERA_TILT_MAX_DEG = 30.0
 # tilt at startup and where auto mode returns to when nobody is in view
 CAMERA_TILT_HOME_DEG = 0.0
-# step of the up/down buttons in the app (deg)
-CAMERA_TILT_STEP_DEG = 5.0
 # servo moves at most this fast (deg/s): no jerk in the picture, and small
 # current steps on the board instead of one big one (usb dropouts on the x3)
 CAMERA_TILT_SPEED_DEG_S = 60.0
-CAMERA_TILT_HZ = 10
+# update rate while moving: at 50 hz the servo gets about 1 degree per update
+# and moves smoothly instead of in visible jumps (only changes are sent)
+CAMERA_TILT_HZ = 50
 # auto mode: keep the head of the person in question at this height in the
 # image (0 top .. 1 bottom); room above it for raised arms (gestures)
 CAMERA_TILT_AUTO = True

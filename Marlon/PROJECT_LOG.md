@@ -861,10 +861,11 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
   - `drive/`: new optional `set_servo(channel, angle)` in `DriveBase`; `RosmasterDriver` uses `set_pwm_servo`, serial writes of drive and servo are serialised by a lock (stop goes through even if the lock is stuck); mock only logs.
   - `sensors/camera_tilt.py`: angle 0 = horizontal, + = up, limits ±30°, at most 60°/s, re-sent after a reconnect. Auto mode keeps the head (nose/eyes, otherwise top of the box) of the person from the interaction at 30 % of the image height. The correction starts from the tilt at the time the image was taken, so the delayed pose does not make it overshoot. Nobody in view for 4 s: slowly back to horizontal.
   - `interaction/behavior.py`: property `target_person` (followed person, in ready mode the largest).
-  - Protocol: command `camera_tilt` (`winkel`, `schritt`, `auto`), state field `kamera_neigung`. Web app: buttons ▲/▼/gerade and the switch „Kamera folgt der Person“ in the interaction panel.
+  - Protocol: command `camera_tilt` (`winkel`, `schritt`, `auto`), state field `kamera_neigung`. Web app: slider (sets the angle directly), button „gerade“ and the switch „Kamera folgt der Person“ in the interaction panel.
   - `config.py`: block `CAMERA_TILT_*`. Docs: `docs/api.md`, `docs/hardware.md`, `docs/architecture.md`.
 - **Result:** Compiles; not yet tested on the robot.
-- **Open:** On the robot check the servo centre (90° horizontal?) and the direction (`CAMERA_TILT_SERVO_SIGN`). Check whether gestures still work while the camera moves.
+- **Follow-up:** Servo is a Keyestudio 9g micro servo, control works on the robot. It moved in visible jumps (10 updates/s at 60°/s = 6° per update): now 50 updates/s, about 1° each. The 5° step buttons were replaced by a slider.
+- **Open:** Check whether gestures still work while the camera moves.
 
 ---
 

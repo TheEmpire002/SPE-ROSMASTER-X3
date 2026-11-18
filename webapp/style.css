@@ -204,6 +204,9 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 
 .home-buttons { display: grid; gap: 0.5rem; margin-top: 0.3rem; }
 
+.neigung { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.3rem; }
+.neigung input[type="range"] { flex: 1; min-width: 0; }
+
 .say-form { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
 .say-form input {
   flex: 1;

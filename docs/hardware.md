@@ -258,7 +258,7 @@ name shows the default camera (`orientierung`).
 
 ### Tilt servo of the person camera
 
-Since 18.11. the Logitech C270 sits on a servo that tilts it up and down.
+Since 18.11. the Logitech C270 sits on a servo (Keyestudio 9g micro servo) that tilts it up and down.
 It is plugged into the expansion board (port S1, `CAMERA_TILT_CHANNEL`) and
 moved with `Rosmaster_Lib`'s `set_pwm_servo(channel, angle)` (0..180°)
 through the same serial connection as the drive; the driver serialises the
