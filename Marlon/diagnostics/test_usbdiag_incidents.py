@@ -132,6 +132,36 @@ def test_idle_evidence_only_without_drive_commands():
     assert not any("davor" in e for e in idle.evidence)
 
 
+def _storm(tr, with_connect):
+    present = {"1-1", "1-1.4"}
+    tr.on_event(ev(100, "overcurrent", "1-1"), present)
+    tr.on_event(ev(100.5, "disconnect", "1-1.4"), present - {"1-1.4"})
+    if with_connect:
+        tr.on_event(ev(103, "connect", "1-1.4"), present)
+    return present
+
+
+def test_new_trigger_after_quiet_gap_closes_the_open_incident():
+    tr = incidents.IncidentTracker(10, 120)
+    present = _storm(tr, True)
+    started = tr.on_event(ev(200, "overcurrent", "1-1"), present)
+    assert started is not None and len(tr.closed) == 1
+    old = tr.closed[0]
+    assert old.start_mono == 100 and old.end_mono == 103 and old.recovered is True
+    assert tr.current.start_mono == 200
+    # without the reconnect the port stays missing
+    tr = incidents.IncidentTracker(10, 120)
+    present = _storm(tr, False)
+    tr.on_event(ev(200, "overcurrent", "1-1"), present)
+    old = tr.closed[0]
+    assert old.recovered is False and "1-1.4" in old.missing, (old.recovered, old.missing)
+    # a trigger inside the quiet period joins the open incident
+    tr = incidents.IncidentTracker(10, 120)
+    present = _storm(tr, True)
+    assert tr.on_event(ev(108, "overcurrent", "1-1"), present) is None
+    assert not tr.closed and tr.current.start_mono == 100
+
+
 if __name__ == "__main__":
     failed = 0
     for name, fn in sorted(globals().items()):

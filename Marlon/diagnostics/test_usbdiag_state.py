@@ -248,6 +248,28 @@ def test_board_silent_raises_incident():
         assert st.page(20.0)["incidents"][0]["reason"] == "Board-Mikrocontroller still"
 
 
+def test_backlog_storms_become_separate_incidents():
+    lines = mock._kmsg_records((FIXTURES / "kmsg_storms.txt").read_text(encoding="utf-8"))
+    with tempfile.TemporaryDirectory() as d:
+        st = state.DiagState(None, 1_700_000_000.0, 0.0)
+        last = 0.0
+        with st.lock:
+            st.apply_topology(fixture_topology(pathlib.Path(d)), now=10.0)
+            for line in lines:
+                e = kmsg.parse_record(line, 1_700_000_000.0)
+                if e:
+                    st.apply_event(e, backlog=True)
+                    last = max(last, e.mono)
+            st.tick(last + config.INCIDENT_QUIET_S + 1)
+        done = st.finished
+    starts = sorted(i["start_mono"] for i in done)
+    # the 4.2 s and 11.0 s storms are only 1.8 s apart in the real log, so they stay one incident
+    for want in (4.2, 78.2, 3344.5):
+        assert any(abs(s - want) <= 1 for s in starts), (want, starts)
+    assert len(done) >= 3, starts
+    assert all(i["end_mono"] - i["start_mono"] <= config.INCIDENT_MAX_S for i in done), starts
+
+
 def test_capture_without_traffic_says_server_off():
     with tempfile.TemporaryDirectory() as d:
         st = state.DiagState(None, 0.0, 0.0)

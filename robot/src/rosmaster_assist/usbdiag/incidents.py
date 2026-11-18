@@ -38,15 +38,33 @@ class IncidentTracker:
         self.quiet_s = quiet_s
         self.max_s = max_s
         self.current: Incident | None = None
+        # incidents closed by a later trigger, drained by the owner
+        self.closed: list[Incident] = []
 
     @staticmethod
     def _update_missing(inc: Incident, present: set[str]):
         inc.missing |= inc.baseline - present
         inc.missing -= present
 
+    def _close_by_gap(self, inc: Incident) -> None:
+        # event based: during a backlog replay the present set says nothing about this incident
+        last_state: dict[str, str] = {}
+        for old in inc.events:
+            if old.port and old.kind in ("disconnect", "connect"):
+                last_state[old.port] = old.kind
+        inc.missing = {p for p, kind in last_state.items() if kind == "disconnect"}
+        inc.recovered = not inc.missing
+        inc.end_mono = max((old.mono for old in inc.events), default=inc.last_trigger_mono)
+        self.closed.append(inc)
+        self.current = None
+
     def on_event(self, ev: Event, present: set[str]) -> Incident | None:
         inc = self.current
         started = None
+        if inc is not None and ev.kind in TRIGGER_KINDS and ev.mono - inc.last_trigger_mono >= self.quiet_s:
+            # a backlog is replayed before the first tick, so only the gap can separate crashes
+            self._close_by_gap(inc)
+            inc = None
         if inc is None:
             if ev.kind not in TRIGGER_KINDS:
                 return None

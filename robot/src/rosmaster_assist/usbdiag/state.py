@@ -151,6 +151,8 @@ class DiagState:
         elif tile and ev.kind == "protocol_error":
             self.proto_errors.setdefault(tile, []).append(ev.mono)
         self.tracker.on_event(ev, set(self.present))
+        while self.tracker.closed:
+            self._finish(self.tracker.closed.pop(0))
 
     def apply_urbs(self, urbs: list[Urb], now: float) -> None:
         target = self._target()

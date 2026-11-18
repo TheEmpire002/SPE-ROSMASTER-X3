@@ -1,0 +1,526 @@
+# real /dev/kmsg recording from the X3 (2026-11-17), only the records the parser turns into events;
+# four over-current storms at 4.2 s, 11.0 s, 78.2 s and 3344.5 s, each taking 1-1, 1-1.2, 1-1.4, 2-1 and 3-1 down
+6,408,742907,-;usb usb1: New USB device found, idVendor=1d6b, idProduct=0002, bcdDevice= 6.18
+ SUBSYSTEM=usb
+ DEVICE=c189:0
+6,415,743163,-;usb usb2: New USB device found, idVendor=1d6b, idProduct=0003, bcdDevice= 6.18
+ SUBSYSTEM=usb
+ DEVICE=c189:128
+6,429,764179,-;usb usb3: New USB device found, idVendor=1d6b, idProduct=0002, bcdDevice= 6.18
+ SUBSYSTEM=usb
+ DEVICE=c189:256
+6,436,764374,-;usb usb4: New USB device found, idVendor=1d6b, idProduct=0003, bcdDevice= 6.18
+ SUBSYSTEM=usb
+ DEVICE=c189:384
+6,462,994251,-;usb 1-1: new high-speed USB device number 2 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:1-1
+6,464,1014303,-;usb 3-1: new high-speed USB device number 2 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:3-1
+6,492,1142672,-;usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+ SUBSYSTEM=usb
+ DEVICE=c189:1
+6,496,1157197,-;usb 3-1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+ SUBSYSTEM=usb
+ DEVICE=c189:257
+6,503,1285975,-;usb 2-1: new SuperSpeed USB device number 2 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:2-1
+6,504,1380433,-;usb 2-1: New USB device found, idVendor=2109, idProduct=0817, bcdDevice= 0.50
+ SUBSYSTEM=usb
+ DEVICE=c189:129
+6,510,1498247,-;usb 3-1.1: new high-speed USB device number 3 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:3-1.1
+6,511,1594095,-;usb 3-1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+ SUBSYSTEM=usb
+ DEVICE=c189:258
+6,515,1690239,-;usb 3-1.2: new high-speed USB device number 4 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:3-1.2
+6,516,1800356,-;usb 3-1.2: New USB device found, idVendor=2bc5, idProduct=050f, bcdDevice= 1.00
+ SUBSYSTEM=usb
+ DEVICE=c189:259
+6,521,1954235,-;usb 1-1.2: new full-speed USB device number 3 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:1-1.2
+6,523,2099598,-;usb 1-1.2: New USB device found, idVendor=10c4, idProduct=ea60, bcdDevice= 1.00
+ SUBSYSTEM=usb
+ DEVICE=c189:2
+6,528,2222240,-;usb 1-1.4: new full-speed USB device number 4 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:1-1.4
+6,529,2364112,-;usb 1-1.4: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice=81.34
+ SUBSYSTEM=usb
+ DEVICE=c189:3
+5,656,4238424,-;usb usb1-port1: over-current change #1
+5,657,4242381,-;usb usb3-port1: over-current change #1
+5,658,4262327,-;usb usb4-port1: over-current change #1
+6,662,4370257,-;usb 3-1: USB disconnect, device number 2
+ SUBSYSTEM=usb
+ DEVICE=c189:257
+6,663,4370264,-;usb 3-1.1: USB disconnect, device number 3
+ SUBSYSTEM=usb
+ DEVICE=c189:258
+6,664,4370492,-;usb 1-1: USB disconnect, device number 2
+ SUBSYSTEM=usb
+ DEVICE=c189:1
+6,665,4370578,-;usb 1-1.2: USB disconnect, device number 3
+ SUBSYSTEM=usb
+ DEVICE=c189:2
+6,666,4370602,-;usb 3-1.2: USB disconnect, device number 4
+ SUBSYSTEM=usb
+ DEVICE=c189:259
+5,667,4370892,-;usb usb2-port1: over-current change #1
+6,668,4372500,-;usb 1-1.4: USB disconnect, device number 4
+ SUBSYSTEM=usb
+ DEVICE=c189:3
+6,672,4582254,-;usb 2-1: USB disconnect, device number 2
+ SUBSYSTEM=usb
+ DEVICE=c189:129
+6,674,4662249,-;usb 3-1: new high-speed USB device number 5 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:3-1
+6,675,4674235,-;usb 1-1: new high-speed USB device number 5 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:1-1
+6,676,4801268,-;usb 3-1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+ SUBSYSTEM=usb
+ DEVICE=c189:260
+6,679,4813615,-;usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+ SUBSYSTEM=usb
+ DEVICE=c189:4
+5,685,4864606,-;usb usb3-port2: over-current change #1
+5,688,5057229,-;usb usb1-port2: over-current change #1
+6,689,5142237,-;usb 3-1.1: new high-speed USB device number 6 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:3-1.1
+6,690,5234164,-;usb 3-1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+ SUBSYSTEM=usb
+ DEVICE=c189:261
+6,694,5326242,-;usb 3-1.2: new high-speed USB device number 7 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:3-1.2
+6,695,5436301,-;usb 3-1.2: New USB device found, idVendor=2bc5, idProduct=050f, bcdDevice= 1.00
+ SUBSYSTEM=usb
+ DEVICE=c189:262
+5,700,5577266,-;usb usb1-port1: over-current change #2
+5,701,5577313,-;usb usb3-port1: over-current change #2
+3,703,5579500,-;usb 1-1-port2: cannot reset (err = -71)
+3,704,5579868,-;usb 1-1-port2: cannot reset (err = -71)
+3,705,5580242,-;usb 1-1-port2: cannot reset (err = -71)
+3,706,5580617,-;usb 1-1-port2: cannot reset (err = -71)
+3,709,5581368,-;usb 1-1-port2: cannot reset (err = -71)
+3,710,5581742,-;usb 1-1-port2: cannot reset (err = -71)
+3,711,5582118,-;usb 1-1-port2: cannot reset (err = -71)
+3,712,5582498,-;usb 1-1-port2: cannot reset (err = -71)
+3,713,5582869,-;usb 1-1-port2: cannot reset (err = -71)
+5,717,5602366,-;usb usb2-port1: over-current change #2
+5,718,5602454,-;usb usb4-port1: over-current change #2
+6,719,5706279,-;usb 1-1: USB disconnect, device number 5
+ SUBSYSTEM=usb
+ DEVICE=c189:4
+6,720,5706310,-;usb 3-1: USB disconnect, device number 5
+ SUBSYSTEM=usb
+ DEVICE=c189:260
+6,721,5706312,-;usb 3-1.1: USB disconnect, device number 6
+ SUBSYSTEM=usb
+ DEVICE=c189:261
+6,722,5706622,-;usb 3-1.2: USB disconnect, device number 7
+ SUBSYSTEM=usb
+ DEVICE=c189:262
+5,731,5810423,-;usb usb2-port1: over-current change #3
+5,732,5810490,-;usb usb4-port1: over-current change #3
+5,734,5926320,-;usb usb3-port2: over-current change #2
+5,735,6018310,-;usb usb4-port1: over-current change #4
+5,736,6054269,-;usb usb3-port1: over-current change #3
+6,737,6266365,-;usb 2-1: new SuperSpeed USB device number 3 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:2-1
+6,738,6286191,-;usb 2-1: New USB device found, idVendor=2109, idProduct=0817, bcdDevice= 0.50
+ SUBSYSTEM=usb
+ DEVICE=c189:130
+5,744,6346053,-;usb usb2-port1: over-current change #4
+6,745,6430240,-;usb 3-1: new high-speed USB device number 8 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:3-1
+6,746,6569233,-;usb 3-1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+ SUBSYSTEM=usb
+ DEVICE=c189:263
+5,751,6822270,-;usb usb1-port2: over-current change #2
+6,752,6902234,-;usb 3-1.1: new high-speed USB device number 9 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:3-1.1
+5,753,6950266,-;usb usb1-port1: over-current change #3
+6,754,6994130,-;usb 3-1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+ SUBSYSTEM=usb
+ DEVICE=c189:264
+6,758,7086232,-;usb 3-1.2: new high-speed USB device number 10 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:3-1.2
+6,759,7196516,-;usb 3-1.2: New USB device found, idVendor=2bc5, idProduct=050f, bcdDevice= 1.00
+ SUBSYSTEM=usb
+ DEVICE=c189:265
+6,764,7330233,-;usb 1-1: new high-speed USB device number 10 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:1-1
+6,765,7469630,-;usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+ SUBSYSTEM=usb
+ DEVICE=c189:9
+5,778,8103130,-;usb usb1-port1: over-current change #4
+5,779,8103176,-;usb usb3-port1: over-current change #4
+5,783,8127278,-;usb usb4-port1: over-current change #5
+5,826,8230368,-;usb usb2-port1: over-current change #5
+6,827,8230417,-;usb 1-1: USB disconnect, device number 10
+ SUBSYSTEM=usb
+ DEVICE=c189:9
+6,829,8230517,-;usb 3-1: USB disconnect, device number 8
+ SUBSYSTEM=usb
+ DEVICE=c189:263
+6,830,8230520,-;usb 3-1.1: USB disconnect, device number 9
+ SUBSYSTEM=usb
+ DEVICE=c189:264
+6,838,8285230,-;usb 3-1.2: USB disconnect, device number 10
+ SUBSYSTEM=usb
+ DEVICE=c189:265
+5,839,8334340,-;usb usb4-port1: over-current change #6
+5,840,8394351,-;usb usb1-port2: over-current change #3
+6,841,8438281,-;usb 2-1: USB disconnect, device number 3
+ SUBSYSTEM=usb
+ DEVICE=c189:130
+5,842,8439554,-;usb usb2-port1: over-current change #6
+5,845,8482427,-;usb usb3-port2: over-current change #3
+5,846,8522343,-;usb usb1-port1: over-current change #5
+5,848,8542328,-;usb usb4-port1: over-current change #7
+5,854,8614309,-;usb usb3-port1: over-current change #5
+5,855,8646292,-;usb usb2-port1: over-current change #7
+5,856,8794350,-;usb usb4-port1: over-current change #8
+5,860,8922308,-;usb usb3-port2: over-current change #4
+5,861,8930283,-;usb usb1-port2: over-current change #4
+5,862,9002308,-;usb usb2-port1: over-current change #8
+5,863,9050302,-;usb usb3-port1: over-current change #6
+5,864,9062310,-;usb usb1-port1: over-current change #6
+6,874,9438243,-;usb 3-1: new high-speed USB device number 11 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:3-1
+6,875,9442253,-;usb 1-1: new high-speed USB device number 11 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:1-1
+6,876,9581264,-;usb 3-1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+ SUBSYSTEM=usb
+ DEVICE=c189:266
+6,879,9583120,-;usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+ SUBSYSTEM=usb
+ DEVICE=c189:10
+6,887,9703561,-;usb 2-1: new SuperSpeed USB device number 4 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:2-1
+6,888,9828504,-;usb 2-1: New USB device found, idVendor=2109, idProduct=0817, bcdDevice= 0.50
+ SUBSYSTEM=usb
+ DEVICE=c189:131
+6,894,9914247,-;usb 3-1.1: new high-speed USB device number 12 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:3-1.1
+6,895,10010042,-;usb 3-1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+ SUBSYSTEM=usb
+ DEVICE=c189:267
+6,899,10402250,-;usb 1-1.2: new full-speed USB device number 12 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:1-1.2
+6,900,10414245,-;usb 3-1.2: new high-speed USB device number 13 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:3-1.2
+6,901,10524321,-;usb 3-1.2: New USB device found, idVendor=2bc5, idProduct=050f, bcdDevice= 1.00
+ SUBSYSTEM=usb
+ DEVICE=c189:268
+6,906,10547672,-;usb 1-1.2: New USB device found, idVendor=10c4, idProduct=ea60, bcdDevice= 1.00
+ SUBSYSTEM=usb
+ DEVICE=c189:11
+6,912,10553005,-;usb 1-1.2: cp210x converter now attached to ttyUSB0
+ SUBSYSTEM=usb
+ DEVICE=c189:11
+6,914,10674243,-;usb 1-1.4: new full-speed USB device number 13 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:1-1.4
+6,915,10820186,-;usb 1-1.4: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice=81.34
+ SUBSYSTEM=usb
+ DEVICE=c189:12
+6,919,10859394,-;usb 1-1.4: ch341-uart converter now attached to ttyUSB1
+ SUBSYSTEM=usb
+ DEVICE=c189:12
+5,920,10872346,-;usb usb3-port1: over-current change #7
+5,921,10872382,-;usb usb1-port1: over-current change #7
+3,922,10897402,-;usb 1-1: clear tt 4 (8040) error -71
+ SUBSYSTEM=usb
+ DEVICE=c189:10
+5,923,10898319,-;usb usb4-port1: over-current change #9
+6,924,10998258,-;usb 3-1: USB disconnect, device number 11
+ SUBSYSTEM=usb
+ DEVICE=c189:266
+6,925,10998266,-;usb 3-1.1: USB disconnect, device number 12
+ SUBSYSTEM=usb
+ DEVICE=c189:267
+6,926,10998407,-;usb 1-1: USB disconnect, device number 11
+ SUBSYSTEM=usb
+ DEVICE=c189:10
+6,927,10998410,-;usb 1-1.2: USB disconnect, device number 12
+ SUBSYSTEM=usb
+ DEVICE=c189:11
+6,928,11000358,-;cp210x ttyUSB0: cp210x converter now disconnected from ttyUSB0
+ SUBSYSTEM=usb-serial
+ DEVICE=+usb-serial:ttyUSB0
+6,930,11002055,-;usb 1-1.4: USB disconnect, device number 13
+ SUBSYSTEM=usb
+ DEVICE=c189:12
+5,931,11002440,-;usb usb2-port1: over-current change #9
+6,932,11003576,-;usb 3-1.2: USB disconnect, device number 13
+ SUBSYSTEM=usb
+ DEVICE=c189:268
+6,933,11006507,-;ch341-uart ttyUSB1: ch341-uart converter now disconnected from ttyUSB1
+ SUBSYSTEM=usb-serial
+ DEVICE=+usb-serial:ttyUSB1
+5,935,11106384,-;usb usb4-port1: over-current change #10
+5,939,11182321,-;usb usb1-port2: over-current change #5
+5,941,11194329,-;usb usb3-port2: over-current change #5
+6,942,11214263,-;usb 2-1: USB disconnect, device number 4
+ SUBSYSTEM=usb
+ DEVICE=c189:131
+5,943,11226018,-;usb usb2-port1: over-current change #10
+5,944,11310330,-;usb usb1-port1: over-current change #8
+5,945,11318384,-;usb usb4-port1: over-current change #11
+5,946,11326328,-;usb usb3-port1: over-current change #8
+5,947,11430334,-;usb usb2-port1: over-current change #11
+5,948,11526324,-;usb usb4-port1: over-current change #12
+5,949,11682335,-;usb usb3-port2: over-current change #6
+5,950,11698349,-;usb usb1-port2: over-current change #6
+5,951,11738329,-;usb usb4-port1: over-current change #13
+5,952,11770319,-;usb usb2-port1: over-current change #12
+5,953,11810940,-;usb usb3-port1: over-current change #9
+5,954,11826322,-;usb usb1-port1: over-current change #9
+6,955,12190246,-;usb 3-1: new high-speed USB device number 14 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:3-1
+6,956,12202244,-;usb 1-1: new high-speed USB device number 14 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:1-1
+6,957,12329291,-;usb 3-1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+ SUBSYSTEM=usb
+ DEVICE=c189:269
+6,960,12343514,-;usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+ SUBSYSTEM=usb
+ DEVICE=c189:13
+6,968,12486519,-;usb 2-1: new SuperSpeed USB device number 5 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:2-1
+6,969,12580277,-;usb 2-1: New USB device found, idVendor=2109, idProduct=0817, bcdDevice= 0.50
+ SUBSYSTEM=usb
+ DEVICE=c189:132
+6,975,12666257,-;usb 3-1.1: new high-speed USB device number 15 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:3-1.1
+6,976,12758064,-;usb 3-1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+ SUBSYSTEM=usb
+ DEVICE=c189:270
+6,980,13154246,-;usb 1-1.2: new full-speed USB device number 15 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:1-1.2
+6,981,13174240,-;usb 3-1.2: new high-speed USB device number 16 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:3-1.2
+6,982,13284591,-;usb 3-1.2: New USB device found, idVendor=2bc5, idProduct=050f, bcdDevice= 1.00
+ SUBSYSTEM=usb
+ DEVICE=c189:271
+6,987,13295564,-;usb 1-1.2: New USB device found, idVendor=10c4, idProduct=ea60, bcdDevice= 1.00
+ SUBSYSTEM=usb
+ DEVICE=c189:14
+6,993,13301028,-;usb 1-1.2: cp210x converter now attached to ttyUSB0
+ SUBSYSTEM=usb
+ DEVICE=c189:14
+6,995,13422242,-;usb 1-1.4: new full-speed USB device number 16 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:1-1.4
+6,996,13564080,-;usb 1-1.4: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice=81.34
+ SUBSYSTEM=usb
+ DEVICE=c189:15
+6,1000,13611516,-;usb 1-1.4: ch341-uart converter now attached to ttyUSB1
+ SUBSYSTEM=usb
+ DEVICE=c189:15
+5,1003,78084424,-;usb usb1-port1: over-current change #10
+5,1004,78084504,-;usb usb3-port1: over-current change #10
+5,1005,78104319,-;usb usb4-port1: over-current change #14
+5,1006,78208295,-;usb usb2-port1: over-current change #13
+6,1007,78212283,-;usb 1-1: USB disconnect, device number 14
+ SUBSYSTEM=usb
+ DEVICE=c189:13
+6,1008,78212294,-;usb 1-1.2: USB disconnect, device number 15
+ SUBSYSTEM=usb
+ DEVICE=c189:14
+6,1009,78212522,-;cp210x ttyUSB0: cp210x converter now disconnected from ttyUSB0
+ SUBSYSTEM=usb-serial
+ DEVICE=+usb-serial:ttyUSB0
+6,1011,78212625,-;usb 3-1: USB disconnect, device number 14
+ SUBSYSTEM=usb
+ DEVICE=c189:269
+6,1012,78212630,-;usb 3-1.1: USB disconnect, device number 15
+ SUBSYSTEM=usb
+ DEVICE=c189:270
+6,1013,78214382,-;usb 1-1.4: USB disconnect, device number 16
+ SUBSYSTEM=usb
+ DEVICE=c189:15
+6,1014,78222587,-;ch341-uart ttyUSB1: ch341-uart converter now disconnected from ttyUSB1
+ SUBSYSTEM=usb-serial
+ DEVICE=+usb-serial:ttyUSB1
+6,1016,78224944,-;usb 3-1.2: USB disconnect, device number 16
+ SUBSYSTEM=usb
+ DEVICE=c189:271
+5,1017,78312309,-;usb usb4-port1: over-current change #15
+5,1018,78400310,-;usb usb3-port2: over-current change #7
+5,1019,78415465,-;usb usb1-port2: over-current change #7
+6,1020,78416204,-;usb 2-1: USB disconnect, device number 5
+ SUBSYSTEM=usb
+ DEVICE=c189:132
+5,1021,78427252,-;usb usb2-port1: over-current change #14
+5,1022,78520235,-;usb usb4-port1: over-current change #16
+5,1023,78532212,-;usb usb3-port1: over-current change #11
+5,1024,78544664,-;usb usb1-port1: over-current change #11
+5,1025,78632182,-;usb usb2-port1: over-current change #15
+6,1026,78908074,-;usb 3-1: new high-speed USB device number 17 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:3-1
+6,1027,78920069,-;usb 1-1: new high-speed USB device number 17 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:1-1
+6,1028,79047019,-;usb 3-1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+ SUBSYSTEM=usb
+ DEVICE=c189:272
+6,1031,79060994,-;usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+ SUBSYSTEM=usb
+ DEVICE=c189:16
+6,1039,79179163,-;usb 2-1: new SuperSpeed USB device number 6 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:2-1
+6,1040,79303625,-;usb 2-1: New USB device found, idVendor=2109, idProduct=0817, bcdDevice= 0.50
+ SUBSYSTEM=usb
+ DEVICE=c189:133
+6,1046,79388008,-;usb 3-1.1: new high-speed USB device number 18 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:3-1.1
+6,1047,79479790,-;usb 3-1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+ SUBSYSTEM=usb
+ DEVICE=c189:273
+6,1051,79891935,-;usb 3-1.2: new high-speed USB device number 19 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:3-1.2
+6,1052,79903937,-;usb 1-1.2: new full-speed USB device number 18 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:1-1.2
+6,1053,80018195,-;usb 3-1.2: New USB device found, idVendor=2bc5, idProduct=050f, bcdDevice= 1.00
+ SUBSYSTEM=usb
+ DEVICE=c189:274
+6,1058,80047309,-;usb 1-1.2: New USB device found, idVendor=10c4, idProduct=ea60, bcdDevice= 1.00
+ SUBSYSTEM=usb
+ DEVICE=c189:17
+6,1064,80052657,-;usb 1-1.2: cp210x converter now attached to ttyUSB0
+ SUBSYSTEM=usb
+ DEVICE=c189:17
+6,1066,80355864,-;usb 1-1.4: new full-speed USB device number 19 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:1-1.4
+6,1067,80497693,-;usb 1-1.4: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice=81.34
+ SUBSYSTEM=usb
+ DEVICE=c189:18
+6,1071,80558985,-;usb 1-1.4: ch341-uart converter now attached to ttyUSB1
+ SUBSYSTEM=usb
+ DEVICE=c189:18
+5,1072,3344354809,-;usb usb1-port1: over-current change #12
+5,1073,3344355146,-;usb usb3-port1: over-current change #12
+5,1074,3344375918,-;usb usb4-port1: over-current change #17
+6,1075,3344479841,-;usb 1-1: USB disconnect, device number 17
+ SUBSYSTEM=usb
+ DEVICE=c189:16
+6,1076,3344479849,-;usb 1-1.2: USB disconnect, device number 18
+ SUBSYSTEM=usb
+ DEVICE=c189:17
+5,1077,3344480003,-;usb usb2-port1: over-current change #16
+6,1078,3344480035,-;cp210x ttyUSB0: cp210x converter now disconnected from ttyUSB0
+ SUBSYSTEM=usb-serial
+ DEVICE=+usb-serial:ttyUSB0
+6,1080,3344480142,-;usb 3-1: USB disconnect, device number 17
+ SUBSYSTEM=usb
+ DEVICE=c189:272
+6,1081,3344480145,-;usb 3-1.1: USB disconnect, device number 18
+ SUBSYSTEM=usb
+ DEVICE=c189:273
+6,1082,3344480712,-;usb 1-1.4: USB disconnect, device number 19
+ SUBSYSTEM=usb
+ DEVICE=c189:18
+6,1083,3344487972,-;ch341-uart ttyUSB1: ch341-uart converter now disconnected from ttyUSB1
+ SUBSYSTEM=usb-serial
+ DEVICE=+usb-serial:ttyUSB1
+6,1085,3344489324,-;usb 3-1.2: USB disconnect, device number 19
+ SUBSYSTEM=usb
+ DEVICE=c189:274
+5,1086,3344583997,-;usb usb4-port1: over-current change #18
+5,1087,3344659913,-;usb usb1-port2: over-current change #8
+5,1088,3344679901,-;usb usb3-port2: over-current change #8
+6,1089,3344687864,-;usb 2-1: USB disconnect, device number 6
+ SUBSYSTEM=usb
+ DEVICE=c189:133
+5,1090,3344692777,-;usb usb2-port1: over-current change #17
+5,1091,3344791954,-;usb usb1-port1: over-current change #13
+5,1092,3344792023,-;usb usb4-port1: over-current change #19
+5,1093,3344807919,-;usb usb3-port1: over-current change #13
+5,1094,3344903898,-;usb usb2-port1: over-current change #18
+5,1095,3344999901,-;usb usb4-port1: over-current change #20
+6,1096,3345175869,-;usb 1-1: new high-speed USB device number 20 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:1-1
+6,1097,3345183832,-;usb 3-1: new high-speed USB device number 20 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:3-1
+6,1098,3345316604,-;usb 1-1: New USB device found, idVendor=2109, idProduct=2817, bcdDevice= 0.50
+ SUBSYSTEM=usb
+ DEVICE=c189:19
+6,1102,3345326754,-;usb 3-1: New USB device found, idVendor=05e3, idProduct=0608, bcdDevice=85.37
+ SUBSYSTEM=usb
+ DEVICE=c189:275
+5,1109,3345391527,-;usb usb3-port2: over-current change #9
+6,1110,3345459878,-;usb 2-1: new SuperSpeed USB device number 7 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:2-1
+5,1111,3345555891,-;usb usb1-port2: over-current change #9
+6,1112,3345558867,-;usb 2-1: New USB device found, idVendor=2109, idProduct=0817, bcdDevice= 0.50
+ SUBSYSTEM=usb
+ DEVICE=c189:134
+6,1118,3345667841,-;usb 3-1.1: new high-speed USB device number 21 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:3-1.1
+5,1119,3345683899,-;usb usb1-port1: over-current change #14
+6,1120,3345759779,-;usb 3-1.1: New USB device found, idVendor=2bc5, idProduct=060f, bcdDevice= 0.01
+ SUBSYSTEM=usb
+ DEVICE=c189:276
+6,1124,3346131855,-;usb 1-1.2: new full-speed USB device number 21 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:1-1.2
+6,1125,3346171848,-;usb 3-1.2: new high-speed USB device number 22 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:3-1.2
+6,1126,3346277155,-;usb 1-1.2: New USB device found, idVendor=10c4, idProduct=ea60, bcdDevice= 1.00
+ SUBSYSTEM=usb
+ DEVICE=c189:20
+6,1132,3346282733,-;usb 1-1.2: cp210x converter now attached to ttyUSB0
+ SUBSYSTEM=usb
+ DEVICE=c189:20
+6,1133,3346294193,-;usb 3-1.2: New USB device found, idVendor=2bc5, idProduct=050f, bcdDevice= 1.00
+ SUBSYSTEM=usb
+ DEVICE=c189:277
+6,1139,3346827840,-;usb 1-1.4: new full-speed USB device number 22 using xhci-hcd
+ SUBSYSTEM=usb
+ DEVICE=+usb:1-1.4
+6,1140,3346969691,-;usb 1-1.4: New USB device found, idVendor=1a86, idProduct=7523, bcdDevice=81.34
+ SUBSYSTEM=usb
+ DEVICE=c189:21
+6,1144,3347032621,-;usb 1-1.4: ch341-uart converter now attached to ttyUSB1
+ SUBSYSTEM=usb
+ DEVICE=c189:21
