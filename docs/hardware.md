@@ -628,6 +628,31 @@ and new firmware may change the protocol to `Rosmaster_Lib` and our driver.
 Remedy: board V3.0, or supply the Pi from the battery via a separate
 5 V/5 A converter with the Pi 5 protocol (USB PD).
 
+### Storms at rest (usbdiag, 18.11.)
+
+The first morning with the USB diagnosis daemon (see "USB diagnosis"
+below) on the real Pi shows that the resets also happen **with the robot at
+rest**: server off, motors still, no apt/dpkg.
+
+- **Boot:** a storm of about 50 s right after power-on (1.0–50.6 s).
+- **After boot:** storms of 6–18 s at 87, 149, 245, 643, 1386, 1410, 1504,
+  1527, 2614 and 2650 s after boot, i.e. every 1 to 10 minutes. Each one hits
+  all root ports, including the sockets of the Pi itself.
+- **Pattern:** the camera and the Orbbec hub (3-1, 3-1.1, 3-1.2) re-enumerate,
+  and 0–0.4 s later the kernel reports over-current. At 2650 s the Orbbec
+  (3-1.1), the board MCU (CH340, 1-1.4) and the camera (3-1.2) dropped out
+  together.
+- **Supply looks fine:** the Pi's 5 V input stays at 4.97–5.09 V,
+  `get_throttled` = `0x0`, 38–49 °C. `usb_max_current_enable=1` and
+  `PSU_MAX_CURRENT=5000` are set.
+
+So neither the motors, heat nor the Pi's own supply explain these storms.
+The likely cause is the board's hub or the Orbbec feeding current back on
+VBUS, or VBUS sagging on that side, which makes the Pi's shared switch trip
+on all ports. Next test (unplugging, no new hardware): run at rest with the
+Orbbec unplugged, then additionally the C270, and compare the storm rate on
+the usbdiag page.
+
 ### What to do on the robot (hardware)
 
 Sorted by effect, simplest first:

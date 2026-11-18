@@ -819,6 +819,13 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
   - Reconnect counts sat on the wrong tile when the daemon started during a storm (no board hub yet). Events are now stored by port and resolved to tiles at render time.
   - Clock step (task 11): incident and tile event times were frozen at parse time, so after NTP stepped the clock the page still showed yesterday's time (15:00 instead of 09:01). Times are now computed as `boot_wall + mono` at render time, and `DiagState.set_boot_wall` re-stamps finished incidents of the current boot (also at start, for files an earlier run wrote). Ids and file names stay; jitter below 2 s rewrites nothing.
   - Duplicate incident file (task 12): the kernel ring buffer wrapped during a long over-current storm, so a restart replayed a truncated backlog (boot storm start 5.0 s instead of 1.0 s) and `_finish` wrote a second file for the same incident. It matched only an equal start. Now an incident of the same boot whose time range overlaps a stored one is the same incident: inside it, nothing is written; reaching further, the stored entry is extended under its old name (later end, new events and reasons added; start, time and early events stay).
+- **Deploy and first finding (18.11.2026):**
+  - Tasks 11 and 12 run on the Pi. After a service restart, no duplicate incident file was written (only the duplicate from before the fix is still there).
+  - Finding: the resets happen at rest too, with the server off and motors still:
+    - a 50 s storm at boot, then one every 1–10 min;
+    - each time the camera or Orbbec hub re-enumerates first and over-current follows within 0.4 s;
+    - 5 V at 4.97–5.09 V, no throttling, under 50 °C.
+  - Suspected cause: the board hub or the Orbbec feeds back on VBUS. Next test is unplugging (Orbbec, then the C270). Details: `docs/hardware.md`, "Storms at rest".
 
 ---
 
