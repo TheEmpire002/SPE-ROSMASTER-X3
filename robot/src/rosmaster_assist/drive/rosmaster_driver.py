@@ -308,21 +308,32 @@ class RosmasterDriver(DriveBase):
         bot = self._bot
         if bot is None:
             return
+        # same serial line as drive and servo: never interleave the bytes
+        if not self._write_lock.acquire(timeout=0.2):
+            log.warning("Buzzer skipped, serial line busy")
+            return
         try:
             bot.set_beep(ms)
         except Exception:
             log.exception("Buzzer failed")
+        finally:
+            self._write_lock.release()
 
     def set_servo(self, channel: int, angle: int) -> bool:
         bot = self._bot
         if bot is None:
             return False
+        # a hanging write must not stall the tilt loop for good: the caller
+        # tries again on its next tick
+        if not self._write_lock.acquire(timeout=0.2):
+            return False
         try:
-            with self._write_lock:
-                bot.set_pwm_servo(channel, angle)
+            bot.set_pwm_servo(channel, angle)
         except Exception as exc:
             self._lost(f"servo write failed: {exc}")
             return False
+        finally:
+            self._write_lock.release()
         return True
 
     def read_motion(self) -> tuple[float, float, float] | None:

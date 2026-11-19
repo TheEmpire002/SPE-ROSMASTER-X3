@@ -1242,6 +1242,12 @@ CAMERA_TILT_DEADBAND = 0.06
 CAMERA_TILT_GAIN = 0.5
 # keypoints (nose, eyes) count from this confidence on
 CAMERA_TILT_KP_MIN = 0.4
+# without head keypoints: the head centre lies this share of the box height
+# below its top; a box top above this (share of the image) is cut off, the
+# head is then taken as being at CAMERA_TILT_HEAD_ABOVE_Y (above the picture)
+CAMERA_TILT_HEAD_BOX_SHARE = 0.08
+CAMERA_TILT_BOX_TOP_CUT = 0.01
+CAMERA_TILT_HEAD_ABOVE_Y = -0.05
 # nobody in view for this long (s): auto mode turns back to the home tilt,
 # slowly so a person stepping back into view is not lost again
 CAMERA_TILT_RETURN_S = 4.0

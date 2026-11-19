@@ -1661,8 +1661,10 @@ async def _handle(
             schritt = float(msg["schritt"]) if "schritt" in msg else None
         except (TypeError, ValueError):
             return error_message("camera_tilt: winkel und schritt müssen Zahlen sein")
+        if "auto" in msg and not isinstance(msg["auto"], bool):
+            return error_message("camera_tilt: auto muss true oder false sein")
         if "auto" in msg:
-            camera_tilt.set_auto(bool(msg["auto"]))
+            camera_tilt.set_auto(msg["auto"])
         if winkel is not None:
             camera_tilt.set(winkel)
         elif schritt is not None:
