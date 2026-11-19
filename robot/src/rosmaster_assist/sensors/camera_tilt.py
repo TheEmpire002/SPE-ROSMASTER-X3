@@ -61,10 +61,9 @@ def head_y(person: dict) -> float | None:
     box = person.get("box")
     if not box or len(box) < 4:
         return None
-    if box[1] <= 0.01:
-        return -0.05
-    # the head centre lies about a twelfth of the body height below the top
-    return box[1] + 0.08 * (box[3] - box[1])
+    if box[1] <= config.CAMERA_TILT_BOX_TOP_CUT:
+        return config.CAMERA_TILT_HEAD_ABOVE_Y
+    return box[1] + config.CAMERA_TILT_HEAD_BOX_SHARE * (box[3] - box[1])
 
 
 def vertical_fov(horizontal_deg: float) -> float:
