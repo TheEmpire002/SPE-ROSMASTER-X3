@@ -277,6 +277,20 @@ def create_mapping_router(manager: MappingManager | None = None, drive=None) -> 
             raise HTTPException(status_code=404, detail="Foto nicht gefunden.")
         return {"geloescht": photo_id}
 
+    @router.post("/api/mapping/panorama")
+    async def panorama_start() -> dict[str, Any]:
+        control = _control()
+        error = control.start_panorama()
+        if error:
+            raise HTTPException(status_code=409, detail=error)
+        return control.display()
+
+    @router.post("/api/mapping/panorama/stop")
+    async def panorama_stop() -> dict[str, Any]:
+        control = _control()
+        control.cancel_panorama("vom Nutzer abgebrochen")
+        return control.display()
+
     @router.get("/api/mapping/fotos/{name}/{filename}", include_in_schema=False)
     async def photos_file(name: str, filename: str) -> FileResponse:
         path = _photos().file(name, filename)

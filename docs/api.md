@@ -1019,6 +1019,8 @@ User interface: `GET /map`.
 | `POST /api/mapping/hauptkarte/uebernehmen` | after SLAM: the SLAM map becomes the main map (old one to `backups/`), the pose stays |
 | `POST /api/mapping/hauptkarte/verwerfen` | after SLAM: back to the main map, the pose is searched where the odometry expects it |
 | `GET /api/mapping/fotos` | photos of the current map (new 18.11., see "Photos on the map"): `karte`, `auto`, `verfuegbar`, `fotos` (list of `id`, `datei`, `x`, `y` (m, map frame), `winkel` (heading in degrees, 0 = map x axis, counter-clockwise), `zeit` (unix seconds), `quelle` `"auto"`/`"hand"`, `kamera`, `url`) |
+| `POST /api/mapping/panorama` | turn on the spot and take an all-round panorama here (new 18.11., see "Panoramas"); cancels other drives; returns as `GET /api/mapping/ortung`; 409 with reason (no map, pose uncertain, no camera/lidar, already running) |
+| `POST /api/mapping/panorama/stop` | cancel the panorama |
 | `GET /api/mapping/fotos/{karte}/{datei}` | the photo as JPEG; 404 if unknown |
 | `POST /api/mapping/fotos` | take a photo now ("Foto hier"); returns the entry; 409 with reason without a map, with an uncertain pose or without a fresh camera image |
 | `POST /api/mapping/fotos/auto` | body `{"aktiv": false}`: automatic photos off/on (until the server restarts) |
@@ -1102,6 +1104,22 @@ is a small yellow arrow (orange: taken by hand) pointing where the camera
 looked; a click shows it. `GET /api/mapping/ortung` contains `fotos`:
 `verfuegbar`, `auto`, `karte`, `anzahl`, `stand` (counter, changes with every
 new or deleted photo), `fehler`.
+
+**Panoramas (new 18.11.).** „🔄 Rundum-Panorama hier“ on `/map` (or `POST
+/api/mapping/panorama`): the robot turns on the spot in `PANORAMA_SHOTS`
+(12) steps of 30°, rests `PANORAMA_SETTLE_S` and takes an Orbbec photo
+after each. The turns are precise drive commands (lidar-measured, watchdog,
+drive guard, room check); emergency stop, manual driving and every other
+drive end the panorama, also between two turns. While it runs no automatic
+photos are taken and the single turns are not reported as „Fahrbefehl“.
+The shots are not stitched by image features (they fail on white walls and
+cost CPU) but projected onto a cylinder at the heading the lidar measured
+for each, with soft blending (about 0.3 s on the Pi). Columns run clockwise
+from left to right, the centre looks along the first shot. The panorama is
+stored with the photos (`art: "panorama"`, `aufnahmen`, `winkel` = heading
+of the centre) and shown on `/map` as a light blue ring; a click opens a
+viewer you can drag around 360°. `GET /api/mapping/ortung` contains
+`panorama`: `verfuegbar`, `aktiv`, `text`, `schritt`, `von`, `grund`.
 
 **Using the map (new 04.11.).** When a map exists, the robot knows where it
 is in it. During mapping this applies immediately; afterwards (mapping

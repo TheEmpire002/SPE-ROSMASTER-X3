@@ -63,6 +63,8 @@ class MapPhotos:
         # bumped on every change; the /map page reloads the list when it moves
         self.stand = 0
         self.last_error: str | None = None
+        # no auto photos while a panorama turns the robot
+        self.paused = False
 
     @property
     def available(self) -> bool:
@@ -80,6 +82,10 @@ class MapPhotos:
         if not name or not safe_name(str(name)):
             return None
         return str(name), getattr(occ_map, "frame_id", None)
+
+    def map_here(self) -> tuple[str, str | None] | None:
+        """The map photos would belong to right now, or None."""
+        return self._current_map()
 
     def _folder(self, name: str) -> Path:
         return self._dir / f"{name}_bilder"
@@ -116,7 +122,7 @@ class MapPhotos:
 
     def tick(self) -> None:
         """Take a photo if the robot has moved on far enough (auto mode)."""
-        if not self.available or not self.auto:
+        if not self.available or not self.auto or self.paused:
             return
         current = self._current_map()
         if current is None or not self._localization.confident:
@@ -138,7 +144,7 @@ class MapPhotos:
         ):
             return
         self._last_check = tuple(pose)
-        if self._similar(pose) or len(self._photos) >= config.MAP_PHOTO_MAX:
+        if self._similar(pose) or self._count_photos() >= config.MAP_PHOTO_MAX:
             return
         self._capture(current, pose, "auto")
 
@@ -160,10 +166,42 @@ class MapPhotos:
 
     def _similar(self, pose) -> bool:
         return any(
-            math.hypot(p["x"] - pose[0], p["y"] - pose[1]) < config.MAP_PHOTO_SIMILAR_M
+            p.get("art", "foto") == "foto"
+            and math.hypot(p["x"] - pose[0], p["y"] - pose[1]) < config.MAP_PHOTO_SIMILAR_M
             and _angle_diff(math.radians(p["winkel"]), pose[2]) < config.MAP_PHOTO_SIMILAR_DEG
             for p in self._photos
         )
+
+    def _count_photos(self) -> int:
+        return sum(1 for p in self._photos if p.get("art", "foto") == "foto")
+
+    def add_panorama(self, current, pose, data: bytes, shots: int) -> dict[str, Any] | None:
+        """Store a stitched panorama taken at ``pose`` (centre = its heading)."""
+        if current is None:
+            self.last_error = "Keine Karte für das Panorama"
+            return None
+        self._switch(current)
+        self._counter += 1
+        photo_id = f"pano-{time.strftime('%Y%m%d-%H%M%S')}-{self._counter}"
+        entry = {
+            "id": photo_id,
+            "art": "panorama",
+            "datei": f"{photo_id}.jpg",
+            "x": round(float(pose[0]), 3),
+            "y": round(float(pose[1]), 3),
+            "winkel": round(math.degrees(pose[2]) % 360.0, 1),
+            "zeit": round(time.time(), 1),
+            "quelle": "hand",
+            "kamera": getattr(self._camera, "name", None),
+            "aufnahmen": shots,
+        }
+        with self._lock:
+            self._photos.append(entry)
+            photos = list(self._photos)
+            self.stand += 1
+        # called from a worker thread already, so write right here
+        self._write(current, entry, data, photos)
+        return entry if self.last_error is None else None
 
     def _capture(self, current, pose, source: str) -> dict[str, Any] | None:
         frame, taken = self._camera.latest_with_time()
@@ -179,6 +217,7 @@ class MapPhotos:
         photo_id = f"{time.strftime('%Y%m%d-%H%M%S')}-{self._counter}"
         entry = {
             "id": photo_id,
+            "art": "foto",
             "datei": f"{photo_id}.jpg",
             "x": round(float(pose[0]), 3),
             "y": round(float(pose[1]), 3),

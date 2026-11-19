@@ -1203,6 +1203,14 @@ MAP_PHOTO_MIN_INTERVAL_S = 1.0
 # auto photos per map at most (about 40 kB each)
 MAP_PHOTO_MAX = 500
 
+# all-round panorama at a point (mapping/panorama.py): shots per turn (the
+# orbbec sees 66 deg, so 12 shots of 30 deg overlap by a third), rest after
+# each turn before the photo (s), size relative to the camera image, quality
+PANORAMA_SHOTS = 12
+PANORAMA_SETTLE_S = 0.6
+PANORAMA_SCALE = 0.75
+PANORAMA_JPEG_QUALITY = 85
+
 # --- Camera tilt servo (person camera, up and down) ------------------------------
 # details in sensors/camera_tilt.py. servo on the expansion board, moved with
 # rosmaster_lib's set_pwm_servo (ports s1..s4)

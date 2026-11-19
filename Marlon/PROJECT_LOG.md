@@ -908,7 +908,15 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
   - `/map`: section „Fotos“ (count, „📷 Foto hier“, show/hide, automatic on/off), yellow arrows in the camera's direction, click opens the photo with time and position, delete.
   - Docs: `docs/api.md` ("Photos on the map"), `docs/architecture.md`.
 - **Result:** Compiles, page JS checked; not yet tested on the robot.
-- **Open:** Check on the robot whether the photos are sharp enough while driving and whether the positions fit. Stage 2 (panoramas) and 3 (3D offline).
+- **Open:** Check on the robot whether the photos are sharp enough while driving and whether the positions fit. Stage 3 (3D offline).
+
+### 18.11.2026 – All-round panoramas on the map (with Claude)
+- **What:** Stage 2: „🔄 Rundum-Panorama hier“ on `/map`. The robot turns once on the spot (12 × 30°), takes an Orbbec photo after each turn and stitches a 360° image, stored with the map's photos and viewable on `/map` by dragging.
+- **Why:** One picture of a whole spot instead of single directions; basis for a more complete room model.
+- **Decision:** No feature-based stitching (OpenCV `Stitcher`): it fails on white walls and costs CPU (USB dropouts). Instead every shot is projected onto a cylinder at the heading the lidar measured for the turn, with soft blending at the overlaps. A heading error shows as a small seam, never as a failed panorama.
+- **Changes:** `mapping/panorama.py` (sequence and `stitch`), `MapPhotos.add_panorama`, panorama in `MapControl` (start, cancel with every other drive and the emergency stop, also between two turns), manual driving cancels it (`api/server.py`), `Maneuver.quiet` so the 11 turns are not reported one by one, endpoints `POST /api/mapping/panorama` and `/stop`, `PANORAMA_*` in `config.py`, viewer on `/map`.
+- **Result:** Stitching tested on the Pi with a real Orbbec image (12 synthetic headings): order and direction right, 0.27 s, 2322 × 342 px, no black gaps after cropping. The turning sequence itself has not run on the robot yet.
+- **Open:** Test on the floor: are the seams small with the measured headings, does exposure jump between shots.
 
 ---
 
