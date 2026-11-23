@@ -973,6 +973,13 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Result:** New `Marlon/health/test_condition_view.py` (lease, tracking, vote, frames counted once, reset after a gap, upload validation). Checked against the mock server: page and script load, pose switches on with the page and off about 6 s after it closes, smoke test 22/22. Full test suite on the PC: 27/27.
 - **Open:** Look at the page on the robot (real Hailo, real camera); run the benchmark so the comparison appears.
 
+### 23.11.2026 – Healthbot page: skeleton beside the person, skeleton stayed after the check (Marlon, with Claude)
+- **What:** On the robot, during a healthbot run, the skeleton of the person on the floor sat beside the person in the camera image, and it stayed on the page after the check.
+- **Why:** The healthbot page showed `/camera/stream`, the default camera `orientierung`, while the pose detection looks through the camera `personen`; the keypoints of one camera were drawn over the image of the other. After the check the page kept drawing the last stored person (a frozen frame), and the pose detection kept computing on the way home although nothing needs it there.
+- **Change:** `GET /healthbot/status` now also sends `kamera` (camera of the keypoints), the page shows that camera's stream. `person` is the current frame of the tracked person and only while the check looks at the person; the pose detection is switched off when the robot heads home. New property `PoseDetection.camera_name`.
+- **Result:** `Marlon/health/test_health.py` checks pose off before the drive home, no person after the check and the camera field; health tests and condition view tests pass. The mock smoke test fails „turning is still allowed“ and „vital data is passed on“ on this PC also without this change (timing, server hangs about 3.7 s on imports right after start).
+- **Open:** Check on the robot with a person on the floor; look into the two smoke test failures.
+
 ---
 
 ## 3. Results and measurements

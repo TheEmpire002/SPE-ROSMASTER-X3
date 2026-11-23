@@ -94,6 +94,8 @@ class Healthbot:
         # the alarm, not music the user picked
         self._music_started = False
         self._person: dict | None = None
+        # pose runs for the check only until the robot heads home
+        self._pose_on = False
         self._nudges: list[dict] = []
         self._reset_record()
 
@@ -141,11 +143,20 @@ class Healthbot:
             "wache": self.watch,
             "stupsen_aktiv": config.HEALTH_NUDGE_ACTIVE,
             "person": self._person_summary(),
+            "kamera": getattr(self._pose, "camera_name", None),
         }
 
     def _person_summary(self) -> dict | None:
-        p = self._person
+        # live frame instead of the stored one: the stored frame is seconds old
+        # while the robot speaks or listens and would sit beside the person
+        if not (self.active and self._pose_on):
+            return None
+        p = self._seen()
         return None if p is None else {"box": p["box"], "kp": p["kp"], "winkel": p["winkel"]}
+
+    def _use_pose(self, on: bool) -> None:
+        self._pose_on = on
+        self._pose.activate(on, "healthbot")
 
     def _note(self, text: str, state: str | None = None) -> None:
         if state is not None:
@@ -448,6 +459,8 @@ class Healthbot:
         return None
 
     async def _home(self) -> None:
+        # the check is over, nobody needs the skeleton on the way back
+        self._use_pose(False)
         self._note("fährt zum Startpunkt zurück")
         if not self._homing.start_to(0.0, 0.0, name="Startpunkt"):
             self._note("Heimfahrt startet nicht (läuft schon eine?)")
@@ -459,7 +472,7 @@ class Healthbot:
     # ------------------------------------------------------------------ procedure
 
     async def _procedure(self) -> None:
-        self._pose.activate(True, "healthbot")
+        self._use_pose(True)
         try:
             await self._procedure_inner()
         except asyncio.CancelledError:
@@ -472,7 +485,7 @@ class Healthbot:
             await self._send("warning", f"Healthbot: Fehler ({e}) -- bitte selbst nachsehen")
         finally:
             self._watchdog.stop()
-            self._pose.activate(False, "healthbot")
+            self._use_pose(False)
 
     async def _procedure_inner(self) -> None:
         # 1. approach

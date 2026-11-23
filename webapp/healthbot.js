@@ -280,7 +280,18 @@ async function poll() {
   showNudges(status.stupser || []);
   showTimeline(status.timeline || []);
   showSimulation(status.simulation, status.szenen);
+  showCamera(status.kamera);
   drawSkeleton();
+}
+
+// the keypoints belong to the pose camera; drawn over another camera they
+// would sit beside the person
+let shownCamera;
+function showCamera(name) {
+  name = name || null;
+  if (name === shownCamera) return;
+  shownCamera = name;
+  ui.image.src = name ? `/camera/${encodeURIComponent(name)}/stream` : "/camera/stream";
 }
 
 async function fetchScan() {

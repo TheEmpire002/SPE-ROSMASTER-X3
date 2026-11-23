@@ -1221,7 +1221,7 @@ gently if there is no answer, call for help (alarm music, `alert`
 | Endpoint | Returns |
 |---|---|
 | `GET /healthbot` | page with the run: steps with reasons, traffic lights of the four signs, camera image with the person |
-| `GET /healthbot/status` | `aktiv`, `zustand`, `schritt`, `timeline` (steps `{zeit, zustand, text}`), `checks` (the four signs, each `{name, titel, zustand, text, ...}`), `urteil` (verdict), `ziel` (target), `alarm`, `stupser` (nudges), `wache`, `stupsen_aktiv` (nudging enabled), `person` (`{box, kp, winkel}` or `null`); in `--mock` also `simulation` and `szenen` (scene names) |
+| `GET /healthbot/status` | `aktiv`, `zustand`, `schritt`, `timeline` (steps `{zeit, zustand, text}`), `checks` (the four signs, each `{name, titel, zustand, text, ...}`), `urteil` (verdict), `ziel` (target), `alarm`, `stupser` (nudges), `wache`, `stupsen_aktiv` (nudging enabled), `person` (`{box, kp, winkel}` from the current frame while the check looks at the person, otherwise `null`; no longer set on the way home), `kamera` (camera the keypoints belong to, overlay only on `/camera/<kamera>/stream`); in `--mock` also `simulation` and `szenen` (scene names) |
 | `POST /healthbot/simulation` | only `--mock`: `{"szene": "liegt", "x": 2.0, "y": 0.5}` puts a simulated person into the scene (`x`/`y` optional). 400 with `fehler` for an unknown scene, 404 without mock. |
 
 Every finished check (any outcome) is stored as a run like the tests below

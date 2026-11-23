@@ -203,6 +203,11 @@ class PoseDetection:
         return [((0.5 - p["box"][2]) * fov, (0.5 - p["box"][0]) * fov) for p in self.people()]
 
     @property
+    def camera_name(self) -> str | None:
+        """Name of the camera the keypoints belong to (``/camera/<name>/stream``)."""
+        return self._camera.name if self._camera is not None else None
+
+    @property
     def fov_deg(self) -> float:
         """Field of view of the camera being looked through -- the C270 sees
         narrower than the general default (config.CAMERA_FOV_DEG)."""
@@ -220,7 +225,7 @@ class PoseDetection:
                 "neu_geoeffnet": self._reopened,
                 # Which camera image the points belong to -- the app
                 # overlays the skeleton only there.
-                "kamera": self._camera.name if self._camera is not None else None,
+                "kamera": self.camera_name,
                 "letzte_erkennung_vor_s": round(time.monotonic() - self._time, 1) if self._time else None,
                 # How old the last fetched camera image was and how often an
                 # image was too old -- shows on the robot whether the camera hangs.

@@ -548,6 +548,10 @@ async def case_responsive() -> None:
     check("asked again", config.HEALTH_QUESTION_HELP in a.voice.said)
     check("no music", not a.mukke.played)
     check("home", a.homing.goals[-1][:2] == (0.0, 0.0))
+    # pose off before the drive home, and no frozen skeleton left on the page
+    check("pose off before driving home", a.pose.activated.count((False, "healthbot")) >= 2, str(a.pose.activated))
+    check("no person shown after the check", s["person"] is None, str(s["person"]))
+    check("camera of the keypoints sent", "kamera" in s)
     r = check_record(a, "ok")
     if r:
         heard = {x["phase"]: x["texte"] for x in r["answers_heard"]}
