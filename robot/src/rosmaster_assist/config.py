@@ -390,6 +390,16 @@ NAV_BLOCK_S = 60.0
 NAV_BLOCK_RADIUS_M = 0.3
 # Replan this many times in a row, then give up.
 NAV_MAX_REPLANS = 5
+# look-ahead while driving to a goal: every NAV_SCAN_CHECK_S the fresh scan
+# is checked for something on the next NAV_SCAN_CHECK_M of the route (within
+# half the robot width plus the margin) that the map does not know, e.g. a
+# closed door. seen at the same spot on two checks in a row (a person
+# walking by is gone by then) it counts as blocked for NAV_BLOCK_S and the
+# route is planned around it right away
+NAV_SCAN_CHECK_S = 1.0
+NAV_SCAN_CHECK_M = 2.5
+NAV_SCAN_CHECK_MARGIN_M = 0.05
+NAV_SCAN_CHECK_MIN_POINTS = 3
 # Maximum duration of a drive to a goal: this many seconds per meter of
 # path, but at least NAV_DRIVE_MIN_S.
 NAV_DRIVE_S_PER_M = 12.0

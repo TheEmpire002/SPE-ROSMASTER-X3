@@ -1058,3 +1058,10 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Fix:** Every scan written now also clears the cells under the robot (radius half the robot width, `LIVE_MAP_FOOTPRINT_CLEAR_M`), session-start value included so the protection cap does not pull them back. Where the robot stands there is no wall; writing only happens behind the integrate gate. A door that is closed later becomes a wall again after a few hits.
 - **Result:** The real mapper code on the Pi with the saved map and the hand-driven trail replayed: 20.9 m before, 11.7 m after, through the door, the same route as driven by hand. Costs 0.06 ms per scan.
 - **Open:** "Try the short way first, take the long one if it is blocked" already works through the block-and-replan of the goal drive, as long as the short way is in the map.
+
+### 23.11.2026 – Closed door: plan around it instead of running into it (with Claude)
+- **What:** With the door closed again the robot still tried to go through it instead of taking the other door.
+- **Analysis (log):** In front of the closed door it lost its pose four times (the scene no longer matched the map with the door open), twice ambiguous between the spots in front of the two identical doors. Every time the pose came back it planned anew through the door; the 3 s "blocked" timer was restarted by each pose loss, so the block never fired until the time ran out.
+- **Fix:** Look-ahead on goal drives: about once a second the fresh scan is checked for points on the next 2.5 m of the route that the map does not know; seen at the same spot twice in a row, the spot is blocked for 60 s and the route replanned at once. Survives a pose loss, also runs right after the pose comes back.
+- **Result:** Check tested on the Pi with a synthetic closed door across the route through the door: detected at the door; open door and a single stray point ignored. Test on the floor by the user pending.
+- **Open:** The ambiguity between the two identical doors (localization) if it keeps coming up.
