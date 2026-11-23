@@ -1095,3 +1095,9 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
    - anchor safety at the bottom,
    - autonomous only on the floor.
 9. **Outlook.**
+
+### 23.11.2026 – Healthbot: drive all the way to the person to nudge, and say so (with Claude)
+- **What:** In the test the robot did not reach the lying person to nudge them and said nothing while doing so.
+- **Analysis (log 12:49):** Closing in drove at 0.12 m/s for the full 15 s and gave up („kommt nicht nah genug heran“), then went straight to calling for help. The person lies below the lidar plane, so the lidar distance at their bearing was the wall behind (3.25 m) and never reached 0.30 m; 15 s × 0.12 m/s is at most 1.8 m. The nudge step had no speech at all.
+- **Fix:** Closing in is limited by `HEALTH_APPROACH_MAX_S` (40 s) and `HEALTH_APPROACH_MAX_M` (4 m) instead of a fixed 15 s; besides the lidar distance and the drive guard holding close, wheels standing although driving now also counts as "at the person". Speech: `HEALTH_NUDGE_ANNOUNCE` before closing in, `HEALTH_NUDGE_CALL` before each nudge; only words after the call count as an answer.
+- **Result:** Not yet tested on the robot.

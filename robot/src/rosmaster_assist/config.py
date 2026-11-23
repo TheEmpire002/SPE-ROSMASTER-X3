@@ -1915,6 +1915,11 @@ HEALTH_APPROACH_OMEGA_MAX = 0.3
 # If the drive guard stops at most this much (m) beyond nudging distance,
 # that is enough for nudging: the person is within reach anyway.
 HEALTH_APPROACH_ENOUGH_M = 0.1
+# Closing in ends after this long (s) or this far (m) without reaching the
+# person. A lying person is below the lidar plane, so only the drive guard or
+# the wheels stopping at the body end it; 15 s were too short on the robot.
+HEALTH_APPROACH_MAX_S = 40.0
+HEALTH_APPROACH_MAX_M = 4.0
 
 # Approach: within this distance (m) of the goal it counts as arrived.
 # Generous, because the reported spot is only approximate and the person
@@ -1965,6 +1970,9 @@ HEALTH_QUESTION = "Hallo, hören Sie mich? Geht es Ihnen gut?"
 HEALTH_QUESTION_HELP = "Brauchst du Hilfe?"
 HEALTH_ANNOUNCE_HELP = "Achtung! Hier liegt eine Person und reagiert nicht. Ich hole Hilfe."
 HEALTH_ANNOUNCE_OK = "Gut, dass es dir gut geht. Ich fahre zurück."
+# said before closing in to nudge, and before each nudge
+HEALTH_NUDGE_ANNOUNCE = "Ich komme jetzt zu Ihnen und stupse Sie an."
+HEALTH_NUDGE_CALL = "Hallo! Hören Sie mich?"
 # Words that count as an answer (German speech). "ja"/"hilfe" means: get help.
 HEALTH_WORDS_HELP = ("ja", "hilfe", "hilf mir")
 HEALTH_WORDS_NO = ("nein", "alles gut", "geht schon")

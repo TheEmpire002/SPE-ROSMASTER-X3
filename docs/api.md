@@ -1218,6 +1218,16 @@ gently if there is no answer, call for help (alarm music, `alert`
 `emergency`). Commands go over the WebSocket (`health_check`, `health_stop`,
 `health_wache`); the page `GET /healthbot` shows the run.
 
+**Nudging (changed 23.11.).** Before closing in the robot says
+`HEALTH_NUDGE_ANNOUNCE` („Ich komme jetzt zu Ihnen und stupse Sie an.“), before
+each nudge `HEALTH_NUDGE_CALL` („Hallo! Hören Sie mich?“); words heard after
+the call count as a reaction (the ear is deaf while the robot speaks). Closing
+in ends when the lidar distance reaches `HEALTH_NUDGE_START_M`, when the drive
+guard holds just short of the person (depth camera, memory: a lying person is
+below the lidar plane) or when the wheels stand at the body; it gives up only
+after `HEALTH_APPROACH_MAX_S` (40 s) or `HEALTH_APPROACH_MAX_M` (4 m), no longer
+after a fixed 15 s.
+
 | Endpoint | Returns |
 |---|---|
 | `GET /healthbot` | page with the run: steps with reasons, traffic lights of the four signs, camera image with the person |
