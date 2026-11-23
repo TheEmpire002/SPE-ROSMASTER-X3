@@ -1,13 +1,23 @@
-"""Find people in the camera image (OpenCV HOG).
+"""Find people in the camera image: Hailo pose boxes, OpenCV HOG as fallback.
 
 The lidar only sees legs -- it cannot reliably tell whether two posts are a
-person or a chair. The camera can. OpenCV's HOG detector needs no model to
-download and manages a few frames per second on the Pi at 320 px width;
-exploring needs no more than that.
+person or a chair. The camera can.
 
-Detection only runs while the robot drives autonomously (``activate``),
-because it costs noticeable CPU -- and CPU load spikes trigger USB resets
-on the X3 (sensor check 28.10.2026).
+Two ways to find them (``PERSON_DETECT_BACKEND``):
+
+- **Hailo** (default when it works): the person boxes of the pose detection
+  (``pose.py``, YOLOv8-Pose on the Hailo AI chip). The network runs on the
+  chip; the CPU only decodes the image. When gestures or the healthbot use
+  the pose detection anyway, the boxes cost nothing extra. YOLO also finds
+  people sitting, lying or seen from the side, which HOG misses.
+- **HOG** (fallback): OpenCV's HOG detector needs no model and manages a few
+  frames per second on the Pi at 320 px width, but costs ~0.1-0.2 s CPU per
+  frame. It runs when there is no Hailo, the Hailo reports an error, or a
+  user asks for it explicitly (test runs compare both).
+
+Detection only runs while someone needs it (``activate``), because it costs
+CPU -- and CPU load spikes trigger USB resets on the X3 (sensor check
+28.10.2026).
 
 If OpenCV is missing, ``status()`` reports it and everything else keeps
 running: then only the lidar names the obstacles.
@@ -27,13 +37,18 @@ log = logging.getLogger(__name__)
 #: Older hits no longer count -- the person may be long gone.
 _MAX_AGE_S = 1.5
 
+#: user name under which this module switches on the pose detection
+_POSE_USER = "personen"
+
 
 class PersonDetection:
-    def __init__(self, camera: CameraService | None) -> None:
+    def __init__(self, camera: CameraService | None, pose=None) -> None:
         self._camera = camera
+        self._pose = pose
         self._lock = threading.Lock()
         self._active = threading.Event()
         self._users: set[str] = set()
+        self._hog_users: set[str] = set()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._boxes: list[dict] = []
@@ -61,7 +76,22 @@ class PersonDetection:
 
     @property
     def available(self) -> bool:
-        return self._hog is not None and config.PERSON_DETECTION_ENABLED
+        return (self._hog is not None or self._use_hailo()) and config.PERSON_DETECTION_ENABLED
+
+    def _use_hailo(self) -> bool:
+        """Take the boxes from the Hailo pose detection right now?"""
+        pose = self._pose
+        if pose is None or config.PERSON_DETECT_BACKEND == "hog":
+            return False
+        # the simulated pose shows a gesture person all the time, the mock explorer would stop for it
+        return pose.available and not pose.simulated and pose.healthy
+
+    @property
+    def backend(self) -> str | None:
+        """"hailo", "hog" or None (nothing available)."""
+        if self._use_hailo():
+            return "hailo"
+        return "hog" if self._hog is not None else None
 
     def start(self) -> None:
         if self._hog is None or self._thread is not None:
@@ -76,27 +106,51 @@ class PersonDetection:
         if self._thread is not None:
             self._thread.join(timeout=2.0)
             self._thread = None
+        if self._pose is not None:
+            self._pose.activate(False, _POSE_USER)
 
-    def activate(self, an: bool, who: str = "explorer") -> None:
+    def activate(self, an: bool, who: str = "explorer", hog: bool = False) -> None:
         """Only compute while someone needs the hits.
 
         ``who`` tells the users apart (explorer, test run). Detection runs as
         long as at least one of them has switched it on; otherwise the end
-        of a test run would switch it off for a running explorer.
+        of a test run would switch it off for a running explorer. ``hog``:
+        this user needs the HOG boxes (``hog_boxes``) even when the Hailo
+        delivers the normal ones.
         """
         with self._lock:
             if an:
                 self._users.add(who)
+                if hog:
+                    self._hog_users.add(who)
             else:
                 self._users.discard(who)
+                self._hog_users.discard(who)
             if self._users:
                 self._active.set()
             else:
                 self._active.clear()
                 self._boxes = []
+            wanted = bool(self._users)
+        if self._pose is not None and config.PERSON_DETECT_BACKEND != "hog":
+            # the pose thread decides itself whether it runs; it also follows a hailo that comes back
+            self._pose.activate(wanted, _POSE_USER)
 
     def boxes(self) -> list[dict]:
         """Current hits: x1,y1,x2,y2 relative to the image size (0..1), score."""
+        if not config.PERSON_DETECTION_ENABLED or not self._active.is_set():
+            return []
+        if self._use_hailo():
+            return [
+                {"x1": p["box"][0], "y1": p["box"][1], "x2": p["box"][2], "y2": p["box"][3],
+                 "score": p["score"]}
+                for p in self._pose.people()
+            ]
+        return self.hog_boxes()
+
+    def hog_boxes(self) -> list[dict]:
+        """Hits of the HOG detector only (empty while the Hailo does the work
+        and no user asked for HOG)."""
         with self._lock:
             if time.monotonic() - self._time > _MAX_AGE_S:
                 return []
@@ -114,29 +168,43 @@ class PersonDetection:
         return [((0.5 - b["x2"]) * fov, (0.5 - b["x1"]) * fov) for b in self.boxes()]
 
     def status(self) -> dict:
+        backend = self.backend
+        last = self._time
+        if backend == "hailo":
+            pose_age = self._pose.status().get("letzte_erkennung_vor_s")
+            last = time.monotonic() - pose_age if pose_age is not None else 0.0
         with self._lock:
             return {
                 "verfuegbar": self.available,
                 "aktiv": self._active.is_set() and self.available,
                 "fehler": (
                     "abgeschaltet (Einstellungen)"
-                    if self._hog is not None and not config.PERSON_DETECTION_ENABLED
-                    else self._error
+                    if (self._hog is not None or backend == "hailo") and not config.PERSON_DETECTION_ENABLED
+                    else (None if backend == "hailo" else self._error)
                 ),
+                # "hailo" (pose boxes from the ai chip) or "hog" (opencv on the cpu)
+                "verfahren": backend,
                 # Which image the boxes belong to -- the app draws them only
                 # over this camera.
                 "kamera": self._camera.name if self._camera is not None else None,
-                "letzte_erkennung_vor_s": round(time.monotonic() - self._time, 1) if self._time else None,
+                "letzte_erkennung_vor_s": round(time.monotonic() - last, 1) if last else None,
             }
+
+    def _hog_needed(self) -> bool:
+        with self._lock:
+            if self._hog_users:
+                return True
+        return not self._use_hailo()
 
     def _loop(self) -> None:
         while not self._stop.is_set():
             if not self._active.wait(timeout=1.0):
                 continue
-            if not config.PERSON_DETECTION_ENABLED:
+            if not config.PERSON_DETECTION_ENABLED or not self._hog_needed():
+                # switched off, or the hailo does the work: hog stays idle
                 with self._lock:
                     self._boxes = []
-                self._stop.wait(1.0)
+                self._stop.wait(1.0 / max(0.1, config.PERSON_DETECT_HZ))
                 continue
             # Re-read every time: adjustable at runtime.
             tick = 1.0 / max(0.1, config.PERSON_DETECT_HZ)

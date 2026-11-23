@@ -105,8 +105,9 @@ class Hog:
     def status(self):
         return {"aktiv": self.on}
 
-    def activate(self, an, who="explorer"):
+    def activate(self, an, who="explorer", hog=False):
         (self.users.add if an else self.users.discard)(who)
+        self.hog = hog
 
     def boxes(self):
         return [{"x": 0.2, "y": 0.1, "w": 0.3, "h": 0.8}]

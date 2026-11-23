@@ -260,14 +260,15 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     # Person detection and pose detection (gestures, follow) both look
     # through the person camera (C270), see docs/interaction.md.
     person_camera = cameras.get(config.PERSON_CAMERA, camera)
-    people = PersonDetection(person_camera)
+    pose = PoseDetection(person_camera, mock=use_mock_camera)
+    # person boxes come from the pose detection on the hailo when it works, hog is the fallback
+    people = PersonDetection(person_camera, pose=pose)
     explorer = Explorer(
         watchdog, lidar, detection, people, odometry=odometry,
         mapping_drive=MappingDrive(scan_odometry, localization=localization, planner=planner),
         obstacles=obstacles, depth=depth,
     )
     maneuver = Maneuver(watchdog, driver, lidar)
-    pose = PoseDetection(person_camera, mock=use_mock_camera)
     mukke = Mukke()
     # Voice and music share the speaker: while the robot speaks, the music
     # pauses and afterwards resumes at the same position.

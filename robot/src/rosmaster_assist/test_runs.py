@@ -738,7 +738,7 @@ class TestRuns:
         if kind == "personen" and self._people is not None:
             # own user name: at the end only the test run signs off, a
             # concurrently running explorer keeps its detection
-            self._people.activate(True, _POSE_USER)
+            self._people.activate(True, _POSE_USER, hog=True)
         if kind == "mikro" and self._speech is not None and self._speech.sound_rate:
             rate = self._speech.sound_rate
             for file, raw in (("ton.wav", False), ("ton_roh.wav", True)):
@@ -909,7 +909,7 @@ class TestRuns:
                       "SPEECH_MICROPHONE", "SPEECH_WAKE_WINDOW_S", "TESTS_MOTOR_SLOW_MS",
                       "TESTS_MOTOR_FAST_MS", "TESTS_MOTOR_OMEGA"]
         else:
-            names += ["HEALTH_LYING_DEG", "HEALTH_LYING_ASPECT", "HEALTH_FLOOR_MIN_WIDTH_M",
+            names += ["HEALTH_LYING_DEG", "HEALTH_LYING_ASPECT", "HEALTH_FORESHORTEN_RATIO", "HEALTH_FLOOR_MIN_WIDTH_M",
                       "HEALTH_FLOOR_IMAGE_BOTTOM", "CAMERA_WIDTH", "CAMERA_HEIGHT"]
         values = {n: getattr(config, n, None) for n in names}
         return {n: v for n, v in values.items() if isinstance(v, (int, float, str, bool, type(None)))}
@@ -939,7 +939,9 @@ class TestRuns:
             sample["personen"] = [self._person(p, points, fov) for p in people]
             sample["lidar"] = points is not None
         if kind == "personen" and self._people is not None:
-            sample["hog"] = [{k: _r(v) for k, v in b.items()} for b in self._people.boxes()]
+            # the hog boxes on purpose: the test compares hog with the pose detection
+            hog_boxes = getattr(self._people, "hog_boxes", self._people.boxes)
+            sample["hog"] = [{k: _r(v) for k, v in b.items()} for b in hog_boxes()]
         return sample
 
     @staticmethod
@@ -950,7 +952,7 @@ class TestRuns:
         return {
             "box": [_r(v) for v in p["box"]], "score": _r(p.get("score")), "winkel": _r(p.get("winkel"), 1),
             "rumpfwinkel": _r(assessment.torso_angle(p), 1),
-            "liegend": lying["zustand"], "liegend_wert": lying["wert"],
+            "liegend": lying["zustand"], "liegend_wert": lying["wert"], "liegend_text": lying["text"],
             "boden": floor["zustand"], "boden_wert": floor["wert"], "boden_text": floor["text"],
             "kp": [[_r(x), _r(y), _r(c, 2)] for x, y, c in p.get("kp", [])],
         }

@@ -10,6 +10,9 @@ skeleton for the camera.
 Cases:
 
 * assessment: ``interpret_answer`` and ``lying`` (standing/lying);
+* detection: tracking the same person, lying lengthwise to the camera
+  (hips above shoulders, shortened torso), majority over frames, motion
+  threshold scaled with the body size, watch tolerating short misses;
 * lies motionless, does not answer -> nudge twice, no reaction -> alarm,
   announcement, home, music; never deeper than ``HEALTH_NUDGE_DEPTH_M``
   into the person;
@@ -390,6 +393,92 @@ def test_assessment() -> None:
     check("no answer without microphone is unknown", am.answer(None)["zustand"] == am.UNKNOWN)
 
 
+def _body(shoulders, hips, box, conf=0.8):
+    """Person with only shoulders and hips set (0..1 image coordinates)."""
+    kp = [[0.0, 0.0, 0.0] for _ in range(17)]
+    kp[pose_module.KP_SHOULDER_L] = [shoulders[0][0], shoulders[0][1], conf]
+    kp[pose_module.KP_SHOULDER_R] = [shoulders[1][0], shoulders[1][1], conf]
+    kp[pose_module.KP_HIP_L] = [hips[0][0], hips[0][1], conf]
+    kp[pose_module.KP_HIP_R] = [hips[1][0], hips[1][1], conf]
+    return pose_module._person(box, kp, conf, 4 / 3, 60)
+
+
+def test_detection() -> None:
+    print("Detection")
+    old = {n: getattr(config, n) for n in ("HEALTH_AUTO_S", "HEALTH_AUTO_GAP_S", "HEALTH_LYING_SHARE",
+                                           "HEALTH_MOTIONLESS_REF_DIAG_PX")}
+    config.HEALTH_AUTO_S, config.HEALTH_AUTO_GAP_S, config.HEALTH_LYING_SHARE = 3.0, 1.0, 0.6
+    try:
+        # tracking
+        big = _body(((0.6, 0.3), (0.8, 0.3)), ((0.62, 0.6), (0.78, 0.6)), [0.5, 0.1, 0.9, 0.95])
+        small = _body(((0.15, 0.4), (0.25, 0.4)), ((0.16, 0.6), (0.24, 0.6)), [0.1, 0.3, 0.3, 0.9])
+        moved = dict(small, box=[0.12, 0.31, 0.32, 0.9])
+        check("pick: largest without history", am.pick([big, small], None) is big)
+        check("pick: keeps the tracked person", am.pick([big, moved], small) is moved)
+        check("pick: falls back to the largest", am.pick([big], small) is big)
+        check("pick: nobody", am.pick([], small) is None)
+
+        # lying lengthwise: head towards the camera, hips above the shoulders
+        head_near = _body(((0.4, 0.75), (0.6, 0.75)), ((0.43, 0.6), (0.57, 0.6)), [0.35, 0.5, 0.65, 0.85])
+        s = am.lying(head_near)
+        check("hips above shoulders is lying", s["zustand"] == am.FLAGGED and "Kopf zur Kamera" in s["text"], str(s))
+        # head away from the camera: shortened torso, wide box
+        head_far = _body(((0.42, 0.6), (0.58, 0.6)), ((0.45, 0.65), (0.55, 0.65)), [0.38, 0.45, 0.62, 0.7])
+        s = am.lying(head_far)
+        check("shortened torso is lying", s["zustand"] == am.FLAGGED and "verkürzt" in s["text"], str(s))
+        check("shortened torso carries its threshold", s["grenze"] == config.HEALTH_FORESHORTEN_RATIO, str(s))
+        # bent-over standing person: shortened torso, but a narrow box
+        bowing = _body(((0.42, 0.4), (0.58, 0.4)), ((0.45, 0.46), (0.55, 0.46)), [0.42, 0.2, 0.58, 0.95])
+        check("bent-over standing person stays upright", am.lying(bowing)["zustand"] == am.OK, str(am.lying(bowing)))
+        kp, box = pose_module._sim_body(0.5, 0.2, 0.6, 0.03)
+        standing = pose_module._person(box, [[x, y, 0.8] for x, y in kp], 0.8, 4 / 3, 60)
+        lying = pose_module._sim_lying(0.5, 1.0, False, 0.0, 60)
+
+        # majority over frames
+        s = am.lying_over([lying] * 5 + [standing] * 2)
+        check("majority lying is lying", s["zustand"] == am.FLAGGED and "5 von 7" in s["text"], str(s))
+        s = am.lying_over([lying] * 2 + [standing] * 5)
+        check("majority standing is not lying", s["zustand"] == am.OK and "2 von 7" in s["text"], str(s))
+        s = am.lying_over([standing, lying])
+        check("a single lying frame among few still needs the share", s["zustand"] == am.OK, str(s))
+        check("no frames falls back to the person", am.lying_over([], lying)["zustand"] == am.FLAGGED)
+        check("no frames, no person is unknown", am.lying_over([], None)["zustand"] == am.UNKNOWN)
+
+        # motion threshold scaled with the body size
+        near = [pose_module._sim_lying(0.5, 0.6, False, i * 0.1, 60) for i in range(10)]
+        far = [pose_module._sim_lying(0.5, 4.0, False, i * 0.1, 60) for i in range(10)]
+        check("near person gets a larger motion threshold",
+              am.motionless_limit_px(near) > am.motionless_limit_px(far),
+              f"{am.motionless_limit_px(near):.1f} / {am.motionless_limit_px(far):.1f}")
+        lo, hi = config.HEALTH_MOTIONLESS_PX * 0.5, config.HEALTH_MOTIONLESS_PX * 2.0
+        check("motion threshold stays within its factors",
+              all(lo <= am.motionless_limit_px(h) <= hi for h in (near, far)))
+        check("motionless sign reports the scaled threshold",
+              am.motionless(far)["grenze"] == round(am.motionless_limit_px(far), 1), str(am.motionless(far)))
+        config.HEALTH_MOTIONLESS_REF_DIAG_PX = 0.0
+        check("reference 0 switches the scaling off", am.motionless_limit_px(near) == config.HEALTH_MOTIONLESS_PX)
+
+        # watch: short misses tolerated, long ones start over
+        def run(pattern):
+            w = am.LyingWatch()
+            for i, flagged in enumerate(pattern):
+                if w.update(i * 0.2, flagged):
+                    return i * 0.2
+            return None
+
+        steady = [True] * 20
+        check("watch: steady lying triggers after HEALTH_AUTO_S", abs((run(steady) or 0) - 3.0) < 0.01, str(run(steady)))
+        short_gap = [True] * 8 + [False] * 3 + [True] * 9
+        check("watch: a short miss does not restart", run(short_gap) is not None, str(run(short_gap)))
+        long_gap = [True] * 8 + [False] * 7 + [True] * 10
+        check("watch: a long miss restarts", run(long_gap) is None, str(run(long_gap)))
+        sparse = [True, False, False] * 10
+        check("watch: mostly misses never triggers", run(sparse) is None, str(run(sparse)))
+    finally:
+        for n, v in old.items():
+            setattr(config, n, v)
+
+
 async def case_motionless() -> None:
     print("Lies motionless, does not answer")
     a = Setup("liegend")
@@ -695,6 +784,7 @@ def main() -> None:
     pr._REACTION_S = 0.8
     try:
         test_assessment()
+        test_detection()
         asyncio.run(run_all())
     finally:
         for n, v in old.items():

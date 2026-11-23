@@ -958,6 +958,14 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Problems:** None so far.
 - **Open:** Rerun the three microphone tests on the robot with the filter, compare with the 04.11. runs (offline: raw 0/18 commands, filtered 3–4/18).
 
+### 23.11.2026 – Condition detection: main merged, person boxes from the Hailo, more reliable "lying" (Marlon, with Claude)
+- **What:** On branch `zustandserkennung` (not on `main`): merged `test-runs` and the current `main` (decision on test data renumbered to E15). `PersonDetection` now takes its boxes from the YOLOv8s-Pose detection on the Hailo, HOG on the CPU is only the fallback (`PERSON_DETECT_BACKEND`, status field `verfahren`). The healthbot tracks the person under check, lets all observed frames vote on "lying", detects a body lying lengthwise to the camera (hips above the shoulders, shortened torso), scales the motion threshold with the body size, and its watch tolerates short misses. New `scripts/bench_pose.py` compares pose models on the Hailo (time, CPU, keypoint confidence). Decision E16.
+- **Why:** HOG cost CPU (CPU spikes → USB resets on the X3) and finds sitting/lying people poorly while the Hailo already ran the pose model. The healthbot decided from a single frame and always took the largest person: a second person walking by counted as movement, one frame with swapped keypoints decided, and a body lying head-towards-camera looked upright.
+- **Changes:** `sensors/people.py`, `sensors/pose.py` (`healthy`), `api/server.py` (pose created before the person detection), `health/assessment.py` (`pick`, `lying_over`, `_lying_lengthwise`, `motionless_limit_px`, `LyingWatch`), `health/procedure.py`, `test_runs.py` (HOG kept for comparison, new sample field `liegend_text`), `config.py` (`PERSON_DETECT_BACKEND`, `HEALTH_FORESHORTEN_RATIO`, `HEALTH_LYING_SHARE`, `HEALTH_MOTIONLESS_REF_DIAG_PX`, `HEALTH_AUTO_GAP_S`).
+- **Result:** New `Marlon/interaction/test_people_backend.py`; `Marlon/health/test_health.py` extended by detection cases (tracking, lengthwise lying, bowing person stays upright, majority, scaled threshold, watch gaps). Full test suite on the PC passes.
+- **Problems:** Robot not reachable from the PC on 23.11. (not on the 10.42.0.x network), so the yolov8s vs yolov8m benchmark could not run yet.
+- **Open:** Run `python3 scripts/bench_pose.py` on the robot (standing, server may keep running, Hailo is shared) and decide `POSE_HEF`; check lengthwise lying and the watch on the floor with a real person; check the CPU load on `/diagnose` with the explorer running (HOG should be idle, `verfahren: hailo`).
+
 ---
 
 ## 3. Results and measurements

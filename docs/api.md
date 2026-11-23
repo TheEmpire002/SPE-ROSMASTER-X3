@@ -383,8 +383,12 @@ or a camera hit), `Bein (Mensch?)` (leg, person?), `Bein (Stuhl/Tisch?)`
 lidar plane, not object recognition.
 
 If OpenCV is installed, the person camera (Logitech C270, see
-[Camera](#camera)) looks for people during the drive (HOG detector, 2 frames/s). Lidar obstacles in their direction are then labeled
+[Camera](#camera)) looks for people during the drive. Lidar obstacles in their direction are then labeled
 `Mensch` with `quelle: "Kamera+Lidar"`. Without OpenCV everything else keeps working.
+Since 23.11. the boxes come from the pose detection on the Hailo when it works
+(YOLOv8-Pose, no CPU load for the detection); otherwise, or with
+`PERSON_DETECT_BACKEND = "hog"`, the OpenCV HOG detector runs on the CPU
+(2 frames/s). The boxes have the same format either way.
 
 `state.autonomie`:
 
@@ -408,7 +412,8 @@ If OpenCV is installed, the person camera (Logitech C270, see
   ],
   "personen": [{"x1": 0.41, "y1": 0.1, "x2": 0.62, "y2": 0.95, "score": 1.2}],
   "personenerkennung": {"verfuegbar": true, "aktiv": true, "fehler": null,
-                        "kamera": "personen", "letzte_erkennung_vor_s": 0.3}
+                        "kamera": "personen", "verfahren": "hailo",
+                        "letzte_erkennung_vor_s": 0.3}
 }
 ```
 
@@ -428,7 +433,7 @@ If OpenCV is installed, the person camera (Logitech C270, see
 | `grund` | why the last drive ended (reason) |
 | `hindernisse` | the 12 nearest obstacles, nearest first. `art` (kind), `winkel` in degrees as for the lidar, `abstand` (distance, m), `breite` (width, m), `x`/`y` center in robot coordinates (m), `quelle` (source) |
 | `personen` | person boxes in the person camera image, relative to the image size (0..1) |
-| `personenerkennung` | whether camera person detection works; `fehler` (error) e.g. „opencv fehlt“; `kamera`: which camera image the boxes refer to (name as in `/cameras`) |
+| `personenerkennung` | whether camera person detection works; `fehler` (error) e.g. „opencv fehlt“; `kamera`: which camera image the boxes refer to (name as in `/cameras`); `verfahren` (method, new 23.11.): `hailo` (pose boxes), `hog` (CPU fallback) or `null` (none available) |
 
 ### Interaction in detail
 
@@ -1221,6 +1226,16 @@ gently if there is no answer, call for help (alarm music, `alert`
 
 Every finished check (any outcome) is stored as a run like the tests below
 (`typ: "health"`), so it can be looked at later without the robot.
+
+How "lying" is decided (since 23.11.): the person under check is tracked
+from frame to frame (a second person walking past does not take over). The
+torso angle, the box shape and, for a body lying along the camera's line of
+sight, hips above the shoulders or a strongly shortened torso
+(`HEALTH_FORESHORTEN_RATIO`) count as lying. Over the observation all frames
+vote (`HEALTH_LYING_SHARE`); the `text` of the `liegend` sign then ends with
+„(in k von n Bildern liegend)“. The motion threshold scales with the size of
+the person in the image (`HEALTH_MOTIONLESS_REF_DIAG_PX`). The watch tolerates
+the person being lost for up to `HEALTH_AUTO_GAP_S`.
 
 ### Test runs
 

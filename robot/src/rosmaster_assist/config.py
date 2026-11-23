@@ -1181,6 +1181,13 @@ PERSON_MIN_SCORE = 0.5
 # from CAMERA_ROLES, detection uses the default camera.
 PERSON_CAMERA = "personen"
 
+# Where the person boxes come from (sensors/people.py):
+# "auto" -- from the pose detection on the Hailo AI chip while it works,
+#           otherwise from HOG. Relieves the CPU, and YOLO also finds people
+#           who sit, lie or are seen from the side.
+# "hog"  -- always OpenCV HOG on the CPU (as before 23.11.2026).
+PERSON_DETECT_BACKEND = "auto"
+
 # --- Camera tilt servo (person camera, up and down) ------------------------------
 # details in sensors/camera_tilt.py. servo on the expansion board, moved with
 # rosmaster_lib's set_pwm_servo (ports s1..s4)
@@ -1237,6 +1244,8 @@ CAMERA_FOV_DEG = 60.0
 POSE_ENABLED = True
 
 # Shipped with the Hailo package (hailo-models). Expects 640x640 RGB.
+# yolov8m_pose_h10.hef next to it gives steadier keypoints but is slower;
+# compare both on the robot with scripts/bench_pose.py before switching.
 POSE_HEF = "/usr/share/hailo-models/yolov8s_pose_h10.hef"
 
 # Frames per second. The camera delivers 15; waving needs ~10 so that an
@@ -1918,12 +1927,23 @@ HEALTH_BLOCKED_ENOUGH_M = 1.2
 # Overall picture: observe this long (s) how much the person moves.
 HEALTH_OBSERVE_S = 5.0
 # If the keypoints move less than this on average (pixels, 640 image), the
-# person counts as motionless.
+# person counts as motionless. Holds for a person whose box diagonal is
+# HEALTH_MOTIONLESS_REF_DIAG_PX; for smaller/larger people the threshold
+# scales along (factor 0.5..2), since jitter and movement shrink with the
+# distance. 0 for the reference switches the scaling off.
 HEALTH_MOTIONLESS_PX = 6.0
+HEALTH_MOTIONLESS_REF_DIAG_PX = 300.0
 # Lying: shoulder-hip axis flatter than this many degrees from horizontal.
 HEALTH_LYING_DEG = 35.0
 # ... or the box is this much wider than tall (fallback without keypoints).
 HEALTH_LYING_ASPECT = 1.3
+# ... or lying lengthwise to the camera, where the torso looks upright: the
+# torso (shoulders to hips) appears shorter than this share of the shoulder
+# width (standing: ~1.2-2.5). Hips above the shoulders count too.
+HEALTH_FORESHORTEN_RATIO = 0.45
+# Over several frames lying counts when at least this share of the frames
+# says so (the observation and the watch).
+HEALTH_LYING_SHARE = 0.6
 # On the floor: lidar echo at the person's angle, but low -- the lidar
 # measures at ~17 cm height. A lying body gives a wide piece there at least
 # this long (m).
@@ -1953,6 +1973,9 @@ HEALTH_WORDS_NO = ("nein", "alles gut", "geht schon")
 # for this long (s), it starts the check by itself.
 HEALTH_AUTO_DETECT = True
 HEALTH_AUTO_S = 3.0
+# A lying person lost for at most this long (s) does not restart the wait:
+# the pose detection misses a frame now and then.
+HEALTH_AUTO_GAP_S = 1.0
 
 # Music when getting help (in the package under data/).
 HEALTH_MUSIC_FILE = "BeatboxJungs.m4a"

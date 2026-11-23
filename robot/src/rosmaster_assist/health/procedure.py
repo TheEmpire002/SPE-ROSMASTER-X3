@@ -326,8 +326,10 @@ class Healthbot:
         return scan.points()
 
     def _seen(self) -> dict | None:
+        """The person under check: tracked from frame to frame, so a second
+        person walking past does not take over."""
         people = self._pose.people() if self._pose is not None else []
-        return people[0] if people else None
+        return am.pick(people, self._person)
 
     def _distance(self, person: dict | None) -> float | None:
         """Lidar distance to the person (nearest point of their piece),
@@ -494,7 +496,8 @@ class Healthbot:
         self._note(f"Person gefunden ({person['winkel']:+.0f}°), beobachtet {config.HEALTH_OBSERVE_S:.0f} s")
         history = await self._observe(config.HEALTH_OBSERVE_S)
         person = history[-1] if history else self._seen()
-        self._check(am.lying(person))
+        # all frames vote: one frame with swapped keypoints must not decide
+        self._check(am.lying_over(history, person))
         assert self._pose is not None  # start() requires pose detection
         self._check(am.floor(person, self._points(), self._pose.fov_deg))
         self._check(am.motionless(history))
@@ -734,18 +737,23 @@ class Healthbot:
         assert self._pose is not None
         self._pose.activate(True, "healthbot-wache")
         self._watch_since = None
+        watch = am.LyingWatch()
+        seen = None
         try:
             while True:
                 await asyncio.sleep(0.2)
                 if self.active:
+                    watch.reset()
                     self._watch_since = None
                     continue
-                p = self._seen()
-                if p is None or am.lying(p)["zustand"] != am.FLAGGED:
-                    self._watch_since = None
-                    continue
-                self._watch_since = self._watch_since or time.monotonic()
-                if time.monotonic() - self._watch_since < config.HEALTH_AUTO_S:
+                people = self._pose.people()
+                p = am.pick(people, seen)
+                seen = p or seen
+                flagged = p is not None and am.lying(p)["zustand"] == am.FLAGGED
+                # short misses (a lost frame) are tolerated, see LyingWatch
+                due = watch.update(time.monotonic(), flagged)
+                self._watch_since = watch.since
+                if not due or p is None:
                     continue
                 d = self._distance(p)
                 x, y, heading = self._odometry.pose()
@@ -759,6 +767,7 @@ class Healthbot:
                     self._note("liegende Person selbst erkannt -- Wache aus")
                     await self._send("warning", "Healthbot: liegende Person erkannt, prüfe")
                     return
+                watch.reset()
                 self._watch_since = None
         finally:
             self._pose.activate(False, "healthbot-wache")
@@ -768,7 +777,9 @@ def _thresholds() -> dict:
     """The config values a check depends on, for later review."""
     names = (
         "HEALTH_OBSERVE_S", "HEALTH_ANSWER_S", "HEALTH_LYING_DEG", "HEALTH_LYING_ASPECT",
-        "HEALTH_MOTIONLESS_PX", "HEALTH_FLOOR_MIN_WIDTH_M", "HEALTH_FLOOR_IMAGE_BOTTOM",
+        "HEALTH_LYING_SHARE", "HEALTH_FORESHORTEN_RATIO",
+        "HEALTH_MOTIONLESS_PX", "HEALTH_MOTIONLESS_REF_DIAG_PX",
+        "HEALTH_FLOOR_MIN_WIDTH_M", "HEALTH_FLOOR_IMAGE_BOTTOM",
         "HEALTH_NUDGE_ACTIVE", "HEALTH_NUDGE_COUNT", "HEALTH_NUDGE_SPEED", "HEALTH_NUDGE_DEPTH_M",
         "HEALTH_NUDGE_MARGIN_M", "HEALTH_NUDGE_START_M", "HEALTH_NUDGE_CONTACT_S",
         "HEALTH_NUDGE_STILL_MS", "HEALTH_NUDGE_MAX_S", "HEALTH_NUDGE_BACK_M",

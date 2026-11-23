@@ -44,6 +44,56 @@ _GAP_M = 0.12
 # extra margin (degrees) on the person's camera angle: camera and lidar
 # are not mounted at the same spot
 _ANGLE_MARGIN_DEG = 5.0
+# hips count as above the shoulders only by this share of the shoulder width,
+# so a keypoint wobble on a bent-over person does not flip the body
+_INVERTED_MARGIN = 0.25
+# shortened torso only counts with a box at least this wide per height;
+# a standing person is much narrower, a body lying lengthwise is not
+_FORESHORTEN_MIN_ASPECT = 0.6
+# shoulders closer than this (pixels) say nothing about the torso length
+_MIN_SHOULDER_PX = 15.0
+# the motion threshold scales with the body size, but only within these factors
+_SCALE_MIN, _SCALE_MAX = 0.5, 2.0
+# tracking: the same person if the boxes overlap at least this much ...
+_TRACK_IOU = 0.2
+# ... or the box centres lie closer than this (share of the image size)
+_TRACK_CENTER = 0.15
+
+
+def box_iou(a, b) -> float:
+    """Overlap of two boxes (x1, y1, x2, y2), 0..1."""
+    w = min(a[2], b[2]) - max(a[0], b[0])
+    h = min(a[3], b[3]) - max(a[1], b[1])
+    if w <= 0 or h <= 0:
+        return 0.0
+    inter = w * h
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+    return inter / union if union > 0 else 0.0
+
+
+def _center(box) -> tuple[float, float]:
+    return (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+
+
+def pick(people: list[dict], last: dict | None) -> dict | None:
+    """The person to look at: the one seen last, otherwise the largest.
+
+    Without tracking a second person walking through the image would land in
+    the motion history and look like movement of the lying one.
+    """
+    if not people:
+        return None
+    if last is None:
+        return people[0]  # pose.py sorts by box height, the largest first
+    box = last["box"]
+    best = max(people, key=lambda p: box_iou(p["box"], box))
+    if box_iou(best["box"], box) >= _TRACK_IOU:
+        return best
+    cx, cy = _center(box)
+    near = min(people, key=lambda p: math.dist(_center(p["box"]), (cx, cy)))
+    if math.dist(_center(near["box"]), (cx, cy)) <= _TRACK_CENTER:
+        return near
+    return people[0]
 
 
 def sign(name: str, state: str, value, text: str, threshold=None, unit: str | None = None) -> dict:
@@ -98,6 +148,9 @@ def lying(person: dict | None) -> dict:
         if angle < limit:
             return sign("liegend", FLAGGED, round(angle, 1),
                         f"Rumpf {angle:.0f}° gegen die Waagerechte -- liegt", limit, "°")
+        lengthwise = _lying_lengthwise(person)
+        if lengthwise is not None:
+            return lengthwise
         return sign("liegend", OK, round(angle, 1),
                     f"Rumpf {angle:.0f}° gegen die Waagerechte -- aufrecht", limit, "°")
     # fallback: box in pixels; less certain (someone sitting with legs apart
@@ -111,6 +164,83 @@ def lying(person: dict | None) -> dict:
                     f"Umriss {ratio:.1f}× so breit wie hoch -- liegt vermutlich", limit, "×")
     return sign("liegend", OK, round(ratio, 2),
                 f"Umriss {ratio:.1f}× so breit wie hoch -- eher aufrecht", limit, "×")
+
+
+def _lying_lengthwise(person: dict) -> dict | None:
+    """Lying along the camera's line of sight, where the torso looks upright.
+
+    Head towards the camera: the hips appear above the shoulders. Head away
+    from it: the torso is strongly shortened (the camera sits low and looks
+    along the body). Only used when the torso angle says "upright".
+    """
+    sl, sr = _kp_px(person, KP_SHOULDER_L), _kp_px(person, KP_SHOULDER_R)
+    hip = _middle(_kp_px(person, KP_HIP_L), _kp_px(person, KP_HIP_R))
+    if sl is None or sr is None or hip is None:
+        return None
+    width = math.dist(sl, sr)
+    if width < _MIN_SHOULDER_PX:
+        return None  # side view or far away: no reference length
+    shoulder = _middle(sl, sr)
+    if shoulder[1] - hip[1] > _INVERTED_MARGIN * width:
+        return sign("liegend", FLAGGED, round(shoulder[1] - hip[1], 1),
+                    "Hüfte über den Schultern -- liegt vermutlich (Kopf zur Kamera)", 0.0, "px")
+    ratio = math.dist(hip, shoulder) / width
+    x1, y1, x2, y2 = person["box"]
+    aspect = (x2 - x1) * config.CAMERA_WIDTH / max(1e-6, (y2 - y1) * config.CAMERA_HEIGHT)
+    limit = config.HEALTH_FORESHORTEN_RATIO
+    if ratio < limit and aspect >= _FORESHORTEN_MIN_ASPECT:
+        return sign("liegend", FLAGGED, round(ratio, 2),
+                    f"Rumpf nur {ratio:.1f}× so lang wie die Schultern breit -- liegt vermutlich (verkürzt)",
+                    limit, "×")
+    return None
+
+
+def lying_over(history: list[dict], fallback: dict | None = None) -> dict:
+    """Lying sign over several frames: the majority decides, not the last frame.
+
+    A single frame with swapped keypoints would otherwise decide. Lying
+    counts when at least ``HEALTH_LYING_SHARE`` of the frames with a
+    decision say so. ``fallback`` is used without any frames.
+    """
+    signs = [s for s in (lying(p) for p in history) if s["zustand"] != UNKNOWN]
+    if not signs:
+        return lying(fallback)
+    flagged = [s for s in signs if s["zustand"] == FLAGGED]
+    is_lying = len(flagged) >= config.HEALTH_LYING_SHARE * len(signs)
+    group = flagged if is_lying else [s for s in signs if s["zustand"] == OK] or signs
+    # representative frame: the median value among the frames of the most common unit
+    units = [s["einheit"] for s in group]
+    unit = max(set(units), key=units.count)
+    same = sorted((s for s in group if s["einheit"] == unit), key=lambda s: s["wert"])
+    result = dict(same[len(same) // 2])
+    if not is_lying and result["zustand"] == FLAGGED:
+        result["text"] = result["text"].split(" -- ")[0] + " -- nicht durchgehend"
+    result["zustand"] = FLAGGED if is_lying else OK
+    result["text"] += f" (in {len(flagged)} von {len(signs)} Bildern liegend)"
+    return result
+
+
+def body_diagonal_px(history: list[dict]) -> float | None:
+    """Median box diagonal (pixels) of the person over the frames."""
+    sizes = [math.hypot((p["box"][2] - p["box"][0]) * config.CAMERA_WIDTH,
+                        (p["box"][3] - p["box"][1]) * config.CAMERA_HEIGHT)
+             for p in history if p.get("box")]
+    return float(np.median(sizes)) if sizes else None
+
+
+def motionless_limit_px(history: list[dict]) -> float:
+    """Motion threshold for this person: ``HEALTH_MOTIONLESS_PX`` at the
+    reference size, smaller for a person far away, larger for one close by.
+
+    Keypoint jitter and real movement both shrink with the distance in the
+    image; a fixed pixel value would call a far person motionless too early
+    and a near one moving because of jitter.
+    """
+    diagonal = body_diagonal_px(history)
+    if diagonal is None or config.HEALTH_MOTIONLESS_REF_DIAG_PX <= 0:
+        return config.HEALTH_MOTIONLESS_PX
+    factor = min(_SCALE_MAX, max(_SCALE_MIN, diagonal / config.HEALTH_MOTIONLESS_REF_DIAG_PX))
+    return config.HEALTH_MOTIONLESS_PX * factor
 
 
 def movement_px(history: list[dict]) -> float | None:
@@ -139,7 +269,7 @@ def movement_px(history: list[dict]) -> float | None:
 
 def motionless(history: list[dict]) -> dict:
     m = movement_px(history)
-    limit = config.HEALTH_MOTIONLESS_PX
+    limit = round(motionless_limit_px(history), 1)
     if m is None:
         return sign("regungslos", UNKNOWN, None, "zu wenige Bilder mit Keypoints", limit, "px")
     if m < limit:
@@ -244,6 +374,42 @@ def floor(person: dict | None, points, fov_deg: float) -> dict:
         return sign("boden", FLAGGED, round(y2, 2), "nur Kamera: liegt unten im Bild",
                     config.HEALTH_FLOOR_IMAGE_BOTTOM, "Bildhöhe")
     return sign("boden", UNKNOWN, None, "kein Lidar-Echo in Richtung der Person")
+
+
+class LyingWatch:
+    """Watch mode: lying long enough, with tolerance for short misses.
+
+    The pose detection loses a lying person now and then for a frame or two
+    (unusual pose, motion blur). Without tolerance every miss restarts the
+    wait, and a real emergency could go unnoticed. A miss longer than
+    ``HEALTH_AUTO_GAP_S`` starts over; at the end at least
+    ``HEALTH_LYING_SHARE`` of the frames must have said "lying".
+    """
+
+    def __init__(self) -> None:
+        self.reset()
+
+    def reset(self) -> None:
+        self.since: float | None = None
+        self._last_flagged = 0.0
+        self._flagged = 0
+        self._total = 0
+
+    def update(self, now: float, flagged: bool) -> bool:
+        """One frame (``flagged``: seen lying). True when the check should start."""
+        if flagged:
+            if self.since is None:
+                self.since = now
+            self._last_flagged = now
+        elif self.since is None:
+            return False
+        elif now - self._last_flagged > config.HEALTH_AUTO_GAP_S:
+            self.reset()
+            return False
+        self._total += 1
+        self._flagged += 1 if flagged else 0
+        return (now - self.since >= config.HEALTH_AUTO_S
+                and self._flagged >= config.HEALTH_LYING_SHARE * self._total)
 
 
 def count(checks: dict[str, dict], state: str = FLAGGED) -> int:

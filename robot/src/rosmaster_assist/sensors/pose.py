@@ -128,6 +128,12 @@ class PoseDetection:
     def simulated(self) -> bool:
         return self._mock
 
+    @property
+    def healthy(self) -> bool:
+        """No error since the last good frame (the hailo is open or not tried yet)."""
+        with self._lock:
+            return self._error is None
+
     def start(self) -> None:
         if not self.available or self._thread is not None:
             return
