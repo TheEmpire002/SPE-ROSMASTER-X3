@@ -201,6 +201,7 @@ async def _test_motion(ws, driver: str | None, max_vx: float) -> None:
 
     await _test_collision(ws)
     await _test_homing(ws)
+    await _test_return(ws)
 
 
 async def _test_collision(ws) -> None:
@@ -287,10 +288,84 @@ async def _test_homing(ws) -> None:
     await ws.send(json.dumps({"type": "home"}))
     started = await wait_for_state(ws, lambda m: m.get("homing") is True, seconds=5)
     check("homing starts", bool(started and started.get("homing")))
+    by_map = bool((_map_display().get("fahrt") or {}).get("nach_karte"))
 
     done = await wait_for_state(ws, lambda m: m.get("homing") is False, seconds=40)
     rest = _distance(done) if done else 99.0
-    check(f"returns to the start (remaining deviation {rest:.2f} m)", rest < 0.25)
+    # with a confident pose in the (always-on) map homing drives by the
+    # lidar to the map's start; the wheel odometry slips in the simulation,
+    # so there the map is the better ruler
+    in_map = _map_rest() if done and by_map else None
+    if in_map is not None:
+        check(f"returns to the start (remaining deviation in the map {in_map:.2f} m, "
+              f"by wheel odometry {rest:.2f} m)", in_map < 0.25)
+    else:
+        check(f"returns to the start (remaining deviation {rest:.2f} m)", rest < 0.25)
+
+
+async def _test_return(ws) -> None:
+    """Mission start here, drive away, "return" -- back at the mission start (E14)."""
+    loop = asyncio.get_running_loop()
+    end = loop.time() + 10.0
+    while loop.time() < end and _map_rest() is None:
+        await asyncio.sleep(0.5)
+    if _map_rest() is None:
+        print("  [skipped] way back -- no confident pose in the main map")
+        return
+    await ws.send(json.dumps({"type": "mission_start"}))
+    await asyncio.sleep(0.5)
+    mission = (_map_display().get("anker") or {}).get("mission")
+    check("mission start is set", mission is not None)
+    if mission is None:
+        return
+
+    end = loop.time() + 2.0
+    while loop.time() < end:
+        await ws.send(json.dumps({"type": "drive", "vx": 0.4, "vy": -0.2, "omega": 0.0}))
+        await asyncio.sleep(0.1)
+    await ws.send(json.dumps({"type": "stop"}))
+    await asyncio.sleep(1.0)
+
+    await ws.send(json.dumps({"type": "return", "ziel": "mission"}))
+    started = False
+    end = loop.time() + 5.0
+    while loop.time() < end and not started:
+        f = _map_display().get("fahrt") or {}
+        started = bool(f.get("aktiv")) and f.get("art") == "zurueck"
+        await asyncio.sleep(0.2)
+    check("way back starts", started)
+
+    end = loop.time() + 40.0
+    while loop.time() < end and (_map_display().get("fahrt") or {}).get("aktiv"):
+        await asyncio.sleep(0.5)
+    o = _map_display().get("ortung") or {}
+    p = o.get("pose")
+    rest = ((p["x"] - mission[0]) ** 2 + (p["y"] - mission[1]) ** 2) ** 0.5 if p else 99.0
+    check(f"back at the mission start (remaining deviation in the map {rest:.2f} m)",
+          rest < 0.25)
+    # polled over http meanwhile: drop the state messages piled up on the socket
+    while True:
+        try:
+            await asyncio.wait_for(ws.recv(), timeout=0.1)
+        except asyncio.TimeoutError:
+            break
+
+
+def _map_display() -> dict:
+    try:
+        with urllib.request.urlopen(_base + "/api/mapping/ortung", timeout=5) as r:
+            return json.loads(r.read()) or {}
+    except (urllib.error.URLError, ValueError):
+        return {}
+
+
+def _map_rest() -> float | None:
+    """Distance to the map's start if the pose in a map is confident, else None."""
+    o = _map_display().get("ortung") or {}
+    if not o.get("sicher") or not o.get("pose") or not o.get("start"):
+        return None
+    p, s = o["pose"], o["start"]
+    return ((p["x"] - s[0]) ** 2 + (p["y"] - s[1]) ** 2) ** 0.5
 
 
 def _distance(state: dict | None) -> float:
@@ -338,8 +413,12 @@ async def test_websocket(ws_url: str, allow_motion: bool) -> None:
         check("unknown type returns an error message", err is not None)
 
 
+_base = ""
+
+
 async def main_async(host: str, port: int, allow_motion: bool) -> int:
-    base = f"http://{host}:{port}"
+    global _base
+    base = _base = f"http://{host}:{port}"
     print(f"Testing {base}")
 
     test_http(base)

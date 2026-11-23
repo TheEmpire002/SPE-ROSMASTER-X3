@@ -40,6 +40,8 @@ from ..interaction import speech as sp
 from ..interaction import behavior as vh
 from ..interaction.speech import SpeechRecognition
 from ..interaction.voice import Voice
+from ..mapping.live_mapper import LiveMapper
+from ..mapping.live_store import LiveStore
 from ..mapping.manager import MappingManager
 from ..mapping.web import create_mapping_router
 from ..interaction.behavior import Interaction
@@ -64,6 +66,7 @@ from ..navigation.scan_odometry import ScanOdometry
 from .map_control import MapControl
 from ..safety import CollisionGuard, DriveGuard, SafetyWatchdog
 from ..sensors.camera import CameraService, create_cameras
+from ..sensors.camera_tilt import CameraTilt
 from ..sensors.lidar import LidarService, create_lidar
 from ..sensors.people import PersonDetection
 from ..sensors.pose import SKELETON, PoseDetection
@@ -214,12 +217,17 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     localizer = Localizer(odometry, lidar)
     # Lidar odometry for mapping, the mapping drive and localization in the
     # map: the heading comes from the lidar because the IMU on the X3 does
-    # not deliver one. It only runs while mapping or while a map is loaded
-    # (MappingManager or MapLocalization subscribe to it).
+    # not deliver one. With always-on mapping it runs permanently (user
+    # "immer"), otherwise only while mapping or while a map is loaded.
     scan_odometry = ScanOdometry(lidar, odometry)
     # Pose in the map (E12) and paths through it: for continuing while
     # mapping and for drives to a point on the map.
     localization = MapLocalization(scan_odometry)
+    # always-on mapping (E14): the main map grows behind the integrate gate;
+    # wheel travel only for lift detection, and only when really measured
+    live_mapper = LiveMapper(
+        wheel_pose_at=lambda t: odometry.pose_at(t) if odometry.actually_measuring else None
+    )
     planner = BackgroundPlanner()
     homing = Homing(watchdog, odometry, localizer, localization=localization, planner=planner)
     # Depth camera (Astra) for what lies below the lidar plane: chair legs,
@@ -270,6 +278,11 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     # driving without the board (and not by itself after reconnecting).
     interaction = Interaction(
         watchdog, lidar, pose, voice, drive_connected=lambda: driver.connected, odometry=odometry
+    )
+    # tilt servo of the person camera: keeps the person in question in the frame
+    camera_tilt = CameraTilt(
+        driver, person_source=lambda: interaction.target_person,
+        fov_deg=person_camera.fov_deg if person_camera is not None else None,
     )
     # Gets the voice so it can stop listening while the robot itself speaks
     # (otherwise it would understand itself), and MUKKE: while music plays
@@ -334,6 +347,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         else:
             log.warning("Driver: %s — the robot can move", driver.name)
         watchdog.start()
+        camera_tilt.start()
         for camera in cameras.values():
             camera.start()
         people.start()
@@ -347,6 +361,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         speech.start()  # loads the model in its own thread, does not block
         if lidar is not None:
             lidar.start()
+            if config.LIVE_LOCALIZATION_ALWAYS:
+                scan_odometry.start("immer")
             # Give the lidar one revolution, then calibrate the start.
             # Without a reference there would be no correction until the
             # first "set_home" -- and experience shows nobody presses the
@@ -355,6 +371,11 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                 asyncio.create_task(_catch_up_reference(localizer, odometry)),
                 "Startpunkt einmessen", endless=False,
             )
+        # main map from disk, the pose searched where the robot was switched off
+        try:
+            await asyncio.to_thread(map_control.live_startup)
+        except Exception:
+            log.exception("Main map could not be loaded -- always-on mapping stays off")
         diagnostics.start()
         asyncio.get_running_loop().set_exception_handler(diagnostics.loop_error)
 
@@ -362,7 +383,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             _status_loop(
                 hub, watchdog, driver, odometry, homing, localizer, guard,
                 explorer, detection, lidar, people, interaction, voice, speech, maneuver,
-                map_control=map_control, healthbot=healthbot,
+                map_control=map_control, healthbot=healthbot, camera_tilt=camera_tilt,
             )
         )
         speech_task = asyncio.create_task(_speech_loop())
@@ -423,9 +444,12 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                 mapping_manager.stop()
             except Exception:
                 log.exception("Mapping could not be stopped cleanly on shutdown")
+            map_control.live_shutdown()
             localization.unload()
+            scan_odometry.stop("immer")
             people.stop()
             pose.stop()
+            camera_tilt.stop()
             mukke.stop()
             speech.stop()
             voice.stop()
@@ -465,6 +489,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     map_control = MapControl(
         mapping_manager=mapping_manager, localization=localization, explorer=explorer, homing=homing,
         interaction=interaction, maneuver=maneuver, watchdog=watchdog, driver=driver, hub=hub,
+        live_mapper=live_mapper, live_store=LiveStore(mapping_manager.map_service),
+        scan_odometry=scan_odometry,
     )
     map_control.also_cancel.append(healthbot.cancel)
     # mapping drives take over the wheels; other test runs keep going
@@ -493,6 +519,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                         explorer, interaction, voice, speech, recording,
                         maneuver=maneuver, sender=ws, map_control=map_control,
                         healthbot=healthbot, test_runs=test_runs,
+                        camera_tilt=camera_tilt,
                     )
                 except Exception:
                     # A faulty command used to drop the connection -- the
@@ -1260,6 +1287,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             {"type": kind, **fields}, watchdog, driver, hub, odometry, homing, localizer, guard,
             explorer, interaction, voice, speech, maneuver=maneuver, map_control=map_control,
             healthbot=healthbot, test_runs=test_runs,
+            camera_tilt=camera_tilt,
         )
         if response is None:
             return True
@@ -1432,6 +1460,7 @@ async def _handle(
     map_control: MapControl | None = None,
     healthbot: Healthbot | None = None,
     test_runs: TestRuns | None = None,
+    camera_tilt: CameraTilt | None = None,
 ) -> dict[str, Any] | None:
     """Process an incoming message.
 
@@ -1534,10 +1563,9 @@ async def _handle(
             maneuver.cancel("Not-Stopp")
         if healthbot is not None:
             await healthbot.end_alarm("Not-Stopp")
+        # no spoken "Halt": the app also sends stop when it is left, and
+        # hearing that every time is annoying
         watchdog.stop()
-        if voice is not None:
-            # Priority: everything still in the queue is obsolete.
-            voice.say("Halt.", priority=True)
         return None
 
     if kind in ("move", "turn"):
@@ -1676,6 +1704,28 @@ async def _handle(
         watchdog.stop()
         return None
 
+    if kind == "mission_start":
+        if map_control is None:
+            return alert_message("warning", "Keine Karte eingerichtet")
+        error = map_control.mission_start()
+        return alert_message("warning", error) if error else None  # message from MapControl
+
+    if kind == "return":
+        if map_control is None:
+            return alert_message("warning", "Keine Karte eingerichtet")
+        error = map_control.return_to(msg.get("ziel") or "mission")
+        return alert_message("warning", error) if error else None
+
+    if kind == "map_live":
+        if map_control is None:
+            return alert_message("warning", "Keine Karte eingerichtet")
+        active = bool(msg.get("aktiv", True))
+        error = map_control.map_live(active)
+        if error:
+            return alert_message("warning", error)
+        return alert_message("info", "Dauerkartierung an" if active else
+                             "Dauerkartierung pausiert -- die Karte ändert sich nicht")
+
     if kind == "map_pose":
         if map_control is None:
             return alert_message("warning", "Keine Karte eingerichtet")
@@ -1716,8 +1766,12 @@ async def _handle(
         # has to go back to the start, otherwise the robot would be outside
         # the simulated room.
         zero = getattr(driver, "reset_true_pose", None)
+        moved_in_map = False
         if zero is not None:
+            before = driver.true_pose()
             zero()
+            if map_control is not None:
+                moved_in_map = map_control.simulation_moved(before, driver.true_pose())
         odometry.reset()
         # The old reference scan belongs to the old start and would
         # otherwise pull the position back there.
@@ -1728,7 +1782,7 @@ async def _handle(
             else "Startpunkt gesetzt (ohne Lidar -- Position wird nur geschätzt)"
         )
         # With a map: this is also the goal of map-based homing.
-        if map_control is not None and map_control.start_here():
+        if moved_in_map or (map_control is not None and map_control.start_here()):
             text += ", auch in der Karte"
         await hub.broadcast(alert_message("info", text))
         return None
@@ -1817,6 +1871,26 @@ async def _handle(
         reason = healthbot.set_watch(bool(msg.get("an")))
         if reason is not None:
             return alert_message("warning", f"Healthbot-Wache: {reason}")
+        return None
+
+    if kind == "camera_tilt":
+        if camera_tilt is None or not camera_tilt.available:
+            return alert_message("warning", "Kein Neige-Servo für die Kamera")
+        if not any(k in msg for k in ("winkel", "schritt", "auto")):
+            return error_message("camera_tilt braucht winkel, schritt oder auto")
+        try:
+            winkel = float(msg["winkel"]) if "winkel" in msg else None
+            schritt = float(msg["schritt"]) if "schritt" in msg else None
+        except (TypeError, ValueError):
+            return error_message("camera_tilt: winkel und schritt müssen Zahlen sein")
+        if "auto" in msg and not isinstance(msg["auto"], bool):
+            return error_message("camera_tilt: auto muss true oder false sein")
+        if "auto" in msg:
+            camera_tilt.set_auto(msg["auto"])
+        if winkel is not None:
+            camera_tilt.set(winkel)
+        elif schritt is not None:
+            camera_tilt.step(schritt)
         return None
 
     if kind == "box":
@@ -2016,6 +2090,7 @@ async def _status_loop(
     maneuver: Maneuver | None = None,
     map_control: MapControl | None = None,
     healthbot: Healthbot | None = None,
+    camera_tilt: CameraTilt | None = None,
 ) -> None:
     """Regularly sends the state to all clients."""
     last_active = False
@@ -2089,6 +2164,8 @@ async def _status_loop(
                         speech=speech.state() if speech is not None else None,
                         occ_map=map_control.state_brief() if map_control is not None else None,
                         healthbot=_healthbot_brief(healthbot) if healthbot is not None else None,
+                        camera_tilt=camera_tilt.state()
+                        if camera_tilt is not None and camera_tilt.available else None,
                     )
                 )
         except Exception:

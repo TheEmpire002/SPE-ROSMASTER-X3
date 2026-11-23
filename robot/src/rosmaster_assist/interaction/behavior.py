@@ -212,6 +212,8 @@ class Interaction:
         # Pause from the app: the target stays remembered and keeps being
         # tracked, but it does not drive.
         self._paused = False
+        # person of the last tick, for the camera tilt
+        self._target_person: dict | None = None
 
     # --- Control ----------------------------------------------------------------
 
@@ -302,6 +304,15 @@ class Interaction:
     @property
     def paused(self) -> bool:
         return self.active and self._paused
+
+    @property
+    def target_person(self) -> dict | None:
+        """Pose dict of the person in question (``box``, ``kp``, ``zeit``), or None.
+
+        the one being followed, in ready mode the largest; the camera tilt
+        keeps their head in the frame
+        """
+        return self._target_person if self.active else None
 
     def people_with_id(self, people: list[dict]) -> list[dict]:
         """People for the app: without feature, with track ``id`` and ``ziel``.
@@ -415,6 +426,7 @@ class Interaction:
         self._detour_side = 0.0
         self._last_tick = None
         self._forget_target()
+        self._target_person = None
         self._mode = READY
         self._start_mode = mode
 
@@ -483,6 +495,7 @@ class Interaction:
         self._memory.advance(dt)
 
         target = self._choose_target(now)
+        self._target_person = target
         self._check_gesture(target, now)
 
         if target is not None:

@@ -161,6 +161,7 @@ function handleMessage(msg) {
       showInteraction(msg.interaktion);
       showVoice(msg.stimme);
       showSpeech(msg.sprache);
+      showCameraTilt(msg.kamera_neigung);
       break;
 
     case "collision":
@@ -188,6 +189,43 @@ function handleMessage(msg) {
       logLine(`Unbekannte Nachricht: ${msg.type}`, "warning");
   }
 }
+
+// --- Camera tilt (servo of the person camera) ----------------------------------
+
+// while dragging, the slider shows the hand, not the robot's (older) value
+let tiltDragging = false;
+let tiltSent = 0;
+
+function showCameraTilt(st) {
+  const on = !!(st && st.verfuegbar);
+  el("neigung").hidden = !on;
+  el("neigung-auto-zeile").hidden = !on;
+  if (!on) {
+    el("val-neigung").textContent = "—";
+    return;
+  }
+  const deg = Math.round(st.winkel);
+  const where = deg > 0 ? `${deg}° hoch` : deg < 0 ? `${-deg}° runter` : "waagerecht";
+  el("val-neigung").textContent = where + (st.auto ? (st.verfolgt ? " · folgt der Person" : " · automatisch") : "");
+  const slider = el("neigung-regler");
+  slider.min = st.min;
+  slider.max = st.max;
+  if (!tiltDragging) slider.value = st.auto ? st.winkel : st.ziel;
+  el("neigung-auto").checked = st.auto === true;
+  el("neigung-auto-state").textContent = st.auto ? "an" : "aus";
+}
+
+function sendTilt(force) {
+  // at most ten per second while dragging; the robot moves smoothly in between
+  const now = Date.now();
+  if (!force && now - tiltSent < 100) return;
+  tiltSent = now;
+  send({ type: "camera_tilt", winkel: Number(el("neigung-regler").value) });
+}
+el("neigung-regler").addEventListener("input", () => { tiltDragging = true; sendTilt(false); });
+el("neigung-regler").addEventListener("change", () => { sendTilt(true); tiltDragging = false; });
+el("btn-neigung-gerade").addEventListener("click", () => send({ type: "camera_tilt", winkel: 0 }));
+el("neigung-auto").addEventListener("change", (e) => send({ type: "camera_tilt", auto: e.target.checked }));
 
 function send(message) {
   if (socket && socket.readyState === WebSocket.OPEN) {
@@ -254,7 +292,27 @@ el("stop").addEventListener("click", () => {
 
 // --- Keyboard -------------------------------------------------------------------
 
+// u/i held: tilt the camera in small steps, the robot moves the servo
+// smoothly in between
+const TILT_KEY_STEP_DEG = 3;
+const TILT_KEY_EVERY_MS = 100;
+let tiltTimer = null;
+
+function startTilt(sign) {
+  stopTilt();
+  const step = () => send({ type: "camera_tilt", schritt: sign * TILT_KEY_STEP_DEG });
+  step();
+  tiltTimer = setInterval(step, TILT_KEY_EVERY_MS);
+}
+
+function stopTilt() {
+  if (tiltTimer !== null) clearInterval(tiltTimer);
+  tiltTimer = null;
+}
+
 const KEYS = {
+  KeyU: () => startTilt(1),
+  KeyI: () => startTilt(-1),
   KeyW: () => (dir.x = 1),
   KeyS: () => (dir.x = -1),
   KeyA: () => (dir.y = 1),
@@ -264,6 +322,8 @@ const KEYS = {
 };
 
 const KEYS_UP = {
+  KeyU: stopTilt,
+  KeyI: stopTilt,
   KeyW: () => (dir.x = 0),
   KeyS: () => (dir.x = 0),
   KeyA: () => (dir.y = 0),
@@ -305,6 +365,7 @@ window.addEventListener("keyup", (e) => {
 // manual input is cleared anyway. If the connection drops, the server
 // stops the robot regardless.
 function onWindowLeave() {
+  stopTilt();
   if (autonomyActive) {
     dir.x = dir.y = dir.rot = 0;
     document.querySelectorAll(".pad-btn.active").forEach((b) =>

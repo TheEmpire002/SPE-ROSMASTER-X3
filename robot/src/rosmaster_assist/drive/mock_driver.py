@@ -111,6 +111,12 @@ class MockDriver(DriveBase):
     def beep(self, ms: int = 100) -> None:
         log.info("SIM beep (%d ms)", ms)
 
+    def set_servo(self, channel: int, angle: int) -> bool:
+        if not self._connected:
+            return False
+        log.info("SIM servo %d -> %d°", channel, angle)
+        return True
+
     def read_motion(self) -> tuple[float, float, float] | None:
         """What the "encoders" report -- with slip, so slightly off.
 

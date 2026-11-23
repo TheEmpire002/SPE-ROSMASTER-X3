@@ -11,13 +11,13 @@ controlled manually via a web app and deliver aids using a box mounted on top.
 
 ## Subsystems
 
-| Folder    | Runs on          | Purpose                                              |
-|-----------|------------------|------------------------------------------------------|
-| `robot/`  | Raspberry Pi 5   | Drive, sensors, safety logic, WebSocket server       |
-| `webapp/` | Browser          | Remote control, status display, emergency alert      |
-| `esp/`    | ESP32            | Person tracking and vital signs                      |
-| `docs/`   | —                | Architecture, hardware, decisions                    |
-| `scripts/`| Raspberry Pi 5   | Helper and diagnostic scripts                        |
+| Folder     | Runs on        | Purpose                                         |
+| ---------- | -------------- | ----------------------------------------------- |
+| `robot/`   | Raspberry Pi 5 | Drive, sensors, safety logic, WebSocket server  |
+| `webapp/`  | Browser        | Remote control, status display, emergency alert |
+| `esp/`     | ESP32          | Person tracking and vital signs                 |
+| `docs/`    | —              | Architecture, hardware, decisions               |
+| `scripts/` | Raspberry Pi 5 | Helper and diagnostic scripts                   |
 
 Details: [`docs/architecture.md`](docs/architecture.md)
 
@@ -49,14 +49,94 @@ server and opens the web app in the browser.
 
 Options:
 
-| Option          | Effect                                          |
-|-----------------|-------------------------------------------------|
-| `--mock`        | Force simulation, even on the robot             |
-| `--real`        | Force hardware, abort without Rosmaster_Lib     |
-| `--port 8001`   | Different port                                  |
-| `--no-browser`  | Do not open the browser (e.g. over SSH)         |
-| `--setup-only`  | Only set up, do not start                       |
-| `--debug`       | Verbose log output                              |
+| Option         | Effect                                      |
+| -------------- | ------------------------------------------- |
+| `--mock`       | Force simulation, even on the robot         |
+| `--real`       | Force hardware, abort without Rosmaster_Lib |
+| `--port 8001`  | Different port                              |
+| `--no-browser` | Do not open the browser (e.g. over SSH)     |
+| `--setup-only` | Only set up, do not start                   |
+| `--debug`      | Verbose log output                          |
+
+## Connect to the robot from Windows
+
+Your Windows computer and the Raspberry Pi must be on the same Wi-Fi or
+network. Avoid a guest Wi-Fi that prevents devices from seeing each other.
+
+### Find the Pi's IP address
+
+- If a screen and keyboard are connected to the Pi, open a terminal and run:
+
+  ```bash
+  hostname -I
+  ```
+
+  Use the address on the same network as your PC, usually something like
+  `192.168.1.42` or `10.42.0.62`.
+
+- Without a screen, look in your router's connected-device list for the Pi.
+  Its hostname may be `pi-bravo`. The login banner also prints
+  `ROS2_MY_IP` after you connect.
+
+### Connect with SSH
+
+Open PowerShell on Windows and replace `<PI-IP>` with the address you found:
+
+```powershell
+ssh pi@<PI-IP>
+```
+
+The account on this Pi is `pi`; use the username you created instead if it
+differs. Enter that account's password when prompted (nothing appears while
+you type). The first time, SSH asks whether to trust the host key; answer
+`yes` only after confirming the IP belongs to your Pi.
+
+If SSH reports that the connection was refused, enable SSH on the Pi using
+`sudo raspi-config` > **Interface Options** > **SSH**. If it times out,
+check that both devices are on the same network and look up the Pi's current
+IP again.
+
+### Start the server
+
+In the SSH session, go to the project checkout. The current Pi installation
+uses this path:
+
+```bash
+cd ~/gitpipeline/SPE-ROSMASTER-X3
+```
+
+If that path does not exist, search for the checkout:
+
+```bash
+find ~ -maxdepth 5 -type d -name SPE-ROSMASTER-X3 -print
+```
+
+Change to the path printed by `find`. If it prints nothing, the project has
+not been copied or cloned onto the Pi yet. From the project root (where
+`main.py` is), start the server:
+
+```bash
+python main.py --no-browser
+```
+
+Keep this PowerShell/SSH window open while using the app. Stop the server
+with `Ctrl+C`. This starts the real robot when hardware is detected; make
+sure the robot has clear space and keep its stop control within reach. The
+server does not issue a movement command by itself, but the app can control
+the real drive. If diagnostics report USB overloads or a lost drive
+connection, do not drive it until the hardware connection is stable.
+
+### Open the web app
+
+In a browser on your Windows computer, open the same Pi IP on port `8000`:
+
+```text
+http://<PI-IP>:8000
+```
+
+Do not use `localhost` in the Windows browser; that refers to your PC. The
+microphone-enabled page is at `https://<PI-IP>:8443` and may show a local
+certificate warning.
 
 ### Without the automation
 
@@ -183,14 +263,13 @@ server.
 
 ```bash
 ssh pi@<IP-of-the-Pi>
-cd ~/SPE-ROSMASTER-X3 && git pull
+cd ~/gitpipeline/SPE-ROSMASTER-X3 && git pull
 
 # Terminal 1 — server with real hardware
-cd robot && source .venv/bin/activate
-python -m rosmaster_assist.main
+python main.py --no-browser
 
 # Terminal 2 — test
-cd ~/SPE-ROSMASTER-X3
+cd ~/gitpipeline/SPE-ROSMASTER-X3
 robot/.venv/bin/python scripts/smoke_test.py
 ```
 

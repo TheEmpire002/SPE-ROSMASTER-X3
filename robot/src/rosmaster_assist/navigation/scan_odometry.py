@@ -21,12 +21,16 @@ Like any odometry this one drifts too -- but much less than the wheels,
 and above all not by a quarter on every rotation. slam_toolbox corrects
 the rest with its map.
 
-Only runs while someone needs it: mapping and, while a map is loaded,
-localization in the map (``map_localization.py``). The matching costs CPU,
-and load spikes are delicate on the X3 (docs/hardware.md). That is why
-every user registers and unregisters by name; it only ends when none is
-left. A restart begins at (0, 0, 0) again -- anyone relying on the frame
-can detect that via ``run``.
+Only runs while someone needs it: mapping, localization in the map
+(``map_localization.py``) and, with always-on mapping (E14), permanently
+(user ``"immer"``). The matching costs CPU, and load spikes are delicate on
+the X3 (docs/hardware.md). That is why every user registers and
+unregisters by name; it only ends when none is left. A restart begins at
+(0, 0, 0) again -- anyone relying on the frame can detect that via ``run``.
+
+Every measurement says how much it can be trusted (``good``, ``residual``,
+``streak``) and whether scans were missing before it (``gap``, lidar gone
+over USB). Always-on mapping only writes into the map behind such scans.
 """
 
 from __future__ import annotations
@@ -60,6 +64,11 @@ class Measurement(NamedTuple):
     scan: object          # sensors.lidar.Scan
     pose: tuple[float, float, float]  # x, y, angle (radians)
     timestamp: float           # monotonic, like Scan.timestamp
+    # defaults keep test fakes that build Measurement(nr, scan, pose, t) working
+    good: bool = True          # icp matched, not only the wheel estimate
+    residual: float | None = None
+    gap: bool = False          # scans were missing before this one (lidar dropout)
+    streak: int = 0            # good matches in a row up to this one
 
 
 class ScanOdometry:
@@ -88,6 +97,8 @@ class ScanOdometry:
         self._matches = 0
         self._discarded = 0
         self._last_residual: float | None = None
+        self._streak = 0
+        self._gaps = 0
 
     # --- Control ---------------------------------------------------------------
 
@@ -149,6 +160,11 @@ class ScanOdometry:
         dx, dy = self._wheel_travel(odo_prev, self._odo_now())
         return _compose(measurement.pose, (dx, dy, omega * dt))
 
+    def omega(self) -> float:
+        """Most recently measured turn rate (rad/s)."""
+        with self._lock:
+            return self._omega
+
     def age(self) -> float | None:
         """Seconds since the last processed scan."""
         measurement = self.measurement()
@@ -166,6 +182,8 @@ class ScanOdometry:
                 "letztes_residuum_m": (
                     round(self._last_residual, 3) if self._last_residual is not None else None
                 ),
+                "gute_in_folge": self._streak,
+                "luecken": self._gaps,
             }
 
     # --- Processing ------------------------------------------------------------
@@ -184,6 +202,10 @@ class ScanOdometry:
                     log.exception("Lidar odometry: scan not processed")
             self._stop.wait(0.02)
 
+    def feed(self, scan) -> None:
+        """Process one scan right away -- for tests and replays without the thread."""
+        self._process(scan)
+
     def _process(self, scan) -> None:
         points = scan.points()
         if len(points) > _MAX_POINTS:
@@ -196,6 +218,10 @@ class ScanOdometry:
                 self._reference_points = points
                 self._odo_prev, self._prev_time = odo, scan.timestamp
                 self._measurement = Measurement(1, scan, self._pose, scan.timestamp)
+            return
+
+        if scan.timestamp - self._prev_time > config.SCAN_ODO_GAP_S:
+            self._after_gap(scan, points, odo)
             return
 
         # Estimate for the search: distance from the wheels, rotation from the
@@ -222,8 +248,10 @@ class ScanOdometry:
             if good:
                 self._matches += 1
                 self._last_residual = result.residuum
+                self._streak += 1
             else:
                 self._discarded += 1
+                self._streak = 0
             # Renew the reference when it is too far away or the match no
             # longer fits -- otherwise the scans eventually overlap too
             # little.
@@ -239,7 +267,39 @@ class ScanOdometry:
                 self._relative = relative
             self._odo_prev, self._prev_time = odo, scan.timestamp
             nr = self._measurement.nr + 1 if self._measurement else 1
-            self._measurement = Measurement(nr, scan, new, scan.timestamp)
+            self._measurement = Measurement(
+                nr, scan, new, scan.timestamp, good,
+                result.residuum if good else None, False, self._streak,
+            )
+
+    def _after_gap(self, scan, points, odo) -> None:
+        """Scans were missing (lidar dropout): do not trust this one.
+
+        icp against a reference from before the gap would search far beyond
+        its capture range, so only the wheels carry the position over the
+        gap (their rotation is useless, see above), and this scan becomes the
+        new reference. The measurement is flagged so that nobody writes it
+        into a map.
+        """
+        # not _wheel_travel: its reset filter would drop a whole gap's travel
+        dx, dy, _ = _relative(self._odo_prev, odo)
+        if math.hypot(dx, dy) > config.SCAN_ODO_GAP_MAX_M:
+            dx = dy = 0.0  # start point reset during the gap, not a drive
+        new = _compose(self._pose, (dx, dy, 0.0))
+        gap_s = scan.timestamp - self._prev_time
+        with self._lock:
+            self._pose = new
+            self._omega = 0.0
+            self._discarded += 1
+            self._streak = 0
+            self._gaps += 1
+            self._reference_points = points
+            self._reference_pose = new
+            self._relative = (0.0, 0.0, 0.0)
+            self._odo_prev, self._prev_time = odo, scan.timestamp
+            nr = self._measurement.nr + 1 if self._measurement else 1
+            self._measurement = Measurement(nr, scan, new, scan.timestamp, False, None, True, 0)
+        log.warning("Lidar odometry: %.1f s without scans -- position bridged by the wheels", gap_s)
 
     def _odo_now(self) -> tuple[float, float, float]:
         x, y, deg = self._odometry.pose()

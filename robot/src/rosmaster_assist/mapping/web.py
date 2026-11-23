@@ -38,6 +38,14 @@ class LoadRequest(BaseModel):
     name: str = Field(max_length=64)
 
 
+class LiveRequest(BaseModel):
+    aktiv: bool
+
+
+class ReturnRequest(BaseModel):
+    ziel: str = Field(default="mission", pattern="^(mission|home)$")
+
+
 def create_mapping_router(manager: MappingManager | None = None, drive=None) -> APIRouter:
     """Create the mapping routes.
 
@@ -78,6 +86,9 @@ def create_mapping_router(manager: MappingManager | None = None, drive=None) -> 
 
     @router.post("/api/mapping/start")
     async def mapping_start() -> dict[str, Any]:
+        # the main map is saved and remembered before slam takes the lidar
+        if drive is not None:
+            await run_in_threadpool(drive.before_slam)
         try:
             return await run_in_threadpool(mapping_manager.start)
         except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
@@ -173,6 +184,60 @@ def create_mapping_router(manager: MappingManager | None = None, drive=None) -> 
     async def mapping_pose(request: PointRequest) -> dict[str, Any]:
         control = _control()
         error = control.set_pose(request.x, request.y, request.angle)
+        if error:
+            raise HTTPException(status_code=409, detail=error)
+        return control.display()
+
+    # --- Always-on mapping and the way back (E14) ----------------------------------
+
+    @router.get("/api/mapping/live")
+    async def mapping_live() -> dict[str, Any]:
+        return _control().live_status()
+
+    @router.post("/api/mapping/live")
+    async def mapping_live_switch(request: LiveRequest) -> dict[str, Any]:
+        control = _control()
+        error = control.map_live(request.aktiv)
+        if error:
+            raise HTTPException(status_code=409, detail=error)
+        return control.live_status()
+
+    @router.post("/api/mapping/mission/start")
+    async def mapping_mission_start() -> dict[str, Any]:
+        control = _control()
+        error = control.mission_start()
+        if error:
+            raise HTTPException(status_code=409, detail=error)
+        return control.display()
+
+    @router.post("/api/mapping/zurueck")
+    async def mapping_return(request: ReturnRequest) -> dict[str, Any]:
+        control = _control()
+        error = control.return_to(request.ziel)
+        if error:
+            raise HTTPException(status_code=409, detail=error)
+        return control.display()
+
+    @router.post("/api/mapping/hauptkarte/uebernehmen")
+    async def mapping_adopt_slam() -> dict[str, Any]:
+        control = _control()
+        error = await run_in_threadpool(control.adopt_slam)
+        if error:
+            raise HTTPException(status_code=409, detail=error)
+        return control.display()
+
+    @router.post("/api/mapping/hauptkarte/verwerfen")
+    async def mapping_discard_slam() -> dict[str, Any]:
+        control = _control()
+        error = await run_in_threadpool(control.discard_slam)
+        if error:
+            raise HTTPException(status_code=409, detail=error)
+        return control.display()
+
+    @router.post("/api/mapping/hauptkarte/neu")
+    async def mapping_new_main() -> dict[str, Any]:
+        control = _control()
+        error = await run_in_threadpool(control.new_map)
         if error:
             raise HTTPException(status_code=409, detail=error)
         return control.display()

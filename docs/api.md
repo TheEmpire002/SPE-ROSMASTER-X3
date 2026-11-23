@@ -170,7 +170,10 @@ Right after connecting, the robot sends on its own, in this order:
 | `goto` | `x`, `y` (m in the map frame), `winkel` (degrees, optional: heading at the goal) | Drive to this point of the map, along a planned path around walls (new 04.11., see "Using the map" under Mapping). Needs a map and a confident pose in it; cancels other drives. Technically runs as homing with a goal: `state.homing` is `true`; `stop`, `home_cancel` and drive inputs end it. | `alert` to all; without map/pose `alert` (warning) with reason |
 | `goto_cancel` | – | Cancel the goal drive and stop (like `home_cancel`). | – |
 | `map_pose` | `x`, `y` (m), `winkel` (degrees, optional) | "I am here": localization searches for the robot's pose around this point (narrower with `winkel`). For the case where it does not find itself after loading a map. | `alert` (info); without map `alert` (warning) |
-| `map_load` | `name` (saved map) | Load a saved map to drive in it. Localization then searches for the pose at the map's origin. Not during mapping. | `alert` (info/warning) |
+| `map_load` | `name` (saved map) | Load a saved map to drive in it. Localization then searches for the pose at the map's origin. Not during mapping. With always-on mapping (new 05.11.) the loaded map becomes the main map and keeps growing; the pose is searched at its last saved pose first. | `alert` (info/warning) |
+| `mission_start` | – | „Missionsstart hier“ (new 05.11.): the current pose becomes the anchor `mission` in the main map; the way back leads here. Needs a confident pose in the main map. | `alert` (info); otherwise `alert` (warning) with reason |
+| `return` | `ziel`: `"mission"` (default) / `"home"` | Drive back to the mission start (or the map's origin) along the trail driven (see "Way back" under Mapping). Runs as homing with a goal (`state.homing` is `true`, `state.karte.fahrt.art` is `"zurueck"`); cancel with `goto_cancel`, `stop` or a drive input. | `alert` (info); otherwise `alert` (warning) with reason |
+| `map_live` | `aktiv` (bool) | Always-on mapping on/off. Off: the map stays as it is, the pose is still tracked. On: it confirms the pose first, then writes again. | `alert` (info/warning) |
 | `interaction_start` | – | Interaction mode on: the robot waits for hand signals (see "Interaction in detail"). Needs lidar and pose detection; cancels homing and autonomous driving. | `alert` to all; otherwise `alert` (warning) |
 | `interaction_stop` | – | Interaction mode off and stop. | `alert` to all |
 | `follow` | `ziel_id` (optional, number) | "Follow me" without a gesture. Turns interaction mode on if needed. It follows the person in view, the largest one if there are several. `ziel_id` (the `id` from `/interaktion/pose`) makes that person the starting target; the app no longer sends it since 04.11., an unknown ID is ignored. | `alert` to all |
@@ -189,6 +192,7 @@ Right after connecting, the robot sends on its own, in this order:
 | `beep` | `ms` (int, default 100) | Buzzer. | none |
 | `vitals` | `bpm` (number/null), `motion` (bool/null) | Readings from the ESP32, relayed to all. | `vitals` to all |
 | `box` | `action`: `"open"` / `"close"` | Not built yet. | `alert` „Box ist noch nicht angebaut“ (box not attached yet) |
+| `camera_tilt` | `winkel` (degrees, 0 = horizontal, + = up) or `schritt` (tilt by this much), and/or `auto` (`true`/`false`) | Tilt the person camera (C270) with its servo (new 18.11., see "Camera tilt in detail"). `winkel`/`schritt` switch auto off. | without servo `alert` (warning); without any field or with a non-number `error` |
 | `ping` | – | Check the connection. | `pong` |
 
 An unknown `type` returns `{"type": "error", "text": "Unbekannter Nachrichtentyp: …"}`.
@@ -223,9 +227,12 @@ it only turns.
   "interaktion": {"aktiv": false, "verfuegbar": true, "modus": null, "...": "siehe unten"},
   "stimme": {"verfuegbar": true, "spricht": false, "text": "Ich bin bereit."},
   "sprache": {"verfuegbar": true, "geweckt": false, "gehoert": "robi folgen", "befehl": "folgen"},
-  "karte": {"name": "wohnung", "live": false, "pose": {"x": 2.1, "y": -0.4, "winkel": 87.0},
+  "karte": {"name": "hauptkarte", "live": false, "pose": {"x": 2.1, "y": -0.4, "winkel": 87.0},
             "sicher": true, "text": "Lage in der Karte bekannt",
-            "fahrt": {"aktiv": true, "art": "ziel", "ziel": [3.5, -1.0], "rest_m": 2.4, "grund": null}}
+            "fahrt": {"aktiv": true, "art": "ziel", "ziel": [3.5, -1.0], "rest_m": 2.4, "grund": null,
+                      "wartet": null},
+            "kartieren": {"aktiv": true, "zustand": "integriert", "grund": null},
+            "mission": [0.4, 1.2, 1.571], "spur_m": 6.3}
 }
 ```
 
@@ -242,8 +249,9 @@ it only turns.
 | `interaktion` | interaction mode (hand signals, following), see "Interaction in detail". Missing on older servers. |
 | `stimme` | voice output: `verfuegbar` (sound comes out), `spricht` (speaking a sentence right now), `text` (last sentence spoken, or `null`). See "Voice in detail". Missing on older servers. |
 | `sprache` | speech commands: `verfuegbar` (microphone and model ready), `geweckt` (awake: „Robi“ was just said on its own, the next sentence needs no name), `gehoert` (last sentence understood, or `null`), `befehl` (recognized command, for a few seconds, otherwise `null`), `pause` (why the microphone is deliberately closed right now, e.g. „Mapping läuft“; then `verfuegbar` is `false`, otherwise `null`). See "Speech commands in detail". Missing on older servers. |
-| `karte` | Only present when a map exists (new 04.11.): `name` (saved map, `null` for the live map during mapping), `live`, `pose` (pose **in the map frame**, not to be confused with `pose` above in the odometry frame; `null` while unknown), `sicher` (confident; `goto` only works then), `text`, `fahrt` (running or last map-based drive: `art` (kind) `"heim"` (home) / `"ziel"` (goal), `ziel` (goal), `rest_m` (remaining distance), `grund` (reason)). See "Using the map" under Mapping. |
 | `healthbot` | Healthbot short form (new 05.11.): `aktiv`, `zustand` (state: `bereit`, `anfahrt`, `gesamtbild`, `ansprechen`, `anstupsen`, `nachfrage`, `hilfe`, `ansprechbar`, `unauffaellig`, `keine_person`, `abgebrochen`), `schritt` (current step as text), `alarm`, `wache` (watch on). Everything else in `GET /healthbot/status`. Missing on older servers. |
+| `kamera_neigung` | Tilt servo of the person camera (new 18.11.), only present when `CAMERA_TILT_ENABLED`: `verfuegbar`, `winkel` (current tilt, degrees, + = up), `ziel` (where it is moving to), `auto`, `min`/`max` (range), `verfolgt` (auto is keeping a person in the frame right now). |
+| `karte` | Only present when a map exists (new 04.11.): `name` (saved map, `null` for the live map during mapping), `live`, `pose` (pose **in the map frame**, not to be confused with `pose` above in the odometry frame; `null` while unknown), `sicher` (confident; `goto` only works then), `text`, `fahrt` (running or last map-based drive: `art` (kind) `"heim"` (home) / `"ziel"` (goal) / `"zurueck"` (way back, new 05.11.), `ziel` (goal), `rest_m` (remaining distance), `grund` (reason), `wartet` (new 05.11.: „wartet auf Ortung“ while it stands and searches for its pose, otherwise `null`), `vermutet` (new 05.11.: `true` while it follows a guessed path through the unknown, see "Guessed paths")). New 05.11.: `kartieren` (always-on mapping: `aktiv`, `zustand` `"integriert"` (writing) / `"bestaetigt"` (confirming the pose) / `"eingefroren"` (frozen, the map does not change) / `"pausiert"` (paused) / `"start"` (no map yet, founding one at standstill) / `"aus"` (off), `grund` (German reason); `null` when switched off), `mission` (anchor `[x, y, radians]` or `null`), `spur_m` (trail length in m since the mission start, else in total). See "Using the map" under Mapping. |
 
 **`collision`**: on connect and after every change, fields as in
 `state.collision`.
@@ -491,6 +499,25 @@ power supply collapse.
 | `grund` | why the mode last ended (reason); „hochgehoben -- angehalten“ (new 03.11., F3) if it was lifted while driving -- afterwards `bereit` and the announcement „Ich wurde hochgehoben. Ich bleibe stehen.“ |
 | `pausiert` | `true` after `follow_pause` (paused): stands still, mode and target are kept. Any mode change (including the stop gesture) ends the pause. Missing on older servers. |
 | `ziel` | whom it follows (target lock 03.11., simplified 04.11.): `zustand` (state) is `idle`, `acquiring_target`, `following`, `target_temporarily_lost` or `searching_for_target` (`safe_stop` only from servers before 04.11.). `id` is the internal track ID (changes when the person was briefly out of view; do not display it), `sicherheit` (confidence) is 1 while following, `grund` says why it stopped (e.g. „Person nicht wiedergefunden“). Details in `docs/interaction.md`. Missing on older servers. |
+
+### Camera tilt in detail
+
+New 18.11. A servo on the expansion board (`CAMERA_TILT_CHANNEL`, default
+port S1) tilts the person camera up and down (`sensors/camera_tilt.py`).
+
+- Angle 0 = horizontal, positive = up, range `CAMERA_TILT_MIN_DEG` ..
+  `CAMERA_TILT_MAX_DEG` (±30°). Mapped to the servo with
+  `CAMERA_TILT_SERVO_CENTER_DEG` (90) and `CAMERA_TILT_SERVO_SIGN`.
+- **Auto** (default on, `CAMERA_TILT_AUTO`): while interaction runs
+  (following, come here, ready) it keeps the head of the person in question
+  at `CAMERA_TILT_HEAD_Y` (30 %) of the image height, leaving room for raised
+  arms. Nobody in view for `CAMERA_TILT_RETURN_S`: slowly back to
+  `CAMERA_TILT_HOME_DEG`.
+- Manual tilting (`winkel`, `schritt`) switches auto off; `auto: true`
+  switches it on again.
+- Moves at most `CAMERA_TILT_SPEED_DEG_S` (60°/s). After a USB dropout the
+  angle is sent again. The servo does not move the robot, so it does not go
+  through the watchdog.
 
 ### Voice in detail
 
@@ -976,7 +1003,7 @@ User interface: `GET /map`.
 | Endpoint | Returns |
 |---|---|
 | `GET /api/mapping/status` | state (see below) |
-| `POST /api/mapping/start` | starts scan feed, map reception and SLAM; errors come back as 503 with text |
+| `POST /api/mapping/start` | starts scan feed, map reception and SLAM; errors come back as 503 with text. Always-on mapping saves the main map first and pauses |
 | `POST /api/mapping/stop` | stops everything again (including the mapping drive); the last map remains available |
 | `POST /api/mapping/fahrt/start` | start the mapping drive (only while mapping is running, otherwise 409 with reason) |
 | `POST /api/mapping/fahrt/stop` | stop the mapping drive |
@@ -988,6 +1015,13 @@ User interface: `GET /map`.
 | `POST /api/mapping/ziel` | drive to a point, body `{"x": 2.5, "y": -1.0, "winkel": 90}` (`winkel` optional); 409 with reason if not possible |
 | `POST /api/mapping/ziel/stop` | cancel the goal drive |
 | `POST /api/mapping/pose` | "I am here", body as for `ziel`: search for the pose there |
+| `GET /api/mapping/live` | always-on mapping in detail (new 05.11., see "Always-on mapping") |
+| `POST /api/mapping/live` | on/off, body `{"aktiv": false}`; returns the same as `GET` |
+| `POST /api/mapping/mission/start` | „Missionsstart hier“; 409 with reason without a confident pose in the main map |
+| `POST /api/mapping/zurueck` | way back, body `{"ziel": "mission"}` or `{"ziel": "home"}`; 409 with reason, 422 for another `ziel` |
+| `POST /api/mapping/hauptkarte/neu` | begin a new main map (the old one goes to `backups/`); it starts at the next standstill; 409 during mapping |
+| `POST /api/mapping/hauptkarte/uebernehmen` | after SLAM: the SLAM map becomes the main map (old one to `backups/`), the pose stays |
+| `POST /api/mapping/hauptkarte/verwerfen` | after SLAM: back to the main map, the pose is searched where the odometry expects it |
 | `WS /api/mapping/ws` | `{"type": "status"}` every 3 s, `{"type": "map"}` on every new map, `{"type": "fahrt"}` on changes of the mapping drive, `{"type": "ortung"}` on changes of the pose (content as `GET /api/mapping/ortung`) |
 
 `GET /api/mapping/map` and the `map` packets deliver the map **the robot is
@@ -1092,6 +1126,78 @@ open transitions into the unknown (only while a `/map` page is open). The
 fahren“ (drive here), „Hier stehe ich“ (I am here), „Zum Ausgangspunkt“ (to
 the origin) and „Fahrt abbrechen“ (cancel drive). Values: `NAV_*` in
 `config.py`.
+
+**Always-on mapping (new 05.11., E14).** Without a separate mapping mode the
+robot maps on every drive, into one **main map** (`LIVE_MAP_NAME` =
+`hauptkarte`, under `data/maps/`; the active one is named in `_aktiv.json`).
+It is loaded at server start; the pose is searched where it last stood
+(0.5 m, then 1.5 m around it), then at the origin, then in the whole map. If
+there is no map yet, it founds one as soon as the robot stands still for a
+moment; that spot becomes the origin. A scan only goes into the map when the
+pose passes a strict test (the integrate gate: good match, enough known
+walls in view, no ambiguous corridor, no jump, consistent with the odometry,
+not turning fast, not lifted or carried, lidar not just reconnected) -- and
+only once the next two scans pass too. A scan that is a little off is only
+skipped (`grund` says why, the map keeps growing); on real doubt the map
+**freezes** (`zustand: "eingefroren"`) and stays bit for bit unchanged;
+after 5 strict matches over at least 1.5 s it writes again (new 05.11.: was
+10 over 3 s, which kept the map standing still on the robot). Walls
+that were sure at load time can be weakened by a bad session at most to
+"unknown", never to "free". It saves every `LIVE_MAP_SAVE_S` (60 s) when
+something changed and on shutdown (`.npz` with the grid, plus `.pgm/.yaml`
+and `.json` as with `save`); the last confident pose every 10 s. A saved
+map loaded with `laden`/`map_load` becomes the main map and grows on. A tap
+with „Hierhin fahren“ only works into known free space ("Ziel liegt
+außerhalb der bekannten Karte" otherwise).
+
+`GET /api/mapping/live` (also `kartieren` in `GET /api/mapping/ortung`):
+
+```json
+{"aktiv": true, "zustand": "bestaetigt", "grund": "Lage nach der Suche noch nicht bestätigt",
+ "bestaetigt": 4, "von": 10, "name": "hauptkarte", "groesse_m": [12.0, 8.0],
+ "aufnahmen": 412, "eingefroren_mal": 2, "pausiert_von": [], "zu_gross": false,
+ "ms": {"eintragen": 2.7, "schnappschuss": 48.0}, "waechst": true,
+ "gespeichert": 1793880534.1, "speicherfehler": null, "slam_karte": false}
+```
+
+`bestaetigt`/`von`: confirmation progress. `pausiert_von`: who paused
+(`"nutzer"`, `"slam"`). `zu_gross`: the map reached `LIVE_MAP_MAX_SIZE_M` and
+does not grow further. `ms`: measured time per scan / per snapshot.
+`slam_karte`: SLAM has stopped and its map is still loaded -- adopt or
+discard it. SLAM stays optional as a first mapping with loop closure (large
+apartments with round trips): while it runs, always-on mapping pauses.
+
+**Way back (new 05.11.).** While the pose in the main map is confident it
+drops a breadcrumb every 0.2 m („streng“ (strict) while the gate is writing);
+a lost pose breaks the trail. `mission_start` sets the anchor `mission`;
+`return` drives back along the trail: the planner prefers the cells along
+the strict trail and lets the robot pass there with 0.20 m instead of 0.25 m
+wall clearance (walls always stay walls); if it finds no path at all, it
+drives the trail backwards. On every goal drive the cells along the trail
+driven with a confident pose count as passable.
+
+**Guessed paths (new 05.11.).** If no path leads through known free space --
+e.g. two areas were mapped but the link between them was never scanned --
+the planner guesses the likely one: unknown cells and narrow spots down to
+`NAV_GUESS_CLEARANCE_M` (0.20 m) become drivable, unknown ones at
+`NAV_GUESS_UNKNOWN_COST` (4×) the price; the trail driven itself
+(`BREADCRUMB_CORE_M`) is passable even where the map has a wall -- a door
+leaf, a person or noise when it was mapped. The robot drives it
+(`fahrt.vermutet: true`, drawn in orange on `/map`) and replans every
+`NAV_GUESS_REPLAN_S` (2 s) without stopping, while the map grows on site: as
+soon as a sure path exists it takes it; if something is in the way it plans
+around it; if not even a guess is left it stops with „kein Weg -- vor Ort ist
+dort kein Durchgang“. Collision avoidance applies as always. Off with
+`NAV_GUESS_PATHS = False`.
+
+If the pose gets unsure on any map drive, it no
+longer gives up after 4 s: it stops (`fahrt.wartet`), searches near the
+trail, turns ±30° after 5 s, and continues after 3 good matches; after
+`NAV_RELOCALIZE_WAIT_S` (20 s) it gives up and asks to be shown with „Hier
+stehe ich“. `GET /api/mapping/ortung` additionally contains `kartieren`,
+`brotkrumen` (`[[x, y, strict, piece], ...]`, the newest 600) and `anker`
+(`{"mission": [x, y, radians]}`). Values: `LIVE_*`, `BREADCRUMB_*`,
+`NAV_RELOCALIZE_*` in `config.py`.
 
 **In the simulation** (`--mock`) there is neither Docker nor slam_toolbox;
 the server then builds the map itself from the simulated lidar

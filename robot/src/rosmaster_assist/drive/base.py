@@ -46,6 +46,14 @@ class DriveBase(ABC):
     def beep(self, ms: int = 100) -> None:
         """Beep. Optional -- the default does nothing."""
 
+    def set_servo(self, channel: int, angle: int) -> bool:
+        """Move a pwm servo on the board to ``angle`` (0..180 degrees).
+
+        Optional; returns False when it is not possible right now (no
+        servo support, not connected). Must not block for long.
+        """
+        return False
+
     def monitor(self) -> None:
         """Check the connection and re-establish it after a dropout.
 

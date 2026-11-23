@@ -18,6 +18,7 @@ point on its own, explores autonomously and is meant to react to gestures and
 speech in the future.
 
 **Platform:** Yahboom ROSMASTER X3 with these components:
+
 - mecanum wheels,
 - Raspberry Pi 5 (16 GB) with Hailo-10H AI accelerator (AI HAT+ 2),
 - RPLIDAR A1,
@@ -26,11 +27,11 @@ speech in the future.
 
 **Team and focus areas:**
 
-| Who | Focus |
-|---|---|
-| Ben (Tr3nben) | FastAPI server, web app, driver, lidar localization, homing, API docs |
-| Marlon Wehr | Autonomous driving, sensor check and hardware analysis, interaction/AI |
-| Magnus Luciano Schell | Repo maintenance, ESP32 CSI (branch `ESP32-CSI`) |
+| Who                   | Focus                                                                  |
+| --------------------- | ---------------------------------------------------------------------- |
+| Ben (Tr3nben)         | FastAPI server, web app, driver, lidar localization, homing, API docs  |
+| Marlon Wehr           | Autonomous driving, sensor check and hardware analysis, interaction/AI |
+| Magnus Luciano Schell | Repo maintenance, ESP32 CSI (branch `ESP32-CSI`)                       |
 
 **Fundamental decision:** We do not use ROS in the main system, but pure
 Python with a FastAPI server as the only way in and out (see
@@ -42,6 +43,7 @@ serves as a comparison.
 ## 2. Project diary
 
 ### 27.10.2026 – Basic framework (Ben)
+
 - **What:**
   - FastAPI server with WebSocket protocol, web app with drive controls and camera image.
   - Watchdog (dead man's switch after 0.5 s), speed limit.
@@ -53,6 +55,7 @@ serves as a comparison.
   - USB devices disconnected every now and then. Ben therefore built in automatic reconnecting.
 
 ### 27.10.2026 – First autonomy attempt with ROS2 (Marlon)
+
 - **What:** a lidar explorer (`Marlon/autonomous_driving/x3_explorer.py`) in the
   ROS2 Docker container, started with one command via `x3.sh`.
 - **Result:** The robot drove, but collided.
@@ -64,8 +67,10 @@ serves as a comparison.
 - **Lesson:** The mounting orientation of every sensor is checked first with a simple hand test.
 
 ### 28.10.2026 – Sensor check and hardware analysis (Marlon)
+
 All results are in [`sensorcheck_2026-10-28/SUMMARY.md`](sensorcheck_2026-10-28/SUMMARY.md),
 the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
+
 - **USB resets – cause found:**
   - They did not happen because of a flat battery, but on **CPU load spikes at 2.4 GHz**.
   - The over-current message came on all ports at the same time. Presumably the hub feeds back through the expansion board (backfeed).
@@ -76,6 +81,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Battery:** 10.1–10.3 V – charge soon.
 
 ### 28.10.2026 – Autonomous driving test 1 in Ben's server (Marlon)
+
 - **What:**
   - The explorer now runs directly in the FastAPI server instead of in ROS2: `navigation/explorer.py`.
   - It drives randomly, picks free directions and names obstacles by their lidar shape (wall, chair, table, person): `navigation/obstacles.py`.
@@ -92,6 +98,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
   - Even at 2.0 GHz there were two lidar resets (11:12 and 11:13). Ben's code reconnects on its own. The real solution, however, remains in hardware: a hub without backfeed.
 
 ### 28.10.2026 – Concept "interactive robot" (Marlon)
+
 - **Inventory on the Pi:**
   - The AI chip is a **Hailo-10H** (40 TOPS, 8 GB of its own memory). It can run image models and small language models.
   - A pose model ships with it (`yolov8s_pose_h10.hef`, 17 body keypoints).
@@ -117,6 +124,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Developer docs:** [`docs/interaction.md`](../docs/interaction.md)
 
 ### 28.10.2026 – Rebuild: microphone and speaker, docs created (Marlon)
+
 - **What:**
   - A USB microphone (C-Media) and a USB speaker ("UACDemoV1.0") are mounted. The robot therefore gets a voice already in version 1 (Piper, offline).
   - The C270 was unplugged during the rebuild and goes back to its place at the front.
@@ -127,6 +135,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
   - The USB power supply thus remains the biggest hardware risk.
 
 ### 28.10.2026 – Clock permanently at 2.0 GHz, overheating (Marlon, agreed with Ben)
+
 - **What:**
   - `/boot/firmware/config.txt` now contains `arm_freq=2000`, with a comment and a reference to `docs/hardware.md`.
   - The backup is called `config.txt.vor-arm_freq-2026-10-28`. To undo: delete the line.
@@ -140,6 +149,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
   - Lesson: do not drive and do not test while the Pi is compiling. The USB resets also depend on temperature, not only on the clock.
 
 ### 28.10.2026 – Interaction stages 2 and 3: hand signals and behavior (Marlon)
+
 - **What:**
   - `sensors/pose.py`: body pose with YOLOv8 pose on the Hailo-10H, 10 frames/s, 17 body keypoints per person. The Hailo is only active while the interaction is running and is reopened after errors. In the mock, a simulated person acts out the gestures.
   - `interaction/gestures.py`: detects follow (arm above the head), stop (both hands above the shoulders), come here (waving) and go away (sideways swipe).
@@ -158,6 +168,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** check on the Pi whether the Hailo delivers the pose (`/interaktion/status`, fps). Then the driving test **on the floor**.
 
 ### 28.10.2026 – Speech output through the USB speaker (Marlon)
+
 - **What:**
   - `interaction/voice.py`: The robot speaks through the USB speaker (ALSA "UACDemoV10"). Chain: Piper (offline, voice `de_DE-thorsten-medium`) → `aplay`. If Piper is missing, espeak-ng speaks, otherwise it only logs.
   - The behavior announces what it is doing: „Ich folge dir.“, „Ich komme.“, „Da bin ich.“, „Wo bist du?“, „Da bist du ja.“, „Okay, ich halte an.“. On an emergency stop it says „Halt.“, on server start „Ich bin bereit.“ (audible self-test).
@@ -179,6 +190,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** install Piper and the model on the Pi (instructions in `docs/hardware.md`). Then check whether the speaker can be heard, how long the delay until sound is and whether the volume is right.
 
 ### 28.10.2026 – Full check on the Pi, camera fixed to the C270 (Marlon)
+
 - **What:** Checked everything on the Pi, with `robot-protokolle/` as reference. Plus a test of the image chain camera → Hailo pose without server and without drive.
 - **Findings from the previous start:**
   - The C270 was missing, only the Orbbec was there.
@@ -199,6 +211,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
   - New: `CAMERA_NAME = "C270"` in `config.py`. The camera with this name is tried first. If it is missing, the old order applies.
 
 ### 28.10.2026 – "Everything crashes": cause NVIDIA build, packages removed (Marlon)
+
 - **Occasion:** Camera, motor and lidar kept failing for the team.
 - **Findings (uptime ~21 min):**
   - `lsusb` showed only the root hubs. Since s 1234 there were constant over-current messages, ~4900 counts at the end.
@@ -216,6 +229,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **New insight:** On the Pi 5, all four USB sockets hang on **one** shared power switch (1.6 A in total). That "all ports at the same time" report therefore does not prove backfeed. It only shows that the sum of all devices exceeded the limit. Hardware recommendations in `docs/hardware.md`, section "USB resets".
 
 ### 28.10.2026 – Stress test without Orbbec, with a full battery (Marlon)
+
 - **Occasion:** Check whether the first hardware measures (battery full at 12.0 V, Orbbec unplugged) are enough.
 - **What:** Planned a 15-min test: lidar, voice and driving alternating (announcement, 3 s each turning left and right with omega ±0.6, 2 s each forward and back at 0.1 m/s, 4 s pause). Every 10 s the over-current counter, USB disconnects (`journalctl`), temperature and load were recorded. The C270 was not plugged in, **so Hailo pose and gestures were not tested**.
 - **Result:**
@@ -232,17 +246,19 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
   - The lidar port on the hub (1-1.4) then stopped registering at all. Then the only help is replugging the lidar cable or switching the robot off and on.
 
 ### 29.10.2026 – Cross-check: lab power supply instead of battery (Marlon)
+
 - **Occasion:** Check whether the resets while turning are caused by the battery. For this the robot is connected to a lab power supply instead of the battery. The Orbbec was plugged in again, the C270 was not.
 - **Setup:** Robot **on a pedestal** so that it does not roll away. The wheels spin freely in the air, so the motors run without load.
 - **What:** Started the new version from the laptop on the Pi (with the lidar fix `LIDAR_STABLE_S`), first watched 2 min at rest, then the same stress test as on 28.10. for 5 min (210 s driving, turns with omega ±0.6, forward/back at 0.1 m/s).
 - **Result:**
   - At rest: no message. The 25 over-current messages since the start all came from switching on.
   - Driving: **0 over-current messages, 0 USB disconnects** (battery on 28.10.: +160 and 83 in 4.5 min). Lidar without reconnecting (2333 revolutions), 51 °C, no throttling. It really did drive: the odometry moved, and the lidar localization corrected 1277 times.
-  - When plugging and unplugging the C270 and the speaker during operation, all USB devices dropped off for 3 s shortly afterwards (+18 messages). The server survives that. *Clarified later:* the event coincided with stopping the server, and the cause was a software bug (Hailo start during shutdown, see next entry), not the replugging.
+  - When plugging and unplugging the C270 and the speaker during operation, all USB devices dropped off for 3 s shortly afterwards (+18 messages). The server survives that. _Clarified later:_ the event coincided with stopping the server, and the cause was a software bug (Hailo start during shutdown, see next entry), not the replugging.
 - **Conclusion (at first):** The cause was supposedly the supply from the battery; the power supply held the voltage.
 - **Corrected by the battery cross-check (next entry):** On the pedestal there are 0 resets with the battery as well. So the difference to 28.10. is not battery versus power supply, but mainly the **load on the wheels**. Orbbec and computing load are still ruled out.
 
 ### 29.10.2026 – Cross-check: full battery on the pedestal, shutdown bug fixed (Marlon)
+
 - **Occasion:** The power supply test ran on the pedestal. So it was open whether the power supply helps or just the missing load. Therefore the same test with the battery in the same setup.
 - **Setup:**
   - Robot **on the pedestal**, wheels free in the air (as in the power supply test).
@@ -256,18 +272,20 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
   - Lidar 3335 revolutions without reconnecting, camera 6566 frames without reopening, 50–53 °C, no throttling (`throttled=0x0`).
 - **Comparison:**
 
-  | Date | Setup | Supply | Voltage | Over-current / disconnects while driving |
-  |---|---|---|---|---|
-  | 28.10. | no pedestal, wheels under load | battery | 12.0 V | +160 / 83 in 4.5 min |
-  | 29.10. | pedestal, wheels free | lab power supply | – | 0 / 0 in 210 s |
-  | 29.10. | pedestal, wheels free | battery | 12.3 V | 0 / 0 in 210 s |
+  | Date   | Setup                          | Supply           | Voltage | Over-current / disconnects while driving |
+  | ------ | ------------------------------ | ---------------- | ------- | ---------------------------------------- |
+  | 28.10. | no pedestal, wheels under load | battery          | 12.0 V  | +160 / 83 in 4.5 min                     |
+  | 29.10. | pedestal, wheels free          | lab power supply | –       | 0 / 0 in 210 s                           |
+  | 29.10. | pedestal, wheels free          | battery          | 12.3 V  | 0 / 0 in 210 s                           |
 
 - **Conclusion:** Without load on the wheels, the battery is enough too. The resets occur when the motors start up against load: then the inrush current is much higher than with freely spinning wheels. Whether the power supply absorbs this under load will only be shown by a **test on the floor**. First on the power supply, then on the battery. Other differences to 28.10.: the lidar fix `LIDAR_STABLE_S` was not yet in place then, and the battery had 12.0 instead of 12.3 V.
 - **Shutdown bug found and fixed:**
   - **Observation:** When stopping the server, all USB devices dropped off twice for about 2 s (most recently +12 messages at 08:15:06). The event from the power supply test, which we had blamed on the replugging, also happened during shutdown.
   - **Cause:** `PoseDetection.stop()` wakes up the pose thread so that it exits. But the thread did not check afterwards whether it should stop, and first opened the Hailo. The HailoRT log says "Creating vdevice" at 08:15:06.890, in the same second as the overload. Starting up the Hailo briefly draws a lot of current.
   - **Fixed** in `sensors/pose.py`: after waking up, the thread exits if `stop()` woke it. Started and stopped twice on the Pi: counter 31 → 31, no more Hailo start during shutdown.
+
 ### 29.10.2026 – Diagnostics page: all failures in one place (Marlon)
+
 - **What:**
   - New page `/diagnose` (also `/logs`), reachable via the button "Diagnose" at the top of the main page; "Steuerung" leads back from there. A dot on the button already shows on the main page when something is wrong (yellow = warning, blinking red = critical).
   - `diagnostics.py` collects in the background: battery voltage (new: `read_battery()` in the driver) with history and voltage drops, the Pi's USB overload counter, undervoltage and throttling (`vcgencmd get_throttled`), temperature and clock, USB disconnects from the kernel log, state of drive, lidar, cameras and Hailo, errors from the server log, hanging build processes (`dpkg`, `cc1` …).
@@ -283,6 +301,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** check on the Pi whether the kernel log, the overload counter and `vcgencmd` are read. For the kernel log, `pi` must be in the group `systemd-journal` (`sudo usermod -aG systemd-journal pi`, then log in again).
 
 ### 29.10.2026 – Smooth driving and debounced gestures (Marlon)
+
 - **What:**
   - **Acceleration ramp in the watchdog:** drive commands no longer jump onto the motors but are ramped up with limited acceleration (0.8 m/s², turning 3 rad/s²) and braked faster (2 m/s², 6 rad/s²). A change of direction first brakes to zero. `stop()` (emergency stop, stop gesture, dead man's switch) stays immediate. Settings `RAMP_*` in `config.py`, can be switched off with `RAMP_ACTIVE = False`.
   - **Calmer following:** camera angle smoothed, dead zone of 3°, smooth transition between turning and driving instead of hard switching, smaller turning gain (`FOLLOW_KP_W` 1.2). If the person is briefly gone, the last command coasts out over 0.5 s instead of jumping to zero (with a check whether the front or back is free). If the lidar distance is missing in one tick, the last good value applies briefly. The state "person very close" has a hysteresis.
@@ -298,6 +317,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** test on the Pi on the floor whether following runs more calmly and the USB resets while following stay away (keep `dmesg -w` running, watch `/diagnose`). If acceleration feels too sluggish: increase `RAMP_ACCEL_XY`.
 
 ### 29.10.2026 – Voice commands "Robi" and drive-loss abort on gesture start fixed (Marlon)
+
 - **What:**
   - **Versions merged:** the not yet pushed commits from the branch `interaktion` (gestures, voice, diagnostics, smooth driving) went into the new branch `sprache`, which is based on the current `main`.
   - **Hailo stays warm:** the pose detection opens the Hailo already at server start and keeps it open (`POSE_KEEP_WARM = True`). It still only computes while the interaction is on.
@@ -310,7 +330,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Problems and solutions:**
   - „Musik stopp“ was recognized as stop: the commands now have a precedence, music off comes before stop.
   - Words the Vosk model does not know would make the grammar invalid. They are filtered against `graph/words.txt`; for "Robi" there are variants („robbie“, „ruby“ …).
-  - Music (mpv) and voice (aplay) share the speaker exclusively, and the microphone hears the music. „Robi, Musik aus“ helps; a clean solution (shared mixer) is open.  *Addendum: solved, music pauses while speaking (see below).*
+  - Music (mpv) and voice (aplay) share the speaker exclusively, and the microphone hears the music. „Robi, Musik aus“ helps; a clean solution (shared mixer) is open. _Addendum: solved, music pauses while speaking (see below)._
   - Smoke test "homing starts" is still flaky as described on 29.10. (repeated runs against the same mock server); not caused by this change.
 - **Addendum – "Sanft fahren" in the settings:** the acceleration ramp can now be switched off in the app under settings → "Fahren & Motoren" ("Sanft fahren") and adjusted (Anfahren, Bremsen, Andrehen, Drehung stoppen). Until now that was only possible in `config.py` with a restart. The watchdog reads the values every tick, so the change takes effect immediately and survives a restart via `robot/settings.json`. Checked: a jump to 0.3 m/s arrives as 0.08 with the ramp, as 0.3 immediately without; values outside the limits are rejected.
 - **Addendum – "microphone not detected":** on the Pi, `/sprache/status` showed the error "sounddevice fehlt": `main.py` only installed the required packages, not the speech packages. Now `main.py` sets up the voice commands itself when starting with real hardware (`vosk`, `sounddevice`, model to `~`; without internet the server simply starts without speech). Only `libportaudio2` still needs a one-time `sudo apt`, which `main.py` points out; if it is missing, `/sprache/status` now reports this clearly instead of the listening thread dying silently. Testing with the real model revealed a second bug: the small model has no `graph/words.txt`, so the filter for unknown words never applied (316 Vosk warnings; the test had created the file itself). Now the server asks Vosk directly (`vosk_model_find_word`); as wake words "robbie", "ruby", "robin" remain, all command phrases are in the model. Checked on the laptop: installation, download, unpacking, second start without download (1.6 s), grammar without warnings.
@@ -319,6 +339,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 ---
 
 ### 29.10.2026 – `sprache` in `main`, music pauses while speaking, "La da da"
+
 - **What:**
   - Merged branch `sprache` into `main` (no conflicts; MUKKE, diagnostics page and camera roles from `main` stay).
   - **Music and voice share the speaker:** when the robot speaks, MUKKE stops mpv before the first sentence, remembers the position and restarts there after the last sentence (`Mukke.interrupt()`/`resume()`, callbacks `before_speaking`/`after_speech` of the voice). In the app the song keeps running during that time.
@@ -329,6 +350,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** test on the Pi: music on, „Robi, hallo“ → music pauses, answer, music continues. „La da da“ without Robi. Whether Vosk reliably hears „la da da“ is shown by `/sprache/status` (`zuletzt_gehoert`).
 
 ### 29.10.2026 – Hunting "random crashes" via SSH (Marlon)
+
 - **What:** After replugging to the other board, the robot kept crashing seemingly at random (on the power supply, on the pedestal). Measured on the Pi via SSH and reviewed the code for crash sources.
 - **Findings on the Pi (no server running, wheels still):**
   - Supply and system healthy: `throttled=0x0`, 5.05–5.08 V, 47 °C, 14 GB RAM free.
@@ -348,25 +370,28 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Addendum – started in mock mode:** `main.py` checks at start whether the board answers. Because of the USB overload, `/dev/myserial` was often missing at exactly that moment; then the server ran in the simulation („Es bewegt sich nichts“), and `--real` aborted. Now: if `Rosmaster_Lib` is installed (= we are on the robot), it always starts for real and only warns; the driver connects as soon as the board is back. Simulation only on Windows, without the lib or with `--mock`.
 
 ### 03.11.2026 – Robot switches the interaction on by itself
+
 - **What:** Speech recognition checks every sentence before it counts as a command (`SpeechRecognition._interpret`). While music is playing, only stop and „Musik aus“ count. If Vosk is unsure about a word (`SPEECH_MIN_CONFIDENCE` = 0.7) or more than half of the sentence was unknown (`SPEECH_MAX_UNK_SHARE`), only stop counts. The same applies to word salad: wake word twice, or words besides the wake word and the phrase (`SPEECH_MAX_EXTRA_WORDS` = 0). `/sprache/status` now shows `konfidenz`, `verworfen` and `zuletzt_verworfen`.
-- **Why:** The robot started the interaction without anyone doing anything. Cause: Vosk with a fixed grammar turns *any* noise into an allowed sentence. The microphone hears its own music (MUKKE) and conversations in the room. Until now it was only muted while the voice was speaking. The server log from the morning (analysed via SSH) contains four such commands within two minutes that nobody said: „aufwachen morgen“ → `start`, „robin hallo hause zu weg ruby“ → `weggehen`, „heim ruby zurück“ → `weggehen`, „ruby komm da fahr mir la ruby leise box“ → `herkommen`. Each of them switched the interaction on, two made the robot drive.
+- **Why:** The robot started the interaction without anyone doing anything. Cause: Vosk with a fixed grammar turns _any_ noise into an allowed sentence. The microphone hears its own music (MUKKE) and conversations in the room. Until now it was only muted while the voice was speaking. The server log from the morning (analysed via SSH) contains four such commands within two minutes that nobody said: „aufwachen morgen“ → `start`, „robin hallo hause zu weg ruby“ → `weggehen`, „heim ruby zurück“ → `weggehen`, „ruby komm da fahr mir la ruby leise box“ → `herkommen`. Each of them switched the interaction on, two made the robot drive.
 - **Result:** Checked on the Pi with the original sentences: all four are rejected; „robbie komm her“, „folge mir robbie“, „robbie fahr nach hause“, „stopp“ and „halt an“ still work.
 - **Open:** check on the Pi which confidences real commands get (`/sprache/status`, field `konfidenz`). If real commands are rejected, lower `SPEECH_MIN_CONFIDENCE`. The C270 was used as the microphone (the USB microphone was not plugged in); it picks up from further away and with more noise.
 
 ### 03.11.2026 – USB overload investigated via SSH
+
 - **What:** Analysed the kernel log, the supply and the server log on the Pi (uptime 15 min, server running while standing still).
 - **Result:**
   - Over 400 "over-current" messages in 15 min, always on **all** root ports at the same time (including the empty `usb4-port1`). The shared 1.6 A switch of the Pi's sockets trips, not a single device.
   - The Pi's own supply is fine: `throttled=0x0`, EXT5V 5.09 V, 51 °C, `arm_freq=2000`, `usb_max_current_enable=1`, `PSU_MAX_CURRENT=5000`. Nothing more can be unlocked in software.
   - Already 24 overloads **before** the server start (during boot all devices register at the same time). The first collapse during the run came in the same second in which the Hailo, the lidar motor, both cameras and the announcement „Ich bin bereit“ started. After that an endless loop (devices register, draw inrush current, the switch trips again).
   - The **Orbbec is plugged in again** (it had been unplugged since 28.10.). It is the biggest consumer on the hub and brings its own internal hub (Genesys `05e3:0608`).
-  - **The hub:** VIA VL817 (`2109:2817`/`0817`, firmware 0.50), reports itself as *self powered* (0 mA from the Pi). We were told it is the outdated V1 with power problems. That fits the pattern (overload on all Pi ports at the same time, including empty ones). The version cannot be read out via software.
+  - **The hub:** VIA VL817 (`2109:2817`/`0817`, firmware 0.50), reports itself as _self powered_ (0 mA from the Pi). We were told it is the outdated V1 with power problems. That fits the pattern (overload on all Pi ports at the same time, including empty ones). The version cannot be read out via software.
   - The USB microphone is not plugged in; speech recognition uses the C270's microphone.
   - Pitfall when reading the logs: the Pi has no real-time clock. Until network time kicks in, the log shows old times (today "29.10. 15:04" instead of 07:5x).
 - **Conclusion:** As on 28./29.10.: the cause is the shared 5 V supply, only hardware helps (`docs/hardware.md`, "What to do on the robot", point 4: active hub with its own supply, or cut VBUS between Pi and hub). Until then, unplug the Orbbec again. Given the hint about the V1 hub, replacing it with a newer version or a hub with a clean supply of its own is the obvious step. Cross-check first: remove the hub, connect board and lidar directly to the Pi.
 - **Addendum – driver board V1:** the hint "V1 with power problems" referred to the driver board (Yahboom ROS Driver Board). According to Yahboom, only V3.0 supports the Pi 5's power protocol (5.1 V/5 A). Confirmed on the Pi: nothing was negotiated (`usbpd_power_data_objects` = 0). The 5 A are only set by hand in the EEPROM (`PSU_MAX_CURRENT=5000`), so the Pi allows 1.6 A for USB, which the V1 board does not deliver under load. Board firmware 2.4, battery 11.9 V. A firmware update does not help: the firmware controls motors and IMU, the supply is hardware. Remedy: board V3.0 or a separate 5 V/5 A converter with the Pi 5 protocol for the Pi.
 
 ### 03.11.2026 – "Robi" audible again, more natural voice
+
 - **What:**
   - **"Robi" after a command:** the last command in the test was „Robi, Beatbox“. After that, the rule from the morning only let stop and „Musik aus“ through while music was playing; even the wake word was dropped. So the robot was deaf until the end of the song. Now, while music plays, any command counts if it has the wake word and Vosk is confident (`SPEECH_MIN_CONFIDENCE_MUSIC` = 0.85).
   - **"Robi" alone gets an answer:** after 1 s it says „Ja?“, unless the command has already come. Until now there was no audible feedback; you did not know whether it had listened. The wake window (5 s) only starts counting down once it has finished speaking. A "Robi" in the middle of word salad no longer wakes it.
@@ -376,6 +401,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Side finding:** the crash recording (`~/.rosmaster/diagnose/server.log`) only exists on the branch `fehlersuche-abstuerze`. On `main` the server therefore wrote no log, only to the terminal. Merged into `main` the same day (conflicts only in the docs, both sides kept).
 
 ### 03.11.2026 – Female voice, and why Thorsten did not speak
+
 - **What:** Switched the voice to "Kerstin" (female, `de_DE-kerstin-low`). Piper now computes on only one CPU core (`VOICE_CORES`, via `taskset`), the volume is at 70 instead of 80 %. When started with `sudo`, `main.py` uses the home directory of the actual user.
 - **Why:** Thorsten did not speak for two reasons:
   1. **Over-current while speaking:** in the log every longer sentence broke off with `aplay: write error: No such device`. In the same second the kernel log showed an over-current storm; all USB devices dropped off, including the speaker. Piper on four cores plus the speaker at 80 % was a load jump that the weak supply (driver board V1) could not absorb.
@@ -384,6 +410,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** watch during operation whether USB failures still occur while speaking (`/diagnose`). The real remedy remains the supply (board V3.0 or a separate 5 V/5 A converter).
 
 ### 03.11.2026 – Crash on "folge mir": soft start, one volume control
+
 - **What:**
   - **Soft start of the interaction:** first only the pose detection warms up for 5 s (`INTERACTION_STARTUP_S`, silent, standing still), then it says „Jetzt folge ich dir.“, and it only drives once the sentence has finished. Commands during this time (e.g. stop) apply afterwards.
   - **One volume control:** `VOLUME` on the settings page (group "Ton & Lautstärke") applies to voice and music. The speaker's mixer is always at 100 % (`SOUND_MIXER`) and is set again before every sequence of sentences (after a USB dropout the speaker comes back with its default value). Lowering the volume happens in software: the server scales down Piper audio, espeak gets `-a`, mpv gets music control × overall volume.
@@ -392,6 +419,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** test on the floor: „Robi, folge mir“ → 5 s silence → „Jetzt folge ich dir.“ → drive off, watching `/diagnose` meanwhile. Adjust the volume in the room.
 
 ### 03.11.2026 – Microphone live in the app
+
 - **What:** Two switches in the "Interaktion" area of the web app:
   - **Live transcript ("Mitlesen"):** level bar, what Vosk currently understands in the ongoing sentence, and the last 15 sentences with a verdict (command, rejected with reason, wake word, no command). New: `GET /sprache/live`, the app polls 4x per second.
   - **Live audio ("Mithören"):** the sound of the robot's microphone in the browser. New: WebSocket `/sprache/ton` (raw audio 16 bit mono, playback with the Web Audio API). If playback lags behind, it jumps ahead instead of getting later and later.
@@ -401,6 +429,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** try with a real microphone after restarting the server (audio, delay).
 
 ### 03.11.2026 – Voice commands after a crash: failsafe
+
 - **What:** Speech recognition now also recovers from a USB dropout when no error message comes:
   - The microphone is read via a callback with a queue instead of a blocking `read()`. If no audio comes for 3 s (`SPEECH_HANG_S`), it is reopened. If closing the dead stream hangs, it is left behind.
   - 5 s of nothing but exact zeros (`SPEECH_SILENT_S`) count as a dead stream.
@@ -410,6 +439,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** restart the server and, on a real dropout, look for "stream hangs" and "microphone back" in the log.
 
 ### 03.11.2026 – Live audio stays on, even after commands and hangs
+
 - **What:**
   - **Server:** a guard over the listening thread. If it makes no progress for 15 s (e.g. even opening the microphone hangs in PortAudio), the guard starts a new one, at most three times in a row. The Vosk model is not reloaded for this. Without audio, the audio WebSocket sends a sign of life every second.
   - **App:** live audio reconnects by itself when nothing arrives for 5 s, even if the connection was not closed cleanly (Pi hangs). The live transcript polls with a 2 s deadline. If the browser pauses the audio, it resumes with the next packet.
@@ -418,6 +448,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** The real cause remains the supply (board V3.0 or a separate 5 V/5 A converter). Until then there is a gap of about 3 s in the live audio after every sentence the robot says.
 
 ### 03.11.2026 – Slow after following: drive priority; search until found
+
 - **What:**
   - **Drive priority:** while one device steers, the server ignores the zeros of all other connections for 0.5 s (`DRIVE_PRIORITY_S`). "stop" still works from every device.
   - **Search:** if it loses the person while following, it turns in a circle until it sees someone again (`FOLLOW_SEARCH_S` = 0, previously it gave up after 6 s). It turns in steps of about 40° with a short pause in between, because the camera image blurs while turning.
@@ -427,6 +458,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** test on the floor: lose the person, it searches in a circle, finds them again. Driving with two open apps.
 
 ### 03.11.2026 – Announcement: speaking through the robot
+
 - **What:** New switch "Über den Roboter sprechen" in the app. The microphone of a laptop or phone goes live through the robot's speaker.
   - Browser: microphone with echo and noise suppression, downsampled to 16 kHz, as raw audio over the WebSocket `/sprache/durchsage`.
   - Robot: the announcement sits in the voice's queue. Music pauses, speech recognition stops listening, a stop cancels, the central volume applies. After 2 s of silence the speaker is free again.
@@ -436,6 +468,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** try it in the browser on a laptop and a phone (certificate warning, delay, volume).
 
 ### 03.11.2026 – Precise drive commands: "2 meters forward", "turn 90 degrees"
+
 - **What:** New commands that drive a distance or an angle precisely:
   - App: panel "Genau fahren" (enter distance or angle, choose direction), messages `move` and `turn`.
   - Speech: „Robi, fahr zwei Meter vor“, „Robi, einen halben Meter nach links“, „Robi, dreh dich um neunzig Grad nach rechts“, „Robi, dreh dich um“. It announces what it is doing and speaks up if it did not work.
@@ -458,6 +491,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** test on the floor (real lidar, carpet/smooth floor). Adjust speed and tolerances if needed. In large empty rooms or long corridors the lidar finds less to hold on to.
 
 ### 03.11.2026 – Floor test of precise drive commands, turning improved
+
 - **What:** First test on the floor, via app, via speech and via remote control over SSH.
 - **Result:**
   - 1 m and 2 m forward: 1 cm off according to the lidar. Voice commands („Robi, fahr zwei Meter nach vorne“) go through.
@@ -475,6 +509,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** check the improved version on the floor. Cross-check the angle with a line on the floor; so far the lidar only checks itself.
 
 ### 03.11.2026 – Speech recognition only via the plugged-in microphone
+
 - **Problem:** Sometimes speech recognition listened through the microphone of the Logitech C270. That sounds so bad that hardly any command got through.
 - **Cause:** `SPEECH_MICROPHONE_NAMES` contained "C270" as the last fallback. If the USB microphone was briefly gone after a USB dropout, the retry took the C270.
 - **What:** Removed "C270" from the list; the plugged-in FongLun ("USB Microphone", card 5 on the Pi) comes first. New `SPEECH_MICROPHONE_NEVER` (C270, Logi, WebCam, Orbbec): the automatic search never takes these devices, even if a generic name like "Microphone" matches. If the USB microphone is gone, recognition would rather be off and searches again every 3 s.
@@ -482,6 +517,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** after the next server restart, check in `/sprache/status` that `mikrofon` is the USB microphone. Unplug the microphone briefly: recognition must report "kein Mikrofon" instead of switching to the C270.
 
 ### 03.11.2026 – Autonomy step A: heading, timestamps, speed limits (Marlon, with Claude)
+
 - **What:** First step of the improvement plan for following and exploring (branch `autonom`). Fix the basics before rebuilding the target lock and the explorer.
 - **Why:** The board's IMU attitude permanently delivers 0 (sensor check 28.10.). The odometry took this value as the heading, so `theta` stood still while turning. That explains "theta in the server ≈ 0", why the explorer only turns by time and why homing can compute the wrong direction.
 - **Changes:**
@@ -493,6 +529,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** 90° turn test on the floor against the lidar (is `theta` right?).
 
 ### 03.11.2026 – Autonomy step B: target lock while following (Marlon, with Claude)
+
 - **What:** Person tracker with track IDs and a target lock with a state machine (`interaction/target.py`, new). The pose delivers a color feature of the torso; the mock pose shows a second person at times.
 - **Why:** While following, the robot jumped over to other people. The association only used the camera angle, and after every search it took the largest person in the image.
 - **Changes:**
@@ -506,6 +543,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** ~~tapping in the web app (step C)~~ (done, see below), floor test with two people (crossing, occluding, same clothes).
 
 ### 03.11.2026 – Autonomy step C: choose target, pause and release in the web app (Marlon, with Claude)
+
 - **What:** The web app can determine the target when following: tap a person in the camera image, pause/resume, release, display of the target state.
 - **Why:** The robot is controlled via the web interface. With several people, the target lock from step B refuses a start without a selection; that needs an unambiguous selection in the app.
 - **Changes:**
@@ -518,6 +556,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** try tapping on a phone/tablet (hit area), floor test with two people.
 
 ### 03.11.2026 – Autonomy step D: explorer without getting stuck (Marlon, with Claude)
+
 - **What:** The explorer (`navigation/explorer.py`) turns by measured angle, waits for a fresh scan after turning, frees itself when points are too close and detects when it is stuck.
 - **Why:** Until now it stood still without a time limit when points were closer than 0.22 m, turned only by time (the heading was missing, see step A) and gave up after six failed attempts with "festgefahren".
 - **Changes:**
@@ -531,6 +570,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** floor test: turn angle against the lidar, unsticking from a corner, getting stuck (e.g. on a chair leg).
 
 ### 03.11.2026 – Autonomy step E: braking distance check and follow distance (Marlon, with Claude)
+
 - **What:** A central guard in the watchdog brakes all autonomous drive commands according to braking distance. When following, the distance to the person comes from their lidar cluster instead of the smallest value in the field of view.
 - **Why:** Explorer, homing and following each checked obstacles themselves, with different rules; a bug in one module would have taken effect unbraked. When following, a chair in front of the person counted as their distance, and the robot stopped although they kept walking.
 - **Changes:**
@@ -543,6 +583,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** floor test; measure `AUTONOM_SCHUTZ_BREMSEN` and `AUTONOM_SCHUTZ_LATENZ_S` on the robot (braking distance from 0.3 m/s).
 
 ### 03.11.2026 – Autonomy step F1: drive recorder and replay (Marlon, with Claude)
+
 - **What:** The server always keeps the last minute of driving in memory (lidar scans, drive commands before and after the limits, stops, board speed, pose, states). The button "Fahrt speichern" in the web app writes it to a file. `scripts/replay.py` replays it on your own computer.
 - **Why:** Next, the robot is supposed to drive around doors and obstacles skilfully and notice when it is lifted. That needs real drives for checking; otherwise the new logic is only built against the simulation. A lidar map or GPS localization was deliberately postponed for this; indoors GPS does not help.
 - **Changes:**
@@ -555,6 +596,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** record a few drives on the robot with doors, narrow spots and lifting; check whether recording puts a noticeable load on the Pi. Then step F2: local avoidance, checked against these recordings. Investigate the flaky smoke test "homing starts".
 
 ### 03.11.2026 – Autonomy step F2: local avoidance and lifting (Marlon, with Claude)
+
 - **What:** The explorer drives around obstacles in arcs instead of stopping and turning. It approaches doors through the middle. It briefly remembers what slips out of view next to it, and detects when it is lifted or carried somewhere else.
 - **Why:** In everyday use the robot gets picked up, and doors and other obstacles are in the way. Before, it turned around in front of every obstacle, got through doors badly and, after being put down, continued with outdated assumptions. GPS does not help indoors, a lidar map comes later. Hence local, using only what lidar and board deliver.
 - **Changes:**
@@ -592,6 +634,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 ---
 
 ### 03.11.2026 – Autonomy step F3: detour while following and homing (Marlon, with Claude)
+
 - **What:** The avoidance from F2 now also applies to follow, come here, go away and homing. If something is in the way, it shifts diagonally past it and takes doors through the middle. If it is lifted meanwhile, it stops.
 - **Why:** Until now only the explorer could avoid obstacles. When following, it stopped in front of a chair and lost the person; homing stopped in front of every obstacle.
 - **Changes:**
@@ -616,6 +659,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
   - Record following around chairs and through doors on the robot and check with `scripts/replay.py`.
 
 ### 03.11.2026 – Branch `autonom` merged into `main`
+
 - **What:** Merged autonomy steps A to F3 into `main`. In case of contradictions, `main` takes precedence.
 - **Conflicts:** All of them in `server.py`, `config.py`, `settings.py` and `behavior.py` were additions from both sides. Both are kept:
   - `server.py`: precise drive commands (`Maneuver`, drive priority via `sender`) next to `AutonomSchutz`, the drive recorder and odometry for explorer and interaction.
@@ -625,6 +669,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** check on the floor: precise drive commands, following with soft start and tapping. The branch `feat-mapping` has its own central check with the drive guard. At the next sync with `main`, the drive guard and `AutonomSchutz` must be merged into one layer.
 
 ### 03.11.2026 – Mapping: SLAM got no lidar data
+
 - **Problem:** On `/map` mapping could be started, but no map ever appeared, and there was no feedback.
 - **Cause:** The mapping module only started slam_toolbox in the container `x3`. That is only the map builder and needs `/scan` and the position as TF. Those would come from `sllidar_node` and `yahboomcar_bringup`, which must not run on our setup because our server has lidar and board open. So slam_toolbox waited forever. That nobody noticed was due to three things: the start counted as successful if the process was still alive after 0.3 s. The SLAM log lay unnoticed in the container. And there was no time limit for the first map.
 - **What:**
@@ -636,6 +681,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** check on the Pi: `docker exec x3 bash -lc "source /opt/ros/foxy/setup.bash; ros2 pkg prefix slam_toolbox"`, then start mapping, drive through the room, save the map.
 
 ### 03.11.2026 – Mapping drive like a robot vacuum, rotation from the lidar
+
 - **Problem 1:** During mapping the robot did not drive. SLAM builds the map only from what the lidar sees; standing still, that is a single viewpoint with shadows behind every piece of furniture.
 - **Problem 2:** The odometry knows no rotation. The IMU always reports 0 as the heading, so the position does not rotate when the robot turns. SLAM would have twisted the map at the first turn.
 - **What:**
@@ -650,6 +696,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** check on the floor. First watch at low speed: wall following, corners, shift, backward lanes. Then check whether "once all the way around" is detected, and what the map looks like.
 
 ### 03.11.2026 – Drive guard based on the footprint, old map gone
+
 - **Problem 1:** Collision avoidance did not work reliably. It checked a cone from the lidar center (misses table legs next to the wheels) and blocked hard at the limit (with 0.22 s of delay it keeps rolling). Turning was always allowed, scans could be 2 s old. Autonomous drives only checked individual directions.
 - **Problem 2:** After a new start the old map was still there. If SLAM from an earlier run was still running in the container, it was simply reused, with the old map and the old origin. Map reception and page kept the last map.
 - **What:**
@@ -663,6 +710,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** re-measure `ROBOT_REAR_M` on the robot. Check on the floor: switch on the obstacle stop in the app and drive towards a wall, a chair and a table leg. The lidar does not see low obstacles.
 
 ### 03.11.2026 – Mapping branch brought onto main, precise drive commands with drive guard
+
 - **What:** Rebased the branch `feat-mapping` onto the current state of `main`. In the meantime the precise drive commands (`maneuver.py`) had been added there. There were conflicts only in this diary, in `server.py` and in `navigation/__init__.py`. In all three cases both sides are kept.
 - **Adapted to the drive guard:**
   - The precise drive commands sent their commands to the watchdog without the drive guard. Now, like all autonomous drives, they run with `schutz=True`. If the guard blocks for 1.5 s in a row (`MANEUVER_BLOCKED_S`), the command gives up and says that something is in the way.
@@ -672,6 +720,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** check on the floor: "90 Grad drehen" with furniture 20–30 cm in front of the robot (must work now) and right next to a wall (must be refused). Run `test_maneuver.py` on the Pi.
 
 ### 03.11.2026 – One guard layer: drive guard and AutonomSchutz merged
+
 - **Problem:** After merging `autonom` into `main` there were two central checks for autonomous driving in the watchdog: Marlon's `AutonomSchutz` (`quelle="autonom"`) and the drive guard from `feat-mapping` (`schutz=True`). Both would have checked twice and differently.
 - **Comparison:**
   - `AutonomSchutz`: speed according to the braking distance to the nearest point in a strip in the direction of travel. Turning always allowed, arcs not computed ahead. Well integrated: speed limit, battery throttle, drive recorder, can be switched off.
@@ -683,6 +732,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** run `test_guard.py`, `test_explorer.py`, `test_avoidance.py`, `test_detour.py` and `test_maneuver.py` on the Pi. On the floor: exploring and following in narrow rooms. The drive guard now also blocks turns in which a corner would bump, which `AutonomSchutz` always let through. Re-measure the rear dimension `ROBOT_REAR_M`.
 
 ### 04.11.2026 – Depth camera and progress watch against getting stuck
+
 - **Problem:** While mapping, the robot got stuck on chair legs and similar things that the lidar does not see on its plane, or sees too late. The wheels turned, it did not move, and the map stopped growing. The explorer's stuck detection only applied to random driving, not to the mapping drive.
 - **What:**
   - **Depth camera** (`sensors/depth.py`): the depth channel of the Orbbec Astra runs via our own ctypes binding to Orbbec's OpenNI2 (from the Yahboom container, `scripts/setup_orbbec.sh`). The pip package `openni` does not work under Python 3.13. Every frame becomes obstacle points: everything 4–40 cm above the floor. It looks for the floor as a plane in the image and uses it to compensate for the mounting orientation. The camera only runs during autonomous drives, because its projector draws a lot of current on the USB hub.
@@ -699,6 +749,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
   - Watch for USB resets while the camera is running.
 
 ### 04.11.2026 – Faster tests and helpers for working with AI (Marlon, with Claude)
+
 - **What:**
   - New script `scripts/run_tests.py`: it starts all test scripts at the same time, writes one line per script and shows the full output only for failures. With a name filter only individual tests run (`python scripts/run_tests.py target gestures`).
   - Four subagents for Claude Code in `.claude/agents/`: `test-runner` (run tests), `smoke-tester` (check the server in the mock on port 8037), `rule-checker` (diff against the AGENTS.md rules) and `doc-writer` (project diary and `docs/`).
@@ -707,6 +758,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Problems:** In the first run after merging `main`, two tests failed. On `main` the robot now searches without a time limit, and a re-find only counts after several confirmed frames. The tests were adjusted accordingly.
 
 ### 04.11.2026 – Four tests repaired after the mapping merge (Marlon, with Claude)
+
 - **What:** `test_explorer.py`, `test_avoidance.py`, `test_recording.py` and `test_guard.py` failed on `main`, even on the unchanged state of `origin/main`. All four were outdated tests, not a bug in the robot code.
 - **Why:**
   - The new progress watch (`navigation/progress.py`) reads `watchdog.current_command`. The watchdog dummies in the three explorer tests did not have this field. They now remember the last accepted command, like the real watchdog.
@@ -716,6 +768,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** check whether `test_avoidance.py` can be shortened.
 
 ### 04.11.2026 – Autonomy F4: remembered person and faster re-finding (Marlon, with Claude)
+
 - **What:** The robot remembers the appearance of the person who last triggered following, and takes them again at the next "follow" without tapping. If it loses the person, it finds them again faster: shorter deadline if they disappeared at the image edge, lidar hint for the search direction, holding still while checking a candidate, and faster confirmation on a clear match.
 - **Why:** User request: „er soll auch der selben person hinterherfahren und sich merken, wer den folgenbefehl gegeben hat. außerdem, wenn er die person verloren hat, muss diese schneller gefunden werden.“ Until now, with several people in the image, it always refused without tapping, and after losing someone it turned blindly at a fixed rhythm, regardless of where the person last was or what the lidar saw.
 - **Changes:**
@@ -729,11 +782,12 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** floor test: have the same person selected again via "follow" without tapping after releasing; check the lidar hint with a real pair of legs behind the robot.
 
 ### 04.11.2026 – Mapping no longer stops, the map gets used: pose, goal drive (with Claude)
+
 - **What:** Two wishes: „Das Mapping soll nicht stoppen“ and „wenn die Karte fertig ist, soll man darauf sehen, wo er ist, und ihn zu einem Punkt schicken können“.
   - **Mapping drive room by room:** after the room (or when it cannot get any further there), it drives to the next spot where the map turns into the unknown ("frontier": open door, corridor, shadow behind furniture), until no reachable one is left. Then it drives back to the origin and reports "Karte vollständig".
   - **Perseverance:** stuck or blocked by the drive guard now means "give up this frontier, take the next one" instead of the end. Without watchers (no `/map` page, no app) it only stops after 20 s, not at the first connection drop. After a USB reset of the drive it continues by itself within 60 s. It waits 30 instead of 3 s for the lidar.
   - **Pose in the map** (`navigation/map_localization.py`): the lidar scan is laid onto a precomputed distance field of the map 4 times per second (`mapping/occ_map.py`); this compensates for the drift of the lidar odometry. After loading a saved map it searches for itself at the origin; if it does not find itself, you show it on the map ("Hier stehe ich").
-  - **Goal drive** (`navigation/path_planning.py` with A*, `navigation/path_follower.py`): a point on the map, and it drives a planned path there, through the middle of doors, around unexpected things (blocked spots count as a wall for 60 s, then replan). Runs as homing with a goal, so that emergency stop, manual control and connection loss end it without extra code paths. With a map, "Nach Hause" also drives this path.
+  - **Goal drive** (`navigation/path_planning.py` with A\*, `navigation/path_follower.py`): a point on the map, and it drives a planned path there, through the middle of doors, around unexpected things (blocked spots count as a wall for 60 s, then replan). Runs as homing with a goal, so that emergency stop, manual control and connection loss end it without extra code paths. With a map, "Nach Hause" also drives this path.
   - **Page `/map`:** robot, driven trail, planned path, goal and open frontiers on the map; buttons "Hierhin fahren", "Hier stehe ich" (drag = heading), "Zum Ausgangspunkt", "Fahrt abbrechen"; saved maps with "Laden".
   - **Protocol:** new commands `goto`, `goto_cancel`, `map_pose`, `map_load`, new field `state.karte`, new endpoints under `/api/mapping/` (`docs/api.md`). Rationale: E12.
   - **Simulation:** in `--mock` the map is built in Python (`mapping/simulation.py`), without Docker. With `ROSMASTER_MOCK_WOHNUNG=1` the lidar simulates two rooms with a door, a cupboard and a sofa.
@@ -753,6 +807,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** check on the robot (see open points). The existing bug "`dauer_s` right after the start = time since server start" was fixed along the way.
 
 ### 04.11.2026 – Microphone off during mapping (Marlon, with Claude)
+
 - **What:** While mapping is running, speech recognition closes the microphone and accepts no voice commands. Afterwards it reopens it by itself (`SpeechRecognition.set_pause()`, setting `SPEECH_OFF_WHILE_MAPPING`). For this, `/sprache/status` and `state.sprache` have the new field `pause`; the app shows "Mikrofon aus: Mapping läuft".
 - **Why:** The microphone stream loads the USB bus that the lidar also hangs on, and Vosk needs CPU that SLAM is missing. A misheard command („folgen“) would also cancel the mapping drive.
 - **How:** The listening thread keeps asking whether mapping is active, instead of being notified at every start and stop. That way the pause ends on every path (page, app, crash, shutdown).
@@ -760,6 +815,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** check on the Pi: start mapping, "Speech recognition paused" in the log, after stopping "pause over, reopening the microphone".
 
 ### 04.11.2026 – No longer telling people apart when following
+
 - **Problem:** When following, every person got a number („Person 1, 2 …“ in the app). If the followed person left the image and came back, they had to be recognized by their appearance (colour of the upper body). That often failed: they counted as a new person, and the robot stopped with „bitte neu wählen“.
 - **What:** The target lock (03.11.) is replaced by a simple `TargetChoice` (`interaction/target.py`). It follows the person in the image. If they are gone, it waits `TARGET_SWITCH_S` (1 s), then follows the person standing where the last one was. During the search it follows the next one who appears. The tracker stays internal, so the gestures of two people stay separate and it does not jump when someone walks past.
   - App: no numbers above the heads, no tapping, target text without number and percentage.
@@ -770,6 +826,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Merged with F4 (Marlon, same day):** F4 had extended the recognition by appearance (remembered person, faster confirmation). That goes away with the target choice. Kept are the two parts that do not depend on appearance: searching earlier when the person disappeared at the image edge, and turning towards a person the lidar sees while searching. Agreed with the user; please let Marlon know.
 
 ### 04.11.2026 – False "lifted" alarms (with Claude)
+
 - **What:** The lift detection (`LiftDetector`, `navigation/avoidance.py`) reported "hochgehoben" now and then although nobody had touched the robot. It now only counts a scan as changed if the change cannot be explained by the robot moving on the floor.
 - **Why:** The detector compares each scan with the one from 1 s earlier and takes the own motion out using the wheel odometry. Whatever the odometry got wrong looked like a jump in the scan: rotation errors on a slippery floor, wheels spinning while stuck. Sectors that only sometimes return an echo (window, open door, black furniture) counted as changed as well. A bump over a door sill tilts the lidar for about two scans, which already met the threshold.
 - **Changes:**
@@ -781,6 +838,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** observe on the robot whether "hochgehoben" still appears without being lifted; if so, save a recording.
 
 ### 04.11./05.11.2026 – Code, tests and docs in English (with Claude)
+
 - **What:** The whole codebase is now in English: identifiers, module and file names, comments, docstrings, log messages, tests and documentation (`docs/`, README, AGENTS.md, this log). What users see stays German (web app, `/map` page, alert texts, diagnostics texts, settings labels), as do the robot's spoken sentences and the speech commands. Protocol and API names (message types, JSON fields and values, URLs) are unchanged.
 - **Why:** User request ("write all code in english", then "keep the user interface in german"). The new language rule is in AGENTS.md and in E13 (`docs/decisions.md`).
 - **How:**
@@ -796,6 +854,51 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
   - A smoke-test check ("Drehen bleibt trotzdem erlaubt") failed only while about 40 Python processes from earlier mock servers were running ("Server hing 1.2 s"); on a quiet machine it passes.
   - Ben's commits from 04.11. (microphone off while mapping, depth camera crash) were made on the old file names; they are contained in the translated files.
 - **Open:** Teammates' branches based on the old names will conflict on merge; merge them soon or rebase. The old-name settings migration in `settings.py` can be removed once all robots have saved settings with the new names.
+### 18.11.2026 – Tilt servo for the person camera (with Claude)
+- **What:** The Logitech C270 now sits on a servo (port S1) and can be tilted up and down from the server; during person following it keeps the person in the frame by itself.
+- **Why:** The camera is low on the robot. A person standing about 1 m in front of it reaches beyond the top of the picture, head and raised arms (gestures) are cut off.
+- **Changes:**
+  - `drive/`: new optional `set_servo(channel, angle)` in `DriveBase`; `RosmasterDriver` uses `set_pwm_servo`, serial writes of drive and servo are serialised by a lock (stop goes through even if the lock is stuck); mock only logs.
+  - `sensors/camera_tilt.py`: angle 0 = horizontal, + = up, limits ±30°, at most 60°/s, re-sent after a reconnect. Auto mode keeps the head (nose/eyes, otherwise top of the box) of the person from the interaction at 30 % of the image height. The correction starts from the tilt at the time the image was taken, so the delayed pose does not make it overshoot. Nobody in view for 4 s: slowly back to horizontal.
+  - `interaction/behavior.py`: property `target_person` (followed person, in ready mode the largest).
+  - Protocol: command `camera_tilt` (`winkel`, `schritt`, `auto`), state field `kamera_neigung`. Web app: slider (sets the angle directly), button „gerade“ and the switch „Kamera folgt der Person“ in the interaction panel.
+  - `config.py`: block `CAMERA_TILT_*`. Docs: `docs/api.md`, `docs/hardware.md`, `docs/architecture.md`.
+- **Result:** Compiles; not yet tested on the robot.
+- **Follow-up:** Servo is a Keyestudio 9g micro servo, control works on the robot. It moved in visible jumps (10 updates/s at 60°/s = 6° per update): now 50 updates/s, about 1° each. The 5° step buttons were replaced by a slider.
+- **Problem (18.11. afternoon):** Following stopped working: the robot turned towards the person but never drove forward. Live log of the follow state: mostly „richtet sich aus (Abstand unbekannt)“. The lidar had a 62° blind sector straight ahead (-37° to +25°, no points). Measured over SSH by tilting the camera: 0° and down ~22 points ahead per scan, +15° 7, +30° 6. Tilted up, the camera reaches into the lidar plane; auto mode tilts up when the person is close. First capped tilting up at 5°; reverted after the user found the actual cause, the position of the lidar, and moved it. Range is ±30° again.
+- **Also fixed:** music did not resume after the robot spoke (`Mukke._start() got an unexpected keyword argument 'quelle'`, left over from the English rename: remembered keys German, parameters English).
+- **Problem (18.11., later):** The robot turned away from the person. Not the prediction (the Kalman filter only re-identifies the person, steering uses the measured angle): in the log the person was at +4° → +19° while the robot turned left (omega > 0) towards them, the angle grew instead of shrinking. Comparing snapshots: the C270 showed the scene mirrored against the Orbbec (partition left/chair right vs. the other way round). The `"flip": "horizontal"` from the old mount mirrors the image on the servo mount; switched off.
+- **Keys:** In the web app, holding U tilts the camera up, holding I tilts it down (3° every 100 ms, the servo moves smoothly in between; stops when the window loses focus).
+- **Open:** Check whether gestures still work while the camera moves.
+
+---
+
+### 05.11.2026 – Always-on mapping, reliable localization, tap a goal, way back (Marlon, with Claude)
+- **What:** The main map now grows during every drive, not only in slam mode. Lidar odometry runs permanently; a gate decides which scans are written; the map is saved and loaded at start; tapping a goal on `/map` plans a path through known free space; the way back follows the breadcrumbs. slam_toolbox stays as an optional first mapping ("Als Hauptkarte übernehmen" or "Verwerfen"). 9 commits on `feat/always-on-mapping`. Rationale: E14 in `docs/decisions.md`.
+- **Why:** The map only grew in slam mode, we could not control which scan was written, and "localization confident" only meant "last match under 4 s ago".
+- **Changes:**
+  - `MapLocalization` hardened (`TrackResult`, constraint and degeneracy from scan normals, search stages, blind distance `NAV_BLIND_MAX_M`, confirm after search).
+  - `navigation/integrate_gate.py`: FROZEN → CONFIRMING (10 strict matches, at least 3 s) → INTEGRATING, lag buffer of 2, carried detection by wheel vs lidar speed, max omega 0.15 rad/s.
+  - `mapping/live_mapper.py` (log-odds grid, established-cell cap), `mapping/live_store.py` (npz/pgm/yaml/json, 3 backups, atomic writes), incremental distance field `OccupancyMap.derived`.
+  - Start search: last pose 0.5 m → 1.5 m → home → whole map; new map from 3 still scans.
+  - `navigation/breadcrumbs.py`, corridor planning, homing waits for the pose (turn ±30° after 5 s, give up after 20 s), fallback along the reversed trail.
+  - `/map` page: always-on mapping card, mission buttons, trail and freeze overlay.
+- **Result:**
+  - Simulation test `test_live_sim`: at least 95 % of the wall cells within 10 cm over 6 seeds, pose error 2–4 cm.
+  - Kidnap, dropout, carried and corridor cases leave the map bit-identical until the pose is confirmed.
+  - Smoke test including mission start → return: 0.12–0.14 m off the start.
+  - Slam adopt and discard checked in the mock.
+- **Problems:**
+  - The gate froze at every turn: the odometry consistency check had a fixed limit, but lidar odometry drifts a little with every turn. Fixed by allowing `LIVE_GATE_DRIFT_DEG_PER_RAD` of heading drift per radian turned.
+  - Door turns wrote a rotation error into the map. Fixed with max omega 0.15 rad/s.
+  - Corridor ends gave a false constraint. Fixed by taking the constraint from the scan normals.
+  - A carried robot wrote scans before the lift detector fired. Fixed with the wheel speed vs lidar speed criterion.
+  - Pose saving and autosave wrote the map's json at the same time and collided on the temp file. Fixed with a lock (read-modify-write) and unique temp file names.
+  - `from_json` incremented the segment counter twice.
+- **Open:** Test on the robot: CPU on `/diagnose` (estimate 10–20 % of one core), map grows when driving by hand, lifting the robot → frozen, restart finds the last pose, mission start → next room → return. No loop closure: large loops may freeze; do the first mapping with slam.
+- **First robot test (05.11. afternoon):** the map hardly grew, it froze every few seconds. In the log about half the freezes said "bewegt sich ohne die Räder (getragen?)" at standstill: scans come 0.1–0.15 s apart and the A1's 1–2 cm matching jitter looked like 0.1 m/s; the carry check now measures both speeds over 0.4 s. The other half said "Abgleich widerspricht der Odometrie (5–10 cm)": now such a scan is only skipped, the map freezes only at twice the allowance (8 cm / 3° plus drift) or after 3 s of disagreement; coming back needs 5 strict matches over 1.5 s instead of 10 over 3 s. The spoken "Halt." on every stop is gone (the app sends stop whenever it loses focus).
+- **Guessed paths (05.11.):** after mapping two areas the robot said there was no path, although it had driven there: the planner only used known free cells with 0.25 m wall clearance, and the trail only counted on the way back. Now every goal drive treats the confident trail as passable, and if there is still no sure path, the planner guesses the likely one through the unknown (unknown cells 4× as dear, 0.20 m clearance). The robot drives it and replans every 2 s on site without stopping; a sure path replaces it as soon as the map shows one. Tests: two mapped rooms without a known link give a guessed path straight across, a known corridor gives a sure one, a wall never lets a guess through (without a trail).
+- **Right room not reachable (05.11.):** on the robot's map `first_big_map` the planner found no path into the room on the right, not even a guess. Diagnosed on the Pi with the saved map: the trail goes through the door at x 4.4–5.6 m, y 5.0 m, but the map has wall cells 2–12 cm next to where the robot drove (door leaf or noise from mapping), so the doorway was too narrow. Now a guessed path may follow the trail itself (`BREADCRUMB_CORE_M` = 0.1 m) even over such wall cells; the lidar checks on site. On the real map: about 17 m via that door, planned in 0.1–0.6 s.
 
 ### 05.11.2026 – Health check and test runs moved onto the English main (with Claude)
 - **What:** The health check (healthbot) and the test runs from the `tests-panel` branch are being ported to the English code base on branch `test-runs`. First step (groundwork): `HEALTH_*` and `TESTS_*` settings in `config.py`; new commands `health_check`, `health_stop`, `health_wache` and the state field `healthbot` in `protocol.py`; `SafetyWatchdog.submit()` accepts a `margin_m` for the drive guard (nudging); the mock lidar can place extra obstacles; person and pose detection can be switched on by several users at once; pose detection skips images it has already seen and reports none when the camera image is older than `POSE_MAX_FRAME_AGE_S` (still-image problem of the C270).
@@ -806,7 +909,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 ### 05.11.2026 – Healthbot and test runs on the English code base, results on GitHub (with Claude)
 - **What:** Ported the healthbot (`health/`: drive to a person, overview from the camera pose, address by voice, nudge, call for help; watch mode) and the test-run store (`test_runs.py`: guided reproducible camera/pose/microphone tests, each run stored as `~/.rosmaster/tests/<name>/` with `ergebnis.json` including meta data -- code commit, config snapshot, test definition -- plus images and a WAV file) from the old German branch to the English code base, and wired both into `api/server.py` (`/healthbot*`, `/tests*` endpoints, `health_check`/`health_stop`/`health_wache` commands). Map control now also cancels the healthbot when another mode starts.
 - **Why:** Test results must be reachable later (report, comparison) without the robot being on; a separate data branch keeps binary test data out of `main` and feature branches and needs nothing but git and a token.
-- **Result:** After every run the robot pushes all not yet uploaded runs to the git branch `testdaten` (`tests/<name>/`, `index.json`, `README.md` table). Uses a separate git index and `commit-tree` so the Pi's working tree and branch stay untouched; the token from `~/.rosmaster/github_token` travels as an HTTP header via `GIT_CONFIG_*` environment variables, never in the URL, log or config; the upload retries once if the remote moved. Pending runs go with the next upload; no auto upload in `--mock`. New settings: `TESTS_FOLDER`, `TESTS_GIT_*` (decision E14 in `docs/decisions.md`). All 17 test scripts pass, smoke test 18/19 (only the known flaky homing check).
+- **Result:** After every run the robot pushes all not yet uploaded runs to the git branch `testdaten` (`tests/<name>/`, `index.json`, `README.md` table). Uses a separate git index and `commit-tree` so the Pi's working tree and branch stay untouched; the token from `~/.rosmaster/github_token` travels as an HTTP header via `GIT_CONFIG_*` environment variables, never in the URL, log or config; the upload retries once if the remote moved. Pending runs go with the next upload; no auto upload in `--mock`. New settings: `TESTS_FOLDER`, `TESTS_GIT_*` (decision E15 in `docs/decisions.md`). All 17 test scripts pass, smoke test 18/19 (only the known flaky homing check).
 - **Problems:** None beyond the known flaky smoke-test check.
 - **Open:** Not yet tested on the robot (robot paused). The `testdaten` branch does not exist on GitHub yet; the first upload creates it.
 
@@ -859,59 +962,75 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 
 ## 3. Results and measurements
 
-| Topic | Result | Source |
-|---|---|---|
-| USB resets | Triggered by CPU load spikes at 2.4 GHz; much rarer at 2.0 GHz | Sensor check §1 |
-| Lidar | front = −90° raw, 7.5–7.8 Hz, 1080 points/scan | Sensor check §2 |
-| Gyro z | Bias +0.389 rad/s, wrong sign | Sensor check §3 |
-| Odometry | 0.27 m measured for 0.30 m target, sideways ~70 % | Sensor check §4 |
-| Obstacle detection | Wall, chair, table and person correct in the simulation | `test_obstacles.py` |
-| Autonomous driving | starts and drives on the real robot; floor test still pending | 28.10. |
-| Gesture detection and behavior | 4 gestures, negative cases (jitter, hello wave, flicker, two people), Hailo decoding and drive logic: 45 checks passed | `Marlon/interaction/test_gestures.py` |
-| Hailo pose on the Pi | C270, 10 fps, 1–2 people detected, no over-current message under load | Full check 28.10. |
-| Stress test (battery full, without Orbbec) | At rest: 0 resets; driving: +160 over-current in 4.5 min, each 0–5 s after the start of a turn | 28.10. |
-| Stress test (lab power supply, with Orbbec, **on pedestal**) | At rest and driving (210 s, same turns): 0 over-current, 0 disconnects | 29.10. |
-| Stress test (battery 100 %/12.3 V, Orbbec and C270, **on pedestal**) | At rest and driving (210 s): 0 over-current, 0 disconnects, lidar and camera without reconnecting | 29.10. |
-| Speech output | Queue, priority/silencing, fallback without Piper, behavior announcements: 17 checks passed; not yet heard on the speaker | `Marlon/interaction/test_voice.py` |
-| Smooth driving and debounced gestures | Ramp, coasting, smoothing, walking/walking past without false triggers: 69 checks passed (29.10.) | `Marlon/interaction/test_gestures.py` |
-| Voice commands "Robi" | Wake word, wake window, precedence, grammar, fault tolerance: 41 checks; gestures incl. drive loss: 76 checks (29.10.); not yet tested with the microphone | `Marlon/interaction/test_speech.py` |
-| Using the map (simulation, apartment with 2 rooms) | Mapping drive until "Karte vollständig" in 7 min; pose in the map 1–6 cm / under 1.5° off the truth; drive into the neighboring room 5 cm off the goal; 29 checks passed (04.11.) | `Marlon/autonomous_driving/test_map.py` |
+| Topic                                                                | Result                                                                                                                                                                            | Source                                  |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| USB resets                                                           | Triggered by CPU load spikes at 2.4 GHz; much rarer at 2.0 GHz                                                                                                                    | Sensor check §1                         |
+| Lidar                                                                | front = −90° raw, 7.5–7.8 Hz, 1080 points/scan                                                                                                                                    | Sensor check §2                         |
+| Gyro z                                                               | Bias +0.389 rad/s, wrong sign                                                                                                                                                     | Sensor check §3                         |
+| Odometry                                                             | 0.27 m measured for 0.30 m target, sideways ~70 %                                                                                                                                 | Sensor check §4                         |
+| Obstacle detection                                                   | Wall, chair, table and person correct in the simulation                                                                                                                           | `test_obstacles.py`                     |
+| Autonomous driving                                                   | starts and drives on the real robot; floor test still pending                                                                                                                     | 28.10.                                  |
+| Gesture detection and behavior                                       | 4 gestures, negative cases (jitter, hello wave, flicker, two people), Hailo decoding and drive logic: 45 checks passed                                                            | `Marlon/interaction/test_gestures.py`   |
+| Hailo pose on the Pi                                                 | C270, 10 fps, 1–2 people detected, no over-current message under load                                                                                                             | Full check 28.10.                       |
+| Stress test (battery full, without Orbbec)                           | At rest: 0 resets; driving: +160 over-current in 4.5 min, each 0–5 s after the start of a turn                                                                                    | 28.10.                                  |
+| Stress test (lab power supply, with Orbbec, **on pedestal**)         | At rest and driving (210 s, same turns): 0 over-current, 0 disconnects                                                                                                            | 29.10.                                  |
+| Stress test (battery 100 %/12.3 V, Orbbec and C270, **on pedestal**) | At rest and driving (210 s): 0 over-current, 0 disconnects, lidar and camera without reconnecting                                                                                 | 29.10.                                  |
+| Speech output                                                        | Queue, priority/silencing, fallback without Piper, behavior announcements: 17 checks passed; not yet heard on the speaker                                                         | `Marlon/interaction/test_voice.py`      |
+| Smooth driving and debounced gestures                                | Ramp, coasting, smoothing, walking/walking past without false triggers: 69 checks passed (29.10.)                                                                                 | `Marlon/interaction/test_gestures.py`   |
+| Voice commands "Robi"                                                | Wake word, wake window, precedence, grammar, fault tolerance: 41 checks; gestures incl. drive loss: 76 checks (29.10.); not yet tested with the microphone                        | `Marlon/interaction/test_speech.py`     |
+| Using the map (simulation, apartment with 2 rooms)                   | Mapping drive until "Karte vollständig" in 7 min; pose in the map 1–6 cm / under 1.5° off the truth; drive into the neighboring room 5 cm off the goal; 29 checks passed (04.11.) | `Marlon/autonomous_driving/test_map.py` |
 
 ---
 
 ## 4. Problems and solutions
 
-| Problem | Cause | Solution / status |
-|---|---|---|
-| Devices drop off USB | CPU load spike at 2.4 GHz, hub backfeed | `arm_freq=2000` permanently in config.txt (28.10.), drivers reconnect on their own. **Open:** hub without backfeed or cut VBUS |
-| Collisions with the first explorer | Lidar mirrored and rotated by 90° | `LIDAR_ANGLE_OFFSET_DEG = -90`, hand test |
-| Inaccurate turning | Gyro bias/sign, theta in the server ≈ 0 | Explorer turns by time; gyro correction open |
-| Robot on the table | Lidar cannot see edges | Autonomous driving only on the floor |
-| USB failures when hot | Pi above 80 °C (compiling), throttling to 1.5 GHz | Do not drive during builds; `check_hardware.py` shows temperature and throttling |
-| Everything keeps crashing (camera, motor, lidar) | Hanging nvidia DKMS build that restarted with every `apt` → heat → USB overload as an endless loop | nvidia packages removed (28.10.), `check_hardware.py` warns about running builds and new over-current messages |
-| Waving triggered "go away" | Shoulder width collapses when turning sideways, measures in shoulder widths become huge | Median of the shoulder width over the window (28.10.) |
-| Typing in the "Sagen" field would have driven the robot | The app's keyboard control reacts to all keys, space bar = emergency stop | Keys in text fields are ignored (28.10.) |
-| Wrong camera possible | `/dev/video*` numbers swap after USB resets, the Orbbec could become `video0` | Select the camera by name, `CAMERA_NAME = "C270"` (28.10.) |
-| Server crashes (code -11, segfault in `depth.py`), three times in a row, each ~10 s after start | Orbbec firmware hung (opening fails, then "busy"); the code closed the handle of the failed open, which makes OpenNI2 crash. Reproduced on the Pi (04.11.) | Forget the handle after a failed open instead of closing it; hanging camera: unplug and replug the Orbbec |
-| Resets while turning, despite a full battery and without Orbbec | Inrush current of all four motors under load pulls down the supply. On the pedestal (wheels free) 0 resets, with battery as with power supply (29.10.) | **Open:** test on the floor (power supply, then battery); if resets remain, separate 5 V supply (DC/DC) for Pi or hub, see `docs/hardware.md` |
-| All USB devices briefly drop off when stopping the server | Pose thread still opened the Hailo during shutdown, whose startup briefly draws a lot of current | `_stop` check in `sensors/pose.py`; checked twice on the Pi, 0 messages (29.10.) |
-| Driver connected to the lidar | After a dropout the lidar was briefly the only serial device | Board via `/dev/myserial`, lidar always excluded (28.10.) |
-| USB endless loop even when standing still | Lidar motor started again immediately after every reconnect, wait time started at 1 s | Wait time keeps growing if it fails again shortly afterwards (`LIDAR_STABLE_S`, 28.10.) |
-| Ctrl+C did not stop the server | uvicorn waited for the endless camera stream, motor stop did not run | `SHUTDOWN_TIMEOUT_S = 3` (28.10.) |
-| USB resets and jerking while following | Hard jumps in the drive command → current spikes → voltage drop | Acceleration ramp in the watchdog, smoothed following with coasting (29.10.). **Open:** floor test on the Pi |
-| Behavior switches while following without a signal | Swinging arms when walking look like come here/go away | Come here/go away only with a person standing still and facing the robot, and the robot standing (29.10.) |
-| "Keine Verbindung zum Antrieb" when starting gesture control, interaction off immediately | The Hailo only started up when switching on (current spike → USB reset), and every drive loss ended the whole interaction | Open the Hailo at server start and keep it warm (`POSE_KEEP_WARM`); on drive loss only stop, refuse drive modes without the board (29.10.). **Open:** check on the Pi |
-| „Musik stopp“ recognized as stop | The stop phrase is contained in the music command | Precedence of the voice commands, music off first (29.10.) |
-| "Random crashes" also on the other board and on the power supply | Permanent USB overload even at idle from boot (all root ports), lidar does not register; not a code bug (29.10.) | Server loops more robust, crash recording on `/diagnose`. **Open:** narrow down the culprit (devices one by one, lidar cable, board USB), see `docs/hardware.md` |
-| Server starts in the simulation on the robot | Board briefly gone during the start check (USB overload), `main.py` fell back to mock (29.10.) | With `Rosmaster_Lib` installed always start for real, only warn; the driver reconnects |
-| Failures only traceable via SSH | Kernel log, vcgencmd and server log separate | Diagnostics page `/diagnose` with problems, timeline and log (29.10.) |
-| Push from the laptop hangs | Git Credential Manager waits for a login window | User pushes themselves, the Pi only pulls (`git pull`) |
-| MUKKE: mpv reports "Failed to recognize file format" | mpv's ytdl script does not find yt-dlp in the venv and passes the YouTube link on raw | The server resolves the link itself with the yt-dlp library, mpv only gets the direct audio track; YouTube errors appear in the window |
-| Robot starts the interaction by itself | Vosk with a grammar turns music and conversations into allowed sentences („robbie hallo“) | Confidence and `[unk]` check; while music plays only stop and „Musik aus“ (03.11.) |
-| Turning/distance by time inaccurate | Drive command overestimates by 10–30 %, mecanum slips, gyro unusable | Precise drive commands measure with the lidar (`navigation/maneuver.py`, 03.11.) |
-| Drives only slowly and stuttering after following | A second open app keeps sending "vx=0" at idle between the commands of the device steering | Drive priority for the steering device, `DRIVE_PRIORITY_S` (03.11.) |
-| Mapping starts, but no map and no feedback | slam_toolbox got neither `/scan` nor TF, because our server holds lidar and board; the start counted as successful after 0.3 s | The server feeds scans and odometry into the container, the status names the failing step (E8, 03.11.). **Open:** check on the Pi |
-| No more voice commands after a crash | The microphone briefly dropped off USB, `stream.read()` hung forever without an error | Reading via callback with a deadline, reopening after 3 s without audio; switching back from the C270 to the USB microphone (03.11.) |
+| Problem                                                                                         | Cause                                                                                                                                                      | Solution / status                                                                                                                                                     |
+| ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Devices drop off USB                                                                            | CPU load spike at 2.4 GHz, hub backfeed                                                                                                                    | `arm_freq=2000` permanently in config.txt (28.10.), drivers reconnect on their own. **Open:** hub without backfeed or cut VBUS                                        |
+| Collisions with the first explorer                                                              | Lidar mirrored and rotated by 90°                                                                                                                          | `LIDAR_ANGLE_OFFSET_DEG = -90`, hand test                                                                                                                             |
+| Inaccurate turning                                                                              | Gyro bias/sign, theta in the server ≈ 0                                                                                                                    | Explorer turns by time; gyro correction open                                                                                                                          |
+| Robot on the table                                                                              | Lidar cannot see edges                                                                                                                                     | Autonomous driving only on the floor                                                                                                                                  |
+| USB failures when hot                                                                           | Pi above 80 °C (compiling), throttling to 1.5 GHz                                                                                                          | Do not drive during builds; `check_hardware.py` shows temperature and throttling                                                                                      |
+| Everything keeps crashing (camera, motor, lidar)                                                | Hanging nvidia DKMS build that restarted with every `apt` → heat → USB overload as an endless loop                                                         | nvidia packages removed (28.10.), `check_hardware.py` warns about running builds and new over-current messages                                                        |
+| Waving triggered "go away"                                                                      | Shoulder width collapses when turning sideways, measures in shoulder widths become huge                                                                    | Median of the shoulder width over the window (28.10.)                                                                                                                 |
+| Typing in the "Sagen" field would have driven the robot                                         | The app's keyboard control reacts to all keys, space bar = emergency stop                                                                                  | Keys in text fields are ignored (28.10.)                                                                                                                              |
+| Wrong camera possible                                                                           | `/dev/video*` numbers swap after USB resets, the Orbbec could become `video0`                                                                              | Select the camera by name, `CAMERA_NAME = "C270"` (28.10.)                                                                                                            |
+| Server crashes (code -11, segfault in `depth.py`), three times in a row, each ~10 s after start | Orbbec firmware hung (opening fails, then "busy"); the code closed the handle of the failed open, which makes OpenNI2 crash. Reproduced on the Pi (04.11.) | Forget the handle after a failed open instead of closing it; hanging camera: unplug and replug the Orbbec                                                             |
+| Resets while turning, despite a full battery and without Orbbec                                 | Inrush current of all four motors under load pulls down the supply. On the pedestal (wheels free) 0 resets, with battery as with power supply (29.10.)     | **Open:** test on the floor (power supply, then battery); if resets remain, separate 5 V supply (DC/DC) for Pi or hub, see `docs/hardware.md`                         |
+| All USB devices briefly drop off when stopping the server                                       | Pose thread still opened the Hailo during shutdown, whose startup briefly draws a lot of current                                                           | `_stop` check in `sensors/pose.py`; checked twice on the Pi, 0 messages (29.10.)                                                                                      |
+| Driver connected to the lidar                                                                   | After a dropout the lidar was briefly the only serial device                                                                                               | Board via `/dev/myserial`, lidar always excluded (28.10.)                                                                                                             |
+| USB endless loop even when standing still                                                       | Lidar motor started again immediately after every reconnect, wait time started at 1 s                                                                      | Wait time keeps growing if it fails again shortly afterwards (`LIDAR_STABLE_S`, 28.10.)                                                                               |
+| Ctrl+C did not stop the server                                                                  | uvicorn waited for the endless camera stream, motor stop did not run                                                                                       | `SHUTDOWN_TIMEOUT_S = 3` (28.10.)                                                                                                                                     |
+| USB resets and jerking while following                                                          | Hard jumps in the drive command → current spikes → voltage drop                                                                                            | Acceleration ramp in the watchdog, smoothed following with coasting (29.10.). **Open:** floor test on the Pi                                                          |
+| Behavior switches while following without a signal                                              | Swinging arms when walking look like come here/go away                                                                                                     | Come here/go away only with a person standing still and facing the robot, and the robot standing (29.10.)                                                             |
+| "Keine Verbindung zum Antrieb" when starting gesture control, interaction off immediately       | The Hailo only started up when switching on (current spike → USB reset), and every drive loss ended the whole interaction                                  | Open the Hailo at server start and keep it warm (`POSE_KEEP_WARM`); on drive loss only stop, refuse drive modes without the board (29.10.). **Open:** check on the Pi |
+| „Musik stopp“ recognized as stop                                                                | The stop phrase is contained in the music command                                                                                                          | Precedence of the voice commands, music off first (29.10.)                                                                                                            |
+| "Random crashes" also on the other board and on the power supply                                | Permanent USB overload even at idle from boot (all root ports), lidar does not register; not a code bug (29.10.)                                           | Server loops more robust, crash recording on `/diagnose`. **Open:** narrow down the culprit (devices one by one, lidar cable, board USB), see `docs/hardware.md`      |
+| Server starts in the simulation on the robot                                                    | Board briefly gone during the start check (USB overload), `main.py` fell back to mock (29.10.)                                                             | With `Rosmaster_Lib` installed always start for real, only warn; the driver reconnects                                                                                |
+| Failures only traceable via SSH                                                                 | Kernel log, vcgencmd and server log separate                                                                                                               | Diagnostics page `/diagnose` with problems, timeline and log (29.10.)                                                                                                 |
+| Push from the laptop hangs                                                                      | Git Credential Manager waits for a login window                                                                                                            | User pushes themselves, the Pi only pulls (`git pull`)                                                                                                                |
+| MUKKE: mpv reports "Failed to recognize file format"                                            | mpv's ytdl script does not find yt-dlp in the venv and passes the YouTube link on raw                                                                      | The server resolves the link itself with the yt-dlp library, mpv only gets the direct audio track; YouTube errors appear in the window                                |
+| Robot starts the interaction by itself                                                          | Vosk with a grammar turns music and conversations into allowed sentences („robbie hallo“)                                                                  | Confidence and `[unk]` check; while music plays only stop and „Musik aus“ (03.11.)                                                                                    |
+| Turning/distance by time inaccurate                                                             | Drive command overestimates by 10–30 %, mecanum slips, gyro unusable                                                                                       | Precise drive commands measure with the lidar (`navigation/maneuver.py`, 03.11.)                                                                                      |
+| Drives only slowly and stuttering after following                                               | A second open app keeps sending "vx=0" at idle between the commands of the device steering                                                                 | Drive priority for the steering device, `DRIVE_PRIORITY_S` (03.11.)                                                                                                   |
+| Mapping starts, but no map and no feedback                                                      | slam_toolbox got neither `/scan` nor TF, because our server holds lidar and board; the start counted as successful after 0.3 s                             | The server feeds scans and odometry into the container, the status names the failing step (E8, 03.11.). **Open:** check on the Pi                                     |
+| No more voice commands after a crash                                                            | The microphone briefly dropped off USB, `stream.read()` hung forever without an error                                                                      | Reading via callback with a deadline, reopening after 3 s without audio; switching back from the C270 to the USB microphone (03.11.)                                  |
+
+### 17.11.2026 – First-time connection instructions (Copilot)
+
+- **What:** Added a Windows-to-Pi walkthrough to the README with IP discovery, SSH login, checkout location, server startup, browser URL and basic hardware safety guidance. Corrected the robot test example to use the checkout path present on the Pi.
+- **Why:** The previous instructions assumed the reader already knew the Pi's IP, SSH command and repository path.
+- **Result:** A new user can follow the connection flow from PowerShell through opening the web app.
+- **Problems:** None.
+
+### 17.11.2026 – Depth camera ctypes field fix (Copilot)
+
+- **What:** Fixed internal field names in `sensors/depth.py` for `_Mode`, `_Frame` and `_SensorInfo`.
+- **Why:** The structures declared German field names, but `open_device` and `read` accessed English attributes. Hardware-free reproduction in `test_depth.py` failed on `_SensorInfo.count` and `_Frame.data`.
+- **Changes:** Renamed the internal fields to English without changing field order or ctypes. Added a depth troubleshooting note to `docs/hardware.md`; German API fields remain unchanged.
+- **Result:** All four unittest cases pass via `scripts/run_tests.py depth` (the runner reports one test script): mode selection, padded frame copying before release, timeout behavior and failed-open handle safety. An additional ABI check confirmed unchanged sizes, alignment and all field offsets on Windows x64: `_Mode` 16 bytes, `_Frame` 80 bytes, `_SensorInfo` 16 bytes.
+- **Problems:** No live Pi hardware validation was possible.
+- **Open:** Update and restart the server on the Pi, then verify depth with `POST /tiefe/test` followed by `GET /tiefe/status`. A working RGB stream alone does not validate depth.
 
 ---
 

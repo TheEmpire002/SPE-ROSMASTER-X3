@@ -46,7 +46,19 @@ From the app / the ESP to the robot
 {"type": "map_pose", "x": 1.0, "y": 0.5, "winkel": 0}     "I am standing here": search the pose
                                                           in the map there (winkel optional)
 {"type": "map_load", "name": "wohnung"}                   load a saved map to drive
-                                                          in it
+                                                          in it (with always-on mapping it
+                                                          becomes the main map and grows)
+{"type": "mission_start"}                                 the way back leads here (anchor
+                                                          "mission" in the main map)
+{"type": "return", "ziel": "mission"}                     drive back along the trail,
+                                                          "mission" | "home"; cancel with
+                                                          goto_cancel
+{"type": "map_live", "aktiv": false}                      always-on mapping off/on (the pose
+                                                          is still tracked)
+{"type": "camera_tilt", "winkel": 10}                      tilt the person camera (degrees, + = up,
+                                                          0 = horizontal); switches auto off
+{"type": "camera_tilt", "schritt": -5}                     tilt by this much; switches auto off
+{"type": "camera_tilt", "auto": true}                      auto: keep the person in the frame
 {"type": "health_check", "x": 2.5, "y": -1.0}            healthbot: drive to the spot and check the
                                                           person's condition (x, y in m, odometry
                                                           frame like homing; without x/y: check
@@ -71,7 +83,15 @@ From the robot to the app
                     "geweckt":…, "gehoert":…, "befehl":…};
                     with a loaded map additionally "karte": {"name":…,
                     "live":…, "pose": {"x","y","winkel"}|null, "sicher":…,
-                    "text":…, "fahrt": {"aktiv","art","ziel","rest_m","grund"}};
+                    "text":…, "fahrt": {"aktiv","art","ziel","rest_m","grund",
+                    "wartet","vermutet"}, "kartieren": {"aktiv","zustand","grund"}|null,
+                    "mission": [x, y, rad]|null, "spur_m":…};
+                    fahrt.art "heim"|"ziel"|"zurueck", fahrt.wartet "wartet auf
+                    Ortung"|null; kartieren.zustand "integriert"|"bestaetigt"|
+                    "eingefroren"|"pausiert"|"start"|"aus";
+                    with the tilt servo additionally "kamera_neigung":
+                    {"verfuegbar":…, "winkel":…, "ziel":…, "auto":…, "min":…,
+                    "max":…, "verfolgt":…};
                     with healthbot additionally "healthbot": {"aktiv":…,
                     "zustand":…, "schritt":…, "alarm":…, "wache":…},
                     everything else under GET /healthbot/status)
@@ -155,6 +175,7 @@ def state_message(
     speech: dict[str, Any] | None = None,
     occ_map: dict[str, Any] | None = None,
     healthbot: dict[str, Any] | None = None,
+    camera_tilt: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     msg: dict[str, Any] = {
         "type": "state",
@@ -177,6 +198,8 @@ def state_message(
         msg["karte"] = occ_map
     if healthbot is not None:
         msg["healthbot"] = healthbot
+    if camera_tilt is not None:
+        msg["kamera_neigung"] = camera_tilt
     if pose is not None:
         x, y, angle = pose
         msg["pose"] = {

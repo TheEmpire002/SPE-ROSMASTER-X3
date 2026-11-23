@@ -160,7 +160,7 @@ class Mukke:
             paused = bool(self._ipc(["get_property", "pause"])) if running else False
             if self._interrupted is not None:
                 # The voice is speaking right now -- for the app the song keeps playing.
-                running, paused = True, self._interrupted["pausiert"]
+                running, paused = True, self._interrupted["paused"]
             if running and not self._title:
                 title = self._ipc(["get_property", "media-title"])
                 # Until yt-dlp is done, mpv only reports the address.
@@ -239,7 +239,7 @@ class Mukke:
             self._interrupted = {
                 **self._started,
                 "start": float(position) if isinstance(position, (int, float)) else None,
-                "pausiert": bool(self._ipc(["get_property", "pause"])),
+                "paused": bool(self._ipc(["get_property", "pause"])),
             }
             self._shutdown(quiet=True)
 
@@ -261,7 +261,8 @@ class Mukke:
     ) -> None:
         """Start mpv with the audio track. Only call while holding the lock."""
         self._output.clear()
-        self._started = {"quelle": source, "titel": title, "kopfzeilen": headers}
+        # keys are the parameter names, resume() passes them back in
+        self._started = {"source": source, "title": title, "headers": headers}
         command = [
             "mpv",
             "--no-video",
@@ -315,7 +316,7 @@ class Mukke:
                 self._ipc(["cycle", "pause"])
             elif self._interrupted is not None:
                 # While the voice is speaking: takes effect on resume.
-                self._interrupted["pausiert"] = not self._interrupted["pausiert"]
+                self._interrupted["paused"] = not self._interrupted["paused"]
 
     def set_volume(self, value: float) -> None:
         try:
