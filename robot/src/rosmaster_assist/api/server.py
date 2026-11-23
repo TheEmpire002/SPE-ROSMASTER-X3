@@ -396,6 +396,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                 hub, watchdog, driver, odometry, homing, localizer, guard,
                 explorer, detection, lidar, people, interaction, voice, speech, maneuver,
                 map_control=map_control, healthbot=healthbot, camera_tilt=camera_tilt,
+                objects=objects,
             )
         )
         speech_task = asyncio.create_task(_speech_loop())
@@ -2239,6 +2240,7 @@ async def _status_loop(
     map_control: MapControl | None = None,
     healthbot: Healthbot | None = None,
     camera_tilt: CameraTilt | None = None,
+    objects: ObjectDetection | None = None,
 ) -> None:
     """Regularly sends the state to all clients."""
     last_active = False

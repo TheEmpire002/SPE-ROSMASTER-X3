@@ -1206,3 +1206,8 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **What:** `OBJECTS_CAMERA` from the Orbbec colour image (`orientierung`) to the Logitech C270 (`personen`). The mode „Objekte (KI)“ now switches the C270 tile, the Orbbec keeps its colour image.
 - **Why:** Requested after the test on the robot: the detection should use the Logitech.
 - **Note:** The C270 has a narrower field of view (45° instead of 66°), so fewer lidar obstacles get a camera name; the angles use the camera's own `fov_deg`. When the tilt servo looks up or down, the left/right angles stay correct.
+
+### 23.11.2026 – Fix: status messages broke with the object detection (with Claude)
+- **Problem:** On main the app seemed to crash (noticed when entering a spoken sentence). The server kept running, but every status message failed with `NameError: name 'objects' is not defined`: `_status_loop` is a separate function and did not receive the object detection, so the app got no more state while connected.
+- **Fix:** `objects` is passed into `_status_loop` like the other services. Checked with an AST scan that no other top-level function in `server.py` uses it without receiving it.
+- **Also seen:** at the same moment the USB microphone (usb 1-1.1) dropped out and did not re-enumerate (error -71); that is the known USB dropout, not this bug.
