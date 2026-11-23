@@ -35,12 +35,6 @@ from .. import config
 
 log = logging.getLogger(__name__)
 
-#: older results no longer count, the object may have moved out of view
-_MAX_AGE_S = 1.5
-
-#: pause before a failed hailo is reopened
-_REOPEN_S = 2.0
-
 #: COCO classes in model order with the German name the app shows
 COCO_DE = [
     "Mensch", "Fahrrad", "Auto", "Motorrad", "Flugzeug", "Bus", "Zug", "Lkw", "Boot",
@@ -188,7 +182,7 @@ class ObjectDetection:
         """Current objects, biggest first: ``klasse`` (German), ``score``,
         ``box`` [x1, y1, x2, y2] 0..1, ``winkel`` [from, to] degrees (left +)."""
         with self._lock:
-            if time.monotonic() - self._time > _MAX_AGE_S:
+            if time.monotonic() - self._time > config.OBJECTS_MAX_AGE_S:
                 return []
             return list(self._objects)
 
@@ -198,17 +192,19 @@ class ObjectDetection:
                 if o["klasse"] in FLOOR_CLASSES]
 
     def status(self) -> dict:
+        # outside the lock: _needed() takes it itself
+        active = self._needed() and self.available
         with self._lock:
             age = time.monotonic() - self._time if self._time else None
             return {
                 "verfuegbar": self.available,
-                "aktiv": self._needed() and self.available,
+                "aktiv": active,
                 "fehler": self._setup_error or self._error,
                 "kamera": self.camera_name,
                 "modell": os.path.basename(config.OBJECTS_HEF),
                 "rechenzeit_ms": round(self._ms, 1) if self._ms is not None else None,
                 "letzte_erkennung_vor_s": round(age, 1) if age is not None else None,
-                "anzahl": len(self._objects) if age is not None and age <= _MAX_AGE_S else 0,
+                "anzahl": len(self._objects) if age is not None and age <= config.OBJECTS_MAX_AGE_S else 0,
             }
 
     def annotated_jpeg(self, quality: int = 80) -> tuple[bytes, float] | None:
@@ -266,8 +262,10 @@ class ObjectDetection:
                     hailo.close()
                     hailo = None
                 with self._lock:
+                    # a view opened later must not show an old frame
                     self._objects = []
-                self._wake.wait(0.5)
+                    self._image = None
+                self._wake.wait(config.OBJECTS_IDLE_POLL_S)
                 self._wake.clear()
                 continue
             begin = time.monotonic()
@@ -279,14 +277,14 @@ class ObjectDetection:
                         self._error = None
                 self._detect(hailo)
             except Exception as e:
-                log.warning("Object detection failed: %s -- reopening in %.0f s", e, _REOPEN_S)
+                log.warning("Object detection failed: %s -- reopening in %.0f s", e, config.OBJECTS_REOPEN_S)
                 with self._lock:
                     self._error = f"Hailo: {e}"
                     self._image = None
                 if hailo is not None:
                     hailo.close()
                     hailo = None
-                self._stop.wait(_REOPEN_S)
+                self._stop.wait(config.OBJECTS_REOPEN_S)
                 continue
             rest = 1.0 / max(0.5, config.OBJECTS_HZ) - (time.monotonic() - begin)
             if rest > 0:
@@ -325,7 +323,7 @@ class ObjectDetection:
             x2 = min(1.0, max(0.0, (box[2] * size - dx) / scale / w))
             y1 = min(1.0, max(0.0, (box[1] * size - dy) / scale / h))
             y2 = min(1.0, max(0.0, (box[3] * size - dy) / scale / h))
-            if x2 - x1 < 0.01 or y2 - y1 < 0.01:
+            if x2 - x1 < config.OBJECTS_MIN_BOX or y2 - y1 < config.OBJECTS_MIN_BOX:
                 continue
             found.append({
                 "klasse": name,

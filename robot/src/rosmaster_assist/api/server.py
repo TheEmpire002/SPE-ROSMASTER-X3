@@ -1003,12 +1003,12 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     @app.get("/objekte/snapshot")
     async def objects_snapshot():
         # snapshots (safari) come in quick succession: keep the detection on
-        # until none has been fetched for 10 s
+        # until none has been fetched for a while
         objects.activate(True, "ansicht-einzelbild")
         for old in objects_off_timers:
             old.cancel()
         objects_off_timers[:] = [asyncio.get_running_loop().call_later(
-            10.0, objects.activate, False, "ansicht-einzelbild")]
+            config.OBJECTS_SNAPSHOT_HOLD_S, objects.activate, False, "ansicht-einzelbild")]
         result = await asyncio.to_thread(objects.annotated_jpeg)
         if result is None:
             return Response("Noch kein Bild", status_code=503)
