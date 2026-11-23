@@ -854,7 +854,9 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
   - A smoke-test check ("Drehen bleibt trotzdem erlaubt") failed only while about 40 Python processes from earlier mock servers were running ("Server hing 1.2 s"); on a quiet machine it passes.
   - Ben's commits from 04.11. (microphone off while mapping, depth camera crash) were made on the old file names; they are contained in the translated files.
 - **Open:** Teammates' branches based on the old names will conflict on merge; merge them soon or rebase. The old-name settings migration in `settings.py` can be removed once all robots have saved settings with the new names.
+
 ### 18.11.2026 – Tilt servo for the person camera (with Claude)
+
 - **What:** The Logitech C270 now sits on a servo (port S1) and can be tilted up and down from the server; during person following it keeps the person in the frame by itself.
 - **Why:** The camera is low on the robot. A person standing about 1 m in front of it reaches beyond the top of the picture, head and raised arms (gestures) are cut off.
 - **Changes:**
@@ -874,6 +876,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 ---
 
 ### 05.11.2026 – Always-on mapping, reliable localization, tap a goal, way back (Marlon, with Claude)
+
 - **What:** The main map now grows during every drive, not only in slam mode. Lidar odometry runs permanently; a gate decides which scans are written; the map is saved and loaded at start; tapping a goal on `/map` plans a path through known free space; the way back follows the breadcrumbs. slam_toolbox stays as an optional first mapping ("Als Hauptkarte übernehmen" or "Verwerfen"). 9 commits on `feat/always-on-mapping`. Rationale: E14 in `docs/decisions.md`.
 - **Why:** The map only grew in slam mode, we could not control which scan was written, and "localization confident" only meant "last match under 4 s ago".
 - **Changes:**
@@ -980,7 +983,35 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Result:** `Marlon/health/test_health.py` checks pose off before the drive home, no person after the check and the camera field; health tests and condition view tests pass. The mock smoke test fails „turning is still allowed“ and „vital data is passed on“ on this PC also without this change (timing, server hangs about 3.7 s on imports right after start).
 - **Open:** Check on the robot with a person on the floor; look into the two smoke test failures.
 
+### 18.11.2026 – Photos on the map (with Claude)
+
+- **What:** Stage 1 of "modelling the room with pictures": the robot stores photos with position and heading in the map, shown on `/map`.
+- **Why:** You can see what a spot looks like, it is good for the presentation, and the photos with poses are the basis for panoramas (stage 2) and a 3D model computed offline (stage 3).
+- **Changes:**
+  - `mapping/photos.py`: while the pose in the main map or a loaded map is confident, an Orbbec photo every 1 m or 45° of turning, not while turning fast (blur), not if one from almost the same spot and heading exists, at most 500 per map. JPEGs and `index.json` in `<map>_bilder/` beside the map; written in a thread. Bound to the map's frame id: a replaced main map sets the old folder aside instead of showing photos in the wrong places.
+  - `api/map_control.py`: tick after tracking, `fotos` in `display()`. `mapping/web.py`: list, file, take, auto on/off, delete. `config.py`: block `MAP_PHOTO_*`.
+  - `/map`: section „Fotos“ (count, „📷 Foto hier“, show/hide, automatic on/off), yellow arrows in the camera's direction, click opens the photo with time and position, delete.
+  - Docs: `docs/api.md` ("Photos on the map"), `docs/architecture.md`.
+- **Result:** Compiles, page JS checked; not yet tested on the robot.
+- **Open:** Check on the robot whether the photos are sharp enough while driving and whether the positions fit. Stage 3 (3D offline).
+
+### 18.11.2026 – All-round panoramas on the map (with Claude)
+
+- **What:** Stage 2: „🔄 Rundum-Panorama hier“ on `/map`. The robot turns once on the spot (12 × 30°), takes an Orbbec photo after each turn and stitches a 360° image, stored with the map's photos and viewable on `/map` by dragging.
+- **Why:** One picture of a whole spot instead of single directions; basis for a more complete room model.
+- **Decision:** No feature-based stitching (OpenCV `Stitcher`): it fails on white walls and costs CPU (USB dropouts). Instead every shot is projected onto a cylinder at the heading the lidar measured for the turn, with soft blending at the overlaps. A heading error shows as a small seam, never as a failed panorama.
+- **Changes:** `mapping/panorama.py` (sequence and `stitch`), `MapPhotos.add_panorama`, panorama in `MapControl` (start, cancel with every other drive and the emergency stop, also between two turns), manual driving cancels it (`api/server.py`), `Maneuver.quiet` so the 11 turns are not reported one by one, endpoints `POST /api/mapping/panorama` and `/stop`, `PANORAMA_*` in `config.py`, viewer on `/map`.
+- **Result:** Stitching tested on the Pi with a real Orbbec image (12 synthetic headings): order and direction right, 0.27 s, 2322 × 342 px, no black gaps after cropping. The turning sequence itself has not run on the robot yet.
+- **Open:** Test on the floor: are the seams small with the measured headings, does exposure jump between shots.
+
 ---
+
+### 23.11.2026 – Telegram messaging (Copilot)
+
+- **What:** Added a fixed-chat Telegram sender, an HTTP endpoint and a web dialog for typed messages and Markdown files.
+- **Why:** The robot and its operator need a reusable way to send messages to one chat without exposing credentials to the browser or Git.
+- **Result:** Markdown is converted into Telegram entities; credentials are read from a Git-ignored Pi-local file or environment variables. Delivery runs outside the server event loop and errors are reported without revealing the token. Mocked sender and endpoint tests passed, as did the mock-server smoke test (22 checks); browser checks covered file loading, feedback and mobile layout.
+- **Problems:** Telegram delivery and credentials need a live Pi and a real bot for final verification. No automatic event trigger was configured.
 
 ## 3. Results and measurements
 
@@ -1101,3 +1132,50 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Analysis (log 12:49):** Closing in drove at 0.12 m/s for the full 15 s and gave up („kommt nicht nah genug heran“), then went straight to calling for help. The person lies below the lidar plane, so the lidar distance at their bearing was the wall behind (3.25 m) and never reached 0.30 m; 15 s × 0.12 m/s is at most 1.8 m. The nudge step had no speech at all.
 - **Fix:** Closing in is limited by `HEALTH_APPROACH_MAX_S` (40 s) and `HEALTH_APPROACH_MAX_M` (4 m) instead of a fixed 15 s; besides the lidar distance and the drive guard holding close, wheels standing although driving now also counts as "at the person". Speech: `HEALTH_NUDGE_ANNOUNCE` before closing in, `HEALTH_NUDGE_CALL` before each nudge; only words after the call count as an answer.
 - **Result:** Not yet tested on the robot.
+
+### 23.11.2026 – Better panoramas: sharp seams, even brightness (with Claude)
+
+- **What:** The first real panorama (12 turns, measured headings) showed close chair legs twice and transparent, and brightness jumps between shots. Stitching improved: each column now comes almost only from the shot that looked most directly at it (weight `(1 - angle/half fov)^8`, soft seam about ±3°), plus one brightness factor per shot from the overlaps (least squares, like OpenCV's gain compensator, factors kept near 1). The single shots are now kept with their headings beside the panorama.
+- **Why:** The camera is not on the turning axis, so close objects shift between neighbouring shots (parallax); wide blending showed them twice. Each shot is exposed by itself.
+- **Result:** Tested on the robot at the same spot (first_big_map, x=3.31, y=0.99): no more ghosting on the chairs and the cupboard, seams hardly visible, brightness even. Stitching takes 0.5 s on the Pi.
+- **Open:** Stage 3 (3D offline) could use the stored single shots.
+
+### 23.11.2026 – Panorama: choose the camera, smooth dragging (with Claude)
+
+- **What:** On `/map` a selection field next to the panorama button now chooses the camera (Orbbec or Logitech C270). The C270 sits on the tilt servo, so it is levelled before the turn and its previous angle or auto mode is restored afterwards. The viewer's dragging is smooth again.
+- **Why:** The user wanted to choose the camera. The dragging stuttered because the whole panorama was rescaled on every pointer move and the hidden map behind the viewer kept redrawing on every pose update.
+- **Changes:** `Panorama` gets all cameras plus the tilt (`start(camera)`, state `kamera`/`kameras`), optional body `{"kamera": ...}` on `POST /api/mapping/panorama`, `PANORAMA_CAMERA`, `PANORAMA_TILT_WAIT_S`. Viewer: scaled once to the view height into a canvas, at most one redraw per screen frame (`requestAnimationFrame`), map drawing paused while the viewer is open.
+- **Result:** Tested on the robot (first_big_map, x=2.08, y=0.95): with the C270 the turn and the stitching work (0.5 s, 3641 × 342 px because of the narrower view); the C270 shows more of the room above the floor than the Orbbec. Both cameras appear in the selection field. The smooth dragging is still to be confirmed by the user in the browser.
+
+### 23.11.2026 – Panorama with a tilted camera (with Claude)
+
+- **What:** For the C270 on the tilt servo the camera angle of a panorama is now adjustable (slider „Kamerawinkel“ on `/map`, default `PANORAMA_TILT_DEG` = 15° up). Before, the camera was always levelled.
+- **Why:** The user wanted to choose the angle; level, the C270 sees mostly floor. A tilted camera cannot simply be put on the cylinder: vertical edges lean in opposite directions at the image's left and right edge, so every seam would show a saw-tooth.
+- **How:** Stitching turns each panorama ray by the tilt measured for its shot before it is looked up in the image (rotation about the camera's horizontal axis). The panorama is drawn taller and then cropped to the rows every direction saw, instead of the fixed 0.95 crop factor.
+- **Result:** Re-stitched the stored Orbbec shots with tilt 0: same image as before (the crop works). Real run with the C270 at 15° (x=3.32, y=1.53): vertical edges (door, cupboards, windows) straight, seams clean, windows and ceiling visible instead of floor. The picture looks higher than 15°, so the servo's zero is probably not exactly level; a lower angle on the slider helps.
+
+### 23.11.2026 – Goal drive took a 21 m detour instead of the door (with Claude)
+
+- **What:** A goal about 3 m away behind a door (door identical to the one used) was planned as a 21 m detour around half the floor.
+- **Analysis:** Re-planned on the Pi with the saved map: the planner itself was right, the map had the door as wall. Even after driving through the door by hand there were wall cells right on the trail in the doorway (5 cm away, partly on it). They are old, established wall cells (door closed or people standing there while mapping); the always-on mapping deliberately only weakens such cells to "unknown" per session, and the planner never drives through unknown while a detour exists. The breadcrumb corridor did not help either (needs 20 cm clearance).
+- **Fix:** Every scan written now also clears the cells under the robot (radius half the robot width, `LIVE_MAP_FOOTPRINT_CLEAR_M`), session-start value included so the protection cap does not pull them back. Where the robot stands there is no wall; writing only happens behind the integrate gate. A door that is closed later becomes a wall again after a few hits.
+- **Result:** The real mapper code on the Pi with the saved map and the hand-driven trail replayed: 20.9 m before, 11.7 m after, through the door, the same route as driven by hand. Costs 0.06 ms per scan.
+- **Open:** "Try the short way first, take the long one if it is blocked" already works through the block-and-replan of the goal drive, as long as the short way is in the map.
+
+### 23.11.2026 – Closed door: plan around it instead of running into it (with Claude)
+
+- **What:** With the door closed again the robot still tried to go through it instead of taking the other door.
+- **Analysis (log):** In front of the closed door it lost its pose four times (the scene no longer matched the map with the door open), twice ambiguous between the spots in front of the two identical doors. Every time the pose came back it planned anew through the door; the 3 s "blocked" timer was restarted by each pose loss, so the block never fired until the time ran out.
+- **Fix:** Look-ahead on goal drives: about once a second the fresh scan is checked for points on the next 2.5 m of the route that the map does not know; seen at the same spot twice in a row, the spot is blocked for 60 s and the route replanned at once. Survives a pose loss, also runs right after the pose comes back.
+- **Result:** Check tested on the Pi with a synthetic closed door across the route through the door: detected at the door; open door and a single stray point ignored. Test on the floor by the user pending.
+- **Open:** The ambiguity between the two identical doors (localization) if it keeps coming up.
+
+### 23.11.2026 – Map photos cleared, single shots off
+
+- **What:** At the user's request all photos and panoramas of `first_big_map` were deleted on the robot (folder `first_big_map_bilder`), and the single shots of a panorama are no longer kept (`PANORAMA_KEEP_SHOTS = False`).
+- **Why:** The test images are no longer needed; the single shots are not used for now.
+
+### 23.11.2026 – Camera tilt up to 60°
+
+- **What:** Upper tilt limit of the C270 raised from 30° to 60° (`CAMERA_TILT_MAX_DEG`, servo 150°) at the user's request; the sliders in the web app and on `/map` take the limits from the server.
+- **Open:** Check on the robot that the servo and the cable reach 60° without straining.

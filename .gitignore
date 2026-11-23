@@ -26,6 +26,7 @@ logs/
 
 # Lokale Konfiguration (Geheimnisse, WLAN, Broker-Adressen)
 robot/.env
+robot/telegram-secrets.json
 
 # ESP-IDF / ESP32
 # Generierte Build-Dateien

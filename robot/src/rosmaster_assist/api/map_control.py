@@ -88,6 +88,9 @@ class MapControl:
         self._crumbs_dirty = False
         self._crumb_confident = False
         localization.near_source = self.crumbs.near
+        # photos with position (mapping/photos.py) and panoramas, set by the server
+        self.photos = None
+        self.panorama = None
 
     # --- 1. Mapping drive (interface as before for mapping/web.py) --------------------
 
@@ -117,8 +120,23 @@ class MapControl:
             ),
         }
 
+    def cancel_panorama(self, reason: str) -> None:
+        if self.panorama is not None:
+            self.panorama.cancel(reason)
+
+    def start_panorama(self, camera: str | None = None, tilt_deg: float | None = None) -> str | None:
+        """Turn on the spot and take an all-round panorama here with ``camera``."""
+        if self.panorama is None:
+            return "Panorama ist nicht eingerichtet"
+        if self.panorama.active:
+            return "Panorama läuft schon"
+        self._cancel_others("Panorama gestartet")
+        self.stop("Panorama gestartet")
+        return self.panorama.start(camera, tilt_deg)
+
     def _cancel_others(self, reason: str) -> None:
         """Only one program steers."""
+        self.cancel_panorama(reason)
         self._homing.cancel(reason)
         self._explorer.cancel(reason)
         self._interaction.cancel(reason)
@@ -145,6 +163,7 @@ class MapControl:
 
     def stop(self, reason: str) -> None:
         self._interrupted = None
+        self.cancel_panorama(reason)
         if self.active:
             self._explorer.cancel(reason)
             self._watchdog.stop()
@@ -503,6 +522,8 @@ class MapControl:
             "kartieren": self.live_status(),
             "brotkrumen": self.crumbs.display(),
             "anker": {k: [round(v, 3) for v in a["pose"]] for k, a in self.crumbs.anchors.items()},
+            "fotos": self.photos.brief() if self.photos is not None else None,
+            "panorama": self.panorama.state() if self.panorama is not None else None,
         }
 
     def state_brief(self) -> dict[str, Any] | None:
@@ -551,6 +572,8 @@ class MapControl:
                 occ_map = self._localization.occ_map
                 if occ_map is not None:
                     await asyncio.to_thread(self._track)
+                    if self.photos is not None:
+                        self.photos.tick()
                     if self.pages > 0 and time.monotonic() - self._frontiers_time > 5.0:
                         self._frontiers_time = time.monotonic()
                         self._frontiers = await asyncio.to_thread(frontiers_for_display, occ_map)
