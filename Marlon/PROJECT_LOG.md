@@ -1033,3 +1033,9 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
    - anchor safety at the bottom,
    - autonomous only on the floor.
 9. **Outlook.**
+
+### 23.11.2026 – Better panoramas: sharp seams, even brightness (with Claude)
+- **What:** The first real panorama (12 turns, measured headings) showed close chair legs twice and transparent, and brightness jumps between shots. Stitching improved: each column now comes almost only from the shot that looked most directly at it (weight `(1 - angle/half fov)^8`, soft seam about ±3°), plus one brightness factor per shot from the overlaps (least squares, like OpenCV's gain compensator, factors kept near 1). The single shots are now kept with their headings beside the panorama.
+- **Why:** The camera is not on the turning axis, so close objects shift between neighbouring shots (parallax); wide blending showed them twice. Each shot is exposed by itself.
+- **Result:** Tested on the robot at the same spot (first_big_map, x=3.31, y=0.99): no more ghosting on the chairs and the cupboard, seams hardly visible, brightness even. Stitching takes 0.5 s on the Pi.
+- **Open:** Stage 3 (3D offline) could use the stored single shots.

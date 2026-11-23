@@ -1114,7 +1114,7 @@ drive end the panorama, also between two turns. While it runs no automatic
 photos are taken and the single turns are not reported as „Fahrbefehl“.
 The shots are not stitched by image features (they fail on white walls and
 cost CPU) but projected onto a cylinder at the heading the lidar measured
-for each, with soft blending (about 0.3 s on the Pi). Columns run clockwise
+for each (about 0.5 s on the Pi). Each column comes almost only from the shot that looked most directly at it (`PANORAMA_BLEND_POWER`, soft seam of about ±3°), so close objects do not show twice despite parallax; a brightness factor per shot (least squares over the overlaps, `PANORAMA_GAIN*`) evens out exposure jumps. The 12 single shots are kept in `<id>/00.jpg …` beside the panorama, their headings in `einzelbilder` (`datei`, `winkel`) of the entry (`PANORAMA_KEEP_SHOTS`), for re-stitching or a 3D model later. Columns run clockwise
 from left to right, the centre looks along the first shot. The panorama is
 stored with the photos (`art: "panorama"`, `aufnahmen`, `winkel` = heading
 of the centre) and shown on `/map` as a light blue ring; a click opens a
