@@ -739,3 +739,93 @@ Other options were not chosen:
 
 **Re-evaluate when:** the map often stays frozen in normal rooms (then loop
 closure or a looser gate), or the CPU load causes dropouts.
+
+## E15 — Test results on a separate git branch `testdaten`
+
+**Date:** 2026-11-05
+**Status:** implemented
+
+**Context.** Test runs (`test_runs.py`) and healthbot checks collect
+camera images, pose readings and microphone recordings so they can be
+reviewed without the robot. They should stay reachable even when the Pi is
+off or the robot is away, and they must not pollute `main` or feature
+branches with binary data.
+
+**Decision.** After every run, the robot uploads all runs not yet uploaded
+to the branch `testdaten` of this repository (`TESTS_GIT_BRANCH`,
+`TESTS_GIT_AUTO_UPLOAD`): each run under `tests/<name>/`, plus an
+`index.json` and a `README.md` with a table GitHub renders. The upload uses
+a separate git index and `commit-tree`, so the Pi's working tree and current
+branch are never touched. A GitHub token with write access
+(`~/.rosmaster/github_token`, `TESTS_GIT_TOKEN_FILE`) travels as an HTTP
+header via `GIT_CONFIG_*` environment variables, never in the URL, the log
+or the git config; the upload retries once if the remote branch moved
+meanwhile. Without a reachable token or GitHub, runs stay pending and go
+along with the next upload. `--mock` never uploads automatically.
+
+Other options were not chosen:
+- *Commit test data to `main`:* every run would grow the history of the
+  code branch with images and WAV files that have nothing to do with the
+  code.
+- *External storage or cloud:* needs its own account, credentials and
+  client code on the Pi; GitHub is already the place developers look at,
+  and a branch needs only git and a token.
+- *ZIP download only:* works (`GET /tests/zip`), but needs the robot
+  online at download time; it stays available alongside the branch upload
+  for a single run.
+
+**Consequences.**
+- *Good:* Runs are browsable and machine-readable on GitHub
+  (`index.json`, raw `ergebnis.json`) without SSH or the robot running.
+- *Good:* Binary test data never touches `main` or feature branches.
+- *Bad:* A GitHub token with write access must live on the Pi
+  (`~/.rosmaster/github_token`, readable only by the user); if it is
+  missing or expired, runs only queue up locally until it is fixed.
+- *Open:* Not yet tested on the robot; the `testdaten` branch does not
+  exist on GitHub yet, the first upload creates it.
+
+## E16 — Person boxes from the Hailo pose model, condition detection over several frames
+
+**Date:** 2026-11-23
+**Status:** implemented on branch `zustandserkennung`, not yet tested on the robot
+
+**Context.** Two person detectors ran side by side: YOLOv8s-Pose on the
+Hailo-10H (interaction, healthbot) and the OpenCV HOG detector on the CPU
+(explorer, test runs). HOG costs CPU time on the Pi, finds sitting and
+lying people poorly, and its boxes do not match the pose boxes. The
+healthbot decided "lying" from the last single frame and always looked at
+the largest person; a body lying lengthwise to the camera looked upright,
+and one lost frame restarted the watch's wait.
+
+**Decision.**
+- `PersonDetection` takes its boxes from the pose detection on the Hailo
+  when it is healthy (`PERSON_DETECT_BACKEND = "auto"`); HOG only runs as a
+  fallback (no Hailo, pose error, mock) or when a test run asks for it to
+  compare. The status says which one is active (`verfahren`).
+- The healthbot tracks the person under check (box overlap, then nearest
+  centre), lets all observed frames vote on "lying"
+  (`HEALTH_LYING_SHARE`), detects lying lengthwise (hips above shoulders,
+  shortened torso with a wide box, `HEALTH_FORESHORTEN_RATIO`), scales the
+  motion threshold with the body size (`HEALTH_MOTIONLESS_REF_DIAG_PX`), and
+  the watch tolerates short misses (`HEALTH_AUTO_GAP_S`).
+
+Other options were not chosen:
+- *Keep HOG, run it less often:* still CPU load, still poor on non-standing
+  people.
+- *Larger pose model (yolov8m) right away:* more accurate keypoints but
+  slower per frame on the Hailo; to be decided by measurement
+  (`scripts/bench_pose.py`) before switching `POSE_HEF`.
+- *Temporal smoothing of the keypoints:* hides real movement, which the
+  motionless sign needs; a vote over the per-frame verdicts keeps the raw
+  data.
+
+**Consequences.**
+- *Good:* One detector, no CPU load for person boxes, boxes and keypoints
+  consistent; single bad frames no longer decide.
+- *Bad:* The explorer depends on the Hailo for good detection; the HOG
+  fallback stays as a safety net.
+- *Open:* Thresholds for lengthwise lying are from geometry, not yet
+  measured on the floor; benchmark yolov8s vs yolov8m on the robot.
+- *Follow-up:* the page `/zustand` (`health/live.py`) shows the detection
+  live, including the reasons, so these thresholds can be checked on the
+  floor; it keeps the pose detection on only while it is open (lease).

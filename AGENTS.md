@@ -74,7 +74,8 @@ Matching subagents for Claude Code are in `.claude/agents/`.
 - Diagnostics without digging through logs: the `/diagnose` page (everything
   at a glance), individually `/lidar/status`, `/camera/status`,
   `/tiefe/status`, `/stimme/status` (speaker) and `/sprache/status`
-  (microphone).
+  (microphone). `/tests/status` shows test runs and the `testdaten` upload
+  state, `/healthbot/status` the running health check.
 - Before tests, run `python scripts/check_hardware.py`: it warns about new
   USB over-current messages and when the Pi is currently installing or
   compiling. Do not drive while `apt`/`dpkg` are running (heat → USB

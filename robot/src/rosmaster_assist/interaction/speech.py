@@ -402,8 +402,11 @@ class SpeechRecognition:
         self._level = 0.0  # 0..1
         self._partial = ""  # what Vosk understands of the current sentence so far
         self._rate: int | None = None
+        # stats of the speech filter on the open stream, None without filter
+        self._filter_stats: dict | None = None
         self._events: collections.deque[dict] = collections.deque(maxlen=config.SPEECH_LIVE_EVENTS)
-        self._audio_subs: list[queue.Queue] = []
+        # (queue, wants raw audio): tests also record the unfiltered signal
+        self._audio_subs: list[tuple[queue.Queue, bool]] = []
 
         # Watchdog over the listening thread (see _monitor_loop()): if it gets
         # stuck in PortAudio, a new one takes over. The old one notices via
@@ -501,13 +504,18 @@ class SpeechRecognition:
             self._state = SWITCHED_OFF
 
     def hear(
-        self, text: str, allowed: tuple[str, ...] | None = None, reason: str | None = None
+        self,
+        text: str,
+        allowed: tuple[str, ...] | None = None,
+        reason: str | None = None,
+        details: dict | None = None,
     ) -> str | None:
         """Evaluate a heard (or typed) sentence. Returns the command.
 
         ``allowed``: only these commands count (uncertain input, music);
         ``reason`` then goes into the log. A wake word heard this way does not
         wake, otherwise a single "komm" from the song would be enough afterwards.
+        ``details`` (confidence, words from Vosk) only go into the event log.
         """
         text = " ".join(str(text).split())
         if not text:
@@ -551,7 +559,7 @@ class SpeechRecognition:
                 event = {"ergebnis": "weckwort"}
             else:
                 event = {"ergebnis": "ohne"}
-            self._events.append({"zeit": time.time(), "text": text, **event})
+            self._events.append({"zeit": time.time(), "text": text, **event, **(details or {})})
             self._partial = ""
         if command is not None:
             log.info("Speech command %s (heard: %r)", command, text)
@@ -560,6 +568,11 @@ class SpeechRecognition:
         else:
             log.debug("Heard without command: %r", text)
         return command
+
+    def heard_since(self, t: float) -> list[str]:
+        """Texts heard since wall-clock time ``t``, e.g. answers in the health check."""
+        with self._lock:
+            return [e["text"] for e in self._events if e["zeit"] >= t]
 
     def live(self) -> dict:
         """For following along in the app (GET /sprache/live), about 5x per second.
@@ -589,21 +602,27 @@ class SpeechRecognition:
         """Sample rate of the microphone (Hz), None while none is open."""
         return self._rate if self._state == LISTENING else None
 
-    def sound_subscribe(self) -> queue.Queue:
-        """Raw audio from the microphone (16 bit, mono, ``live()["rate"]`` Hz) into a queue.
+    def sound_subscribe(self, raw: bool = False) -> queue.Queue:
+        """Microphone audio (16 bit, mono, ``live()["rate"]`` Hz) into a queue.
 
-        For listening in from the app (WebSocket /sprache/ton). If the
-        receiver cannot keep up, blocks are dropped instead of piling up.
+        By default what the speech recognition hears (after the speech
+        filter), e.g. for listening in from the app (WebSocket /sprache/ton).
+        ``raw=True`` gives the unfiltered signal, so test runs can show
+        clipping and compare filter settings later. If the receiver cannot
+        keep up, blocks are dropped instead of piling up.
         """
         subscription: queue.Queue = queue.Queue(maxsize=config.SPEECH_SOUND_BUFFER)
         with self._lock:
-            self._audio_subs.append(subscription)
+            self._audio_subs.append((subscription, raw))
         return subscription
 
     def sound_unsubscribe(self, subscription: queue.Queue) -> None:
         with self._lock:
-            if subscription in self._audio_subs:
-                self._audio_subs.remove(subscription)
+            self._audio_subs = [s for s in self._audio_subs if s[0] is not subscription]
+
+    def filter_stats(self) -> dict | None:
+        """Speech filter values of the last block, None without filter."""
+        return self._filter_stats
 
     def fetch_commands(self) -> list[dict]:
         with self._lock:
@@ -644,6 +663,7 @@ class SpeechRecognition:
                 "befehle": {b: list(w) for b, w in COMMANDS.items()},
                 "fehler": self._error,
                 "pause": self._pause_reason(),
+                "filter": self._filter_stats,
             }
 
     # --- Listening thread -------------------------------------------------------------
@@ -727,6 +747,7 @@ class SpeechRecognition:
         # Individual words with confidence, see _interpret().
         recognizer.SetWords(True)
         block = int(rate * 0.25)
+        speech_filter = self._make_filter(rate)
         # Callback instead of stream.read(): after a USB dropout a blocking
         # read() sometimes never returned, without an error -- no retry
         # kicked in. The queue can be read with a timeout.
@@ -782,9 +803,25 @@ class SpeechRecognition:
                 if rank and now >= next_check:
                     next_check = now + config.SPEECH_MICROPHONE_CHECK_S
                     self._check_better(rank, cards_before, now - opened)
+                unfiltered = raw
+                # after the silence check: the filter output is never exact zeros
+                if speech_filter is not None:
+                    try:
+                        raw = speech_filter.process(raw)
+                    except Exception:
+                        # a broken filter must not cost the stop command: raw audio
+                        log.exception("Speech filter failed, using raw audio")
+                        speech_filter = self._filter_stats = None
+                    else:
+                        self._filter_stats = {
+                            "aktiv": True,
+                            "verstaerkung_db": round(speech_filter.gain_db, 1),
+                            "snr_db": round(speech_filter.snr_db, 1),
+                            "uebersteuert": round(speech_filter.clipped_share, 3),
+                        }
                 # Listen-in and level also while it speaks: the microphone
                 # still hears, it is just not evaluated.
-                self._distribute_audio(raw)
+                self._distribute_audio(raw, unfiltered)
                 live = time.monotonic() < self._live_until
                 if live:
                     self._level = _level(raw)
@@ -809,6 +846,18 @@ class SpeechRecognition:
         finally:
             _no_wait(stream.close, "closing the microphone stream")
 
+    def _make_filter(self, rate: int):
+        """Speech filter for a new stream, None if switched off or broken."""
+        self._filter_stats = None
+        if not config.SPEECH_FILTER_ENABLED:
+            return None
+        try:
+            from .audio_filter import SpeechFilter
+            return SpeechFilter(rate)
+        except Exception:
+            log.exception("Speech filter unavailable, using raw audio")
+            return None
+
     @staticmethod
     def _check_better(rank: int, cards_before: str, open_s: float) -> None:
         """If recognition runs on a fallback microphone, go back to the better one.
@@ -830,14 +879,14 @@ class SpeechRecognition:
             if part not in cards_before or open_s > config.SPEECH_MICROPHONE_RETRY_S:
                 raise _MicrophoneChange(f"better microphone ({part!r}) is back")
 
-    def _distribute_audio(self, raw: bytes) -> None:
+    def _distribute_audio(self, filtered: bytes, unfiltered: bytes) -> None:
         if not self._audio_subs:
             return
         with self._lock:
             subscriptions = list(self._audio_subs)
-        for subscription in subscriptions:
+        for subscription, wants_raw in subscriptions:
             try:
-                subscription.put_nowait(raw)
+                subscription.put_nowait(unfiltered if wants_raw else filtered)
             except queue.Full:
                 pass  # receiver too slow (Wi-Fi): better a gap than a delay
 
@@ -868,12 +917,19 @@ class SpeechRecognition:
             # "La da da" otherwise counts without the name -- the song itself
             # must not start another one.
             reason = "ohne Weckwort"
+        details = {
+            "konfidenz": self._confidence,
+            "woerter": [
+                {"wort": w.get("word"), "konfidenz": round(float(w.get("conf", 1.0)), 2)}
+                for w in words
+            ],
+        }
         if reason is None:
-            self.hear(text)
+            self.hear(text, details=details)
         elif music:
-            self.hear(text, allowed=(STOP, MUSIC_OFF), reason=f"{reason}, Musik läuft")
+            self.hear(text, allowed=(STOP, MUSIC_OFF), reason=f"{reason}, Musik läuft", details=details)
         else:
-            self.hear(text, allowed=(STOP,), reason=reason)
+            self.hear(text, allowed=(STOP,), reason=reason, details=details)
 
     def _check_pause(self) -> bool:
         """True while the microphone should stay closed; then sets the state.
@@ -987,7 +1043,10 @@ class SpeechRecognition:
         drive_commands = [s for s in _maneuver_phrases() if possible(s)]
         log.info("Speech recognition: %d precise drive commands in the grammar", len(drive_commands))
         phrases += drive_commands
-        sentences = wake + phrases
+        # health check answers are no commands: they only land in the events (heard_since())
+        answers = [w for w in dict.fromkeys([*config.HEALTH_WORDS_HELP, *config.HEALTH_WORDS_NO])
+                   if possible(w)]
+        sentences = wake + phrases + answers
         # Name before and after the command as whole sentences: that way Vosk
         # fits what was spoken to one of the allowed sentences instead of building word salad.
         for w in wake:

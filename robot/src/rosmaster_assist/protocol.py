@@ -59,6 +59,14 @@ From the app / the ESP to the robot
                                                           0 = horizontal); switches auto off
 {"type": "camera_tilt", "schritt": -5}                     tilt by this much; switches auto off
 {"type": "camera_tilt", "auto": true}                      auto: keep the person in the frame
+{"type": "health_check", "x": 2.5, "y": -1.0}            healthbot: drive to the spot and check the
+                                                          person's condition (x, y in m, odometry
+                                                          frame like homing; without x/y: check
+                                                          here).
+                                                          Drives and nudges! Only on the floor.
+{"type": "health_stop"}                                   cancel the healthbot check, stop
+{"type": "health_wache", "an": true}                      healthbot watch: detect a lying person
+                                                          on its own and then check
 {"type": "ping"}                                          keep the connection alive
 
 From the robot to the app
@@ -83,7 +91,10 @@ From the robot to the app
                     "eingefroren"|"pausiert"|"start"|"aus";
                     with the tilt servo additionally "kamera_neigung":
                     {"verfuegbar":…, "winkel":…, "ziel":…, "auto":…, "min":…,
-                    "max":…, "verfolgt":…})
+                    "max":…, "verfolgt":…};
+                    with healthbot additionally "healthbot": {"aktiv":…,
+                    "zustand":…, "schritt":…, "alarm":…, "wache":…},
+                    everything else under GET /healthbot/status)
 {"type": "vitals", "bpm":…, "motion":…}                   forwarded ESP data
 {"type": "alert",  "level": "info"|"warning"|"emergency", "text": "…"}
 {"type": "error",  "text": "…"}                           invalid message or similar
@@ -163,6 +174,7 @@ def state_message(
     voice: dict[str, Any] | None = None,
     speech: dict[str, Any] | None = None,
     occ_map: dict[str, Any] | None = None,
+    healthbot: dict[str, Any] | None = None,
     camera_tilt: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     msg: dict[str, Any] = {
@@ -184,6 +196,8 @@ def state_message(
         msg["sprache"] = speech
     if occ_map is not None:
         msg["karte"] = occ_map
+    if healthbot is not None:
+        msg["healthbot"] = healthbot
     if camera_tilt is not None:
         msg["kamera_neigung"] = camera_tilt
     if pose is not None:

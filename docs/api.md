@@ -187,6 +187,9 @@ Right after connecting, the robot sends on its own, in this order:
 | `speech`            | `text` (string)                                                                                                 | Treat the text as if it had been spoken into the microphone (see "Speech commands in detail"). For trying things out without a microphone and in `--mock`.                                                                                                                                        | `alert` „Sprachbefehl: …“ to all if a command was recognized; otherwise `alert` (info) „Kein Befehl erkannt …“ (no command recognized); without `text` `error` |
 | `set_home`          | –                                                                                                               | The current position becomes the new start point (0, 0, 0°), the lidar reference is re-recorded. With a map and a confident pose, the position also becomes the map's origin (and is remembered in its file).                                                                                     | `alert` to all                                                                                                                                                 |
 | `collision`         | `enabled` (bool, optional), `distance` (m, optional)                                                            | Collision avoidance on/off, minimum distance. `distance` is clamped to 0.15–1.5 m.                                                                                                                                                                                                                | `collision` to all                                                                                                                                             |
+| `health_check` | `x`, `y` (m in the odometry frame like homing, not the map frame; optional: both or neither) | Healthbot check (new 05.11., see "Healthbot" under HTTP): drive to the spot, look at the person, address them, nudge them if they do not answer, call for help. Without `x`/`y` it checks a person near the robot. **Drives and nudges, only on the floor.** Cancels homing, autonomous driving, interaction and precise drive commands. Any drive input ≠ 0, `stop`, `move`/`turn`, `explore`, `home`, `interaction_start` or a voice „Robi stopp“ cancels it. | `alert` to all; otherwise `alert` (warning) with reason |
+| `health_stop` | – | Cancel the check, stop alarm music, stop. | none |
+| `health_wache` | `an` (bool) | Watch: look out for a lying person on its own and then start a check. Does not drive off as long as nobody is seen. | none; `alert` (warning) if not possible |
 | `beep`              | `ms` (int, default 100)                                                                                         | Buzzer.                                                                                                                                                                                                                                                                                           | none                                                                                                                                                           |
 | `vitals`            | `bpm` (number/null), `motion` (bool/null)                                                                       | Readings from the ESP32, relayed to all.                                                                                                                                                                                                                                                          | `vitals` to all                                                                                                                                                |
 | `box`               | `action`: `"open"` / `"close"`                                                                                  | Not built yet.                                                                                                                                                                                                                                                                                    | `alert` „Box ist noch nicht angebaut“ (box not attached yet)                                                                                                   |
@@ -281,6 +284,7 @@ it only turns.
 | `interaktion`          | interaction mode (hand signals, following), see "Interaction in detail". Missing on older servers.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `stimme`               | voice output: `verfuegbar` (sound comes out), `spricht` (speaking a sentence right now), `text` (last sentence spoken, or `null`). See "Voice in detail". Missing on older servers.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `sprache`              | speech commands: `verfuegbar` (microphone and model ready), `geweckt` (awake: „Robi“ was just said on its own, the next sentence needs no name), `gehoert` (last sentence understood, or `null`), `befehl` (recognized command, for a few seconds, otherwise `null`), `pause` (why the microphone is deliberately closed right now, e.g. „Mapping läuft“; then `verfuegbar` is `false`, otherwise `null`). See "Speech commands in detail". Missing on older servers.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `healthbot` | Healthbot short form (new 05.11.): `aktiv`, `zustand` (state: `bereit`, `anfahrt`, `gesamtbild`, `ansprechen`, `anstupsen`, `nachfrage`, `hilfe`, `ansprechbar`, `unauffaellig`, `keine_person`, `abgebrochen`), `schritt` (current step as text), `alarm`, `wache` (watch on). Everything else in `GET /healthbot/status`. Missing on older servers. |
 | `kamera_neigung`       | Tilt servo of the person camera (new 18.11.), only present when `CAMERA_TILT_ENABLED`: `verfuegbar`, `winkel` (current tilt, degrees, + = up), `ziel` (where it is moving to), `auto`, `min`/`max` (range), `verfolgt` (auto is keeping a person in the frame right now).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `karte`                | Only present when a map exists (new 04.11.): `name` (saved map, `null` for the live map during mapping), `live`, `pose` (pose **in the map frame**, not to be confused with `pose` above in the odometry frame; `null` while unknown), `sicher` (confident; `goto` only works then), `text`, `fahrt` (running or last map-based drive: `art` (kind) `"heim"` (home) / `"ziel"` (goal) / `"zurueck"` (way back, new 05.11.), `ziel` (goal), `rest_m` (remaining distance), `grund` (reason), `wartet` (new 05.11.: „wartet auf Ortung“ while it stands and searches for its pose, otherwise `null`), `vermutet` (new 05.11.: `true` while it follows a guessed path through the unknown, see "Guessed paths")). New 05.11.: `kartieren` (always-on mapping: `aktiv`, `zustand` `"integriert"` (writing) / `"bestaetigt"` (confirming the pose) / `"eingefroren"` (frozen, the map does not change) / `"pausiert"` (paused) / `"start"` (no map yet, founding one at standstill) / `"aus"` (off), `grund` (German reason); `null` when switched off), `mission` (anchor `[x, y, radians]` or `null`), `spur_m` (trail length in m since the mission start, else in total). See "Using the map" under Mapping. |
 
@@ -419,8 +423,12 @@ or a camera hit), `Bein (Mensch?)` (leg, person?), `Bein (Stuhl/Tisch?)`
 lidar plane, not object recognition.
 
 If OpenCV is installed, the person camera (Logitech C270, see
-[Camera](#camera)) looks for people during the drive (HOG detector, 2 frames/s). Lidar obstacles in their direction are then labeled
+[Camera](#camera)) looks for people during the drive. Lidar obstacles in their direction are then labeled
 `Mensch` with `quelle: "Kamera+Lidar"`. Without OpenCV everything else keeps working.
+Since 23.11. the boxes come from the pose detection on the Hailo when it works
+(YOLOv8-Pose, no CPU load for the detection); otherwise, or with
+`PERSON_DETECT_BACKEND = "hog"`, the OpenCV HOG detector runs on the CPU
+(2 frames/s). The boxes have the same format either way.
 
 `state.autonomie`:
 
@@ -455,6 +463,7 @@ If OpenCV is installed, the person camera (Logitech C270, see
     "aktiv": true,
     "fehler": null,
     "kamera": "personen",
+    "verfahren": "hailo",
     "letzte_erkennung_vor_s": 0.3
   }
 }
@@ -476,7 +485,7 @@ If OpenCV is installed, the person camera (Logitech C270, see
 | `grund`                              | why the last drive ended (reason)                                                                                                                                                                                                                                          |
 | `hindernisse`                        | the 12 nearest obstacles, nearest first. `art` (kind), `winkel` in degrees as for the lidar, `abstand` (distance, m), `breite` (width, m), `x`/`y` center in robot coordinates (m), `quelle` (source)                                                                      |
 | `personen`                           | person boxes in the person camera image, relative to the image size (0..1)                                                                                                                                                                                                 |
-| `personenerkennung`                  | whether camera person detection works; `fehler` (error) e.g. „opencv fehlt“; `kamera`: which camera image the boxes refer to (name as in `/cameras`)                                                                                                                       |
+| `personenerkennung` | whether camera person detection works; `fehler` (error) e.g. „opencv fehlt“; `kamera`: which camera image the boxes refer to (name as in `/cameras`); `verfahren` (method, new 23.11.): `hailo` (pose boxes), `hog` (CPU fallback) or `null` (none available) |
 
 ### Interaction in detail
 
@@ -1185,9 +1194,9 @@ Requirements on the Pi: `mpv` and `yt-dlp`, see `docs/hardware.md`.
 
 | Endpoint                | Returns                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /sprache/status`   | `aktiviert` (enabled), `verfuegbar` (available), `simuliert` (simulated), `zustand` (state: `aus` off, `laedt` loading, `hoert` listening, `fehler` error, `simuliert`, `pausiert` paused), `pause` (why the microphone is deliberately closed right now, e.g. „Mapping läuft“, otherwise `null`), `mikrofon` (device name), `modell` (path), `weckwort` (wake word), `geweckt` (awake), `zuletzt_gehoert` (last heard), `letzter_befehl` (last command), `erkannt` (recognized count), `konfidenz` (lowest word confidence of the last sentence, 0..1), `verworfen` (rejected count), `zuletzt_verworfen` (last rejected: command, text, reason), `befehle` (all phrases per command), `fehler` (e.g. „vosk fehlt (pip install vosk sounddevice)“, „Vosk-Modell fehlt: …“ or „kein Mikrofon gefunden (vorhanden: …)“) |
+| `GET /sprache/status` | `aktiviert` (enabled), `verfuegbar` (available), `simuliert` (simulated), `zustand` (state: `aus` off, `laedt` loading, `hoert` listening, `fehler` error, `simuliert`, `pausiert` paused), `pause` (why the microphone is deliberately closed right now, e.g. „Mapping läuft“, otherwise `null`), `mikrofon` (device name), `modell` (path), `weckwort` (wake word), `geweckt` (awake), `zuletzt_gehoert` (last heard), `letzter_befehl` (last command), `erkannt` (recognized count), `konfidenz` (lowest word confidence of the last sentence, 0..1), `verworfen` (rejected count), `zuletzt_verworfen` (last rejected: command, text, reason), `befehle` (all phrases per command), `fehler` (e.g. „vosk fehlt (pip install vosk sounddevice)“, „Vosk-Modell fehlt: …“ or „kein Mikrofon gefunden (vorhanden: …)“), `filter` (speech filter on the open microphone stream, `null` when off or not listening: `aktiv`, `verstaerkung_db` gain in dB, `snr_db` speech-to-noise of the last block, `uebersteuert` share of clipped input samples — above 0 means the capture gain is too high) |
 | `GET /sprache/live`     | Live transcript (app: switch „Mikrofon mitlesen“, polls 4 times per second): `verfuegbar`, `zustand`, `mikrofon`, `rate` (Hz), `pegel` (level, 0..1, −60 dBFS to full scale), `teil` (partial: what Vosk understands of the current sentence so far), `taub` (deaf: it is speaking itself and evaluates nothing), `geweckt`, `ereignisse` (last sentences: `zeit` (Unix time), `text`, `ergebnis` (result) = `befehl` (command) / `verworfen` (rejected) / `weckwort` (wake word) / `ohne` (none), plus `befehl` and, for `verworfen`, the `grund` (reason)). The server only computes level and `teil` while someone is polling.                                                                                                                                                                                      |
-| `WS /sprache/ton`       | Live listening (app: switch „Mikrofon mithören“): first a text message `{"rate": 16000}` (`null` while no microphone is open; resent on every change and, without audio, every second as a heartbeat: if nothing at all arrives for 5 s, the app reconnects), then the raw audio as binary messages, 16 bit little-endian, mono, blocks of 0.25 s. If the browser cannot keep up, blocks are dropped (`SPEECH_SOUND_BUFFER`). Data is only sent while someone is connected.                                                                                                                                                                                                                                                                                                                                            |
+| `WS /sprache/ton` | Live listening (app: switch „Mikrofon mithören“): first a text message `{"rate": 16000}` (`null` while no microphone is open; resent on every change and, without audio, every second as a heartbeat: if nothing at all arrives for 5 s, the app reconnects), then the audio as binary messages (what the speech recognition hears, i.e. after the speech filter when it is on), 16 bit little-endian, mono, blocks of 0.25 s. If the browser cannot keep up, blocks are dropped (`SPEECH_SOUND_BUFFER`). Data is only sent while someone is connected. |
 | `WS /sprache/durchsage` | Announcement (app: switch „Über den Roboter sprechen“): audio from the browser microphone live through the robot's loudspeaker. The server first replies `{"bereit": true                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | false, "grund": …}`(ready, reason), and again later if the loudspeaker fails or comes back. The client sends`{"rate": 16000}`and then raw audio as binary messages (16 bit little-endian, mono). Runs in the voice queue: music pauses, speech recognition stops listening for the duration, a stop aborts it. After`ANNOUNCE_PAUSE_S`(2 s) without audio, the loudspeaker is free again. Browsers only grant microphone access over HTTPS, so the same app additionally runs at`https://<robot>:8443` (`HTTPS_PORT`, self-signed certificate in `~/.rosmaster/https`; confirm the browser warning once). |
 
 ### Mapping (SLAM)
@@ -1496,6 +1505,142 @@ the server then builds the map itself from the simulated lidar
 `ROSMASTER_MOCK_WOHNUNG=1` the imaginary room becomes an apartment with two
 rooms, a door and furniture -- for trying out the room-to-room continuation.
 
+### Healthbot
+
+The healthbot checks whether a person is fine: drive there, overview from the
+camera pose (lying? on the floor? moving?), address them by voice, nudge them
+gently if there is no answer, call for help (alarm music, `alert`
+`emergency`). Commands go over the WebSocket (`health_check`, `health_stop`,
+`health_wache`); the page `GET /healthbot` shows the run.
+
+**Nudging (changed 23.11.).** Before closing in the robot says
+`HEALTH_NUDGE_ANNOUNCE` („Ich komme jetzt zu Ihnen und stupse Sie an.“), before
+each nudge `HEALTH_NUDGE_CALL` („Hallo! Hören Sie mich?“); words heard after
+the call count as a reaction (the ear is deaf while the robot speaks). Closing
+in ends when the lidar distance reaches `HEALTH_NUDGE_START_M`, when the drive
+guard holds just short of the person (depth camera, memory: a lying person is
+below the lidar plane) or when the wheels stand at the body; it gives up only
+after `HEALTH_APPROACH_MAX_S` (40 s) or `HEALTH_APPROACH_MAX_M` (4 m), no longer
+after a fixed 15 s.
+
+| Endpoint | Returns |
+|---|---|
+| `GET /healthbot` | page with the run: steps with reasons, traffic lights of the four signs, camera image with the person |
+| `GET /healthbot/status` | `aktiv`, `zustand`, `schritt`, `timeline` (steps `{zeit, zustand, text}`), `checks` (the four signs, each `{name, titel, zustand, text, ...}`), `urteil` (verdict), `ziel` (target), `alarm`, `stupser` (nudges), `wache`, `stupsen_aktiv` (nudging enabled), `person` (`{box, kp, winkel}` from the current frame while the check looks at the person, otherwise `null`; no longer set on the way home), `kamera` (camera the keypoints belong to, overlay only on `/camera/<kamera>/stream`); in `--mock` also `simulation` and `szenen` (scene names) |
+| `POST /healthbot/simulation` | only `--mock`: `{"szene": "liegt", "x": 2.0, "y": 0.5}` puts a simulated person into the scene (`x`/`y` optional). 400 with `fehler` for an unknown scene, 404 without mock. |
+
+Every finished check (any outcome) is stored as a run like the tests below
+(`typ: "health"`), so it can be looked at later without the robot.
+
+How "lying" is decided (since 23.11.): the person under check is tracked
+from frame to frame (a second person walking past does not take over). The
+torso angle, the box shape and, for a body lying along the camera's line of
+sight, hips above the shoulders or a strongly shortened torso
+(`HEALTH_FORESHORTEN_RATIO`) count as lying. Over the observation all frames
+vote (`HEALTH_LYING_SHARE`); the `text` of the `liegend` sign then ends with
+„(in k von n Bildern liegend)“. The motion threshold scales with the size of
+the person in the image (`HEALTH_MOTIONLESS_REF_DIAG_PX`). The watch tolerates
+the person being lost for up to `HEALTH_AUTO_GAP_S`.
+
+### Condition detection (page `/zustand`)
+
+Live view of the condition detection, without starting a check (new 23.11.):
+which detector delivers the person boxes, all people with their keypoints,
+"lying" for the tracked person per frame and as a vote over the last
+`CONDITION_VIEW_HISTORY_S`, its movement, the watch, the healthbot state and
+the last pose model comparison. Reached from the start page with the
+„Zustand“ button.
+
+While the page asks, the pose detection runs (user `zustand-seite`, see
+`PoseDetection.activate`); without a request for `CONDITION_VIEW_LEASE_S`
+the server switches it off again, so the Hailo is free.
+
+| Endpoint | Returns |
+|---|---|
+| `GET /zustand` | the page |
+| `GET /zustand/status` | `seite_aktiv`; `erkennung` (`personenboxen` = `PersonDetection` status with `verfahren`, `pose` = pose status, `modell` = HEF file name); `skelett` (keypoint pairs); `personen` (each `{box, kp, score, winkel, verfolgt, liegend}`, `liegend` is a sign as in `checks`); `zustand` (`liegend` this frame, `liegend_ueber_zeit` vote, `bewegung`, each a sign; `rumpfwinkel`, `bilder`, `zeitraum_s`, `schwellen`); `wache` (`{an, liegt_seit_s, noetig_s}`); `healthbot` (`aktiv`, `zustand`, `schritt`, `alarm`, `urteil`); `modellvergleich` (see below or `null`) |
+| `POST /zustand/benchmark` | stores a pose model comparison, sent by `scripts/bench_pose.py`: `{"bild": "...", "modelle": [{"modell": "yolov8s_pose_h10.hef", "hailo_ms": 12.3, ...}]}`, 1 to 8 models, only numbers and texts as values. The server adds `zeit` (Unix time) and keeps it in `CONDITION_BENCHMARK_FILE`. 400 with `fehler` if invalid. |
+
+Keypoints and boxes are fractions of the image (0..1), as in
+`/interaktion/pose`.
+
+### Test runs
+
+Reproducible measurements for camera, pose and microphone: the robot announces
+each phase („Stell dich links neben mich …“; left/right always seen from the
+test person) and records readings, images and sound. The page `GET /tests`
+guides through it. While a microphone test runs, recognized speech commands are
+not executed (this includes a spoken „Robi, stopp“; use the stop button).
+
+Tests never drive, with one exception: `mikro_fahrt` (new 05.11.) spins the
+wheels while the robot stands on its stand, to measure how much motor noise
+hurts speech recognition (stopped, slow 0.15 m/s, fast 0.35 m/s, turning
+1.0 rad/s; `TESTS_MOTOR_*`; forward and turning only). It needs `podest: true`
+in the start request, runs through the watchdog (dead man's switch), and ends
+on `POST /tests/stop`, any drive input ≠ 0, `stop`, `move`/`turn`,
+`explore`, `interaction_start`/`follow`, `home`, `goto`, `map_load`,
+`health_check`/`health_stop`/`health_wache`, and when the last client
+disconnects. The verdict lists hits per wheel condition, e.g.
+`aus 2/2, langsam 2/2, schnell 1/2, drehen 0/2`.
+
+| Endpoint | Returns |
+|---|---|
+| `GET /tests` | the tests page |
+| `GET /tests/katalog` | `{"kategorien": {key: name}, "tests": [{id, kategorie, titel, kurz, art, faehrt?, anleitung[], phasen[{name, titel, anweisung, dauer_s, satz?, bedingung?, fahrt?}]}]}`; `faehrt: true` = the test spins the wheels, then each phase has `bedingung` (wheel condition) and `fahrt` (`{vx, vy, omega}` or `null`) |
+| `GET /tests/status` | the running test: `aktiv`, `test`, `titel`, `art`, `phase`, `phase_titel`, `anweisung`, `satz`, `rest_s`, `live` (current readings), `gehoert` (microphone); always `letzter` (last run), `meldung`, `ordner` (folder on the Pi), `simulation`, `token` (GitHub token present) and `upload` (`auto`, `laeuft`, `ausstehend` = runs not uploaded yet, `letzter`, `fehler`, `hinweis`) |
+| `GET /tests/liste` | `{"laeufe": [...]}`, newest first: `name`, `typ` (`"test"` / `"health"`), `test`, `titel`, `kategorie`, `beginn`, `abgebrochen`, `urteil`, `notiz`, `phasen[{titel, kurz}]`, `bytes`, `hochgeladen`, `upload_commit`, `upload_zeit`, `upload_fehler` |
+| `POST /tests/start` | `{"test": "<id>", "podest": true}` starts a test (`podest` only needed for tests with `faehrt`); 400 with `fehler` if unknown, already running, a sensor is missing, the stand was not confirmed, or (for `faehrt`) another drive or the healthbot watch is active |
+| `POST /tests/stop` | cancel the running test (the run is still stored, marked `abgebrochen`) |
+| `POST /tests/notiz` | `{"name": "<run>", "text": "…"}`: note on a run (what stood out); counts as a change, so the run is uploaded again |
+| `GET /tests/zip?name=<run>` | the run folder as a ZIP |
+| `POST /tests/hochladen` | `{"namen": [...]}` (optional, without = all new ones) uploads runs to GitHub; `{ok, hochgeladen[], commit, fehler}` |
+| `POST /tests/loeschen` | `{"namen": [...]}` or `{"alle": true}` deletes runs on the robot (copies on the `testdaten` branch stay); refused while a test runs or an upload is in progress; `{ok, geloescht[], fehler}`, 400 if nothing was deleted |
+
+**Storage.** Each run is a folder `~/.rosmaster/tests/<date>_<time>_<test>/`
+on the Pi (`TESTS_FOLDER`) with `ergebnis.json` (readings, summary per phase,
+verdict, note, and in `meta` the code commit/branch, the computer, all scalar
+settings and the test definition, so old runs stay comparable after
+thresholds change), `bilder/` and, for microphone tests, two WAV files:
+`ton.wav` is what the speech recognition hears (after the speech filter),
+`ton_roh.wav` the unfiltered input, to see clipping and to replay the run
+with other filter settings. Each microphone sample also stores `filter`
+(the values from `/sprache/status`), and the phase summary adds
+`uebersteuert_max` (largest clipped share; above 0 the capture gain is too
+high) and `verstaerkung_db` (filter gain distribution).
+
+**Upload.** After every run the robot pushes all runs that are not uploaded
+yet to the branch `testdaten` of the repository (`TESTS_GIT_BRANCH`,
+`TESTS_GIT_AUTO_UPLOAD`), each into `tests/<name>/`, plus `index.json` and
+`README.md` (a table GitHub renders). The Pi's working tree and branch stay
+untouched (separate git index, `commit-tree`). It needs a GitHub token with
+write access in `~/.rosmaster/github_token` (`TESTS_GIT_TOKEN_FILE`, file only
+readable by the user); the token travels as an HTTP header, never in the URL,
+the log or the git config. Without a token, or when GitHub is not reachable,
+runs stay pending and go along with the next upload. In `--mock` nothing is
+uploaded automatically.
+
+**Results without the robot.** Everything uploaded is on GitHub:
+
+- Browse: <https://github.com/TheEmpire002/SPE-ROSMASTER-X3/tree/testdaten>
+  (README with all runs, newest first).
+- Machine-readable: `index.json` with `{branch, erzeugt, anzahl, laeufe: [{name, datum, typ, test, titel, urteil, abgebrochen, simulation, notiz, code_commit, pfad}]}`.
+  Raw: `https://raw.githubusercontent.com/TheEmpire002/SPE-ROSMASTER-X3/testdaten/index.json`,
+  one run: `.../testdaten/tests/<name>/ergebnis.json`.
+- Locally without touching your branch:
+
+```bash
+git fetch origin testdaten
+git show origin/testdaten:index.json
+git worktree add ../testdaten origin/testdaten   # all files as a folder
+```
+
+```python
+import json, urllib.request
+base = "https://raw.githubusercontent.com/TheEmpire002/SPE-ROSMASTER-X3/testdaten/"
+index = json.load(urllib.request.urlopen(base + "index.json"))
+run = json.load(urllib.request.urlopen(base + index["laeufe"][0]["pfad"] + "ergebnis.json"))
+```
+
 ### Miscellaneous
 
 | Endpoint                     | Returns                                         |
@@ -1503,6 +1648,7 @@ rooms, a door and furniture -- for trying out the room-to-room continuation.
 | `GET /`                      | the bundled web app                             |
 | `GET /einstellungen`         | the web app's settings page                     |
 | `GET /diagnose`, `GET /logs` | the web app's diagnostics page                  |
+| `GET /tests`, `GET /healthbot`, `GET /zustand` | test runs, healthbot and condition detection pages (see above) |
 | `GET /static/...`            | its files (`webapp/`)                           |
 | `GET /docs`                  | automatically generated HTTP overview (FastAPI) |
 

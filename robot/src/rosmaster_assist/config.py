@@ -1201,6 +1201,13 @@ PERSON_MIN_SCORE = 0.5
 # from CAMERA_ROLES, detection uses the default camera.
 PERSON_CAMERA = "personen"
 
+# Where the person boxes come from (sensors/people.py):
+# "auto" -- from the pose detection on the Hailo AI chip while it works,
+#           otherwise from HOG. Relieves the CPU, and YOLO also finds people
+#           who sit, lie or are seen from the side.
+# "hog"  -- always OpenCV HOG on the CPU (as before 23.11.2026).
+PERSON_DETECT_BACKEND = "auto"
+
 # --- Photos on the map --------------------------------------------------------------
 # details in mapping/photos.py: while the pose in a map is confident the robot
 # takes photos and stores them with position and heading beside the map
@@ -1308,6 +1315,8 @@ CAMERA_FOV_DEG = 60.0
 POSE_ENABLED = True
 
 # Shipped with the Hailo package (hailo-models). Expects 640x640 RGB.
+# yolov8m_pose_h10.hef next to it gives steadier keypoints but is slower;
+# compare both on the robot with scripts/bench_pose.py before switching.
 POSE_HEF = "/usr/share/hailo-models/yolov8s_pose_h10.hef"
 
 # Frames per second. The camera delivers 15; waving needs ~10 so that an
@@ -1329,6 +1338,11 @@ POSE_KP_MIN_CONF = 0.4
 # still, and it only happens once. False releases the chip when the
 # interaction is off (e.g. for hailo-apps).
 POSE_KEEP_WARM = True
+
+# Camera images older than this are not evaluated by the pose detection.
+# After a USB dropout the camera can deliver the last image again and again;
+# evaluating it would keep a person "visible" who has long moved on.
+POSE_MAX_FRAME_AGE_S = 0.5
 
 # --- Gestures ----------------------------------------------------------------------
 
@@ -1622,6 +1636,52 @@ RECORDING_FOLDER = Path.home() / ".rosmaster" / "aufzeichnungen"
 # One file is a few hundred KB compressed; older ones are deleted.
 RECORDING_MAX_FILES = 20
 
+# --- Test runs (testrun.py, since 04.11.) -----------------------------------
+# The /tests page starts measurement runs for the microphone, lying and
+# person detection. They collect data that is uploaded to the "testdaten"
+# branch afterwards and evaluated on a computer. They never drive, except
+# the motor-noise test "mikro_fahrt", which spins the wheels on the stand.
+TESTS_FOLDER = Path.home() / ".rosmaster" / "tests"
+# 5 samples per second are enough for pose (10 Hz) and level, and a run
+# stays at a few hundred KB of JSON.
+TESTS_RATE_HZ = 5.0
+# Time between announcement and measurement, to lie down or stand up.
+TESTS_LEAD_S = 6.0
+# Keep listening this long after the last microphone step: Vosk reports a
+# sentence only after the speaking pause.
+TESTS_TAIL_S = 2.0
+# Images per run and camera (JPEG, ~40 KB each); more bloats the repo.
+TESTS_MAX_IMAGES = 16
+# audio recording at most this long (16 kHz mono = 32 KB/s, 4 min ~ 8 MB),
+# the motor-noise test with its 12 phases takes about 3.5 min
+TESTS_WAV_MAX_S = 240.0
+# Wait at most this long for an announcement to end.
+TESTS_VOICE_WAIT_S = 10.0
+# Lidar revolutions older than this count as missing (as in the health check).
+TESTS_SCAN_MAX_AGE_S = 1.0
+# wheel speeds of the motor-noise test "mikro_fahrt" (robot on its stand,
+# wheels in the air), fast = autonomous top speed since that is when
+# "Robi, stopp" matters most
+TESTS_MOTOR_SLOW_MS = 0.15
+TESTS_MOTOR_FAST_MS = 0.35
+TESTS_MOTOR_OMEGA = 1.0  # rad/s, turning on the spot
+# renew the drive command this often, the dead man's switch stops after 0.5 s
+TESTS_MOTOR_KEEPALIVE_HZ = 10.0
+TESTS_NOTE_MAX_CHARS = 2000
+# GitHub token (fine-grained, only "Contents: read and write" for this
+# repo). Lives only on the Pi, never in the repo; instructions on /tests.
+TESTS_GIT_TOKEN_FILE = Path.home() / ".rosmaster" / "github_token"
+# None = the https address of "origin" of the repo the server runs from.
+TESTS_GIT_URL = None
+# Own branch, so measurement data never ends up in main or the working tree.
+TESTS_GIT_BRANCH = "testdaten"
+TESTS_GIT_TIMEOUT_S = 60.0
+TESTS_GIT_AUTHOR = "ROSMASTER X3"
+TESTS_GIT_EMAIL = "rosmaster@localhost"
+# upload every finished run and health check right away, so the data can be
+# read on GitHub without the robot; without a token the record just stays local
+TESTS_GIT_AUTO_UPLOAD = True
+
 # --- Music ("MUKKE") ----------------------------------------------------------------
 
 # YouTube links from the app are played with mpv on the USB speaker, audio
@@ -1785,6 +1845,39 @@ SPEECH_MAX_EXTRA_WORDS = 0
 # "Musik aus" always).
 SPEECH_MIN_CONFIDENCE_MUSIC = 0.85
 
+# Microphone cleaning before recognition (interaction/audio_filter.py).
+# The mic tests of 05.11. showed a hum below 100 Hz louder than the voice,
+# motor rumble below 50 Hz and a quiet voice; the filter keeps only the
+# speech band, suppresses steady noise and levels the voice.
+SPEECH_FILTER_ENABLED = True
+# Kept band (Hz) and the width of its soft edges. Hum, DC and motor rumble
+# lie below, hiss above; Vosk works at 16 kHz and needs little above 4 kHz.
+SPEECH_FILTER_LOW_HZ = 200.0
+SPEECH_FILTER_HIGH_HZ = 4500.0
+SPEECH_FILTER_EDGE_HZ = 80.0
+# Noise estimate: minimum over this window (s). A new noise (motor starts)
+# is fully suppressed after this time; a word must be shorter than it.
+SPEECH_FILTER_NOISE_WINDOW_S = 1.5
+# The minimum lies below the mean noise; this factor lifts it back up.
+# Higher = more suppression, but quiet speech gets thinner. 1.0-2.0 scored
+# equally on the 05.11. recordings; 2.0 keeps silence and chatter quietest.
+SPEECH_FILTER_NOISE_FACTOR = 2.0
+# Strongest attenuation of noise (0.3 = -10 dB). Lower values remove more,
+# but leave gaps that make recognition worse (0.1 found 1 command, 0.3 found
+# 3-4 of 18 at conf >= 0.7, raw audio none).
+SPEECH_FILTER_FLOOR = 0.3
+# A frame counts as speech above this SNR (dB) in the speech band, a block
+# (0.25 s) above this share of speech frames.
+SPEECH_FILTER_VOICE_SNR_DB = 6.0
+SPEECH_FILTER_VOICED_SHARE = 0.2
+# Automatic gain: the voice is brought to this level (dBFS), at most by this
+# many dB; it rises by at most RELEASE dB per second, lowering is immediate.
+SPEECH_FILTER_TARGET_DBFS = -20.0
+SPEECH_FILTER_MAX_GAIN_DB = 24.0
+SPEECH_FILTER_RELEASE_DB_S = 12.0
+# Soft limiter above this share of full scale.
+SPEECH_FILTER_LIMIT = 0.7
+
 # Reply to a lone "Robi" (None = silent). It is only said after this pause
 # (s): whoever says "Robi ... folge mir" with a short pause should not be
 # interrupted by the "Ja?" -- while the robot is speaking, it does not
@@ -1848,3 +1941,130 @@ SPEECH_OFF_WHILE_MAPPING = True
 # How often (s) the listening thread checks during the pause whether it is
 # over.
 SPEECH_PAUSE_CHECK_S = 0.5
+
+# --- Health check / healthbot (health/) ---------------------------------------
+#
+# The robot drives to a person who is probably unwell, takes stock (posture,
+# movement, answer, position on the floor), nudges them and gets help if
+# there is no reaction. Page: /healthbot.
+
+# Main switch. Off: health_check is rejected.
+HEALTH_ACTIVE = True
+
+# Nudging with real contact. Off: the step is skipped and the verdict comes
+# from observing and talking alone.
+HEALTH_NUDGE_ACTIVE = True
+# Speed when nudging (m/s). Very slow, so the contact is only a tap and the
+# robot stops at once.
+HEALTH_NUDGE_SPEED = 0.05
+# At most this far (m) beyond the measured lidar distance. It never drives
+# further, even if it feels no resistance.
+HEALTH_NUDGE_DEPTH_M = 0.10
+# How often it nudges, backing off right after each one.
+HEALTH_NUDGE_COUNT = 2
+# Distance (m) back after each nudge.
+HEALTH_NUDGE_BACK_M = 0.08
+# Margin for the drive guard while nudging. 0 means contact is allowed --
+# otherwise it would stop 4 cm short of the person as intended. Speed,
+# distance and the dead man's switch still limit it (docs/decisions.md).
+HEALTH_NUDGE_MARGIN_M = 0.0
+# Driving this long (s) with a command while odometry measures no movement
+# counts as contact (the person pushes back).
+HEALTH_NUDGE_CONTACT_S = 0.4
+# Below this measured speed (m/s) it stands still (for contact detection).
+HEALTH_NUDGE_STILL_MS = 0.01
+# A nudge lasts at most this long (s), then back.
+HEALTH_NUDGE_MAX_S = 6.0
+# Distance (m) from which it nudges: the approach drives closer first.
+HEALTH_NUDGE_START_M = 0.30
+# Speed (m/s) when closing in to nudging distance and when backing off:
+# slow, so the drive guard can stop safely in front of the person.
+HEALTH_APPROACH_SPEED = 0.12
+# Highest turn rate (rad/s) for turning towards the person while closing in.
+# Small, so the robot does not sweep sideways past them.
+HEALTH_APPROACH_OMEGA_MAX = 0.3
+# If the drive guard stops at most this much (m) beyond nudging distance,
+# that is enough for nudging: the person is within reach anyway.
+HEALTH_APPROACH_ENOUGH_M = 0.1
+# Closing in ends after this long (s) or this far (m) without reaching the
+# person. A lying person is below the lidar plane, so only the drive guard or
+# the wheels stopping at the body end it; 15 s were too short on the robot.
+HEALTH_APPROACH_MAX_S = 40.0
+HEALTH_APPROACH_MAX_M = 4.0
+
+# Approach: within this distance (m) of the goal it counts as arrived.
+# Generous, because the reported spot is only approximate and the person
+# lies there.
+HEALTH_GOAL_TOLERANCE_M = 0.6
+# If something is in the way and the goal is closer than this (m), that is
+# enough: the obstacle is then usually the person.
+HEALTH_BLOCKED_ENOUGH_M = 1.2
+
+# Overall picture: observe this long (s) how much the person moves.
+HEALTH_OBSERVE_S = 5.0
+# If the keypoints move less than this on average (pixels, 640 image), the
+# person counts as motionless. Holds for a person whose box diagonal is
+# HEALTH_MOTIONLESS_REF_DIAG_PX; for smaller/larger people the threshold
+# scales along (factor 0.5..2), since jitter and movement shrink with the
+# distance. 0 for the reference switches the scaling off.
+HEALTH_MOTIONLESS_PX = 6.0
+HEALTH_MOTIONLESS_REF_DIAG_PX = 300.0
+# Lying: shoulder-hip axis flatter than this many degrees from horizontal.
+HEALTH_LYING_DEG = 35.0
+# ... or the box is this much wider than tall (fallback without keypoints).
+HEALTH_LYING_ASPECT = 1.3
+# ... or lying lengthwise to the camera, where the torso looks upright: the
+# torso (shoulders to hips) appears shorter than this share of the shoulder
+# width (standing: ~1.2-2.5). Hips above the shoulders count too.
+HEALTH_FORESHORTEN_RATIO = 0.45
+# Over several frames lying counts when at least this share of the frames
+# says so (the observation and the watch).
+HEALTH_LYING_SHARE = 0.6
+# On the floor: lidar echo at the person's angle, but low -- the lidar
+# measures at ~17 cm height. A lying body gives a wide piece there at least
+# this long (m).
+HEALTH_FLOOR_MIN_WIDTH_M = 0.35
+# Without lidar echo: if the person's lower edge is below this share of the
+# image height, they probably lie on the floor (the camera looks slightly down).
+HEALTH_FLOOR_IMAGE_BOTTOM = 0.75
+# Searching: turn this fast (rad/s) until it sees a person ...
+HEALTH_SEARCH_OMEGA = 0.4
+# ... at most this long (s), about one turn.
+HEALTH_SEARCH_S = 18.0
+# A person counts as centred when less than this many degrees off.
+HEALTH_CENTERED_DEG = 8.0
+
+# Wait this long (s) for an answer after asking.
+HEALTH_ANSWER_S = 6.0
+# Questions and announcements (voice; spoken German).
+HEALTH_QUESTION = "Hallo, hören Sie mich? Geht es Ihnen gut?"
+HEALTH_QUESTION_HELP = "Brauchst du Hilfe?"
+HEALTH_ANNOUNCE_HELP = "Achtung! Hier liegt eine Person und reagiert nicht. Ich hole Hilfe."
+HEALTH_ANNOUNCE_OK = "Gut, dass es dir gut geht. Ich fahre zurück."
+# said before closing in to nudge, and before each nudge
+HEALTH_NUDGE_ANNOUNCE = "Ich komme jetzt zu Ihnen und stupse Sie an."
+HEALTH_NUDGE_CALL = "Hallo! Hören Sie mich?"
+# Words that count as an answer (German speech). "ja"/"hilfe" means: get help.
+HEALTH_WORDS_HELP = ("ja", "hilfe", "hilf mir")
+HEALTH_WORDS_NO = ("nein", "alles gut", "geht schon")
+
+# Detect on its own: if pose detection sees a lying person continuously
+# for this long (s), it starts the check by itself.
+HEALTH_AUTO_DETECT = True
+HEALTH_AUTO_S = 3.0
+# A lying person lost for at most this long (s) does not restart the wait:
+# the pose detection misses a frame now and then.
+HEALTH_AUTO_GAP_S = 1.0
+
+# page /zustand keeps the pose detection on while it asks; without a request
+# for this long (s) it goes off again so the Hailo is free
+CONDITION_VIEW_LEASE_S = 5.0
+# vote and motion on the page over the last this many seconds (s); the
+# healthbot itself votes over its whole look
+CONDITION_VIEW_HISTORY_S = 3.0
+# last pose model comparison from scripts/bench_pose.py, shown on the page
+CONDITION_BENCHMARK_FILE = Path.home() / ".rosmaster" / "pose_benchmark.json"
+
+# Music when getting help (in the package under data/).
+HEALTH_MUSIC_FILE = "BeatboxJungs.m4a"
+HEALTH_MUSIC_TITLE = "Beatbox Jungs"

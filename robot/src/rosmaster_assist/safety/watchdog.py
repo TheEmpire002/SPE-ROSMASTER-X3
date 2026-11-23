@@ -99,7 +99,9 @@ class SafetyWatchdog:
 
     # --- Control --------------------------------------------------------------
 
-    def submit(self, cmd: DriveCommand, source: str = "hand") -> DriveCommand:
+    def submit(
+        self, cmd: DriveCommand, source: str = "hand", margin_m: float | None = None
+    ) -> DriveCommand:
         """Execute a drive command. Returns the command actually driven.
 
         `source` is "hand" (app, ESP32) or "autonom" (follow, explore,
@@ -107,6 +109,11 @@ class SafetyWatchdog:
         applies to autonomous commands, and the DriveGuard checks them.
         Manual control is checked beforehand by the ``CollisionGuard``
         (can be switched off in the app).
+
+        ``margin_m`` changes the distance the DriveGuard keeps for autonomous
+        commands (default ``GUARD_MARGIN_M``). The health check's nudge needs
+        it because it deliberately drives up to contact; the speed and
+        battery limits still apply.
         """
         now = time.monotonic()
         limit_xy_x, limit_xy_y = config.MAX_SPEED_X, config.MAX_SPEED_Y
@@ -125,7 +132,7 @@ class SafetyWatchdog:
             # None without a check, otherwise the modes would see a stale result.
             self.last_check = None
             if self.drive_guard is not None and config.AUTONOMOUS_GUARD_ACTIVE:
-                self.last_check = self.drive_guard.check(safe)
+                self.last_check = self.drive_guard.check(safe, margin_m=margin_m)
                 safe = self.last_check.command
                 if self.last_check.reason is not None:
                     self.drive_guard.report_intervention(self.last_check.reason, now)
