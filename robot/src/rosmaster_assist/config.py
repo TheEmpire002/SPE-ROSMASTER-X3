@@ -1237,7 +1237,7 @@ PANORAMA_GAIN_NOISE = 10.0
 PANORAMA_GAIN_SPREAD = 0.1
 PANORAMA_GAIN_LIMITS = (0.6, 1.6)
 # keep the single shots with their headings beside the panorama
-PANORAMA_KEEP_SHOTS = True
+PANORAMA_KEEP_SHOTS = False
 # camera from CAMERA_ROLES used until another is chosen on /map; the orbbec
 # sees wider (fewer, larger overlaps), the c270 sits on the tilt servo
 PANORAMA_CAMERA = "orientierung"

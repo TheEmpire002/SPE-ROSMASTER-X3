@@ -1065,3 +1065,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Fix:** Look-ahead on goal drives: about once a second the fresh scan is checked for points on the next 2.5 m of the route that the map does not know; seen at the same spot twice in a row, the spot is blocked for 60 s and the route replanned at once. Survives a pose loss, also runs right after the pose comes back.
 - **Result:** Check tested on the Pi with a synthetic closed door across the route through the door: detected at the door; open door and a single stray point ignored. Test on the floor by the user pending.
 - **Open:** The ambiguity between the two identical doors (localization) if it keeps coming up.
+
+### 23.11.2026 – Map photos cleared, single shots off
+- **What:** At the user's request all photos and panoramas of `first_big_map` were deleted on the robot (folder `first_big_map_bilder`), and the single shots of a panorama are no longer kept (`PANORAMA_KEEP_SHOTS = False`).
+- **Why:** The test images are no longer needed; the single shots are not used for now.
