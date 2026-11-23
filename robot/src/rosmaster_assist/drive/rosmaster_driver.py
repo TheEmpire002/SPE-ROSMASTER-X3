@@ -1,14 +1,14 @@
-"""Antrieb über Yahboons `Rosmaster_Lib` (echte Hardware).
+"""Drive via Yahboom's `Rosmaster_Lib` (real hardware).
 
-Dieses Modul wird nur auf dem Roboter importiert. Auf Entwicklungsrechnern
-nimmt `create_driver` stattdessen den Mock.
+This module is only imported on the robot. On development machines
+`create_driver` takes the mock instead.
 
-**Wiederverbinden.** Bricht die Versorgung am USB-Hub kurz ein, meldet der
-Kernel alle Geräte ab und zwei Sekunden später unter neuen Nummern wieder
-an. Rosmaster_Lib bemerkt davon nichts: ihr Lese-Thread stirbt mit
-"device reports readiness to read but returned no data", und jeder weitere
-Befehl geht an eine Datei, die es nicht mehr gibt. ``ueberwachen()``
-erkennt das und baut die Verbindung neu auf.
+**Reconnecting.** If the supply at the USB hub dips briefly, the kernel
+removes all devices and re-registers them two seconds later under new
+numbers. Rosmaster_Lib notices none of this: its read thread dies with
+"device reports readiness to read but returned no data", and every further
+command goes to a file that no longer exists. ``monitor()`` detects this
+and rebuilds the connection.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ import time
 from .base import DriveBase
 from .. import config
 from ..protocol import DriveCommand
-from ..serial_ports import wer_haelt
+from ..serial_ports import who_holds
 
 log = logging.getLogger(__name__)
 
@@ -30,80 +30,80 @@ class RosmasterDriver(DriveBase):
     name = "rosmaster"
 
     def __init__(self, port: str | None = None) -> None:
-        # Die Vorgabe bleibt getrennt vom tatsächlich benutzten Port: nach
-        # einem USB-Aussetzer muss neu gesucht werden, die Nummern tauschen.
-        self._port_vorgabe = port if port is not None else config.SERIAL_PORT
+        # The configured value stays separate from the port actually used:
+        # after a USB dropout we have to search again, the numbers swap.
+        self._configured_port = port if port is not None else config.SERIAL_PORT
         self._port: str | None = None
         self._bot = None
         self._last: DriveCommand | None = None
         self._lock = threading.Lock()
-        # Woran sich eine tote Verbindung erkennen lässt -- siehe _lebt().
-        self._geraet: int | None = None
-        self._empfaenger: list[threading.Thread] = []
-        self._naechster_versuch = 0.0
-        self._wartezeit = config.RECONNECT_MIN_S
+        # How a dead connection can be recognized -- see _alive().
+        self._device: int | None = None
+        self._receivers: list[threading.Thread] = []
+        self._next_attempt = 0.0
+        self._wait_time = config.RECONNECT_MIN_S
 
-    def _port_bestimmen(self) -> str | None:
-        """Sucht das Expansion Board unter mehreren seriellen Geräten.
+    def _determine_port(self) -> str | None:
+        """Finds the expansion board among several serial devices.
 
-        Am ROSMASTER hängen typischerweise zwei USB-Seriell-Adapter: das
-        Board (CH340) und der RPLIDAR (CP210x). Beide erscheinen als
-        ``/dev/ttyUSB*``, und wer welche Nummer bekommt, hängt von der
-        Einschaltreihenfolge ab. Greift Rosmaster_Lib den Lidar, liest sie
-        dessen Datenstrom als Board-Antworten -- das endet in
+        The ROSMASTER typically has two USB-serial adapters: the board
+        (CH340) and the RPLIDAR (CP210x). Both appear as ``/dev/ttyUSB*``,
+        and which one gets which number depends on the power-on order. If
+        Rosmaster_Lib grabs the lidar, it reads its data stream as board
+        replies -- which ends in
         "device reports readiness to read but returned no data".
 
-        Der Lidar lässt sich sicher ausschließen, weil eine udev-Regel ihn
-        unter ``/dev/rplidar`` festnagelt. Bleibt danach genau ein Gerät
-        übrig, ist das das Board.
+        The lidar can be excluded reliably because a udev rule pins it to
+        ``/dev/rplidar``. If exactly one device remains after that, it is
+        the board.
         """
         import glob
 
-        if self._port_vorgabe:
-            return self._port_vorgabe
+        if self._configured_port:
+            return self._configured_port
 
-        # Dieselbe Yahboom-udev-Regel nagelt das Board (CH340, 1a86:7523)
-        # unter /dev/myserial fest. Gibt es den Pfad, ist er die sicherste
-        # Wahl -- er hängt an Hersteller- und Produktnummer, nicht an der
-        # Reihenfolge, in der sich die Geräte anmelden.
+        # The same Yahboom udev rule pins the board (CH340, 1a86:7523) to
+        # /dev/myserial. If that path exists, it is the safest choice -- it
+        # depends on vendor and product ID, not on the order in which the
+        # devices register.
         if os.path.exists("/dev/myserial"):
             return "/dev/myserial"
 
-        geraete = sorted(glob.glob("/dev/serial/by-id/*"))
-        if not geraete:
-            return None  # nichts zu entscheiden, Bibliothek soll suchen
+        devices = sorted(glob.glob("/dev/serial/by-id/*"))
+        if not devices:
+            return None  # nothing to decide, let the library search
 
-        # Den Lidar immer ausschließen, auch wenn er das einzige Gerät ist:
-        # Am 28.10. meldete er sich nach einem USB-Aussetzer eine Sekunde vor
-        # dem Board wieder an, /dev/rplidar gab es noch nicht, und der
-        # Treiber verband sich mit dem Lidar. In dem Moment verrät ihn nur
-        # sein Name (CP210x von Silicon Labs).
+        # Always exclude the lidar, even if it is the only device: on 28.10.,
+        # after a USB dropout, it re-registered one second before the board,
+        # /dev/rplidar did not exist yet, and the driver connected to the
+        # lidar. At that moment only its name gives it away (CP210x from
+        # Silicon Labs).
         lidar = os.path.realpath("/dev/rplidar") if os.path.exists("/dev/rplidar") else None
-        kandidaten = [
-            g for g in geraete
+        candidates = [
+            g for g in devices
             if os.path.realpath(g) != lidar and (lidar is not None or "CP210" not in g)
         ]
 
-        if not kandidaten:
-            # Nur der Lidar ist da, das Board meldet sich gerade noch an.
-            # None lässt Rosmaster_Lib /dev/myserial öffnen; das schlägt fehl,
-            # und ueberwachen() versucht es gleich noch einmal.
-            log.info("Nur der Lidar ist angemeldet -- warte auf das Board")
+        if not candidates:
+            # Only the lidar is there, the board is still registering.
+            # None makes Rosmaster_Lib open /dev/myserial; that fails, and
+            # monitor() tries again shortly.
+            log.info("Only the lidar is registered -- waiting for the board")
             return None
 
-        if len(kandidaten) == 1:
-            log.info("Expansion Board erkannt: %s", kandidaten[0])
-            log.info("(Lidar ausgeschlossen über /dev/rplidar)")
-            return kandidaten[0]
+        if len(candidates) == 1:
+            log.info("Expansion board detected: %s", candidates[0])
+            log.info("(lidar excluded via /dev/rplidar)")
+            return candidates[0]
 
         log.warning(
-            "%d serielle Geräte, keines eindeutig zuzuordnen -- "
-            "Rosmaster_Lib sucht sich eines aus:",
-            len(geraete),
+            "%d serial devices, none can be assigned unambiguously -- "
+            "Rosmaster_Lib picks one:",
+            len(devices),
         )
-        for g in geraete:
+        for g in devices:
             log.warning("    %s", g)
-        log.warning("Das richtige in config.py bei SERIAL_PORT eintragen.")
+        log.warning("Enter the right one in config.py at SERIAL_PORT.")
         return None
 
     def connect(self) -> None:
@@ -111,46 +111,45 @@ class RosmasterDriver(DriveBase):
             import Rosmaster_Lib  # noqa: F401
         except ImportError as exc:
             raise RuntimeError(
-                "Rosmaster_Lib ist nicht installiert. Auf dem Entwicklungsrechner "
-                "stattdessen mit --mock starten. Auf dem Roboter: siehe "
+                "Rosmaster_Lib is not installed. On the development machine "
+                "start with --mock instead. On the robot: see "
                 "docs/hardware.md."
             ) from exc
 
         if not config.TELEMETRY_ENABLED:
             log.warning(
-                "Rückkanal abgeschaltet (TELEMETRY_ENABLED=False) -- "
-                "keine Akku- und IMU-Werte"
+                "Telemetry disabled (TELEMETRY_ENABLED=False) -- "
+                "no battery and IMU values"
             )
-        self._oeffnen()
+        self._open_device()
 
-    def _oeffnen(self) -> None:
-        """Verbindung aufbauen. Wirft, wenn das Board nicht erreichbar ist."""
+    def _open_device(self) -> None:
+        """Establish the connection. Raises if the board is not reachable."""
         from Rosmaster_Lib import Rosmaster
 
-        self._port = self._port_bestimmen()
-        # Rosmaster() ohne Argument sucht die Schnittstelle selbst.
+        self._port = self._determine_port()
+        # Rosmaster() without an argument searches for the port itself.
         bot = Rosmaster(com=self._port) if self._port else Rosmaster()
 
         try:
-            # Als Erstes anhalten. Nach einem Aussetzer war nur der USB-Wandler
-            # weg, der Prozessor auf dem Board lief am Akku weiter -- und führt
-            # womöglich noch den letzten Fahrbefehl aus.
+            # Stop first. After a dropout only the USB converter was gone, the
+            # processor on the board kept running on the battery -- and may
+            # still be executing the last drive command.
             bot.set_car_motion(0.0, 0.0, 0.0)
 
-            # Startet den Hintergrund-Thread, der Rückmeldungen (IMU, Akku,
-            # Encoder) vom Board einliest. Ohne diesen Aufruf bleiben alle
-            # Lesefunktionen der Bibliothek leer -- Fahren geht trotzdem.
-            # Welcher Thread das ist, verrät die Bibliothek nicht; also
-            # nachsehen, welcher neu dazukam.
-            empfaenger: list[threading.Thread] = []
+            # Starts the background thread that reads feedback (IMU, battery,
+            # encoders) from the board. Without this call all read functions
+            # of the library stay empty -- driving still works. The library
+            # does not tell which thread it is; so check which one is new.
+            receivers: list[threading.Thread] = []
             if config.TELEMETRY_ENABLED:
-                vorher = set(threading.enumerate())
+                previous = set(threading.enumerate())
                 bot.create_receive_threading()
-                empfaenger = [t for t in threading.enumerate() if t not in vorher]
+                receivers = [t for t in threading.enumerate() if t not in previous]
         except Exception:
-            # Port wieder schließen: Sonst bleibt bei jedem gescheiterten
-            # Neuverbinden (USB-Sturm, 29.10.) ein offener Port zurück, bis
-            # dem Server die Dateien ausgehen bzw. der Port belegt bleibt.
+            # Close the port again: otherwise every failed reconnect (USB
+            # storm, 29.10.) leaves an open port behind, until the server runs
+            # out of file handles or the port stays occupied.
             ser = getattr(bot, "ser", None)
             if ser is not None:
                 try:
@@ -161,140 +160,139 @@ class RosmasterDriver(DriveBase):
 
         with self._lock:
             self._bot = bot
-            self._geraet = _geraet_von(bot)
-            self._empfaenger = empfaenger
+            self._device = _device_of(bot)
+            self._receivers = receivers
             self._last = None
-        self._wartezeit = config.RECONNECT_MIN_S
+        self._wait_time = config.RECONNECT_MIN_S
 
         log.info(
-            "ROSMASTER verbunden (Port: %s)",
-            getattr(getattr(bot, "ser", None), "port", None) or self._port or "automatisch",
+            "ROSMASTER connected (port: %s)",
+            getattr(getattr(bot, "ser", None), "port", None) or self._port or "automatic",
         )
-        # Schon beim Verbinden nachsehen: ein zweites Programm am Port fällt
-        # sonst erst auf, wenn der Lese-Thread Minuten später stirbt.
-        self._andere_melden()
+        # Check right when connecting: otherwise a second program on the port
+        # only shows up when the read thread dies minutes later.
+        self._report_others()
 
-    def _andere_melden(self) -> bool:
-        """Loggt andere Prozesse am Board-Port. True, wenn welche da sind."""
-        pfad = self._port or "/dev/myserial"
-        andere = wer_haelt(pfad)
-        if andere:
-            log.error("Ein anderes Programm hat den Board-Port %s offen:", pfad)
-            for zeile in andere:
-                log.error("    %s", zeile)
-            log.error("Das stört den Empfang -- beenden mit: kill <PID>")
-        return bool(andere)
+    def _report_others(self) -> bool:
+        """Logs other processes on the board port. True if there are any."""
+        path = self._port or "/dev/myserial"
+        others = who_holds(path)
+        if others:
+            log.error("Another program has the board port %s open:", path)
+            for line in others:
+                log.error("    %s", line)
+            log.error("This disturbs reception -- stop it with: kill <PID>")
+        return bool(others)
 
-    def _verloren(self, grund: str) -> None:
-        """Verbindung als tot markieren; ``ueberwachen()`` baut sie neu auf."""
+    def _lost(self, reason: str) -> None:
+        """Mark the connection as dead; ``monitor()`` rebuilds it."""
         with self._lock:
             bot, self._bot = self._bot, None
-            self._empfaenger = []
+            self._receivers = []
         if bot is None:
-            return  # schon gemeldet
-        log.error("Verbindung zum Board verloren (%s) -- verbinde neu", grund)
-        self._andere_melden()
-        # Den alten Port schließen, sonst bleibt er belegt -- und kommt das
-        # Board unter derselben Nummer wieder, ließe er sich nicht öffnen.
+            return  # already reported
+        log.error("Connection to the board lost (%s) -- reconnecting", reason)
+        self._report_others()
+        # Close the old port, otherwise it stays occupied -- and if the board
+        # comes back under the same number, it could not be opened.
         try:
             bot.ser.close()
         except Exception:
-            log.debug("Alten Port schließen misslungen", exc_info=True)
-        self._naechster_versuch = time.monotonic() + self._wartezeit
+            log.debug("Closing the old port failed", exc_info=True)
+        self._next_attempt = time.monotonic() + self._wait_time
 
-    def _lebt(self) -> bool:
-        """Ob die bestehende Verbindung noch zum Board führt.
+    def _alive(self) -> bool:
+        """Whether the existing connection still leads to the board.
 
-        Zwei Anzeichen für eine tote Verbindung, die ohne Schreibversuch
-        auskommen:
+        Two signs of a dead connection that need no write attempt:
 
-        - Der Lese-Thread der Bibliothek ist gestorben. Genau das ist der
-          Traceback, den man bei einem Aussetzer im Terminal sieht.
-        - Der Gerätepfad zeigt inzwischen auf ein anderes Gerät als das
-          geöffnete. Nach dem Neuanmelden ist ``/dev/myserial`` etwa von
-          ``ttyUSB1`` auf ``ttyUSB0`` umgezogen.
+        - The library's read thread has died. That is exactly the traceback
+          you see in the terminal on a dropout.
+        - The device path now points to a different device than the one
+          opened. After re-registering, ``/dev/myserial`` has e.g. moved from
+          ``ttyUSB1`` to ``ttyUSB0``.
         """
         with self._lock:
-            bot, geraet, empfaenger = self._bot, self._geraet, self._empfaenger
+            bot, device, receivers = self._bot, self._device, self._receivers
         if bot is None:
             return False
-        if empfaenger and not any(t.is_alive() for t in empfaenger):
+        if receivers and not any(t.is_alive() for t in receivers):
             return False
         ser = getattr(bot, "ser", None)
         if ser is not None and not getattr(ser, "is_open", True):
             return False
-        if geraet is not None:
+        if device is not None:
             try:
-                if os.stat(ser.port).st_rdev != geraet:
+                if os.stat(ser.port).st_rdev != device:
                     return False
             except OSError:
-                return False  # Pfad gerade verschwunden
+                return False  # path just disappeared
         return True
 
-    def ueberwachen(self) -> None:
+    def monitor(self) -> None:
         if self._bot is not None:
-            if not self._lebt():
-                self._verloren("USB-Gerät neu angemeldet oder Lese-Thread beendet")
+            if not self._alive():
+                self._lost("USB device re-registered or read thread ended")
             return
 
-        if time.monotonic() < self._naechster_versuch:
+        if time.monotonic() < self._next_attempt:
             return
         try:
-            self._oeffnen()
-            log.warning("Board wieder verbunden")
+            self._open_device()
+            log.warning("Board reconnected")
         except Exception as exc:
-            # Häufig: das Gerät ist noch nicht wieder angemeldet. Mit
-            # wachsendem Abstand weiterprobieren, statt das Log zu fluten.
+            # Common: the device has not re-registered yet. Keep trying with
+            # growing intervals instead of flooding the log.
             log.warning(
-                "Board noch nicht erreichbar (%s) -- nächster Versuch in %.0f s",
+                "Board not reachable yet (%s) -- next attempt in %.0f s",
                 exc,
-                self._wartezeit,
+                self._wait_time,
             )
-            self._andere_melden()
-            self._naechster_versuch = time.monotonic() + self._wartezeit
-            self._wartezeit = min(self._wartezeit * 2, config.RECONNECT_MAX_S)
+            self._report_others()
+            self._next_attempt = time.monotonic() + self._wait_time
+            self._wait_time = min(self._wait_time * 2, config.RECONNECT_MAX_S)
 
     def disconnect(self) -> None:
         if self._bot is None:
             return
         self.stop()
-        # Rosmaster_Lib hat kein close(); der Serial-Port wird beim Beenden
-        # des Prozesses freigegeben. Wichtig ist nur, dass der Roboter steht.
+        # Rosmaster_Lib has no close(); the serial port is released when the
+        # process exits. All that matters is that the robot stands still.
         self._bot = None
-        log.info("ROSMASTER getrennt")
+        log.info("ROSMASTER disconnected")
 
     def drive(self, cmd: DriveCommand) -> None:
         bot = self._bot
         if bot is None:
-            # Während des Neuverbindens: Befehle verwerfen statt werfen. Ein
-            # Fehler hier würde die Verbindung zur App mit abreißen.
+            # While reconnecting: discard commands instead of raising. An
+            # error here would tear down the connection to the app as well.
             return
         try:
-            # Mecanum: set_car_motion(vx, vy, vz) erwartet m/s, m/s, rad/s.
+            # Mecanum: set_car_motion(vx, vy, vz) expects m/s, m/s, rad/s.
             bot.set_car_motion(cmd.vx, cmd.vy, cmd.omega)
         except Exception as exc:
-            self._verloren(f"Schreiben fehlgeschlagen: {exc}")
+            self._lost(f"write failed: {exc}")
             return
 
-        # Nur bei Änderung loggen, sonst 10 Zeilen pro Sekunde. Dass hier
-        # überhaupt geloggt wird, ist Absicht: sonst sieht ein stiller
-        # Roboter im echten Betrieb genauso aus wie einer in der
-        # Simulation, und man sucht den Fehler an der falschen Stelle.
+        # Only log on change, otherwise 10 lines per second. Logging here at
+        # all is intentional: otherwise a silent robot in real operation
+        # looks exactly like one in the simulation, and you look for the
+        # fault in the wrong place.
         if cmd != self._last:
-            log.info("FAHRE  vx=%+.2f  vy=%+.2f  omega=%+.2f", cmd.vx, cmd.vy, cmd.omega)
+            log.info("DRIVE  vx=%+.2f  vy=%+.2f  omega=%+.2f", cmd.vx, cmd.vy, cmd.omega)
             self._last = cmd
 
     def stop(self) -> None:
-        # Darf nie werfen -- stop() ist der Notausgang und wird auch aus
-        # Fehlerpfaden und beim Herunterfahren aufgerufen.
+        # Must never raise -- stop() is the emergency exit and is also called
+        # from error paths and during shutdown.
         bot = self._bot
         if bot is None:
             return
         try:
             bot.set_car_motion(0.0, 0.0, 0.0)
         except Exception as exc:
-            log.exception("Anhalten fehlgeschlagen -- Hardware prüfen!")
-            self._verloren(f"Anhalten fehlgeschlagen: {exc}")
+            log.exception("Stopping failed -- check the hardware!")
+            self._lost(f"stopping failed: {exc}")
 
     def beep(self, ms: int = 100) -> None:
         bot = self._bot
@@ -303,14 +301,14 @@ class RosmasterDriver(DriveBase):
         try:
             bot.set_beep(ms)
         except Exception:
-            log.exception("Buzzer fehlgeschlagen")
+            log.exception("Buzzer failed")
 
     def read_motion(self) -> tuple[float, float, float] | None:
-        # Braucht den Empfangs-Thread; ohne ihn liefert die Bibliothek Nullen
-        # oder -- nach einem Aussetzer -- die letzten Werte vor dem Abriss.
-        # Beides wäre schlimmer als keine Messung.
+        # Needs the receive thread; without it the library returns zeros
+        # or -- after a dropout -- the last values before the disconnect.
+        # Both would be worse than no measurement.
         bot = self._bot
-        if bot is None or not config.TELEMETRY_ENABLED or not self._lebt():
+        if bot is None or not config.TELEMETRY_ENABLED or not self._alive():
             return None
         try:
             vx, vy, omega = bot.get_motion_data()
@@ -319,12 +317,12 @@ class RosmasterDriver(DriveBase):
             return None
 
     def read_heading(self) -> float | None:
-        # Achtung: am X3 liefert get_imu_attitude_data() dauerhaft 0
-        # (Sensor-Check 28.10.). Die Odometrie nutzt den Wert deshalb nur,
-        # wenn config.ODOM_IMU_WINKEL gesetzt ist, und prüft ihn dann auf
-        # Plausibilität.
+        # Caution: on the X3, get_imu_attitude_data() constantly returns 0
+        # (sensor check 28.10.). The odometry therefore only uses the value
+        # if config.ODOM_IMU_HEADING is set, and then checks it for
+        # plausibility.
         bot = self._bot
-        if bot is None or not config.TELEMETRY_ENABLED or not self._lebt():
+        if bot is None or not config.TELEMETRY_ENABLED or not self._alive():
             return None
         try:
             _roll, _pitch, yaw = bot.get_imu_attitude_data()
@@ -334,14 +332,14 @@ class RosmasterDriver(DriveBase):
 
     def read_battery(self) -> float | None:
         bot = self._bot
-        if bot is None or not config.TELEMETRY_ENABLED or not self._lebt():
+        if bot is None or not config.TELEMETRY_ENABLED or not self._alive():
             return None
         try:
             volt = float(bot.get_battery_voltage())
         except Exception:
             return None
-        # Vor dem ersten Datenpaket des Boards liefert die Bibliothek 0 --
-        # das ist kein leerer Akku, sondern noch kein Messwert.
+        # Before the board's first data packet the library returns 0 --
+        # that is not an empty battery but no measurement yet.
         return volt if volt > 1.0 else None
 
     @property
@@ -349,11 +347,11 @@ class RosmasterDriver(DriveBase):
         return self._bot is not None
 
 
-def _geraet_von(bot) -> int | None:
-    """Kennung des tatsächlich geöffneten Geräts (Haupt-/Nebennummer).
+def _device_of(bot) -> int | None:
+    """ID of the device actually opened (major/minor number).
 
-    Bleibt gültig, auch wenn das Gerät längst abgemeldet ist -- genau das
-    macht sie zum Vergleich mit dem, worauf der Pfad jetzt zeigt, brauchbar.
+    Stays valid even if the device has long been removed -- exactly that
+    makes it useful for comparing with what the path points to now.
     """
     try:
         return os.fstat(bot.ser.fileno()).st_rdev

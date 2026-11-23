@@ -17,7 +17,7 @@ body {
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   background: var(--bg);
   color: var(--text);
-  /* Verhindert, dass Wischen beim Steuern die Seite scrollt. */
+  /* Prevents swiping while driving from scrolling the page. */
   overscroll-behavior: none;
 }
 
@@ -53,11 +53,11 @@ main {
          border-radius: 10px; padding: 1rem; }
 .wide-panel { grid-column: 1 / -1; }
 
-/* --- Kamera --- */
+/* --- Camera --- */
 
 .cam-wrap { position: relative; }
 
-/* Siehe .cam-error[hidden]: eigene display-Angabe schlägt sonst hidden. */
+/* See .cam-error[hidden]: otherwise our own display value beats hidden. */
 .cam-wahl[hidden] { display: none; }
 
 .cam-wahl {
@@ -83,8 +83,8 @@ main {
 .cam {
   display: block;
   width: 100%;
-  /* Platz reservieren, damit das Layout beim Eintreffen des ersten
-     Bildes nicht springt. */
+  /* Reserve space so the layout does not jump when the first
+     frame arrives. */
   aspect-ratio: 4 / 3;
   object-fit: contain;
   background: #0d0f13;
@@ -92,12 +92,12 @@ main {
   border-radius: 8px;
 }
 
-/* Das hidden-Attribut wirkt nur über die Browser-Standardregel
-   `display: none` -- und jede eigene display-Angabe schlägt diese.
-   Ohne diese Regel läge das Overlay dauerhaft undurchsichtig über dem
-   Kamerabild: der Stream läuft, man sieht ihn nur nicht.
-   Die Attributangabe gewinnt hier durch höhere Spezifität, nicht
-   durch die Reihenfolge. */
+/* The hidden attribute only works through the browser's default rule
+   `display: none` -- and any display value of our own beats it.
+   Without this rule the overlay would permanently cover the camera
+   image: the stream is running, you just cannot see it.
+   The attribute selector wins here through higher specificity, not
+   through order. */
 .cam-error[hidden] {
   display: none;
 }
@@ -128,7 +128,7 @@ main {
 }
 .cam-error button:hover { background: #30353f; }
 
-/* --- Steuerkreuz --- */
+/* --- Direction pad --- */
 
 .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
 .pad-row { display: grid; grid-template-columns: repeat(2, 1fr);
@@ -154,7 +154,7 @@ main {
 .pad-btn.stop:hover { background: var(--danger); color: #fff; }
 .pad-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* --- Tempo --- */
+/* --- Speed --- */
 
 .slider { display: block; margin-top: 1rem; font-size: 0.85rem; color: var(--muted); }
 .slider output { color: var(--text); font-variant-numeric: tabular-nums; }
@@ -164,7 +164,7 @@ main {
 kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
       padding: 1px 5px; font-size: 0.72rem; margin: 0 1px; }
 
-/* --- Schalter --- */
+/* --- Switches --- */
 
 .switch {
   display: flex;
@@ -180,12 +180,12 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 
 .switch-state { font-size: 0.78rem; color: var(--muted); }
 .switch-state.an { color: var(--ok); }
-/* Greift gerade ein: das muss auffallen, sonst sucht man den Fehler
-   beim Antrieb, während in Wahrheit die Sperre hält. */
+/* Currently intervening: this must stand out, otherwise you look for the
+   fault in the drive while in truth the block is holding it. */
 .switch-state.blockiert { color: var(--warn); }
 
-/* Attributregel vor der display-Angabe -- sonst bliebe das Element
-   trotz hidden sichtbar (siehe .cam-error). */
+/* Attribute rule before the display value -- otherwise the element would
+   stay visible despite hidden (see .cam-error). */
 .slider[hidden] { display: none; }
 
 /* --- Lidar --- */
@@ -200,7 +200,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
   border-radius: 8px;
 }
 
-/* --- Heimfahrt --- */
+/* --- Return home --- */
 
 .home-buttons { display: grid; gap: 0.5rem; margin-top: 0.3rem; }
 
@@ -233,7 +233,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 .btn-primary { background: #1d3a5c; border-color: #2d5a8c; color: #cfe4ff; }
 .btn-primary:hover { background: #244970; }
 
-/* Läuft die Heimfahrt, wird der Knopf zum Abbrechen. */
+/* While returning home, the button becomes a cancel button. */
 .btn-primary.aktiv {
   background: #5c2b1d;
   border-color: #8c472d;
@@ -241,14 +241,14 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 }
 .btn-primary.aktiv:hover { background: #70351f; }
 
-/* --- Anzeigen --- */
+/* --- Readouts --- */
 
 .readout { display: grid; grid-template-columns: auto 1fr;
            gap: 0.35rem 1rem; margin: 0 0 1.2rem; font-size: 0.88rem; }
 .readout dt { color: var(--muted); }
 .readout dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
 
-/* --- Meldungen --- */
+/* --- Messages --- */
 
 .log { list-style: none; margin: 0; padding: 0; max-height: 170px;
        overflow-y: auto; font-size: 0.8rem; font-family: ui-monospace, monospace; }
@@ -257,9 +257,9 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 .log .warning { color: var(--warn); }
 .log .emergency, .log .error { color: var(--danger); }
 
-/* --- Autonomes Fahren --- */
+/* --- Autonomous driving --- */
 
-/* Liegt deckungsgleich über dem Kamerabild; Klicks gehen durch. */
+/* Lies exactly on top of the camera image; clicks pass through. */
 .cam-overlay {
   position: absolute;
   inset: 0;
@@ -267,8 +267,6 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
   height: 100%;
   pointer-events: none;
 }
-/* Personen im Bild sind antippbar (Ziel wählen). */
-.cam-wrap.waehlbar { cursor: pointer; }
 
 .hindernisse {
   list-style: none;
@@ -289,7 +287,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 .hindernisse li .farbe { width: 9px; height: 9px; border-radius: 50%; }
 .hindernisse li .wo { color: var(--muted); font-variant-numeric: tabular-nums; }
 
-/* --- Mikrofon live (mikro.js) --- */
+/* --- Live microphone (mikro.js) --- */
 
 .mikro-live[hidden] { display: none; }
 .mikro-live { margin-top: 0.7rem; }
@@ -305,7 +303,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
   background: var(--ok);
   transition: width 0.15s linear;
 }
-/* Während der Roboter spricht, wertet das Ohr nichts aus -- grau zeigen. */
+/* While the robot speaks, the ear evaluates nothing -- show grey. */
 .mikro-live.taub .mikro-pegel div { background: var(--muted); }
 .mikro-teil {
   min-height: 1.3em;
@@ -333,7 +331,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 .mikro-ereignisse .befehl .urteil { color: var(--ok); }
 .mikro-ereignisse .verworfen .urteil { color: var(--warn); }
 
-/* --- Kopfzeile: Verweis auf die Einstellungen --- */
+/* --- Header: link to the settings --- */
 
 .header-nav { display: flex; align-items: center; gap: 1rem; }
 
@@ -344,12 +342,12 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 }
 .header-link:hover { color: var(--text); }
 
-/* --- Einstellungsseite --- */
+/* --- Settings page --- */
 
 .einst-kopf p { margin: 0 0 0.7rem; font-size: 0.85rem; color: var(--muted); }
 .einst-kopf code { color: var(--text); }
 
-/* Siehe .cam-error[hidden]. */
+/* See .cam-error[hidden]. */
 .einst-meldung[hidden] { display: none; }
 .einst-meldung { margin: 0.7rem 0 0; font-size: 0.85rem; color: var(--ok); }
 .einst-meldung.fehler { color: var(--danger); }
@@ -369,7 +367,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
   margin-bottom: 0.35rem;
 }
 
-/* Abweichung vom Standard auf einen Blick: farbiger Punkt vor dem Namen. */
+/* Deviation from the default at a glance: coloured dot before the name. */
 .einst-zeile.geaendert .einst-label::before {
   content: "";
   width: 7px;
@@ -408,7 +406,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 
 .einst-einheit { min-width: 2.6rem; font-size: 0.8rem; color: var(--muted); }
 
-/* Siehe .cam-error[hidden]. */
+/* See .cam-error[hidden]. */
 .einst-zurueck[hidden] { display: none; }
 .einst-zurueck {
   font: inherit;
@@ -442,7 +440,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 .einst-kameras .ok { color: var(--ok); }
 .einst-kameras .fehlt { color: var(--warn); }
 
-/* --- Zahnrad in der Kopfzeile, Einstellungs-Modal --- */
+/* --- Gear in the header, settings modal --- */
 
 .header-icon {
   display: inline-flex;
@@ -472,7 +470,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 }
 .einst-dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
 
-/* Kopf bleibt beim Scrollen stehen, damit Schließen immer erreichbar ist. */
+/* Header stays put while scrolling so Close is always reachable. */
 .einst-dialog-kopf {
   position: sticky;
   top: 0;
@@ -485,7 +483,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
   border-bottom: 1px solid var(--line);
 }
 
-/* Dasselbe Raster wie <main>, damit die Blöcke gleich aussehen. */
+/* Same grid as <main> so the blocks look the same. */
 .einst-raster {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
@@ -493,7 +491,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
   padding: 1rem 1.2rem 1.5rem;
 }
 
-/* --- Mehrere Kameras nebeneinander --- */
+/* --- Several cameras side by side --- */
 
 .cam-feld.mehrere {
   display: grid;
@@ -501,7 +499,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
   gap: 0.6rem;
 }
 
-/* Siehe .cam-error[hidden]. */
+/* See .cam-error[hidden]. */
 .cam-titel[hidden] { display: none; }
 .cam-titel {
   position: absolute;
@@ -515,7 +513,7 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
   pointer-events: none;
 }
 
-/* --- Einstellungsknopf links in der Kopfzeile --- */
+/* --- Settings button on the left of the header --- */
 
 .header-start { display: flex; align-items: center; gap: 0.8rem; }
 
@@ -542,12 +540,12 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
 .einst-knopf:active { transform: translateY(1px); }
 .einst-knopf:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* Das Zahnrad dreht sich beim Darüberfahren ein Stück -- zeigt, dass es
-   ein Knopf ist, ohne aufdringlich zu sein. */
+/* The gear turns a little on hover -- shows that it is a button
+   without being intrusive. */
 .einst-knopf svg { transition: transform 0.4s ease; }
 .einst-knopf:hover svg { transform: rotate(60deg); }
 
-/* Auf dem Handy nur das Symbol, sonst drängt es den Titel weg. */
+/* Only the icon on phones, otherwise it pushes the title away. */
 @media (max-width: 520px) {
   .einst-knopf span { display: none; }
   .einst-knopf { padding: 0.45rem; }
@@ -557,15 +555,15 @@ kbd { background: #272b34; border: 1px solid var(--line); border-radius: 4px;
   .einst-knopf svg { transition: none; }
 }
 
-/* --- Diagnoseseite (/diagnose) --- */
+/* --- Diagnostics page (/diagnose) --- */
 
-/* Knöpfe als Link: kein Unterstrich, und nur das Zahnrad dreht sich. */
+/* Buttons as links: no underline, and only the gear rotates. */
 a.einst-knopf { text-decoration: none; }
 .diag-knopf, .diag-zurueck { position: relative; }
 .diag-knopf:hover svg, .diag-zurueck:hover svg { transform: none; }
 
-/* Farbiger Punkt am Diagnoseknopf der Startseite: zeigt offene Probleme,
-   auch auf dem Handy, wo die übrige Beschriftung ausgeblendet ist. */
+/* Coloured dot on the diagnostics button of the start page: shows open
+   problems, also on phones where the rest of the label is hidden. */
 .einst-knopf .diag-punkt {
   display: inline-block;
   position: absolute;
@@ -587,7 +585,7 @@ a.einst-knopf { text-decoration: none; }
 .diag-leer[hidden] { display: none; }
 .diag-fussnote { color: var(--muted); font-size: 0.78rem; margin: 0.8rem 0 0; }
 
-/* Gesamtzustand als große Ampel -- das Erste, was man sieht. */
+/* Overall state as a big traffic light -- the first thing you see. */
 .diag-gesamt {
   display: flex;
   align-items: center;
@@ -619,7 +617,7 @@ a.einst-knopf { text-decoration: none; }
 }
 @keyframes diag-blinken { 50% { opacity: 0.45; } }
 
-/* Problemkarten. */
+/* Problem cards. */
 .diag-probleme {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -665,7 +663,7 @@ a.einst-knopf { text-decoration: none; }
 .diag-gesehen[hidden] { display: none; }
 .diag-gesehen summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; margin-bottom: 0.6rem; }
 
-/* Akku und Messwerte. */
+/* Battery and measurements. */
 .diag-akku { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.8rem; }
 .diag-akku-wert { display: flex; align-items: baseline; gap: 0.6rem; }
 #diag-akku-v { font-size: 1.8rem; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -688,7 +686,7 @@ a.einst-knopf { text-decoration: none; }
 .diag-messwerte dd.warnung { color: var(--warn); }
 .diag-messwerte dd.kritisch { color: var(--danger); }
 
-/* Geräteliste mit Ampelpunkt. */
+/* Device list with status dot. */
 .diag-geraete { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
 .diag-geraete li {
   display: grid;
@@ -704,7 +702,7 @@ a.einst-knopf { text-decoration: none; }
 .diag-geraet-text { color: var(--muted); }
 .diag-geraete li.fehler .diag-geraet-text { color: var(--danger); }
 
-/* Filterzeile über Zeitleiste und Log. */
+/* Filter row above timeline and log. */
 .diag-filter {
   display: flex;
   align-items: center;
@@ -724,7 +722,7 @@ a.einst-knopf { text-decoration: none; }
 }
 .diag-filter input[type="search"] { flex: 1; min-width: 140px; }
 
-/* Zeitleiste. */
+/* Timeline. */
 .diag-ereignisse {
   list-style: none;
   margin: 0;
@@ -744,7 +742,7 @@ a.einst-knopf { text-decoration: none; }
 .diag-ereignisse time { color: var(--muted); font-variant-numeric: tabular-nums; }
 .diag-ereignisse li.kritisch .diag-ereignis-text { color: var(--danger); }
 
-/* Abstürze & Hänger */
+/* Crashes & hangs */
 .diag-unter { font-size: 0.85rem; color: var(--muted); margin: 0.9rem 0 0.3rem; font-weight: 600; }
 .diag-vorher { border-left: 3px solid var(--warn); padding: 0.4rem 0.7rem; margin-bottom: 0.8rem; }
 .diag-vorher.kritisch { border-left-color: var(--danger); }
@@ -764,7 +762,7 @@ a.einst-knopf { text-decoration: none; }
 .diag-befunde ul, .diag-befunde ol { padding-left: 1.2rem; font-size: 0.9rem; line-height: 1.5; }
 .diag-befunde code { font-size: 0.8rem; }
 
-/* Server-Log: Festbreitenschrift, damit die Spalten untereinander stehen. */
+/* Server log: monospace font so the columns line up. */
 .diag-log {
   background: #111317;
   border: 1px solid var(--line);
@@ -796,7 +794,7 @@ a.einst-knopf { text-decoration: none; }
 
 /* --- MUKKE --- */
 
-/* Eigene Farbe, damit man die beiden Knöpfe nicht verwechselt. */
+/* Its own colour so the two buttons are not confused. */
 .mukke-knopf {
   color: #f3dcff;
   background: linear-gradient(180deg, #4b2a63, #3a2050);
@@ -806,10 +804,10 @@ a.einst-knopf { text-decoration: none; }
   background: linear-gradient(180deg, #5a3377, #46275f);
   border-color: #c58af9;
 }
-/* Die Note dreht sich nicht wie das Zahnrad, sie hüpft. */
+/* The note does not rotate like the gear, it hops. */
 .mukke-knopf:hover svg { transform: translateY(-2px); }
 
-/* Spielt etwas, leuchtet der Knopf grün und die Note wippt. */
+/* While something plays, the button glows green and the note bobs. */
 .mukke-knopf.spielt {
   color: #d6ffe9;
   background: linear-gradient(180deg, #1f5a3f, #174631);
@@ -869,7 +867,7 @@ a.einst-knopf { text-decoration: none; }
 }
 .mukke-laut input { flex: 1; accent-color: #c58af9; }
 .mukke-laut output { min-width: 2.8rem; text-align: right; color: var(--text); }
-/* Durchsage: Hinweis, warum das Mikrofon nicht freigegeben ist (kein HTTPS). */
+/* Announcement: hint why the microphone is not permitted (no HTTPS). */
 .mikro-hinweis[hidden] { display: none; }
 .mikro-hinweis {
   margin: 0.3rem 0 0.6rem;
@@ -878,7 +876,7 @@ a.einst-knopf { text-decoration: none; }
 }
 .mikro-hinweis a { color: inherit; }
 
-/* --- Genau fahren (genau.js) --- */
+/* --- Precise driving (genau.js) --- */
 .genau-zeile { margin-bottom: 0.8rem; }
 .genau-zeile label { display: block; font-size: 0.85rem; margin-bottom: 0.4rem; }
 .genau-zeile input {
@@ -895,17 +893,17 @@ a.einst-knopf { text-decoration: none; }
 
 /* --- Healthbot (/healthbot) --- */
 
-/* Herz-Knopf auf der Startseite: rot, damit man ihn im Ernstfall sofort findet. */
-.hb-knopf {
+/* heart button on the start page: red so it is found at once in an emergency */
+.hb-button {
   color: #ffd9d9;
   background: linear-gradient(180deg, #6a2330, #521b26);
   border-color: #8f2d3d;
 }
-.hb-knopf:hover {
+.hb-button:hover {
   background: linear-gradient(180deg, #7d2a39, #63202d);
   border-color: var(--danger);
 }
-.hb-knopf:hover svg { transform: scale(1.15); }
+.hb-button:hover svg { transform: scale(1.15); }
 
 .hb-alarm {
   display: flex;
@@ -916,26 +914,26 @@ a.einst-knopf { text-decoration: none; }
   color: #fff;
   background: #7a1f2b;
   border-color: var(--danger);
-  animation: hb-pulsieren 1.2s ease-in-out infinite;
+  animation: hb-pulse 1.2s ease-in-out infinite;
 }
 .hb-alarm[hidden] { display: none; }
-@keyframes hb-pulsieren {
+@keyframes hb-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(240, 93, 93, 0.6); }
   50% { box-shadow: 0 0 0 10px rgba(240, 93, 93, 0); }
 }
 
-/* Schrittkette: erledigte Schritte grün, der laufende blau hervorgehoben. */
-.hb-schritte {
+/* step chain: finished steps green, the current one highlighted blue */
+.hb-steps {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
   list-style: none;
   padding: 0;
   margin: 0 0 0.8rem;
-  counter-reset: hb-schritt;
+  counter-reset: hb-step;
 }
-.hb-schritte li {
-  counter-increment: hb-schritt;
+.hb-steps li {
+  counter-increment: hb-step;
   flex: 1 1 7rem;
   padding: 0.45rem 0.6rem;
   border: 1px solid var(--line);
@@ -943,12 +941,12 @@ a.einst-knopf { text-decoration: none; }
   color: var(--muted);
   font-size: 0.9rem;
 }
-.hb-schritte li::before { content: counter(hb-schritt) ". "; }
-.hb-schritte li.erledigt { color: var(--ok); border-color: #2a6b51; }
-.hb-schritte li.aktiv { color: #fff; background: #1d3a5c; border-color: var(--accent); }
+.hb-steps li::before { content: counter(hb-step) ". "; }
+.hb-steps li.done { color: var(--ok); border-color: #2a6b51; }
+.hb-steps li.current { color: #fff; background: #1d3a5c; border-color: var(--accent); }
 
-.hb-jetzt { margin: 0 0 0.8rem; }
-.hb-marke {
+.hb-now { margin: 0 0 0.8rem; }
+.hb-badge {
   display: inline-block;
   padding: 0.1rem 0.5rem;
   border-radius: 999px;
@@ -957,12 +955,12 @@ a.einst-knopf { text-decoration: none; }
   border: 1px solid var(--line);
   white-space: nowrap;
 }
-.hb-marke.z-hilfe { background: #7a1f2b; border-color: var(--danger); color: #fff; }
-.hb-marke.z-ansprechbar, .hb-marke.z-unauffaellig { color: var(--ok); border-color: #2a6b51; }
-.hb-marke.z-abgebrochen, .hb-marke.z-keine_person { color: var(--warn); border-color: #7a5a1a; }
+.hb-badge.z-hilfe { background: #7a1f2b; border-color: var(--danger); color: #fff; }
+.hb-badge.z-ansprechbar, .hb-badge.z-unauffaellig { color: var(--ok); border-color: #2a6b51; }
+.hb-badge.z-abgebrochen, .hb-badge.z-keine_person { color: var(--warn); border-color: #7a5a1a; }
 
-.hb-zeile { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
-.hb-zeile input[type="text"] {
+.hb-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.hb-row input[type="text"] {
   flex: 1;
   min-width: 8rem;
   font: inherit;
@@ -972,15 +970,15 @@ a.einst-knopf { text-decoration: none; }
   border-radius: 8px;
   padding: 0.55rem 0.7rem;
 }
-.hb-zeile .btn:disabled { opacity: 0.45; cursor: default; }
-.hb-stop-knopf { background: #3a2126; color: var(--danger); border-color: #6b2b35; }
-.hb-stop-knopf:hover { background: var(--danger); color: #fff; }
-.hb-schalter { display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer; }
-.hb-schalter input { accent-color: var(--accent); }
-.hb-hinweis { color: var(--muted); font-size: 0.85rem; margin: 0.5rem 0 0; }
-.hb-hinweis[hidden] { display: none; }
+.hb-row .btn:disabled { opacity: 0.45; cursor: default; }
+.hb-stop-button { background: #3a2126; color: var(--danger); border-color: #6b2b35; }
+.hb-stop-button:hover { background: var(--danger); color: #fff; }
+.hb-toggle { display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer; }
+.hb-toggle input { accent-color: var(--accent); }
+.hb-note { color: var(--muted); font-size: 0.85rem; margin: 0.5rem 0 0; }
+.hb-note[hidden] { display: none; }
 
-.hb-karte {
+.hb-map {
   display: block;
   width: 100%;
   height: auto;
@@ -990,7 +988,7 @@ a.einst-knopf { text-decoration: none; }
   border-radius: 8px;
   cursor: crosshair;
 }
-.hb-legende i {
+.hb-legend i {
   display: inline-block;
   width: 0.7rem;
   height: 0.7rem;
@@ -998,19 +996,19 @@ a.einst-knopf { text-decoration: none; }
   border-radius: 50%;
   vertical-align: -1px;
 }
-.hb-legende i:first-child { margin-left: 0; }
-.hb-legende .lg-robo { background: #e6e8ec; }
-.hb-legende .lg-home { background: var(--ok); }
-.hb-legende .lg-ziel { background: var(--warn); }
-.hb-legende .lg-lidar { background: #4da3ff; }
-.hb-legende .lg-karte { background: #787878; }
+.hb-legend i:first-child { margin-left: 0; }
+.hb-legend .lg-robot { background: #e6e8ec; }
+.hb-legend .lg-home { background: var(--ok); }
+.hb-legend .lg-goal { background: var(--warn); }
+.hb-legend .lg-lidar { background: #4da3ff; }
+.hb-legend .lg-map { background: #787878; }
 
-/* Das Skelett liegt genau über dem Kamerabild. */
-.hb-kamera { position: relative; line-height: 0; }
-.hb-kamera img { width: 100%; height: auto; border-radius: 8px; background: #000; }
-.hb-kamera canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+/* the skeleton lies exactly over the camera image */
+.hb-camera { position: relative; line-height: 0; }
+.hb-camera img { width: 100%; height: auto; border-radius: 8px; background: #000; }
+.hb-camera canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
 
-/* Die vier Zeichen als Ampel: rot = auffällig, grün = unauffällig, grau = offen. */
+/* the four signs as traffic lights: red = conspicuous, green = fine, grey = open */
 .hb-checks {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
@@ -1028,15 +1026,15 @@ a.einst-knopf { text-decoration: none; }
   border-radius: 8px;
 }
 .hb-check p { grid-column: 1 / -1; margin: 0.35rem 0 0; color: var(--muted); font-size: 0.85rem; }
-.hb-check-urteil { grid-column: 2; font-size: 0.8rem; color: var(--muted); }
-.hb-check-ampel { grid-row: span 2; width: 0.9rem; height: 0.9rem; border-radius: 50%; background: #555; }
+.hb-check-verdict { grid-column: 2; font-size: 0.8rem; color: var(--muted); }
+.hb-check-light { grid-row: span 2; width: 0.9rem; height: 0.9rem; border-radius: 50%; background: #555; }
 .hb-check.auffaellig { border-left-color: var(--danger); }
-.hb-check.auffaellig .hb-check-ampel { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+.hb-check.auffaellig .hb-check-light { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
 .hb-check.ok { border-left-color: var(--ok); }
-.hb-check.ok .hb-check-ampel { background: var(--ok); }
+.hb-check.ok .hb-check-light { background: var(--ok); }
 .hb-check.unbekannt { border-left-color: #555; }
 
-.hb-urteil {
+.hb-verdict {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -1045,16 +1043,16 @@ a.einst-knopf { text-decoration: none; }
   border-radius: 8px;
   border: 1px solid var(--line);
 }
-.hb-urteil-stufe { font-weight: 700; font-size: 1.1rem; }
-.hb-punkte { margin-left: auto; color: var(--muted); font-size: 0.85rem; }
-.hb-urteil.notfall { background: #7a1f2b; border-color: var(--danger); color: #fff; }
-.hb-urteil.notfall .hb-punkte { color: #ffd9d9; }
-.hb-urteil.auffaellig { border-color: var(--warn); }
-.hb-urteil.auffaellig .hb-urteil-stufe { color: var(--warn); }
-.hb-urteil.ansprechbar .hb-urteil-stufe, .hb-urteil.unauffaellig .hb-urteil-stufe { color: var(--ok); }
-.hb-urteil.unbekannt .hb-urteil-stufe { color: var(--muted); }
+.hb-verdict-level { font-weight: 700; font-size: 1.1rem; }
+.hb-points { margin-left: auto; color: var(--muted); font-size: 0.85rem; }
+.hb-verdict.notfall { background: #7a1f2b; border-color: var(--danger); color: #fff; }
+.hb-verdict.notfall .hb-points { color: #ffd9d9; }
+.hb-verdict.auffaellig { border-color: var(--warn); }
+.hb-verdict.auffaellig .hb-verdict-level { color: var(--warn); }
+.hb-verdict.ansprechbar .hb-verdict-level, .hb-verdict.unauffaellig .hb-verdict-level { color: var(--ok); }
+.hb-verdict.unbekannt .hb-verdict-level { color: var(--muted); }
 
-.hb-stupser { margin: 0; padding-left: 1.1rem; font-size: 0.9rem; }
+.hb-nudges { margin: 0; padding-left: 1.1rem; font-size: 0.9rem; }
 
 .hb-timeline { list-style: none; margin: 0; padding: 0; max-height: 22rem; overflow-y: auto; }
 .hb-timeline li {
@@ -1072,3 +1070,61 @@ a.einst-knopf { text-decoration: none; }
 @media (prefers-reduced-motion: reduce) {
   .hb-alarm { animation: none; }
 }
+
+/* --- Tests (/tests) --- */
+.ts-steps { margin: 0.3rem 0 0.6rem; padding-left: 1.3rem; line-height: 1.5; }
+.ts-steps pre {
+  background: #15181d; border: 1px solid var(--line); border-radius: 6px;
+  padding: 0.5rem 0.7rem; overflow-x: auto; font-size: 0.85rem;
+}
+.ts-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.8rem; }
+.ts-tab {
+  background: #20242c; color: var(--muted); border: 1px solid var(--line);
+  border-radius: 999px; padding: 0.35rem 0.9rem; cursor: pointer; font: inherit;
+}
+.ts-tab[aria-selected="true"] { background: #1d3a5c; border-color: var(--accent); color: #fff; }
+.ts-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 0.8rem; }
+.ts-card, .ts-run {
+  border: 1px solid var(--line); border-radius: 10px; padding: 0.8rem 0.9rem;
+  background: #1a1d23;
+}
+.ts-card h3 { margin: 0 0 0.3rem; font-size: 1.05rem; }
+.ts-card h4 { margin: 0.7rem 0 0.2rem; font-size: 0.85rem; color: var(--muted); font-weight: 600; }
+.ts-summary { margin: 0; color: var(--muted); }
+.ts-phases { margin: 0; padding-left: 1.3rem; font-size: 0.9rem; line-height: 1.45; }
+.ts-sentence-small { color: var(--accent); }
+.ts-start { margin-top: 0.8rem; width: 100%; }
+.ts-start:disabled { opacity: 0.45; cursor: default; }
+
+/* the running test must be readable from a few meters (the tester may lie on the floor) */
+.ts-live { border-color: var(--accent); }
+.ts-live-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.ts-live-head h2 { margin: 0; }
+.ts-phase { margin: 0.6rem 0 0.2rem; font-size: 1.1rem; }
+.ts-lead { color: var(--warn); margin-left: 0.4rem; }
+.ts-instruction { font-size: 1.6rem; line-height: 1.3; margin: 0.4rem 0; color: #fff; }
+.ts-sentence { font-size: 1.8rem; color: var(--accent); margin: 0.4rem 0; font-weight: 600; }
+.ts-rest { font-size: 2.6rem; font-variant-numeric: tabular-nums; margin: 0.2rem 0 0.6rem; font-weight: 700; }
+.ts-values { display: grid; gap: 0.35rem; }
+.ts-value { display: flex; gap: 0.8rem; align-items: center; }
+.ts-value-name { color: var(--muted); min-width: 9rem; }
+.ts-level { flex: 1; max-width: 420px; height: 14px; background: #272b34; border-radius: 7px; overflow: hidden; }
+/* cameras below the values; small enough that the instruction stays readable */
+.ts-cams { margin-top: 0.8rem; max-width: 900px; }
+.ts-level-fill { height: 100%; width: 0; background: var(--ok); transition: width 0.2s linear; }
+
+.ts-message { margin: 0; padding: 0.6rem 0.9rem; border: 1px solid var(--line); border-radius: 8px; background: #1a1d23; }
+.ts-message.ts-error { border-color: var(--danger); }
+
+.ts-runs { display: grid; gap: 0.6rem; margin-top: 0.6rem; }
+.ts-run-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: pointer; }
+.ts-time { color: var(--muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.ts-results { margin: 0.5rem 0; padding-left: 1.2rem; font-size: 0.9rem; line-height: 1.45; }
+.ts-run .hb-row input[type="text"] { flex: 1; min-width: 12rem; }
+.ts-run a.btn { text-decoration: none; }
+/* one line per run: what came out (verdict of the server) */
+.ts-verdict { margin: 0.4rem 0 0; font-weight: 600; }
+.ts-ok { color: var(--ok); }
+.ts-warn { color: var(--warn); }
+.ts-error { color: var(--danger); }
+#ts-token summary { cursor: pointer; font-weight: 600; }

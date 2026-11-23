@@ -1,4 +1,4 @@
-"""Ton auf dem USB-Lautsprecher.
+"""Sound on the USB speaker.
 
-``mukke``  YouTube-Links abspielen (mpv + yt-dlp)
+``mukke``  play YouTube links (mpv + yt-dlp)
 """

@@ -1,9 +1,9 @@
-"""Die Schnittstelle, die jeder Antrieb erfüllen muss.
+"""The interface every drive must implement.
 
-Der restliche Code kennt nur diese Klasse, nie einen konkreten Treiber.
-Dadurch lässt sich die Hardware austauschen -- gegen den Mock zum Entwickeln,
-oder später gegen eine ROS2-Anbindung -- ohne dass Server oder Watchdog
-angefasst werden müssen.
+The rest of the code knows only this class, never a concrete driver.
+This makes the hardware swappable -- for the mock during development,
+or later for a ROS2 connection -- without touching the server or the
+watchdog.
 """
 
 from __future__ import annotations
@@ -14,79 +14,79 @@ from ..protocol import DriveCommand
 
 
 class DriveBase(ABC):
-    """Ein Antrieb, der Fahrbefehle ausführen kann."""
+    """A drive that can execute drive commands."""
 
-    #: Kurzname für Logausgaben und Statusmeldungen an die App.
+    #: Short name for log output and status messages to the app.
     name: str = "base"
 
     @abstractmethod
     def connect(self) -> None:
-        """Verbindung zur Hardware aufbauen. Muss vor `drive` laufen."""
+        """Connect to the hardware. Must run before `drive`."""
 
     @abstractmethod
     def disconnect(self) -> None:
-        """Verbindung sauber schließen. Hält den Roboter vorher an."""
+        """Close the connection cleanly. Stops the robot first."""
 
     @abstractmethod
     def drive(self, cmd: DriveCommand) -> None:
-        """Fahrbefehl ausführen.
+        """Execute a drive command.
 
-        Wird oft aufgerufen (mehrmals pro Sekunde) und muss schnell
-        zurückkehren -- also nicht blockieren.
+        Called often (several times per second) and must return quickly
+        -- so it must not block.
         """
 
     @abstractmethod
     def stop(self) -> None:
-        """Sofort anhalten.
+        """Stop immediately.
 
-        Muss auch dann funktionieren, wenn vorher etwas schiefgelaufen ist,
-        und darf keine Ausnahme werfen.
+        Must work even if something went wrong before, and must not raise
+        an exception.
         """
 
     def beep(self, ms: int = 100) -> None:
-        """Signalton. Optional -- Standard ist: passiert nichts."""
+        """Beep. Optional -- the default does nothing."""
 
-    def ueberwachen(self) -> None:
-        """Verbindung prüfen und nach einem Abriss neu aufbauen.
+    def monitor(self) -> None:
+        """Check the connection and re-establish it after a dropout.
 
-        Wird regelmäßig aus einem Hintergrund-Thread aufgerufen und darf
-        dabei kurz blockieren. Ob die Verbindung steht, meldet danach
-        ``connected``. Standard: nichts zu tun.
+        Called regularly from a background thread and may block briefly.
+        Whether the connection is up is reported afterwards by
+        ``connected``. Default: nothing to do.
         """
 
     def read_motion(self) -> tuple[float, float, float] | None:
-        """Tatsächlich gefahrene Geschwindigkeit (vx, vy, omega), falls messbar.
+        """Actually driven velocity (vx, vy, omega), if measurable.
 
-        Für die Positionsverfolgung deutlich besser als der befohlene Wert:
-        rutschende Räder, Steigungen und Anfahrverzögerung schlagen sich hier
-        nieder. ``None`` bedeutet "nicht messbar" -- dann wird ersatzweise mit
-        dem Befehl gerechnet.
+        Much better for position tracking than the commanded value:
+        slipping wheels, slopes and start-up delay show up here.
+        ``None`` means "not measurable" -- then the command is used
+        instead.
         """
         return None
 
     def read_heading(self) -> float | None:
-        """Blickrichtung in Grad aus der IMU, falls vorhanden.
+        """Heading in degrees from the IMU, if available.
 
-        Ein gemessener Winkel ist der aufsummierten Drehrate weit überlegen:
-        beim Aufsummieren wächst der Fehler mit jeder Drehung, hier nicht.
+        A measured angle is far superior to an integrated turn rate: when
+        integrating, the error grows with every turn; here it does not.
         """
         return None
 
     def read_battery(self) -> float | None:
-        """Akkuspannung in Volt, falls messbar.
+        """Battery voltage in volts, if measurable.
 
-        Für die Diagnoseseite: ein schwacher Akku ist am X3 die häufigste
-        Ursache für Abmeldungen des Boards. ``None`` heißt "nicht messbar".
+        For the diagnostics page: a weak battery is the most common cause
+        of the board dropping out on the X3. ``None`` means "not measurable".
         """
         return None
 
     @property
     @abstractmethod
     def connected(self) -> bool:
-        """Ob die Verbindung zur Hardware steht."""
+        """Whether the connection to the hardware is up."""
 
-    # Ermöglicht `with create_driver(...) as drv:` -- der Roboter hält auch
-    # dann an, wenn das Programm mit einer Ausnahme endet.
+    # Enables `with create_driver(...) as drv:` -- the robot stops even
+    # when the program ends with an exception.
     def __enter__(self) -> "DriveBase":
         self.connect()
         return self

@@ -1,35 +1,35 @@
-# Mapping-Weboberfläche integrieren
+# Integrating the mapping web interface
 
-> **Stand 03.11.2026: bereits eingebaut** (`api/server.py`). Diese Anleitung
-> ist nur noch zur Geschichte da. Wichtig: `/scan` und TF liefert inzwischen
-> unser Server selbst über `einspeisung.py`, siehe E8 in
-> `docs/entscheidungen.md` und den Abschnitt „Kartierung“ in `docs/api.md`.
-> `sllidar_node` und `yahboomcar_bringup` dürfen dafür **nicht** laufen.
+> **As of 03.11.2026: already built in** (`api/server.py`). This guide is
+> only kept for the record. Important: `/scan` and TF are now provided by our
+> own server via `scan_feed.py`, see E8 in `docs/decisions.md` and the
+> section "Mapping (SLAM)" in `docs/api.md`. `sllidar_node` and
+> `yahboomcar_bringup` must **not** run for this.
 
-Diese Ergänzung überschreibt keine bestehende `api.py`.
+This addition does not overwrite an existing `api.py`.
 
-## 1. Dateien kopieren
+## 1. Copy the files
 
-Den Inhalt dieses Pakets in das Projektverzeichnis entpacken. Es ergänzt:
+Unpack the contents of this package into the project directory. It adds:
 
 - `robot/rosmaster_assist/mapping/web.py`
 - `robot/rosmaster_assist/templates/map.html`
 
-Die vier bereits gelieferten Dateien im Ordner `mapping/` bleiben bestehen.
+The four files already delivered in the `mapping/` folder stay in place.
 
-## 2. In `api.py` die Funktion `create_app(...)` erweitern
+## 2. Extend the function `create_app(...)` in `api.py`
 
-In `robot/rosmaster_assist/api.py` die folgenden Imports ergänzen (oben bei den anderen Imports oder innerhalb von `create_app`):
+In `robot/rosmaster_assist/api.py`, add the following imports (at the top with the other imports or inside `create_app`):
 
 ```python
 from .mapping.manager import MappingManager
 from .mapping.web import create_mapping_router
 ```
 
-Innerhalb der Funktion `create_app(driver, use_mock_camera=...)`:
+Inside the function `create_app(driver, use_mock_camera=...)`:
 
-1. Suche die Stelle, an der die FastAPI-Instanz erstellt wird, z. B. `app = FastAPI(...)`.
-2. Direkt danach – und unbedingt vor `return app` – diesen Block einsetzen:
+1. Find the place where the FastAPI instance is created, e.g. `app = FastAPI(...)`.
+2. Directly after it – and definitely before `return app` – insert this block:
 
 ```python
     mapping_manager = MappingManager()
@@ -40,40 +40,40 @@ Innerhalb der Funktion `create_app(driver, use_mock_camera=...)`:
         try:
             mapping_manager.stop()
         except Exception:
-            # Beispielsweise, wenn Docker beim Herunterfahren bereits beendet ist.
+            # For example when Docker has already been shut down.
             logging.getLogger(__name__).exception(
-                "Mapping konnte beim Herunterfahren nicht sauber gestoppt werden"
+                "Could not stop mapping cleanly during shutdown"
             )
 
     app.add_event_handler("shutdown", _stop_mapping_on_shutdown)
 ```
 
-Die Einrückung muss zum Funktionsrumpf von `create_app` passen. `logging` muss in `api.py` importiert sein; falls nicht, oben `import logging` ergänzen.
+The indentation must match the function body of `create_app`. `logging` must be imported in `api.py`; if it is not, add `import logging` at the top.
 
-**Die zu erweiternde Funktion heißt `create_app()` in `api.py`.** Nicht `main()` in `main.py` ändern. Der Router registriert `/map`, die API-Endpunkte und den WebSocket.
+**The function to extend is `create_app()` in `api.py`.** Do not change `main()` in `main.py`. The router registers `/map`, the API endpoints and the WebSocket.
 
 ## 3. URLs
 
-- `GET /map` – Mapping-Oberfläche
-- `GET /api/mapping/status` – Status
-- `POST /api/mapping/start` – SLAM starten
-- `POST /api/mapping/stop` – SLAM stoppen
-- `GET /api/mapping/map` – letzte Karte als JSON
-- `POST /api/mapping/save` – letzte Karte als PGM + YAML speichern
-- `GET /api/mapping/maps` – gespeicherte Karten auflisten
-- `WS /api/mapping/ws` – Status und Live-Kartenupdates
+- `GET /map` – mapping interface
+- `GET /api/mapping/status` – status
+- `POST /api/mapping/start` – start SLAM
+- `POST /api/mapping/stop` – stop SLAM
+- `GET /api/mapping/map` – latest map as JSON
+- `POST /api/mapping/save` – save the latest map as PGM + YAML
+- `GET /api/mapping/maps` – list saved maps
+- `WS /api/mapping/ws` – status and live map updates
 
-## 4. Konfiguration
+## 4. Configuration
 
-Der Manager nutzt standardmäßig:
+By default the manager uses:
 
-- Docker-Container: `x3`
-- ROS-Setup: `/opt/ros/foxy/setup.bash`
-- SLAM-Paket: `slam_toolbox`
-- Launch-Datei: `online_async_launch.py`
-- Kartentopic: `/map`
+- Docker container: `x3`
+- ROS setup: `/opt/ros/foxy/setup.bash`
+- SLAM package: `slam_toolbox`
+- Launch file: `online_async_launch.py`
+- Map topic: `/map`
 
-Diese Werte lassen sich vor dem Start der Web-App über Umgebungsvariablen überschreiben:
+These values can be overridden with environment variables before starting the web app:
 
 ```bash
 export ROSMAP_CONTAINER=x3
@@ -82,4 +82,4 @@ export ROSMAP_SLAM_LAUNCH=online_async_launch.py
 export ROSMAP_TOPIC=/map
 ```
 
-Wichtig: Der Standard-Launch funktioniert nur, wenn im Container `slam_toolbox` vorhanden ist und ROS 2 die benötigten Sensordaten/TF-Frames bereitstellt (typisch `/scan` sowie `odom` → `base_link`). Das muss auf dem echten Roboter getestet werden.
+Important: the default launch only works if `slam_toolbox` is present in the container and ROS 2 provides the required sensor data/TF frames (typically `/scan` and `odom` → `base_link`). This has to be tested on the real robot.

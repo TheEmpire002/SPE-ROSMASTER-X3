@@ -1,28 +1,28 @@
-"""Kollisionsvermeidung für die manuelle Steuerung.
+"""Collision avoidance for manual control.
 
-Die autonomen Modi prüft der Fahrschutz direkt im Watchdog
-(``quelle="autonom"``, immer an). Bis 03.11. tat das hier ``AutonomSchutz``
-mit einem Streifen in Fahrtrichtung; der kannte keine Drehung und keinen
-Bogen und ist im Fahrschutz aufgegangen.
+The autonomous modes are checked by the drive guard directly in the watchdog
+(``source="autonom"``, always on). Until 03.11. this was done here by
+``AutonomousGuard`` with a strip in the driving direction; it knew no rotation
+and no arc and has been merged into the drive guard.
 
-Prüft vor jedem Fahrbefehl über den Fahrschutz (``fahrschutz.py``), ob die
-Grundfläche des Roboters etwas berühren würde, und bremst rechtzeitig --
-stufenlos, nicht erst an einer harten Grenze. Früher war das ein Kegel ab
-Lidar-Mitte mit hartem Stopp; der übersah Tischbeine neben den Rädern,
-ließ den Roboter mit vollem Tempo heranrollen und kannte keine Drehung.
+Before every drive command it checks via the drive guard (``drive_guard.py``)
+whether the robot's footprint would touch something, and brakes in time --
+smoothly, not only at a hard limit. This used to be a cone from the lidar
+centre with a hard stop; it missed table legs next to the wheels, let the
+robot roll up at full speed and knew no rotation.
 
-Entwurfsentscheidungen, die das Verhalten prägen:
+Design decisions that shape the behavior:
 
-**Nur gesperrt, was näher heranführt.** Wegfahren und Drehen, bei dem keine
-Ecke anstößt, bleiben erlaubt; sobald der Mensch in eine andere Richtung
-steuert, fährt der Roboter wieder. Ein pauschaler Stopp würde ihn vor jedem
-Hindernis festnageln -- man müsste ihn tragen, um ihn zu befreien.
+**Block only what leads closer.** Driving away and turning without any
+corner bumping into something stay allowed; as soon as the human steers in
+another direction, the robot drives again. A blanket stop would pin it in
+front of every obstacle -- you would have to carry it to free it.
 
-**Serverseitig, nicht in der App.** Die Lidar-Daten liegen hier, und eine
-Sperre, die sich über die Browser-Konsole umgehen lässt, wäre keine.
+**Server side, not in the app.** The lidar data is here, and a block that
+can be bypassed through the browser console would be no block at all.
 
-Standardmäßig **aus**: Wer von Hand steuert, sieht den Roboter meist und
-will nicht bevormundet werden. Einschalten lässt sich das in der App.
+**Off** by default: whoever steers by hand usually sees the robot and does
+not want to be patronised. It can be switched on in the app.
 """
 
 from __future__ import annotations
@@ -32,103 +32,103 @@ import time
 
 from .. import config
 from ..protocol import STOP, DriveCommand
-from .fahrschutz import KEIN_LIDAR
+from .drive_guard import NO_LIDAR
 
 log = logging.getLogger(__name__)
 
 
 class CollisionGuard:
-    """Filtert Fahrbefehle anhand der Lidar-Daten."""
+    """Filters drive commands based on the lidar data."""
 
-    #: Nicht häufiger als alle paar Sekunden melden -- sonst flutet die
-    #: Meldung bei gedrückter Taste das Protokoll in der App.
-    MELDE_ABSTAND_S = 2.0
+    #: Report no more often than every few seconds -- otherwise, with a key
+    #: held down, the message floods the log in the app.
+    REPORT_INTERVAL_S = 2.0
 
-    def __init__(self, localizer=None, fahrschutz=None) -> None:
+    def __init__(self, localizer=None, drive_guard=None) -> None:
         self._localizer = localizer
-        self._fahrschutz = fahrschutz
+        self._drive_guard = drive_guard
         self.enabled = config.COLLISION_ENABLED
         self.distance = config.COLLISION_DISTANCE_M
-        self._blockiert_seit: float | None = None
-        self._zuletzt_gemeldet = 0.0
+        self._blocked_since: float | None = None
+        self._last_reported = 0.0
 
     @property
-    def verfuegbar(self) -> bool:
-        """Ob überhaupt ein Sensor da ist, der Hindernisse sehen könnte."""
-        return self._fahrschutz is not None and (
-            self._localizer is None or self._localizer.verfuegbar
+    def available(self) -> bool:
+        """Whether there is any sensor at all that could see obstacles."""
+        return self._drive_guard is not None and (
+            self._localizer is None or self._localizer.available
         )
 
     @property
-    def blockiert(self) -> bool:
-        return self._blockiert_seit is not None
+    def blocked(self) -> bool:
+        return self._blocked_since is not None
 
-    def einstellen(self, enabled: bool | None, distance: float | None) -> None:
+    def configure(self, enabled: bool | None, distance: float | None) -> None:
         if enabled is not None:
             self.enabled = bool(enabled)
             if not self.enabled:
-                self._blockiert_seit = None
+                self._blocked_since = None
         if distance is not None:
-            # Begrenzen, damit niemand versehentlich einen Wert setzt, bei
-            # dem der Roboter sich überhaupt nicht mehr bewegt.
+            # Clamp so nobody accidentally sets a value at which the robot
+            # no longer moves at all.
             self.distance = max(
                 config.COLLISION_MIN_M, min(config.COLLISION_MAX_M, float(distance))
             )
         log.info(
-            "Kollisionsvermeidung: %s, Mindestabstand %.2f m",
-            "an" if self.enabled else "aus",
+            "Collision avoidance: %s, minimum distance %.2f m",
+            "on" if self.enabled else "off",
             self.distance,
         )
 
-    def zustand(self) -> dict:
+    def state(self) -> dict:
         return {
             "enabled": self.enabled,
             "distance": round(self.distance, 2),
-            "verfuegbar": self.verfuegbar,
-            "blockiert": self.blockiert,
+            "verfuegbar": self.available,
+            "blockiert": self.blocked,
         }
 
-    def pruefen(self, cmd: DriveCommand) -> tuple[DriveCommand, float | None]:
-        """Gibt den erlaubten Befehl zurück, dazu den Hindernisabstand.
+    def check(self, cmd: DriveCommand) -> tuple[DriveCommand, float | None]:
+        """Returns the allowed command, together with the obstacle distance.
 
-        Der zweite Wert ist None, wenn nichts im Weg war.
+        The second value is None if nothing was in the way.
         """
-        if not self.enabled or self._fahrschutz is None:
-            self._blockiert_seit = None
+        if not self.enabled or self._drive_guard is None:
+            self._blocked_since = None
             return cmd, None
 
-        # Der Regler in der App meint den Abstand ab Lidar-Mitte nach vorn.
-        # Als Luft an der Roboterkante ist das rundum derselbe Rand.
-        rand = max(0.02, self.distance - config.ROBOTER_VORN_M)
-        pruefung = self._fahrschutz.pruefen(cmd, rand)
+        # The slider in the app means the distance forward from the lidar centre.
+        # As clearance at the robot's edge it is the same margin all around.
+        margin = max(0.02, self.distance - config.ROBOT_FRONT_M)
+        verdict = self._drive_guard.check(cmd, margin)
 
-        if pruefung.grund == KEIN_LIDAR:
-            # Ohne Lidar kann der Schutz nicht helfen. Wer von Hand steuert,
-            # sieht den Roboter -- also nicht auch noch die Handsteuerung
-            # lahmlegen. Selbstständige Fahrten halten dagegen an.
-            self._blockiert_seit = None
+        if verdict.reason == NO_LIDAR:
+            # Without a lidar the guard cannot help. Whoever steers by hand
+            # sees the robot -- so do not cripple manual control as well.
+            # Autonomous drives, on the other hand, stop.
+            self._blocked_since = None
             return cmd, None
-        if pruefung.anteil > 0.0:
-            # Frei oder nur gebremst: kein Grund für eine Meldung.
-            self._blockiert_seit = None
-            return pruefung.befehl, None
+        if verdict.share > 0.0:
+            # Free or only braked: no reason for a message.
+            self._blocked_since = None
+            return verdict.command, None
 
-        # Die Fahrt ist gesperrt. Die Drehung allein darf bleiben, wenn
-        # dabei keine Ecke anstößt -- mit knappem Rand, damit man sich auch
-        # dicht vor einer Wand noch herausdrehen kann.
+        # The drive is blocked. The rotation alone may remain if no corner
+        # bumps into anything -- with a tight margin, so you can still turn
+        # out even right in front of a wall.
         rest = STOP
         if abs(cmd.omega) > 1e-6 and (abs(cmd.vx) > 1e-6 or abs(cmd.vy) > 1e-6):
-            drehen = self._fahrschutz.pruefen(DriveCommand(0.0, 0.0, cmd.omega), min(rand, 0.03))
-            if drehen.anteil > 0.0:
-                rest = drehen.befehl
-        if self._blockiert_seit is None:
-            self._blockiert_seit = time.monotonic()
-        return rest, (pruefung.frei_m or 0.0) + rand
+            turn_check = self._drive_guard.check(DriveCommand(0.0, 0.0, cmd.omega), min(margin, 0.03))
+            if turn_check.share > 0.0:
+                rest = turn_check.command
+        if self._blocked_since is None:
+            self._blocked_since = time.monotonic()
+        return rest, (verdict.free_m or 0.0) + margin
 
-    def melden(self) -> bool:
-        """Ob jetzt eine Meldung an die App sinnvoll ist (entprellt)."""
-        jetzt = time.monotonic()
-        if jetzt - self._zuletzt_gemeldet < self.MELDE_ABSTAND_S:
+    def report(self) -> bool:
+        """Whether a message to the app makes sense now (debounced)."""
+        now = time.monotonic()
+        if now - self._last_reported < self.REPORT_INTERVAL_S:
             return False
-        self._zuletzt_gemeldet = jetzt
+        self._last_reported = now
         return True

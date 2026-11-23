@@ -1,5 +1,5 @@
-# Sensor-Check Phase A: direkt ueber Rosmaster_Lib (ohne ROS), Raeder in der Luft.
-# Aufruf auf dem Pi:  python3 sensorcheck_a.py  -> schreibt phase_a.txt / phase_a.json
+# Sensor check phase A: directly via Rosmaster_Lib (without ROS), wheels in the air.
+# Run on the Pi:  python3 sensorcheck_a.py  -> writes phase_a.txt / phase_a.json
 import json
 import statistics as st
 import sys
@@ -32,7 +32,7 @@ time.sleep(1.0)
 
 
 def sample(dur, hz=20):
-    """Alle Sensoren fuer dur Sekunden mitschreiben."""
+    """Record all sensors for dur seconds."""
     rows = []
     t_end = time.time() + dur
     while time.time() < t_end:
@@ -47,8 +47,8 @@ def sample(dur, hz=20):
                 "enc": bot.get_motor_encoder(),
                 "volt": bot.get_battery_voltage(),
             })
-        except Exception as e:          # serielle Verbindung weg?
-            log(f"FEHLER beim Lesen: {e!r}")
+        except Exception as e:          # serial connection gone?
+            log(f"ERROR while reading: {e!r}")
         time.sleep(1.0 / hz)
     return rows
 
@@ -66,47 +66,47 @@ def summary(rows):
 
 
 def stuck(rows):
-    """Haengen die Werte (USB weg)? -> alle Encoder/IMU-Werte unveraendert."""
+    """Are the values stuck (USB gone)? -> all encoder/IMU values unchanged."""
     return len({(tuple(r["enc"]), tuple(r["acc"])) for r in rows}) <= 1
 
 
 try:
-    # --- 1. Stammdaten ---
+    # --- 1. Base data ---
     DATA["version"] = bot.get_version()
     DATA["car_type"] = bot.get_car_type_from_machine()
     DATA["pid"] = bot.get_motion_pid()
     log(f"Firmware {DATA['version']}, car_type {DATA['car_type']}, PID {DATA['pid']}")
 
-    # --- 2. Ruhe ---
-    log("Ruhe 10 s ...")
+    # --- 2. At rest ---
+    log("at rest 10 s ...")
     rows = sample(10)
     DATA["ruhe"] = summary(rows)
     DATA["ruhe"]["haengt"] = stuck(rows)
     r = DATA["ruhe"]
-    log(f"  Akku {r['volt']}")
+    log(f"  battery {r['volt']}")
     log(f"  acc {r['acc']}")
     log(f"  gyro {r['gyro']}")
     log(f"  mag {r['mag']}")
     log(f"  att (roll,pitch,yaw) {r['att']}")
-    log(f"  enc_delta {r['enc_delta']}  haengt={r['haengt']}")
+    log(f"  enc_delta {r['enc_delta']}  stuck={r['haengt']}")
 
-    # --- 3. Jedes Rad einzeln ---
+    # --- 3. Each wheel on its own ---
     DATA["einzeln"] = {}
     for m in range(4):
         for sp in (30, -30):
             sp_list = [0, 0, 0, 0]
             sp_list[m] = sp
-            log(f"Motor {m + 1} mit {sp} ...")
+            log(f"motor {m + 1} at {sp} ...")
             bot.set_motor(*sp_list)
             rows = sample(2.0)
             bot.set_motor(0, 0, 0, 0)
             s = summary(rows)
             DATA["einzeln"][f"M{m + 1}_{sp}"] = s
-            log(f"  enc_delta {s['enc_delta']}  Akku min {s['volt'] and s['volt']['min']}"
+            log(f"  enc_delta {s['enc_delta']}  battery min {s['volt'] and s['volt']['min']}"
                 f"  vel {[x and x['mittel'] for x in s['vel']]}")
             time.sleep(0.8)
 
-    # --- 4. Fahrbefehle (Mecanum-Kinematik) ---
+    # --- 4. Drive commands (mecanum kinematics) ---
     DATA["fahrt"] = {}
     for name, cmd in (("vor", (0.2, 0, 0)), ("zurueck", (-0.2, 0, 0)),
                       ("links", (0, 0.2, 0)), ("rechts", (0, -0.2, 0)),
@@ -118,35 +118,35 @@ try:
         s = summary(rows)
         DATA["fahrt"][name] = s
         log(f"  enc_delta {s['enc_delta']}  vel {[x and x['mittel'] for x in s['vel']]}"
-            f"  Akku min {s['volt'] and s['volt']['min']}")
+            f"  battery min {s['volt'] and s['volt']['min']}")
         time.sleep(0.8)
 
-    # --- 5. Lasttest: alle Raeder, steigende Leistung ---
+    # --- 5. Load test: all wheels, increasing power ---
     DATA["last"] = {}
     for sp in (40, 70, 100):
-        log(f"Last: alle Motoren {sp} fuer 3 s ...")
+        log(f"load: all motors {sp} for 3 s ...")
         bot.set_motor(sp, sp, sp, sp)
         rows = sample(3.0)
         bot.set_motor(0, 0, 0, 0)
         s = summary(rows)
         s["haengt"] = stuck(rows)
         DATA["last"][str(sp)] = s
-        log(f"  Akku {s['volt']}  enc_delta {s['enc_delta']}  haengt={s['haengt']}")
+        log(f"  battery {s['volt']}  enc_delta {s['enc_delta']}  stuck={s['haengt']}")
         time.sleep(2.0)
     rows = sample(3.0)
     DATA["nach_last"] = summary(rows)
-    log(f"Akku nach Last (Erholung) {DATA['nach_last']['volt']}")
+    log(f"battery after load (recovery) {DATA['nach_last']['volt']}")
 
     # --- 6. Buzzer + LEDs ---
-    log("Buzzer 100 ms, LEDs rot/gruen/blau")
+    log("buzzer 100 ms, LEDs red/green/blue")
     bot.set_beep(100)
     for rgb in ((255, 0, 0), (0, 255, 0), (0, 0, 255)):
         bot.set_colorful_lamps(0xFF, *rgb)
         time.sleep(0.6)
     bot.set_colorful_lamps(0xFF, 0, 0, 0)
-    log("fertig")
+    log("done")
 except KeyboardInterrupt:
-    log("abgebrochen")
+    log("cancelled")
 finally:
     bot.set_motor(0, 0, 0, 0)
     bot.set_car_motion(0, 0, 0)

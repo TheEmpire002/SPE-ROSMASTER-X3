@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Findet heraus, warum kein Kamerabild kommt.
+"""Finds out why no camera image arrives.
 
-Auf dem Roboter ausführen, mit dem Python der virtuellen Umgebung:
+Run on the robot, with the Python of the virtual environment:
 
     robot/.venv/bin/python scripts/check_camera.py
 
-Geprüft wird der Reihe nach alles, was zwischen Kamera und Bild stehen kann:
-vorhandene Geräte, Zugriffsrechte, konkurrierende Prozesse, OpenCV und das
-tatsächliche Öffnen jedes Kandidaten. Am Ende steht ein Urteil.
+It checks, in order, everything that can stand between camera and image:
+existing devices, access rights, competing processes, OpenCV and actually
+opening each candidate. At the end there is a verdict.
 
-Der Server muss dafür **beendet** sein -- sonst hält er die Kamera selbst
-und das Skript meldet sie als belegt.
+The server must be **stopped** for this -- otherwise it holds the camera
+itself and the script reports it as busy.
 """
 
 from __future__ import annotations
@@ -25,21 +25,21 @@ import sys
 import time
 from pathlib import Path
 
-# Die Filterliste nicht doppelt pflegen: sie kommt aus dem Paket selbst.
+# Do not maintain the filter list twice: it comes from the package itself.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "robot" / "src"))
 try:
-    from rosmaster_assist.sensors.camera import KEINE_KAMERA
+    from rosmaster_assist.sensors.camera import NOT_A_CAMERA
 except ImportError:
-    KEINE_KAMERA = ("pispbe", "hevc", "codec", "isp", "cfe", "rpivid")
+    NOT_A_CAMERA = ("pispbe", "hevc", "codec", "isp", "cfe", "rpivid")
 
-befunde: list[str] = []
+findings: list[str] = []
 
 
 def headline(text: str) -> None:
     print(f"\n{text}\n{'-' * len(text)}")
 
 
-def geraetename(idx: int) -> str:
+def device_name(idx: int) -> str:
     try:
         with open(f"/sys/class/video4linux/video{idx}/name") as f:
             return f.read().strip()
@@ -47,134 +47,134 @@ def geraetename(idx: int) -> str:
         return ""
 
 
-def video_indizes() -> list[int]:
+def video_indices() -> list[int]:
     out = []
-    for pfad in sorted(glob.glob("/dev/video*")):
-        treffer = re.search(r"(\d+)$", pfad)
-        if treffer:
-            out.append(int(treffer.group(1)))
+    for path in sorted(glob.glob("/dev/video*")):
+        hits = re.search(r"(\d+)$", path)
+        if hits:
+            out.append(int(hits.group(1)))
     return sorted(out)
 
 
-def ist_kamera(idx: int) -> bool:
-    name = geraetename(idx).lower()
-    return not any(wort in name for wort in KEINE_KAMERA)
+def is_camera(idx: int) -> bool:
+    name = device_name(idx).lower()
+    return not any(word in name for word in NOT_A_CAMERA)
 
 
-# --- 1. Welche Geräte gibt es --------------------------------------------------
+# --- 1. Which devices exist ----------------------------------------------------
 
 
-def pruefe_geraete() -> list[int]:
-    headline("1. Geräte unter /dev/video*")
-    alle = video_indizes()
-    if not alle:
-        print("  keine gefunden")
-        befunde.append("Es gibt überhaupt keine /dev/video*-Geräte. "
-                       "Kamera nicht eingesteckt oder nicht erkannt (lsusb prüfen).")
+def check_devices() -> list[int]:
+    headline("1. Devices under /dev/video*")
+    all_ports = video_indices()
+    if not all_ports:
+        print("  none found")
+        findings.append("There are no /dev/video* devices at all. "
+                       "Camera not plugged in or not detected (check lsusb).")
         return []
 
-    kameras = []
-    for idx in alle:
-        name = geraetename(idx) or "?"
-        if ist_kamera(idx):
-            kameras.append(idx)
-            print(f"  /dev/video{idx:<3} {name}   <- Kamera-Kandidat")
+    cameras = []
+    for idx in all_ports:
+        name = device_name(idx) or "?"
+        if is_camera(idx):
+            cameras.append(idx)
+            print(f"  /dev/video{idx:<3} {name}   <- camera candidate")
         else:
             print(f"  /dev/video{idx:<3} {name}")
 
-    if not kameras:
-        befunde.append("Alle gefundenen Geräte sind Codec-/Bildverarbeitungs-"
-                       "Einheiten, keine Kamera darunter.")
-    return kameras
+    if not cameras:
+        findings.append("All devices found are codec/image-processing "
+                       "units, no camera among them.")
+    return cameras
 
 
-# --- 2. Rechte ------------------------------------------------------------------
+# --- 2. Permissions -------------------------------------------------------------
 
 
-def pruefe_rechte(kandidaten: list[int]) -> None:
-    headline("2. Zugriffsrechte")
+def check_permissions(candidates: list[int]) -> None:
+    headline("2. Access rights")
     try:
         import grp
 
-        gruppen = [grp.getgrgid(g).gr_name for g in os.getgroups()]
+        groups = [grp.getgrgid(g).gr_name for g in os.getgroups()]
     except Exception:
-        gruppen = []
+        groups = []
 
-    print(f"  Benutzer: {os.getlogin() if hasattr(os, 'getlogin') else '?'}")
-    print(f"  Gruppen:  {', '.join(gruppen) or '?'}")
+    print(f"  User:     {os.getlogin() if hasattr(os, 'getlogin') else '?'}")
+    print(f"  Groups:   {', '.join(groups) or '?'}")
 
-    if gruppen and "video" not in gruppen:
-        print("  [!] nicht in der Gruppe 'video'")
-        befunde.append("Der Benutzer ist nicht in der Gruppe 'video'. "
-                       "Beheben: sudo usermod -aG video $USER, danach neu anmelden.")
+    if groups and "video" not in groups:
+        print("  [!] not in group 'video'")
+        findings.append("The user is not in group 'video'. "
+                       "Fix: sudo usermod -aG video $USER, then log in again.")
 
-    for idx in kandidaten:
-        pfad = f"/dev/video{idx}"
+    for idx in candidates:
+        path = f"/dev/video{idx}"
         try:
-            st = os.stat(pfad)
-            rechte = stat.filemode(st.st_mode)
-            lesbar = os.access(pfad, os.R_OK | os.W_OK)
-            print(f"  {pfad}: {rechte}  zugreifbar={'ja' if lesbar else 'NEIN'}")
-            if not lesbar:
-                befunde.append(f"Kein Lese-/Schreibzugriff auf {pfad}.")
+            st = os.stat(path)
+            perms = stat.filemode(st.st_mode)
+            accessible = os.access(path, os.R_OK | os.W_OK)
+            print(f"  {path}: {perms}  accessible={'yes' if accessible else 'NO'}")
+            if not accessible:
+                findings.append(f"No read/write access to {path}.")
         except OSError as exc:
-            print(f"  {pfad}: {exc}")
+            print(f"  {path}: {exc}")
 
 
-# --- 3. Hält jemand die Kamera? -------------------------------------------------
+# --- 3. Is someone holding the camera? ------------------------------------------
 
 
-def pruefe_belegung(kandidaten: list[int]) -> None:
-    headline("3. Belegt das jemand?")
+def check_in_use(candidates: list[int]) -> None:
+    headline("3. Is it in use?")
     if shutil.which("fuser") is None:
-        print("  fuser nicht verfügbar (sudo apt install psmisc)")
+        print("  fuser not available (sudo apt install psmisc)")
         return
 
-    for idx in kandidaten:
-        pfad = f"/dev/video{idx}"
+    for idx in candidates:
+        path = f"/dev/video{idx}"
         try:
             res = subprocess.run(
-                ["fuser", "-v", pfad], capture_output=True, text=True, timeout=10
+                ["fuser", "-v", path], capture_output=True, text=True, timeout=10
             )
-            ausgabe = (res.stdout + res.stderr).strip()
+            output = (res.stdout + res.stderr).strip()
         except (subprocess.SubprocessError, OSError) as exc:
-            print(f"  {pfad}: {exc}")
+            print(f"  {path}: {exc}")
             continue
 
-        # fuser schreibt die Treffer nach stderr und liefert 1, wenn frei.
-        if res.returncode != 0 and not ausgabe:
-            print(f"  {pfad}: frei")
+        # fuser writes the hits to stderr and returns 1 when free.
+        if res.returncode != 0 and not output:
+            print(f"  {path}: free")
         else:
-            print(f"  {pfad}:\n{ausgabe}")
-            if ausgabe:
-                befunde.append(
-                    f"{pfad} wird von einem anderen Prozess gehalten (siehe oben). "
-                    "Nur ein Programm kann die Kamera gleichzeitig öffnen."
+            print(f"  {path}:\n{output}")
+            if output:
+                findings.append(
+                    f"{path} is held by another process (see above). "
+                    "Only one program can open the camera at a time."
                 )
 
 
 # --- 4. OpenCV ------------------------------------------------------------------
 
 
-def pruefe_opencv() -> object | None:
+def check_opencv() -> object | None:
     headline("4. OpenCV")
     try:
         import cv2
     except ImportError as exc:
-        print(f"  nicht installiert: {exc}")
-        befunde.append("OpenCV fehlt. Beheben: "
+        print(f"  not installed: {exc}")
+        findings.append("OpenCV is missing. Fix: "
                        "robot/.venv/bin/pip install opencv-python")
         return None
 
     print(f"  Version: {cv2.__version__}")
-    print(f"  Datei:   {cv2.__file__}")
+    print(f"  File:    {cv2.__file__}")
     return cv2
 
 
-# --- 5. Tatsächlich öffnen --------------------------------------------------------
+# --- 5. Actually open ------------------------------------------------------------
 
 
-VARIANTEN = [
+VARIANTS = [
     ("MJPG", 640, 480),
     (None, 640, 480),
     ("YUYV", 640, 480),
@@ -182,85 +182,85 @@ VARIANTEN = [
 ]
 
 
-def warmlaufen(cap, sekunden: float = 1.5):
-    """Wiederholt lesen, bis ein Bild kommt. Kameras brauchen Anlauf."""
-    frist = time.monotonic() + sekunden
-    versuche = 0
-    while time.monotonic() < frist:
-        versuche += 1
+def warm_up(cap, seconds: float = 1.5):
+    """Read repeatedly until a frame arrives. Cameras need time to start up."""
+    deadline = time.monotonic() + seconds
+    attempts = 0
+    while time.monotonic() < deadline:
+        attempts += 1
         ok, frame = cap.read()
         if ok and frame is not None and getattr(frame, "size", 0) > 0:
-            return frame, versuche
+            return frame, attempts
         time.sleep(0.05)
-    return None, versuche
+    return None, attempts
 
 
-def pruefe_oeffnen(cv2, kandidaten: list[int]) -> bool:
-    headline("5. Öffnen und ein Bild holen")
-    print("  (bis zu 1,5 s pro Variante -- Kameras brauchen Anlaufzeit)")
-    erfolg = False
+def check_open(cv2, candidates: list[int]) -> bool:
+    headline("5. Open and grab a frame")
+    print("  (up to 1.5 s per variant -- cameras need start-up time)")
+    success = False
 
-    for idx in kandidaten:
+    for idx in candidates:
         for api_name, api in (("V4L2", cv2.CAP_V4L2), ("Standard", cv2.CAP_ANY)):
             cap = cv2.VideoCapture(idx, api)
             if not cap.isOpened():
-                print(f"  video{idx} / {api_name:<8}: öffnet nicht")
+                print(f"  video{idx} / {api_name:<8}: does not open")
                 cap.release()
                 continue
 
-            for fourcc, w, h in VARIANTEN:
+            for fourcc, w, h in VARIANTS:
                 if fourcc:
                     cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*fourcc))
                 cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
                 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
 
-                frame, versuche = warmlaufen(cap)
-                bezeichnung = f"{fourcc or 'Standard':<8} {w}x{h}"
+                frame, attempts = warm_up(cap)
+                label = f"{fourcc or 'Standard':<8} {w}x{h}"
                 if frame is not None:
-                    ist_h, ist_w = frame.shape[:2]
-                    print(f"  video{idx} / {api_name:<8} / {bezeichnung}: "
-                          f"OK -- {ist_w}x{ist_h} nach {versuche} Versuch(en)")
-                    erfolg = True
+                    actual_h, actual_w = frame.shape[:2]
+                    print(f"  video{idx} / {api_name:<8} / {label}: "
+                          f"OK -- {actual_w}x{actual_h} after {attempts} attempt(s)")
+                    success = True
                     break
-                print(f"  video{idx} / {api_name:<8} / {bezeichnung}: "
-                      f"kein Bild ({versuche} Versuche)")
+                print(f"  video{idx} / {api_name:<8} / {label}: "
+                      f"no frame ({attempts} attempts)")
             cap.release()
-            if erfolg:
+            if success:
                 break
-        if erfolg:
+        if success:
             break
 
-    if not erfolg and kandidaten:
-        befunde.append("Keine Kombination aus Schnittstelle, Format und Auflösung "
-                       "liefert ein Bild. Abschnitt 6 zeigt, was die Kamera "
-                       "tatsächlich unterstützt.")
-    return erfolg
+    if not success and candidates:
+        findings.append("No combination of interface, format and resolution "
+                       "delivers a frame. Section 6 shows what the camera "
+                       "actually supports.")
+    return success
 
 
-# --- 6. Welche Formate kann die Kamera -----------------------------------------------
+# --- 6. Which formats the camera supports -------------------------------------------
 
 
-def pruefe_formate(kandidaten: list[int]) -> None:
-    headline("6. Unterstützte Formate")
+def check_formats(candidates: list[int]) -> None:
+    headline("6. Supported formats")
     if shutil.which("v4l2-ctl") is None:
-        print("  v4l2-ctl nicht installiert (sudo apt install v4l-utils)")
+        print("  v4l2-ctl not installed (sudo apt install v4l-utils)")
         return
 
-    for idx in kandidaten[:2]:  # die ersten beiden genügen
+    for idx in candidates[:2]:  # the first two are enough
         print(f"\n  /dev/video{idx}:")
         try:
             res = subprocess.run(
                 ["v4l2-ctl", "-d", f"/dev/video{idx}", "--list-formats"],
                 capture_output=True, text=True, timeout=10,
             )
-            for zeile in (res.stdout or res.stderr).splitlines():
-                if zeile.strip():
-                    print(f"    {zeile}")
+            for line in (res.stdout or res.stderr).splitlines():
+                if line.strip():
+                    print(f"    {line}")
         except (subprocess.SubprocessError, OSError) as exc:
             print(f"    {exc}")
 
 
-# --- Hauptablauf ------------------------------------------------------------------------
+# --- Main flow --------------------------------------------------------------------------
 
 
 def main() -> int:
@@ -270,33 +270,33 @@ def main() -> int:
         except (AttributeError, OSError):
             pass
 
-    print("\n  Kamera-Diagnose")
+    print("\n  Camera diagnostics")
     print("  " + "=" * 40)
-    print("  Der Server muss beendet sein, sonst hält er die Kamera selbst.")
+    print("  The server must be stopped, otherwise it holds the camera itself.")
 
-    kandidaten = pruefe_geraete()
-    if kandidaten:
-        pruefe_rechte(kandidaten)
-        pruefe_belegung(kandidaten)
+    candidates = check_devices()
+    if candidates:
+        check_permissions(candidates)
+        check_in_use(candidates)
 
-    cv2 = pruefe_opencv()
-    erfolg = False
-    if cv2 is not None and kandidaten:
-        erfolg = pruefe_oeffnen(cv2, kandidaten)
-    if kandidaten and not erfolg:
-        pruefe_formate(kandidaten)
+    cv2 = check_opencv()
+    success = False
+    if cv2 is not None and candidates:
+        success = check_open(cv2, candidates)
+    if candidates and not success:
+        check_formats(candidates)
 
-    headline("Urteil")
-    if erfolg:
-        print("  Die Kamera funktioniert. Liefert der Server trotzdem kein Bild,")
-        print("  lief er bei dieser Prüfung vermutlich noch und hielt sie selbst.")
-    elif befunde:
-        for i, b in enumerate(befunde, 1):
+    headline("Verdict")
+    if success:
+        print("  The camera works. If the server still delivers no image, it was")
+        print("  probably still running during this check and holding it itself.")
+    elif findings:
+        for i, b in enumerate(findings, 1):
             print(f"  {i}. {b}")
     else:
-        print("  Kein eindeutiger Grund gefunden -- bitte die ganze Ausgabe melden.")
+        print("  No clear cause found -- please report the whole output.")
     print()
-    return 0 if erfolg else 1
+    return 0 if success else 1
 
 
 if __name__ == "__main__":

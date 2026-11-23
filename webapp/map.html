@@ -75,7 +75,7 @@
                     let color;
 
                     if (value === -1) {
-                        color = 120; // Unbekannt
+                        color = 120; // unknown
                     } else {
                         color = 255 - Math.round(value * 2.55);
                     }
@@ -89,7 +89,7 @@
                 }
             }
 
-            // ROS-Kartenkoordinaten vertikal umdrehen
+            // Flip ROS map coordinates vertically
             const tempCanvas = document.createElement("canvas");
             tempCanvas.width = width;
             tempCanvas.height = height;

@@ -1,21 +1,21 @@
-"""Lidar-gestützte Ortung: korrigiert die Koppelnavigation.
+"""Lidar-based localization: corrects dead reckoning.
 
-Arbeitsteilung zwischen beiden Verfahren:
+Division of labor between the two methods:
 
-* **Koppelnavigation** läuft immer und überall. Sie ist sofort verfügbar und
-  nie "verloren", driftet aber mit jedem Meter.
-* **Lidar-Abgleich** vergleicht die aktuelle Umgebung mit einer Aufnahme vom
-  Startpunkt. Er summiert nichts auf, braucht aber Überschneidung: Hinter
-  der nächsten Zimmerecke sieht der Roboter nichts Vertrautes mehr.
+* **Dead reckoning** runs always and everywhere. It is available instantly
+  and never "lost", but drifts with every meter.
+* **Lidar matching** compares the current surroundings with a scan taken at
+  the starting point. It accumulates nothing, but needs overlap: behind the
+  next corner of the room the robot no longer sees anything familiar.
 
-Deshalb: Die Koppelnavigation trägt grob, der Lidar zieht gerade, sobald er
-etwas wiedererkennt. Praktisch heißt das, der Roboter findet mit der
-Odometrie *in die Nähe* des Startpunkts und wird dort vom Lidar genau
-eingewiesen -- genau das, was ein Home-Button braucht.
+Hence: dead reckoning carries the robot roughly, the lidar pulls it
+straight as soon as it recognizes something. In practice the robot uses
+odometry to get *near* the starting point and is guided precisely by the
+lidar there -- exactly what a home button needs.
 
-Das ist bewusst **kein** SLAM: Es wird keine Karte aufgebaut, nur eine
-einzige Referenzaufnahme gehalten. Für "zurück zum Startpunkt" genügt das
-und es kostet einen Bruchteil des Aufwands.
+This is deliberately **not** SLAM: no map is built, only a single reference
+scan is kept. For "back to the starting point" that is enough, at a
+fraction of the effort.
 """
 
 from __future__ import annotations
@@ -34,55 +34,55 @@ log = logging.getLogger(__name__)
 
 
 class Localizer:
-    """Hält die Referenzaufnahme und korrigiert damit die Position."""
+    """Holds the reference scan and uses it to correct the position."""
 
     def __init__(self, odometry: Odometry, lidar: LidarService | None) -> None:
         self._odometry = odometry
         self._lidar = lidar
         self._lock = threading.Lock()
 
-        self._referenz = None          # Punktwolke vom Startpunkt
-        self._referenz_zeit = 0.0
-        self._letztes_residuum: float | None = None
-        self._korrekturen = 0
-        self._verworfen = 0
-        self._letzte_korrektur_m: float | None = None
+        self._reference = None          # point cloud from the starting point
+        self._reference_time = 0.0
+        self._last_residual: float | None = None
+        self._corrections = 0
+        self._discarded = 0
+        self._last_correction_m: float | None = None
 
     @property
-    def hat_referenz(self) -> bool:
-        return self._referenz is not None
+    def has_reference(self) -> bool:
+        return self._reference is not None
 
     @property
-    def verfuegbar(self) -> bool:
+    def available(self) -> bool:
         return self._lidar is not None
 
     def status(self) -> dict:
         with self._lock:
             return {
                 "lidar_vorhanden": self._lidar is not None,
-                "referenz_aufgenommen": self._referenz is not None,
-                "referenzpunkte": 0 if self._referenz is None else len(self._referenz),
-                "korrekturen": self._korrekturen,
-                "verworfen": self._verworfen,
+                "referenz_aufgenommen": self._reference is not None,
+                "referenzpunkte": 0 if self._reference is None else len(self._reference),
+                "korrekturen": self._corrections,
+                "verworfen": self._discarded,
                 "letztes_residuum_m": (
-                    round(self._letztes_residuum, 3)
-                    if self._letztes_residuum is not None
+                    round(self._last_residual, 3)
+                    if self._last_residual is not None
                     else None
                 ),
                 "letzte_korrektur_m": (
-                    round(self._letzte_korrektur_m, 3)
-                    if self._letzte_korrektur_m is not None
+                    round(self._last_correction_m, 3)
+                    if self._last_correction_m is not None
                     else None
                 ),
             }
 
-    # --- Referenz ---------------------------------------------------------------
+    # --- Reference ---------------------------------------------------------------
 
-    def referenz_aufnehmen(self) -> bool:
-        """Merkt sich, wie der Raum vom aktuellen Standort aussieht.
+    def capture_reference(self) -> bool:
+        """Remembers what the room looks like from the current location.
 
-        Beim Setzen des Startpunkts aufzurufen. Ohne Referenz gibt es keine
-        Korrektur -- dann bleibt es bei reiner Koppelnavigation.
+        Call when setting the starting point. Without a reference there is no
+        correction -- then it stays with pure dead reckoning.
         """
         if self._lidar is None:
             return False
@@ -90,122 +90,122 @@ class Localizer:
         scan = self._lidar.latest()
         if scan is None or len(scan) < 60:
             log.warning(
-                "Keine brauchbare Lidar-Aufnahme für den Startpunkt "
-                "(%s Punkte) -- Ortung bleibt bei Koppelnavigation",
+                "No usable lidar scan for the starting point "
+                "(%s points) -- localization stays with dead reckoning",
                 0 if scan is None else len(scan),
             )
             return False
 
         with self._lock:
-            self._referenz = scan.punkte()
-            self._referenz_zeit = time.monotonic()
-            self._korrekturen = 0
-            self._verworfen = 0
-            self._letztes_residuum = None
-            self._letzte_korrektur_m = None
+            self._reference = scan.points()
+            self._reference_time = time.monotonic()
+            self._corrections = 0
+            self._discarded = 0
+            self._last_residual = None
+            self._last_correction_m = None
 
-        log.info("Startpunkt eingemessen: %d Lidar-Punkte als Referenz", len(scan))
+        log.info("Starting point captured: %d lidar points as reference", len(scan))
         return True
 
-    def referenz_verwerfen(self) -> None:
+    def discard_reference(self) -> None:
         with self._lock:
-            self._referenz = None
+            self._reference = None
 
-    # --- Laufender Abgleich -------------------------------------------------------
+    # --- Continuous matching -------------------------------------------------------
 
-    def abgleichen(self) -> bool:
-        """Einen Abgleich versuchen. True, wenn korrigiert wurde."""
-        if self._lidar is None or self._referenz is None:
+    def match_scan(self) -> bool:
+        """Try one match. True if a correction was applied."""
+        if self._lidar is None or self._reference is None:
             return False
 
         scan = self._lidar.latest()
         if scan is None:
             return False
 
-        # Zu alte Aufnahmen nicht verwenden: der Roboter ist inzwischen
-        # woanders, und eine veraltete Messung zöge die Position zurück.
-        if time.monotonic() - scan.zeit > 1.5:
+        # Do not use scans that are too old: the robot is elsewhere by now,
+        # and a stale measurement would pull the position back.
+        if time.monotonic() - scan.timestamp > 1.5:
             return False
 
-        x, y, winkel_grad = self._odometry.pose()
+        x, y, angle_deg = self._odometry.pose()
 
-        # Weit weg vom Startpunkt überschneidet sich zu wenig. Ein
-        # Fehlabgleich wäre dort schlimmer als gar keine Korrektur: er
-        # würde die Position verreißen, ohne dass es jemand merkt.
+        # Far from the starting point there is too little overlap. A
+        # mismatch there would be worse than no correction at all: it
+        # would throw off the position without anyone noticing.
         if math.hypot(x, y) > config.MATCH_RADIUS_M:
             return False
 
-        # Die Aufnahme zeigt, wo der Roboter *beim Messen* stand. Als
-        # Startwert deshalb die damalige Position nehmen, nicht die
-        # jetzige -- sonst beginnt die Suche schon schief.
-        damals = self._odometry.pose_bei(scan.zeit)
-        if damals is None:
-            damals = (x, y, math.radians(winkel_grad))
+        # The scan shows where the robot stood *when measuring*. So use
+        # the position at that time as the initial guess, not the current
+        # one -- otherwise the search starts off skewed.
+        past_pose = self._odometry.pose_at(scan.timestamp)
+        if past_pose is None:
+            past_pose = (x, y, math.radians(angle_deg))
 
-        ergebnis = match(scan.punkte(), self._referenz, damals)
-
-        with self._lock:
-            if ergebnis is None:
-                self._verworfen += 1
-                return False
-
-            self._letztes_residuum = ergebnis.residuum
-            if ergebnis.residuum > config.MATCH_MAX_RESIDUAL_M:
-                self._verworfen += 1
-                return False
-
-        # Seit der Aufnahme ist der Roboter weitergefahren. Diese Strecke
-        # draufrechnen, sonst zieht die Korrektur ihn in die Vergangenheit
-        # zurück -- bei 0,3 m/s und 0,3 s Verzug schon fast zehn Zentimeter.
-        jetzt_x, jetzt_y, jetzt_grad = self._odometry.pose()
-        jetzt_theta = math.radians(jetzt_grad)
-        ziel_x = ergebnis.x + (jetzt_x - damals[0])
-        ziel_y = ergebnis.y + (jetzt_y - damals[1])
-        ziel_theta = ergebnis.theta + _winkeldifferenz(jetzt_theta, damals[2])
+        result = match(scan.points(), self._reference, past_pose)
 
         with self._lock:
-            self._korrekturen += 1
-            self._letzte_korrektur_m = math.hypot(ziel_x - jetzt_x, ziel_y - jetzt_y)
+            if result is None:
+                self._discarded += 1
+                return False
 
-        self._odometry.korrigieren(ziel_x, ziel_y, ziel_theta, config.MATCH_TRUST)
+            self._last_residual = result.residuum
+            if result.residuum > config.MATCH_MAX_RESIDUAL_M:
+                self._discarded += 1
+                return False
+
+        # The robot has kept driving since the scan. Add that distance,
+        # otherwise the correction pulls it back into the past -- at
+        # 0.3 m/s and 0.3 s delay that is almost ten centimeters.
+        now_x, now_y, now_deg = self._odometry.pose()
+        now_theta = math.radians(now_deg)
+        goal_x = result.x + (now_x - past_pose[0])
+        goal_y = result.y + (now_y - past_pose[1])
+        goal_theta = result.theta + _angle_diff(now_theta, past_pose[2])
+
+        with self._lock:
+            self._corrections += 1
+            self._last_correction_m = math.hypot(goal_x - now_x, goal_y - now_y)
+
+        self._odometry.correct(goal_x, goal_y, goal_theta, config.MATCH_TRUST)
         return True
 
-    # --- Hindernisse ---------------------------------------------------------------
+    # --- Obstacles ---------------------------------------------------------------
 
     def scan(self):
-        """Die letzte Lidar-Runde, wenn sie frisch ist (sonst None).
+        """The latest lidar revolution if it is fresh (otherwise None).
 
-        Für das Umfahren auf der Heimfahrt: dieselbe Frischegrenze wie
-        ``hindernis_voraus``.
+        For detouring on the way home: same freshness limit as
+        ``obstacle_ahead``.
         """
         if self._lidar is None:
             return None
         scan = self._lidar.latest()
-        if scan is None or time.monotonic() - scan.zeit > 2.0:
+        if scan is None or time.monotonic() - scan.timestamp > 2.0:
             return None
         return scan
 
-    def hindernis_voraus(
-        self, richtung_grad: float, oeffnung_grad: float | None = None
+    def obstacle_ahead(
+        self, direction_deg: float, aperture_deg: float | None = None
     ) -> float | None:
-        """Abstand zum nächsten Hindernis in einer Richtung, falls messbar.
+        """Distance to the nearest obstacle in one direction, if measurable.
 
-        ``richtung_grad`` im Roboterkoordinatensystem: 0 ist vorn. Für die
-        Heimfahrt wird die Fahrtrichtung übergeben -- bei Mecanum ist das
-        nicht zwangsläufig "vorn".
+        ``direction_deg`` in the robot frame: 0 is the front. On the way
+        home the direction of travel is passed in -- with mecanum wheels
+        that is not necessarily "forward".
         """
         if self._lidar is None:
             return None
         scan = self._lidar.latest()
-        if scan is None or time.monotonic() - scan.zeit > 2.0:
+        if scan is None or time.monotonic() - scan.timestamp > 2.0:
             return None
 
-        if oeffnung_grad is None:
-            oeffnung_grad = config.HOME_CONE_DEG
-        abstand = scan.min_abstand(richtung_grad, oeffnung_grad)
-        return None if abstand == float("inf") else abstand
+        if aperture_deg is None:
+            aperture_deg = config.HOME_CONE_DEG
+        distance = scan.min_distance(direction_deg, aperture_deg)
+        return None if distance == float("inf") else distance
 
 
-def _winkeldifferenz(a: float, b: float) -> float:
-    """a - b, auf -pi..+pi gebracht."""
+def _angle_diff(a: float, b: float) -> float:
+    """a - b, wrapped to -pi..+pi."""
     return math.atan2(math.sin(a - b), math.cos(a - b))

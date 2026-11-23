@@ -1,9 +1,9 @@
-# Lidar-Ausrichtung mit Referenz-Scan: nur Punkte, die NEU naeher sind als im
-# Referenz-Scan (Hand), werden gemeldet. Ablauf (55 s):
-#   0-8 s   NICHTS in der Naehe (Referenz)
-#   8-28 s  Hand VORNE (~20 cm)
-#   28-35 s Hand weg
-#   35-55 s Hand LINKS (~20 cm)
+# Lidar alignment with a reference scan: only points that are NEWLY closer than
+# in the reference scan (hand) are reported. Sequence (55 s):
+#   0-8 s   NOTHING nearby (reference)
+#   8-28 s  hand IN FRONT (~20 cm)
+#   28-35 s hand away
+#   35-55 s hand LEFT (~20 cm)
 import math
 import time
 
@@ -37,7 +37,7 @@ def valid(m, r):
 rclpy.init()
 n = P()
 t0 = time.time()
-ref = None                       # pro Strahl die kleinste Entfernung waehrend 0-8 s
+ref = None                       # per ray the smallest distance during 0-8 s
 next_t = t0 + 1.0
 while time.time() - t0 < 55:
     rclpy.spin_once(n, timeout_sec=0.05)
@@ -50,17 +50,17 @@ while time.time() - t0 < 55:
         ref = cur if ref is None else [min(a, b) for a, b in zip(ref, cur)]
     if time.time() >= next_t and ref:
         next_t += 1.0
-        phase = ("REFERENZ" if t < 8 else "VORNE" if t < 28 else "weg"
-                 if t < 35 else "LINKS")
-        neu = [(m.ranges[i], i) for i in range(len(m.ranges))
+        phase = ("REFERENCE" if t < 8 else "FRONT" if t < 28 else "away"
+                 if t < 35 else "LEFT")
+        new = [(m.ranges[i], i) for i in range(len(m.ranges))
                if valid(m, m.ranges[i]) and m.ranges[i] < 0.6
                and m.ranges[i] < ref[i] - 0.10]
-        if len(neu) >= 3:
-            angs = sorted(math.degrees(m.angle_min + i * m.angle_increment) for _, i in neu)
+        if len(new) >= 3:
+            angs = sorted(math.degrees(m.angle_min + i * m.angle_increment) for _, i in new)
             mid = angs[len(angs) // 2]
-            say(f"t={t:5.1f}s [{phase:8s}] neu: {len(neu):3d} Punkte, Mitte "
-                f"Rohwinkel {mid:7.1f} Grad, naechster {min(neu)[0]:.3f} m")
+            say(f"t={t:5.1f}s [{phase:8s}] new: {len(new):3d} points, middle "
+                f"raw angle {mid:7.1f} deg, nearest {min(new)[0]:.3f} m")
         else:
-            say(f"t={t:5.1f}s [{phase:8s}] nichts Neues")
+            say(f"t={t:5.1f}s [{phase:8s}] nothing new")
 out.close()
 rclpy.shutdown()

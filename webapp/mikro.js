@@ -1,334 +1,335 @@
 /*
- * Mikrofon live: mitlesen (was die Spracherkennung versteht) und mithören
- * (den Ton des Roboter-Mikrofons im Browser). Beides einzeln schaltbar und
- * aus, solange niemand es einschaltet -- dann kostet es am Roboter nichts.
+ * Live microphone: read along (what the speech recognition understands) and
+ * listen in (the robot microphone's audio in the browser). Each can be
+ * switched separately and stays off until someone turns it on -- then it
+ * costs nothing on the robot.
  *
- * Mitlesen fragt GET /sprache/live ab, Mithören hängt am WebSocket
- * /sprache/ton (erst {"rate": Hz}, dann Rohton 16 bit mono als Binärdaten).
- * In einer Funktion, damit die Namen nicht mit app.js zusammenstoßen.
+ * Reading along polls GET /sprache/live, listening in uses the WebSocket
+ * /sprache/ton (first {"rate": Hz}, then raw 16-bit mono audio as binary data).
+ * Wrapped in a function so the names do not collide with app.js.
  */
 
 (() => {
 
 const $ = (id) => document.getElementById(id);
-const lesen = $("mikro-lesen");
-const lesenStatus = $("mikro-lesen-state");
-const hoeren = $("mikro-hoeren");
-const hoerenStatus = $("mikro-hoeren-state");
+const readToggle = $("mikro-lesen");
+const readState = $("mikro-lesen-state");
+const listenToggle = $("mikro-hoeren");
+const listenState = $("mikro-hoeren-state");
 const live = $("mikro-live");
-const balken = $("mikro-pegel-balken");
-const teil = $("mikro-teil");
-const liste = $("mikro-ereignisse");
+const levelBar = $("mikro-pegel-balken");
+const partial = $("mikro-teil");
+const eventList = $("mikro-ereignisse");
 
-/** Abfragetakt beim Mitlesen. Der Roboter liefert den Pegel 4x pro Sekunde. */
-const TAKT_MS = 250;
-/** Mithören: so weit im Voraus planen und höchstens so weit hinterherhängen. */
-const VORLAUF_S = 0.15;
-const MAX_RUECKSTAND_S = 1.0;
-/** Der Roboter meldet sich mindestens jede Sekunde (Ton oder Lebenszeichen).
- *  Kommt so lange gar nichts, hängt die Verbindung: neu verbinden. */
-const STILLE_MS = 5000;
-/** Länger als das wartet das Mitlesen nicht auf eine Antwort. */
-const ABFRAGE_FRIST_MS = 2000;
+/** Poll interval while reading along. The robot delivers the level 4x per second. */
+const POLL_MS = 250;
+/** Listening in: schedule this far ahead and lag behind at most this much. */
+const LEAD_S = 0.15;
+const MAX_LAG_S = 1.0;
+/** The robot reports at least once per second (audio or heartbeat).
+ *  If nothing arrives for this long, the connection hangs: reconnect. */
+const SILENCE_MS = 5000;
+/** Reading along does not wait longer than this for a response. */
+const POLL_TIMEOUT_MS = 2000;
 
-function status(el, text, an) {
+function status(el, text, on) {
   el.textContent = text;
-  el.classList.toggle("an", an);
+  el.classList.toggle("an", on);
 }
 
-// --- Mitlesen ----------------------------------------------------------------
+// --- Reading along -----------------------------------------------------------
 
-let lesenTimer = null;
+let readTimer = null;
 
-const URTEIL = {
+const VERDICT = {
   befehl: (e) => `Befehl: ${e.befehl}`,
   verworfen: (e) => `verworfen (${e.grund || e.befehl})`,
   weckwort: () => "Weckwort",
   ohne: () => "kein Befehl",
 };
 
-function zeigeLive(d) {
+function showLive(d) {
   if (!d.verfuegbar) {
-    status(lesenStatus, "kein Mikrofon", false);
-    teil.textContent = "Spracherkennung: " + (d.zustand || "aus");
-    balken.style.width = "0";
+    status(readState, "kein Mikrofon", false);
+    partial.textContent = "Spracherkennung: " + (d.zustand || "aus");
+    levelBar.style.width = "0";
   } else {
-    status(lesenStatus, d.taub ? "spricht selbst" : (d.geweckt ? "hört zu …" : "an"), true);
-    balken.style.width = `${Math.round(d.pegel * 100)}%`;
-    teil.textContent = d.taub ? "(hört weg, solange er spricht)" : (d.teil ? `„${d.teil} …“` : "—");
+    status(readState, d.taub ? "spricht selbst" : (d.geweckt ? "hört zu …" : "an"), true);
+    levelBar.style.width = `${Math.round(d.pegel * 100)}%`;
+    partial.textContent = d.taub ? "(hört weg, solange er spricht)" : (d.teil ? `„${d.teil} …“` : "—");
   }
   live.classList.toggle("taub", !!d.taub);
 
-  liste.replaceChildren(...d.ereignisse.slice().reverse().map((e) => {
+  eventList.replaceChildren(...d.ereignisse.slice().reverse().map((e) => {
     const li = document.createElement("li");
     li.className = e.ergebnis;
-    const zeit = new Date(e.zeit * 1000).toLocaleTimeString("de-DE");
+    const time = new Date(e.zeit * 1000).toLocaleTimeString("de-DE");
     const text = document.createElement("span");
-    text.textContent = `${zeit}  „${e.text}“`;
-    const urteil = document.createElement("span");
-    urteil.className = "urteil";
-    urteil.textContent = (URTEIL[e.ergebnis] || URTEIL.ohne)(e);
-    li.append(text, urteil);
+    text.textContent = `${time}  „${e.text}“`;
+    const verdict = document.createElement("span");
+    verdict.className = "urteil";
+    verdict.textContent = (VERDICT[e.ergebnis] || VERDICT.ohne)(e);
+    li.append(text, verdict);
     return li;
   }));
 }
 
-async function abfragen() {
+async function poll() {
   try {
-    // Mit Frist: Hängt der Roboter, bliebe fetch sonst ewig offen und das
-    // Mitlesen stünde, auch wenn er längst wieder da ist.
-    const antwort = await fetch("/sprache/live", { signal: AbortSignal.timeout(ABFRAGE_FRIST_MS) });
-    if (antwort.ok) zeigeLive(await antwort.json());
+    // With a timeout: if the robot hangs, fetch would otherwise stay open
+    // forever and reading along would stall even after it is long back.
+    const response = await fetch("/sprache/live", { signal: AbortSignal.timeout(POLL_TIMEOUT_MS) });
+    if (response.ok) showLive(await response.json());
   } catch {
-    status(lesenStatus, "Roboter nicht erreichbar", false);
+    status(readState, "Roboter nicht erreichbar", false);
   }
-  if (lesen.checked) lesenTimer = setTimeout(abfragen, TAKT_MS);
+  if (readToggle.checked) readTimer = setTimeout(poll, POLL_MS);
 }
 
-lesen.addEventListener("change", () => {
-  clearTimeout(lesenTimer);
-  live.hidden = !lesen.checked;
-  if (lesen.checked) {
-    abfragen();
+readToggle.addEventListener("change", () => {
+  clearTimeout(readTimer);
+  live.hidden = !readToggle.checked;
+  if (readToggle.checked) {
+    poll();
   } else {
-    status(lesenStatus, "aus", false);
+    status(readState, "aus", false);
   }
 });
 
-// --- Mithören ----------------------------------------------------------------
+// --- Listening in ------------------------------------------------------------
 
 let ws = null;
 let ctx = null;
 let rate = 16000;
-let naechster = 0;
-let zuletzt = 0;  // wann zuletzt etwas vom Roboter kam (performance.now)
-let neuTimer = null;
+let nextStart = 0;
+let lastHeard = 0;  // when something last arrived from the robot (performance.now)
+let reconnectTimer = null;
 
-function abspielen(puffer) {
-  const werte = new Int16Array(puffer);
-  if (!werte.length) return;
-  const ton = ctx.createBuffer(1, werte.length, rate);
-  const kanal = ton.getChannelData(0);
-  for (let i = 0; i < werte.length; i++) kanal[i] = werte[i] / 32768;
+function play(buffer) {
+  const samples = new Int16Array(buffer);
+  if (!samples.length) return;
+  const audio = ctx.createBuffer(1, samples.length, rate);
+  const channel = audio.getChannelData(0);
+  for (let i = 0; i < samples.length; i++) channel[i] = samples[i] / 32768;
 
-  const jetzt = ctx.currentTime;
-  // Hinkt die Wiedergabe hinterher (WLAN-Stau), lieber springen als
-  // immer später hören.
-  if (naechster < jetzt + 0.02 || naechster > jetzt + MAX_RUECKSTAND_S) {
-    naechster = jetzt + VORLAUF_S;
+  const now = ctx.currentTime;
+  // If playback lags behind (Wi-Fi congestion), better to skip than to
+  // hear everything later and later.
+  if (nextStart < now + 0.02 || nextStart > now + MAX_LAG_S) {
+    nextStart = now + LEAD_S;
   }
-  const quelle = ctx.createBufferSource();
-  quelle.buffer = ton;
-  quelle.connect(ctx.destination);
-  quelle.start(naechster);
-  naechster += ton.duration;
+  const source = ctx.createBufferSource();
+  source.buffer = audio;
+  source.connect(ctx.destination);
+  source.start(nextStart);
+  nextStart += audio.duration;
 }
 
-function mithoerenAn() {
-  // Der AudioContext muss aus einem Klick heraus entstehen, sonst bleibt er
-  // im Browser stumm -- deshalb hier und nicht beim Laden der Seite.
+function listenOn() {
+  // The AudioContext must be created from a click, otherwise it stays
+  // silent in the browser -- that is why it happens here and not on page load.
   ctx = ctx || new AudioContext();
   ctx.resume();
-  naechster = 0;
+  nextStart = 0;
   const proto = location.protocol === "https:" ? "wss" : "ws";
   ws = new WebSocket(`${proto}://${location.host}/sprache/ton`);
   ws.binaryType = "arraybuffer";
-  zuletzt = performance.now();
-  status(hoerenStatus, "verbinde …", false);
+  lastHeard = performance.now();
+  status(listenState, "verbinde …", false);
   ws.onmessage = (ev) => {
-    zuletzt = performance.now();
-    // Der Browser hält den Ton gelegentlich an (Tab im Hintergrund,
-    // Bildschirmsperre); dann still wieder anwerfen.
+    lastHeard = performance.now();
+    // The browser occasionally suspends audio (tab in background,
+    // screen lock); then quietly resume it.
     if (ctx.state === "suspended") ctx.resume();
     if (typeof ev.data === "string") {
       const msg = JSON.parse(ev.data);
       if (msg.rate) {
         rate = msg.rate;
-        status(hoerenStatus, `an (${rate / 1000} kHz)`, true);
+        status(listenState, `an (${rate / 1000} kHz)`, true);
       } else {
-        status(hoerenStatus, "kein Mikrofon", false);
+        status(listenState, "kein Mikrofon", false);
       }
       return;
     }
-    abspielen(ev.data);
+    play(ev.data);
   };
   ws.onclose = () => {
     ws = null;
-    neuVerbinden("getrennt");
+    reconnect("getrennt");
   };
 }
 
-/** Alte Verbindung fallen lassen, ohne auf ihr Ende zu warten. */
-function trennen() {
+/** Drop the old connection without waiting for it to end. */
+function disconnect() {
   if (!ws) return;
-  const alt = ws;
+  const old = ws;
   ws = null;
-  alt.onclose = null;
-  alt.onmessage = null;
-  alt.close();
+  old.onclose = null;
+  old.onmessage = null;
+  old.close();
 }
 
-function neuVerbinden(grund) {
-  if (!hoeren.checked) return;
-  // Server neu gestartet, Pi hing oder WLAN weg: still wieder versuchen,
-  // so lange, bis er wieder da ist.
-  status(hoerenStatus, `${grund} -- verbinde neu …`, false);
-  clearTimeout(neuTimer);
-  neuTimer = setTimeout(() => { if (hoeren.checked && !ws) mithoerenAn(); }, 2000);
+function reconnect(reason) {
+  if (!listenToggle.checked) return;
+  // Server restarted, Pi hung or Wi-Fi gone: quietly retry until it is
+  // back.
+  status(listenState, `${reason} -- verbinde neu …`, false);
+  clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(() => { if (listenToggle.checked && !ws) listenOn(); }, 2000);
 }
 
-// Eine hängende Verbindung meldet sich nicht von selbst (kein onclose, wenn
-// der Pi stehen bleibt). Daher selbst auf Lebenszeichen achten.
+// A hanging connection does not report itself (no onclose when the Pi
+// freezes). So watch for heartbeats ourselves.
 setInterval(() => {
-  if (ws && performance.now() - zuletzt > STILLE_MS) {
-    trennen();
-    neuVerbinden("keine Antwort");
+  if (ws && performance.now() - lastHeard > SILENCE_MS) {
+    disconnect();
+    reconnect("keine Antwort");
   }
 }, 1000);
 
-function mithoerenAus() {
-  clearTimeout(neuTimer);
-  trennen();
+function listenOff() {
+  clearTimeout(reconnectTimer);
+  disconnect();
   if (ctx) ctx.suspend();
-  status(hoerenStatus, "aus", false);
+  status(listenState, "aus", false);
 }
 
-hoeren.addEventListener("change", () => {
-  if (hoeren.checked) mithoerenAn(); else mithoerenAus();
+listenToggle.addEventListener("change", () => {
+  if (listenToggle.checked) listenOn(); else listenOff();
 });
 
-// --- Durchsage: über den Roboter sprechen --------------------------------------
+// --- Announcement: speak through the robot ------------------------------------
 //
-// Eigenes Mikrofon (Laptop/Handy) -> WebSocket /sprache/durchsage -> Lautsprecher
-// des Roboters. Erst {"rate": Hz}, dann Rohton 16 bit mono.
+// Own microphone (laptop/phone) -> WebSocket /sprache/durchsage -> the robot's
+// speaker. First {"rate": Hz}, then raw 16-bit mono audio.
 
-const sprechen = $("mikro-sprechen");
-const sprechenStatus = $("mikro-sprechen-state");
-const hinweis = $("mikro-sprechen-hinweis");
-/** Für Sprache reicht das; so bleibt es im WLAN klein (32 kB/s). */
-const SENDE_RATE = 16000;
-/** Port der HTTPS-Variante (config.HTTPS_PORT). */
+const speakToggle = $("mikro-sprechen");
+const speakState = $("mikro-sprechen-state");
+const hint = $("mikro-sprechen-hinweis");
+/** Enough for speech; keeps Wi-Fi traffic small (32 kB/s). */
+const SEND_RATE = 16000;
+/** Port of the HTTPS variant (config.HTTPS_PORT). */
 const HTTPS_PORT = 8443;
 
 let dsWs = null;
 let dsCtx = null;
-let dsStrom = null;
+let dsStream = null;
 let dsTimer = null;
 
-function hinweisZeigen(knoten) {
-  hinweis.replaceChildren(...(knoten ? [knoten].flat() : []));
-  hinweis.hidden = !knoten;
+function showHint(nodes) {
+  hint.replaceChildren(...(nodes ? [nodes].flat() : []));
+  hint.hidden = !nodes;
 }
 
-/** Mikrofon-Ton auf SENDE_RATE bringen und als 16 bit verpacken. */
-function verpacken(ein, schritt) {
-  const n = Math.floor(ein.length / schritt);
-  const aus = new Int16Array(n);
+/** Resample microphone audio to SEND_RATE and pack it as 16 bit. */
+function pack(input, step) {
+  const n = Math.floor(input.length / step);
+  const out = new Int16Array(n);
   for (let i = 0; i < n; i++) {
-    // Mittelwert über das Fenster: ein einfacher Tiefpass, sonst klirrt es.
-    const von = Math.floor(i * schritt);
-    const bis = Math.min(ein.length, Math.floor((i + 1) * schritt));
-    let summe = 0;
-    for (let j = von; j < bis; j++) summe += ein[j];
-    const wert = Math.max(-1, Math.min(1, summe / Math.max(1, bis - von)));
-    aus[i] = wert * 32767;
+    // Average over the window: a simple low-pass, otherwise it sounds harsh.
+    const from = Math.floor(i * step);
+    const to = Math.min(input.length, Math.floor((i + 1) * step));
+    let sum = 0;
+    for (let j = from; j < to; j++) sum += input[j];
+    const value = Math.max(-1, Math.min(1, sum / Math.max(1, to - from)));
+    out[i] = value * 32767;
   }
-  return aus;
+  return out;
 }
 
-async function sprechenAn() {
-  // Browser geben das Mikrofon nur auf sicheren Seiten frei (HTTPS oder
-  // localhost). Unter http://10.42.0.62:8000 gibt es getUserMedia gar nicht.
+async function speakOn() {
+  // Browsers only grant microphone access on secure pages (HTTPS or
+  // localhost). Under http://10.42.0.62:8000 getUserMedia does not exist at all.
   if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-    const ziel = `https://${location.hostname}:${HTTPS_PORT}${location.pathname}`;
+    const target = `https://${location.hostname}:${HTTPS_PORT}${location.pathname}`;
     const link = document.createElement("a");
-    link.href = ziel;
-    link.textContent = ziel;
-    hinweisZeigen(["Das Mikrofon gibt der Browser nur über HTTPS frei: ", link,
-                   " öffnen und die Zertifikatswarnung einmal bestätigen."]);
-    sprechen.checked = false;
-    status(sprechenStatus, "nur über HTTPS", false);
+    link.href = target;
+    link.textContent = target;
+    showHint(["Das Mikrofon gibt der Browser nur über HTTPS frei: ", link,
+              " öffnen und die Zertifikatswarnung einmal bestätigen."]);
+    speakToggle.checked = false;
+    status(speakState, "nur über HTTPS", false);
     return;
   }
-  hinweisZeigen(null);
-  status(sprechenStatus, "Mikrofon …", false);
+  showHint(null);
+  status(speakState, "Mikrofon …", false);
   try {
-    dsStrom = await navigator.mediaDevices.getUserMedia({
+    dsStream = await navigator.mediaDevices.getUserMedia({
       audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     });
-  } catch (fehler) {
-    sprechen.checked = false;
-    status(sprechenStatus, "kein Zugriff", false);
-    hinweisZeigen(`Mikrofon nicht freigegeben (${fehler.name}). In den Seiteneinstellungen des Browsers erlauben.`);
+  } catch (err) {
+    speakToggle.checked = false;
+    status(speakState, "kein Zugriff", false);
+    showHint(`Mikrofon nicht freigegeben (${err.name}). In den Seiteneinstellungen des Browsers erlauben.`);
     return;
   }
-  if (!sprechen.checked) { sprechenAus(); return; }  // inzwischen wieder aus
+  if (!speakToggle.checked) { speakOff(); return; }  // switched off again meanwhile
 
   dsCtx = new AudioContext();
-  const quelle = dsCtx.createMediaStreamSource(dsStrom);
-  // ScriptProcessor ist veraltet, läuft aber in allen Browsern ohne eigene
-  // Worklet-Datei. 2048 Werte sind bei 48 kHz gut 40 ms.
-  const knoten = dsCtx.createScriptProcessor(2048, 1, 1);
-  const schritt = dsCtx.sampleRate / SENDE_RATE;
-  knoten.onaudioprocess = (ev) => {
+  const source = dsCtx.createMediaStreamSource(dsStream);
+  // ScriptProcessor is deprecated but works in all browsers without a
+  // separate worklet file. 2048 samples at 48 kHz are a good 40 ms.
+  const processor = dsCtx.createScriptProcessor(2048, 1, 1);
+  const step = dsCtx.sampleRate / SEND_RATE;
+  processor.onaudioprocess = (ev) => {
     if (!dsWs || dsWs.readyState !== WebSocket.OPEN) return;
-    // Staut es sich im WLAN, lieber Ton weglassen als immer später ankommen.
-    if (dsWs.bufferedAmount > SENDE_RATE) return;
-    dsWs.send(verpacken(ev.inputBuffer.getChannelData(0), schritt).buffer);
+    // If Wi-Fi congests, better to drop audio than to arrive later and later.
+    if (dsWs.bufferedAmount > SEND_RATE) return;
+    dsWs.send(pack(ev.inputBuffer.getChannelData(0), step).buffer);
   };
-  quelle.connect(knoten);
-  // Der Knoten rechnet nur, wenn er am Ausgang hängt -- stumm, sonst hörte
-  // man sich selbst aus dem eigenen Lautsprecher.
-  const stumm = dsCtx.createGain();
-  stumm.gain.value = 0;
-  knoten.connect(stumm);
-  stumm.connect(dsCtx.destination);
-  dsVerbinden();
+  source.connect(processor);
+  // The node only processes when connected to the output -- muted, otherwise
+  // you would hear yourself from your own speaker.
+  const mute = dsCtx.createGain();
+  mute.gain.value = 0;
+  processor.connect(mute);
+  mute.connect(dsCtx.destination);
+  dsConnect();
 }
 
-function dsVerbinden() {
+function dsConnect() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   dsWs = new WebSocket(`${proto}://${location.host}/sprache/durchsage`);
   dsWs.binaryType = "arraybuffer";
-  status(sprechenStatus, "verbinde …", false);
-  dsWs.onopen = () => dsWs.send(JSON.stringify({ rate: SENDE_RATE }));
+  status(speakState, "verbinde …", false);
+  dsWs.onopen = () => dsWs.send(JSON.stringify({ rate: SEND_RATE }));
   dsWs.onmessage = (ev) => {
     if (typeof ev.data !== "string") return;
     const msg = JSON.parse(ev.data);
     if (msg.bereit) {
-      status(sprechenStatus, "an -- sprich", true);
+      status(speakState, "an -- sprich", true);
     } else {
-      status(sprechenStatus, msg.grund || "geht nicht", false);
+      status(speakState, msg.grund || "geht nicht", false);
     }
   };
   dsWs.onclose = () => {
     dsWs = null;
-    if (!sprechen.checked) return;
-    // Server neu gestartet oder WLAN weg: wieder verbinden, das Mikrofon bleibt offen.
-    status(sprechenStatus, "getrennt -- verbinde neu …", false);
+    if (!speakToggle.checked) return;
+    // Server restarted or Wi-Fi gone: reconnect, the microphone stays open.
+    status(speakState, "getrennt -- verbinde neu …", false);
     clearTimeout(dsTimer);
-    dsTimer = setTimeout(() => { if (sprechen.checked && !dsWs) dsVerbinden(); }, 2000);
+    dsTimer = setTimeout(() => { if (speakToggle.checked && !dsWs) dsConnect(); }, 2000);
   };
 }
 
-function sprechenAus() {
+function speakOff() {
   clearTimeout(dsTimer);
   if (dsWs) {
-    const alt = dsWs;
+    const old = dsWs;
     dsWs = null;
-    alt.onclose = null;
-    alt.close();
+    old.onclose = null;
+    old.close();
   }
-  // Mikrofon wirklich freigeben, sonst zeigt der Browser weiter "Aufnahme".
-  if (dsStrom) dsStrom.getTracks().forEach((t) => t.stop());
-  dsStrom = null;
+  // Really release the microphone, otherwise the browser keeps showing "recording".
+  if (dsStream) dsStream.getTracks().forEach((t) => t.stop());
+  dsStream = null;
   if (dsCtx) dsCtx.close();
   dsCtx = null;
-  status(sprechenStatus, "aus", false);
+  status(speakState, "aus", false);
 }
 
-sprechen.addEventListener("change", () => {
-  if (sprechen.checked) sprechenAn(); else sprechenAus();
+speakToggle.addEventListener("change", () => {
+  if (speakToggle.checked) speakOn(); else speakOff();
 });
 
 })();

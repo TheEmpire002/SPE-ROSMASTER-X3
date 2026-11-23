@@ -1,11 +1,11 @@
-# Sensor-Check am Boden: Odometrie (vel_raw), Gyro und Lidar gegeneinander pruefen.
-# Aufruf im Container:  python3 sensorcheck_boden.py  -> schreibt boden.txt / boden.json
-# Braucht ca. 1 m frei vorne und links. Ablauf:
-#   1. 4 s Ruhe (Gyro-Bias)
-#   2. Drehen links 0,5 rad/s ~3,1 s (~90 Grad), Ruhe, Drehen rechts zurueck
-#   3. Vor 0,15 m/s 2 s (~0,3 m), Ruhe, zurueck
-#   4. Links 0,15 m/s 2 s (~0,3 m), Ruhe, zurueck
-# Lidar: Rohwinkel gegen den Uhrzeigersinn, vorne = -90 Grad (Hand-Test 28.10.).
+# Sensor check on the floor: cross-check odometry (vel_raw), gyro and lidar.
+# Run inside the container:  python3 sensorcheck_boden.py  -> writes boden.txt / boden.json
+# Needs about 1 m of free space in front and to the left. Sequence:
+#   1. 4 s standstill (gyro bias)
+#   2. Turn left 0.5 rad/s ~3.1 s (~90 degrees), standstill, turn right back
+#   3. Forward 0.15 m/s 2 s (~0.3 m), standstill, back
+#   4. Left 0.15 m/s 2 s (~0.3 m), standstill, back
+# Lidar: raw angle counterclockwise, front = -90 degrees (hand test 28.10.).
 import json
 import math
 import statistics as st
@@ -19,7 +19,7 @@ from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Imu, LaserScan
 from std_msgs.msg import Float32
 
-VORNE = -90.0
+FRONT = -90.0
 LOG = []
 DATA = {}
 
@@ -69,7 +69,7 @@ class Probe(Node):
 
 
 def profile(m, nbins=360):
-    """Kleinste Entfernung je 1-Grad-Bin (Rohwinkel), None = leer."""
+    """Smallest range per 1-degree bin (raw angle), None = empty."""
     prof = [None] * nbins
     for i, r in enumerate(m.ranges):
         if not (math.isfinite(r) and m.range_min <= r <= m.range_max):
@@ -82,7 +82,7 @@ def profile(m, nbins=360):
 
 
 def best_shift(before, after, max_shift=150):
-    """Um wie viel Grad ist die Umgebung im Scan gewandert (after[b] = before[b - s])?"""
+    """By how many degrees has the surroundings shifted in the scan (after[b] = before[b - s])?"""
     n = len(before)
     best = None
     for s in range(-max_shift, max_shift + 1):
@@ -100,7 +100,7 @@ def best_shift(before, after, max_shift=150):
 
 
 def dist_at(m, deg, width=4.0):
-    """Median-Entfernung um den Rohwinkel deg (+-width)."""
+    """Median range around the raw angle deg (+-width)."""
     vals = []
     for i, r in enumerate(m.ranges):
         if not (math.isfinite(r) and m.range_min <= r <= m.range_max):
@@ -112,13 +112,13 @@ def dist_at(m, deg, width=4.0):
 
 
 def fresh_scans(node, n=3):
-    """n neue Scans im Stillstand sammeln, Profil = Median je Bin."""
+    """Collect n new scans at standstill, profile = median per bin."""
     scans = []
     last_t = node.scan[0] if node.scan else 0.0
     t_end = time.time() + 5.0
     while len(scans) < n:
         if time.time() > t_end:
-            log("FEHLER: keine neuen Scans mehr (USB-Reset?)")
+            log("ERROR: no new scans anymore (USB reset?)")
             raise SystemExit
         rclpy.spin_once(node, timeout_sec=0.05)
         if node.scan and node.scan[0] != last_t:
@@ -133,7 +133,7 @@ def fresh_scans(node, n=3):
 
 
 def integrate(samples, t0, t1, idx):
-    """Rechteck-Integration der Werte samples[k][idx] zwischen t0 und t1."""
+    """Rectangle integration of the values samples[k][idx] between t0 and t1."""
     s = [x for x in samples if t0 <= x[0] <= t1]
     tot = 0.0
     for a, b in zip(s, s[1:]):
@@ -146,20 +146,20 @@ node = Probe()
 try:
     node.spin_for(2.0)
     if node.scan is None or not node.vel or not node.imu:
-        log("FEHLER: /scan, /vel_raw oder /imu/data_raw fehlt - Treiber/Lidar laufen?")
+        log("ERROR: /scan, /vel_raw or /imu/data_raw missing - are driver/lidar running?")
         raise SystemExit
-    log(f"Akku {node.volt}")
+    log(f"Battery {node.volt}")
 
-    # --- 1. Gyro-Bias im Stillstand ---
+    # --- 1. Gyro bias at standstill ---
     t0 = time.time()
     node.spin_for(4.0)
     gz = [z for t, z in node.imu if t >= t0]
     bias = st.mean(gz)
     DATA["gyro_bias_z"] = round(bias, 4)
     DATA["gyro_std_z"] = round(st.pstdev(gz), 4)
-    log(f"Gyro-Bias z {bias:.4f} rad/s (std {st.pstdev(gz):.4f}, n={len(gz)})")
+    log(f"Gyro bias z {bias:.4f} rad/s (std {st.pstdev(gz):.4f}, n={len(gz)})")
 
-    # --- 2. Drehen ---
+    # --- 2. Turning ---
     DATA["drehen"] = {}
     for name, wz in (("links", 0.5), ("rechts", -0.5)):
         p0, _ = fresh_scans(node)
@@ -179,18 +179,18 @@ try:
              "gyro_ohne_bias_korr_deg": round(math.degrees(gyr_raw), 1),
              "lidar_verschiebung_deg": sh and sh[0], "lidar_fehler_m": sh and round(sh[1], 3)}
         DATA["drehen"][name] = r
-        log(f"Drehen {name}: {r}")
+        log(f"Turn {name}: {r}")
 
-    # --- 3./4. Vor/zurueck, links/rechts ---
+    # --- 3./4. Forward/back, left/right ---
     DATA["fahren"] = {}
-    for name, cmd, deg in (("vor", (0.15, 0.0, 0.0), VORNE),
-                           ("zurueck", (-0.15, 0.0, 0.0), VORNE),
-                           ("links", (0.0, 0.15, 0.0), VORNE + 90.0),
-                           ("rechts", (0.0, -0.15, 0.0), VORNE + 90.0)):
+    for name, cmd, deg in (("vor", (0.15, 0.0, 0.0), FRONT),
+                           ("zurueck", (-0.15, 0.0, 0.0), FRONT),
+                           ("links", (0.0, 0.15, 0.0), FRONT + 90.0),
+                           ("rechts", (0.0, -0.15, 0.0), FRONT + 90.0)):
         _, m0 = fresh_scans(node)
         d0 = dist_at(m0, deg)
         if name in ("vor", "links") and (d0 is None or d0 < 0.6):
-            log(f"{name}: nur {d0} m frei bei Rohwinkel {deg} - uebersprungen")
+            log(f"{name}: only {d0} m free at raw angle {deg} - skipped")
             DATA["fahren"][name] = {"uebersprungen": d0}
             continue
         t0 = time.time()
@@ -208,10 +208,10 @@ try:
              "lidar_delta_m": d0 is not None and d1 is not None and round(d0 - d1, 3),
              "drift_gyro_deg": round(math.degrees(rot), 1)}
         DATA["fahren"][name] = r
-        log(f"Fahren {name} {cmd}: {r}")
-    log(f"fertig, Akku {node.volt}")
+        log(f"Drive {name} {cmd}: {r}")
+    log(f"done, battery {node.volt}")
 except (KeyboardInterrupt, SystemExit):
-    log("abgebrochen")
+    log("aborted")
 finally:
     node.stop()
     with open("boden.json", "w") as f:

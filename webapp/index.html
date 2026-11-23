@@ -28,13 +28,23 @@
       <span>Diagnose</span>
       <span id="diag-punkt" class="diag-punkt" hidden></span>
     </a>
-    <a href="/healthbot" id="btn-healthbot" class="einst-knopf diag-knopf hb-knopf"
+    <a href="/healthbot" id="btn-healthbot" class="einst-knopf diag-knopf hb-button"
        title="Healthbot: zu einer Person fahren und prüfen, ob es ihr gut geht" aria-label="Healthbot">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
       </svg>
       <span>Healthbot</span>
+    </a>
+    <a href="/tests" id="btn-tests" class="einst-knopf diag-knopf"
+       title="Tests: Mikrofon, liegend erkennen und Personenerkennung messen" aria-label="Tests">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+        <rect x="8" y="2" width="8" height="4" rx="1"/>
+        <polyline points="9 14 11 16 15 12"/>
+      </svg>
+      <span>Tests</span>
     </a>
     <button type="button" id="btn-mukke" class="einst-knopf mukke-knopf"
             title="Musik auf dem Lautsprecher" aria-label="MUKKE">
@@ -53,8 +63,8 @@
   </div>
 </header>
 
-<!-- Einstellungen als Modal. Inhalt baut einstellungen.js beim ersten
-     Öffnen aus GET /settings auf. -->
+<!-- Settings as a modal. einstellungen.js builds the content from
+     GET /settings when it is first opened. -->
 <dialog id="einst-dialog" class="einst-dialog" aria-labelledby="einst-titel">
   <div class="einst-dialog-kopf">
     <h1 id="einst-titel">Einstellungen</h1>
@@ -74,7 +84,7 @@
   </div>
 </dialog>
 
-<!-- Musik auf dem Lautsprecher des Roboters (POST /mukke/...). -->
+<!-- Music on the robot's speaker (POST /mukke/...). -->
 <dialog id="mukke-dialog" class="einst-dialog mukke-dialog" aria-labelledby="mukke-titel">
   <div class="einst-dialog-kopf">
     <h1 id="mukke-titel">MUKKE</h1>
@@ -112,16 +122,16 @@
 
   <section id="cam-panel" class="panel">
     <h2>Kamera</h2>
-    <!-- Umschalter, wird aus /cameras gefüllt. Bei nur einer Kamera leer. -->
+    <!-- Switcher, filled from /cameras. Empty with only one camera. -->
     <div id="cam-wahl" class="cam-wahl" hidden></div>
-    <!-- Eine Kachel je angezeigter Kamera, gebaut in app.js (CamKachel). -->
+    <!-- One tile per displayed camera, built in app.js (CamKachel). -->
     <div id="cam-feld" class="cam-feld"></div>
   </section>
 
   <section class="panel">
     <h2>Steuerung</h2>
 
-    <!-- Mecanum-Räder: die mittlere Reihe fährt seitwärts, nicht drehen. -->
+    <!-- Mecanum wheels: the middle row moves sideways, it does not turn. -->
     <div class="pad">
       <button class="pad-btn" data-vx="1"  data-vy="1"  title="vorwärts links">↖</button>
       <button class="pad-btn" data-vx="1"  data-vy="0"  title="vorwärts">↑</button>
@@ -173,7 +183,7 @@
     </p>
   </section>
 
-  <!-- Genaue Fahrbefehle (genau.js): {"type": "move"} / {"type": "turn"}, das Lidar misst. -->
+  <!-- Precise drive commands (genau.js): {"type": "move"} / {"type": "turn"}, the lidar measures. -->
   <section class="panel">
     <h2>Genau fahren</h2>
 
@@ -233,7 +243,7 @@
       Lidar sieht. Vor Menschen wartet er kurz. Jede Fahreingabe, der
       Not-Stopp oder dieser Knopf beenden die Fahrt.
       Lief etwas falsch, gleich „Fahrt speichern“ drücken: Die letzte Minute
-      lässt sich dann am Rechner mit <code>scripts/abspielen.py</code> nachspielen.
+      lässt sich dann am Rechner mit <code>scripts/replay.py</code> nachspielen.
     </p>
   </section>
 
@@ -249,7 +259,7 @@
       <dt>Ohr</dt>      <dd id="val-sprache">—</dd>
     </dl>
 
-    <!-- Live-Feed vom Mikrofon (GET /sprache/live, WebSocket /sprache/ton). -->
+    <!-- Live feed from the microphone (GET /sprache/live, WebSocket /sprache/ton). -->
     <label class="switch">
       <input type="checkbox" id="mikro-lesen">
       <span>Mikrofon mitlesen</span>
@@ -260,7 +270,7 @@
       <span>Mikrofon mithören</span>
       <output id="mikro-hoeren-state" class="switch-state">aus</output>
     </label>
-    <!-- Durchsage: eigenes Mikrofon -> Lautsprecher des Roboters (WebSocket /sprache/durchsage). -->
+    <!-- Announcement: your own microphone -> robot's speaker (WebSocket /sprache/durchsage). -->
     <label class="switch">
       <input type="checkbox" id="mikro-sprechen">
       <span>Über den Roboter sprechen</span>
@@ -281,7 +291,7 @@
         Folge mir
       </button>
     </div>
-    <!-- Ziel-Lock: Neu wählen = Person im Kamerabild antippen. -->
+    <!-- Pause stops, release ends following. -->
     <div class="home-buttons">
       <button type="button" id="btn-ia-pause" class="btn" disabled>
         Pause
@@ -293,7 +303,7 @@
 
     <p class="hint" id="ia-text">—</p>
 
-    <!-- Text über den Lautsprecher des Roboters ausgeben (say). -->
+    <!-- Speak text through the robot's speaker (say). -->
     <form id="say-form" class="say-form">
       <input type="text" id="say-text" maxlength="300"
              placeholder="Etwas sagen lassen …" autocomplete="off">

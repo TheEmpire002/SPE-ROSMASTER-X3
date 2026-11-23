@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
-"""Startet den Hilfsroboter mit einem einzigen Befehl.
+"""Starts the helper robot with a single command.
 
     python main.py
 
-Das Skript nimmt einem die Einrichtung ab:
+The script takes care of the setup:
 
-1. legt bei Bedarf die virtuelle Umgebung unter ``robot/.venv`` an
-2. installiert fehlende Abhängigkeiten
-3. erkennt, ob echte Hardware angeschlossen ist, und wählt den Antrieb
-4. startet den Server und öffnet die Web-App im Browser
+1. creates the virtual environment under ``robot/.venv`` if needed
+2. installs missing dependencies
+3. detects whether real hardware is connected and picks the drive
+4. starts the server and opens the web app in the browser
 
-Es läuft mit der *system-weiten* Python-Installation und wechselt für den
-eigentlichen Server in die virtuelle Umgebung. Deshalb darf es selbst keine
-Pakete importieren, die erst dort installiert werden.
+It runs with the *system-wide* Python installation and switches to the
+virtual environment for the actual server. That is why it must not import
+any packages itself that only get installed there.
 
-Nützliche Optionen:
+Useful options:
 
-    python main.py --mock          Hardware erzwungen simulieren
-    python main.py --real          Hardware erzwingen (Fehler ohne Rosmaster_Lib)
-    python main.py --no-browser    Browser nicht öffnen
-    python main.py --setup-only    nur einrichten, nicht starten
+    python main.py --mock          force simulated hardware
+    python main.py --real          force real hardware (fails without Rosmaster_Lib)
+    python main.py --no-browser    do not open the browser
+    python main.py --setup-only    only set up, do not start
 """
 
 from __future__ import annotations
@@ -44,26 +44,26 @@ VENV_DIR = ROBOT_DIR / ".venv"
 
 MIN_PYTHON = (3, 11)
 
-# Sprachbefehle: muss zu SPRACHE_MODELL in config.py passen. Hier doppelt,
-# weil main.py nichts aus der virtuellen Umgebung importieren darf.
-VOSK_MODELL = "vosk-model-small-de-0.15"
-VOSK_URL = f"https://alphacephei.com/vosk/models/{VOSK_MODELL}.zip"
+# Speech commands: must match SPEECH_MODEL in config.py. Duplicated here
+# because main.py must not import anything from the virtual environment.
+VOSK_MODEL = "vosk-model-small-de-0.15"
+VOSK_URL = f"https://alphacephei.com/vosk/models/{VOSK_MODEL}.zip"
 
 
-# --- Ausgabe -------------------------------------------------------------------
+# --- Output --------------------------------------------------------------------
 
 def enable_utf8_output() -> None:
-    """Sorgt dafür, dass Umlaute auf der Windows-Konsole lesbar bleiben.
+    """Makes sure umlauts stay readable on the Windows console.
 
-    Die deutsche Windows-Konsole nutzt standardmäßig cp1252 und wirft bei
-    Zeichen außerhalb davon einen UnicodeEncodeError -- das Programm würde
-    an einer Textausgabe sterben.
+    The German Windows console uses cp1252 by default and raises a
+    UnicodeEncodeError for characters outside of it -- the program would
+    die on a text output.
     """
     for stream in (sys.stdout, sys.stderr):
         try:
             stream.reconfigure(encoding="utf-8", errors="replace")
         except (AttributeError, OSError):
-            pass  # Umgeleitete Ausgabe o.Ä. -- dann eben nicht.
+            pass  # Redirected output or similar -- then just skip it.
 
 
 def step(text: str) -> None:
@@ -75,32 +75,32 @@ def info(text: str) -> None:
 
 
 def fail(text: str) -> None:
-    # stdout zuerst leeren, sonst erscheint die Fehlermeldung auf der
-    # Konsole vor den Zeilen, die eigentlich davor kommen.
+    # Flush stdout first, otherwise the error message appears on the
+    # console before the lines that actually come before it.
     sys.stdout.flush()
     print(f"\n  Fehler: {text}", file=sys.stderr)
     sys.stderr.flush()
 
 
-# --- Virtuelle Umgebung ---------------------------------------------------------
+# --- Virtual environment --------------------------------------------------------
 
 def venv_python() -> Path:
-    """Pfad zum Python in der virtuellen Umgebung."""
+    """Path to the Python in the virtual environment."""
     if platform.system() == "Windows":
         return VENV_DIR / "Scripts" / "python.exe"
     return VENV_DIR / "bin" / "python"
 
 
 def ensure_venv() -> Path:
-    """Legt die virtuelle Umgebung an, falls sie fehlt."""
+    """Creates the virtual environment if it is missing."""
     py = venv_python()
     if py.exists():
         return py
 
     step("Lege virtuelle Umgebung an …")
-    # --system-site-packages ist auf dem Roboter wichtig: Yahboons
-    # Rosmaster_Lib ist dort system-weit installiert und wäre in einer
-    # abgeschotteten Umgebung nicht sichtbar.
+    # --system-site-packages matters on the robot: Yahboom's Rosmaster_Lib
+    # is installed system-wide there and would not be visible in an
+    # isolated environment.
     subprocess.run(
         [sys.executable, "-m", "venv", "--system-site-packages", str(VENV_DIR)],
         check=True,
@@ -110,7 +110,7 @@ def ensure_venv() -> Path:
 
 
 def has_module(py: Path, module: str) -> bool:
-    """Prüft, ob ein Modul in der virtuellen Umgebung importierbar ist."""
+    """Checks whether a module is importable in the virtual environment."""
     result = subprocess.run(
         [str(py), "-c", f"import {module}"],
         capture_output=True,
@@ -119,12 +119,12 @@ def has_module(py: Path, module: str) -> bool:
 
 
 def ensure_dependencies(py: Path) -> None:
-    """Installiert das Paket, falls es noch nicht eingerichtet ist."""
-    # Jedes Paket einzeln prüfen, nicht nur das erste: kommt eine neue
-    # Abhängigkeit dazu (zuletzt rplidar), muss ein bestehendes Setup sie
-    # beim nächsten Start nachinstallieren -- sonst fehlt sie stillschweigend.
-    module = ("rosmaster_assist", "fastapi", "numpy", "rplidar")
-    if all(has_module(py, m) for m in module):
+    """Installs the package if it is not set up yet."""
+    # Check every package individually, not just the first: when a new
+    # dependency is added (most recently rplidar), an existing setup must
+    # install it on the next start -- otherwise it is silently missing.
+    modules = ("rosmaster_assist", "fastapi", "numpy", "rplidar")
+    if all(has_module(py, m) for m in modules):
         info("Abhängigkeiten vorhanden")
         return
 
@@ -136,20 +136,21 @@ def ensure_dependencies(py: Path) -> None:
     info("fertig")
 
 
-def ensure_sprache(py: Path) -> None:
-    """Richtet die Sprachbefehle ein (Pakete und Vosk-Modell), soweit möglich.
+def ensure_speech(py: Path) -> None:
+    """Sets up the speech commands (packages and Vosk model) as far as possible.
 
-    Bewusst ohne Abbruch: Fehlt etwas oder ist kein Internet da, startet
-    der Server trotzdem, nur ohne Sprache. /sprache/status zeigt den Grund.
+    Deliberately without aborting: if something is missing or there is no
+    internet, the server starts anyway, just without speech. /sprache/status
+    shows the reason.
     """
     step("Sprachbefehle")
-    # Nur auf "ist installiert" prüfen, nicht importieren: Ohne
-    # libportaudio2 schlägt der Import fehl, ein erneutes pip install
-    # hilft dann nicht und kostete bei jedem Start Zeit.
-    fehlt = [m for m in ("vosk", "sounddevice")
-             if not has_module(py, f"importlib.util as u; assert u.find_spec('{m}')")]
-    if fehlt:
-        info(f"Installiere {', '.join(fehlt)} …")
+    # Only check "is installed", do not import: without libportaudio2 the
+    # import fails, a repeated pip install does not help then and would
+    # cost time on every start.
+    missing = [m for m in ("vosk", "sounddevice")
+               if not has_module(py, f"importlib.util as u; assert u.find_spec('{m}')")]
+    if missing:
+        info(f"Installiere {', '.join(missing)} …")
         result = subprocess.run(
             [str(py), "-m", "pip", "install", "--quiet", "--editable", f"{ROBOT_DIR}[sprache]"],
         )
@@ -160,37 +161,37 @@ def ensure_sprache(py: Path) -> None:
         info("PortAudio fehlt -- einmalig: sudo apt install libportaudio2")
         return
 
-    modell = Path.home() / VOSK_MODELL
-    if not modell.is_dir():
-        info(f"Lade Vosk-Modell (~45 MB) nach {modell} …")
+    model = Path.home() / VOSK_MODEL
+    if not model.is_dir():
+        info(f"Lade Vosk-Modell (~45 MB) nach {model} …")
         try:
-            # Erst in eine temporäre Datei, damit ein abgebrochener Download
-            # kein halbes Modell hinterlässt, das beim nächsten Start als
-            # vorhanden gälte.
+            # Download into a temporary file first, so that an aborted
+            # download does not leave half a model behind that would count
+            # as present on the next start.
             with tempfile.TemporaryDirectory() as tmp:
-                zip_pfad = Path(tmp) / "modell.zip"
-                with urllib.request.urlopen(VOSK_URL, timeout=30) as antwort,                         open(zip_pfad, "wb") as ziel:
-                    while block := antwort.read(1 << 20):
-                        ziel.write(block)
-                with zipfile.ZipFile(zip_pfad) as z:
+                zip_path = Path(tmp) / "modell.zip"
+                with urllib.request.urlopen(VOSK_URL, timeout=30) as response,                         open(zip_path, "wb") as target:
+                    while block := response.read(1 << 20):
+                        target.write(block)
+                with zipfile.ZipFile(zip_path) as z:
                     z.extractall(tmp)
-                # move statt rename: /tmp ist am Pi oft ein eigenes
-                # Dateisystem (tmpfs), rename ginge dann nicht.
-                shutil.move(str(Path(tmp, VOSK_MODELL)), str(modell))
-        except Exception as exc:  # kein Netz, voller Speicher, ...
+                # move instead of rename: /tmp on the Pi is often a separate
+                # file system (tmpfs), rename would not work then.
+                shutil.move(str(Path(tmp, VOSK_MODEL)), str(model))
+        except Exception as exc:  # no network, disk full, ...
             info(f"Download fehlgeschlagen ({exc}) -- Server startet ohne Sprache.")
             return
     info("bereit")
 
 
-# --- Hardware-Erkennung -----------------------------------------------------------
+# --- Hardware detection -----------------------------------------------------------
 
-# Fragt die Bibliothek selbst, statt nach Gerätedateien zu suchen.
+# Asks the library itself instead of looking for device files.
 #
-# Ein Suchen nach /dev/ttyUSB* & Co. ist hier der falsche Weg: je nach Image
-# und Anschlussart heißt das Gerät anders, und Rosmaster_Lib findet es ohne
-# Zutun. Wenn ``Rosmaster()`` sich öffnen lässt, ist die Hardware da -- das
-# ist die einzige Auskunft, auf die man sich verlassen kann.
+# Searching for /dev/ttyUSB* & co. is the wrong approach here: depending on
+# the image and connection type the device has a different name, and
+# Rosmaster_Lib finds it on its own. If ``Rosmaster()`` can be opened, the
+# hardware is there -- that is the only answer one can rely on.
 HARDWARE_PROBE = """
 import sys
 try:
@@ -206,9 +207,9 @@ print("RESULT:ok")
 
 
 def detect_hardware(py: Path) -> tuple[bool, str]:
-    """Entscheidet, ob echte Hardware verwendet werden kann.
+    """Decides whether real hardware can be used.
 
-    Gibt (hardware_verfügbar, Begründung) zurück.
+    Returns (hardware_available, reason).
     """
     if platform.system() == "Windows":
         return False, "Windows — der Roboter läuft unter Linux"
@@ -223,8 +224,8 @@ def detect_hardware(py: Path) -> tuple[bool, str]:
     except subprocess.TimeoutExpired:
         return False, "Hardware-Prüfung hängt — Expansion Board reagiert nicht"
 
-    # Die Bibliothek gibt beim Start selbst etwas aus, deshalb die
-    # Ergebniszeile gezielt heraussuchen statt die Ausgabe zu nehmen.
+    # The library prints something itself on startup, so pick out the
+    # result line specifically instead of taking the whole output.
     result = ""
     for line in proc.stdout.splitlines():
         if line.startswith("RESULT:"):
@@ -243,23 +244,23 @@ def detect_hardware(py: Path) -> tuple[bool, str]:
 # --- Browser ------------------------------------------------------------------------
 
 def open_browser_later(url: str, delay: float = 2.0) -> None:
-    """Öffnet den Browser, sobald der Server vermutlich bereit ist."""
+    """Opens the browser as soon as the server is probably ready."""
 
     def run() -> None:
         time.sleep(delay)
         try:
             webbrowser.open(url)
         except Exception:
-            pass  # Kein Browser vorhanden (z.B. über SSH) -- nicht schlimm.
+            pass  # No browser available (e.g. over SSH) -- not a problem.
 
     threading.Thread(target=run, daemon=True).start()
 
 
 def port_in_use(port: int) -> bool:
-    """Ob auf dem Port schon etwas lauscht.
+    """Whether something is already listening on the port.
 
-    Ohne diese Prüfung scheitert uvicorn mit einer schwer lesbaren
-    Socket-Fehlermeldung -- typischerweise, weil noch ein alter Server läuft.
+    Without this check uvicorn fails with a hard-to-read socket error
+    message -- typically because an old server is still running.
     """
     import socket
 
@@ -269,13 +270,13 @@ def port_in_use(port: int) -> bool:
 
 
 def has_display() -> bool:
-    """Ob überhaupt eine grafische Oberfläche da ist."""
+    """Whether a graphical desktop is available at all."""
     if platform.system() == "Windows":
         return True
     return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
 
-# --- Hauptablauf ----------------------------------------------------------------------
+# --- Main flow ------------------------------------------------------------------------
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
@@ -293,23 +294,24 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def _heim_unter_sudo() -> None:
-    """Mit ``sudo`` gestartet: ``~`` trotzdem auf den eigentlichen Benutzer.
+def _home_under_sudo() -> None:
+    """Started with ``sudo``: still point ``~`` to the actual user.
 
-    Unter sudo ist HOME=/root. Dann fehlen Piper (~/piper), das Vosk-Modell
-    und ~/.rosmaster -- am 03.11. sprach der Roboter deshalb wieder mit
-    espeak statt Piper. Der Server erbt die Umgebung, also reicht es hier.
+    Under sudo HOME=/root. Then Piper (~/piper), the Vosk model and
+    ~/.rosmaster are missing -- on 03.11. the robot therefore spoke with
+    espeak again instead of Piper. The server inherits the environment, so
+    doing it here is enough.
     """
-    benutzer = os.environ.get("SUDO_USER")
-    if not benutzer or not hasattr(os, "geteuid") or os.geteuid() != 0:
+    user = os.environ.get("SUDO_USER")
+    if not user or not hasattr(os, "geteuid") or os.geteuid() != 0:
         return
     import pwd
     try:
-        heim = pwd.getpwnam(benutzer).pw_dir
+        home = pwd.getpwnam(user).pw_dir
     except KeyError:
         return
-    os.environ["HOME"] = heim
-    info(f"Mit sudo gestartet -- nutze trotzdem {heim} (Piper, Vosk, Diagnose).")
+    os.environ["HOME"] = home
+    info(f"Mit sudo gestartet -- nutze trotzdem {home} (Piper, Vosk, Diagnose).")
     info("sudo ist nicht nötig: python3 main.py reicht.")
 
 
@@ -319,7 +321,7 @@ def main() -> int:
 
     print("\n  ROSMASTER X3 — Hilfsroboter")
     print("  " + "─" * 40)
-    _heim_unter_sudo()
+    _home_under_sudo()
 
     if sys.version_info < MIN_PYTHON:
         fail(
@@ -339,22 +341,22 @@ def main() -> int:
         fail(f"Einrichtung fehlgeschlagen ({exc})")
         return 1
 
-    # --- Antrieb wählen ---
+    # --- Choose the drive ---
     available, reason = detect_hardware(py)
 
-    # Ist die Rosmaster_Lib installiert, laufen wir auf dem Roboter -- auch
-    # wenn das Board gerade fehlt. Am 29.10. verschwand /dev/myserial bei
-    # einer USB-Überlast immer wieder für Sekunden; ob der Server echt oder
-    # simuliert startete, war dann Glückssache. Der Treiber verbindet sich
-    # selbst neu, sobald das Board wieder da ist.
-    am_roboter = available or reason.startswith(("Board nicht erreichbar", "Hardware-Prüfung hängt"))
+    # If Rosmaster_Lib is installed, we are running on the robot -- even if
+    # the board is currently missing. On 29.10. /dev/myserial kept vanishing
+    # for seconds during a USB over-current; whether the server started real
+    # or simulated was then a matter of luck. The driver reconnects on its
+    # own as soon as the board is back.
+    on_robot = available or reason.startswith(("Board nicht erreichbar", "Hardware-Prüfung hängt"))
 
-    if args.real and not am_roboter:
+    if args.real and not on_robot:
         fail(f"Hardware angefordert, aber nicht verfügbar: {reason}")
         info("Zur Diagnose: python scripts/check_hardware.py")
         return 1
 
-    use_mock = args.mock or not am_roboter
+    use_mock = args.mock or not on_robot
 
     step("Antrieb")
     if use_mock:
@@ -368,15 +370,15 @@ def main() -> int:
             info("Der Server verbindet sich, sobald das Board wieder da ist "
                  "(USB-Überlast? siehe /diagnose).")
         info("Der Roboter kann sich bewegen. Freie Fläche sicherstellen!")
-        # Nur am Roboter: Im Mock werden Sprachbefehle simuliert, dort
-        # braucht es weder Mikrofon noch Modell.
-        ensure_sprache(py)
+        # Only on the robot: in mock mode speech commands are simulated,
+        # so neither a microphone nor a model is needed there.
+        ensure_speech(py)
 
     if args.setup_only:
         step("Einrichtung abgeschlossen (--setup-only)")
         return 0
 
-    # --- Server starten ---
+    # --- Start the server ---
     if port_in_use(args.port):
         fail(f"Auf Port {args.port} läuft bereits etwas.")
         info("Vermutlich ein älterer Server. Entweder dort Strg+C drücken,")
@@ -398,23 +400,23 @@ def main() -> int:
     if args.debug:
         cmd.append("--debug")
 
-    # Auch der Server soll seine Umlaute lesbar ausgeben.
+    # The server should print its umlauts readably too.
     env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
 
     try:
         code = subprocess.run(cmd, env=env).returncode
     except KeyboardInterrupt:
-        # Der Serverprozess bekommt dasselbe Strg+C und fährt selbst sauber
-        # herunter -- inklusive Anhalten der Motoren.
+        # The server process gets the same Ctrl+C and shuts down cleanly on
+        # its own -- including stopping the motors.
         print("\n  Beendet.\n")
         return 0
-    _ende_erklaeren(code)
+    _explain_exit(code)
     return code
 
 
-# Wie der Server endete -- damit "er ist einfach weg" eine Ursache bekommt.
-# Negative Codes heißen unter Linux: durch dieses Signal beendet.
-_ENDE_TEXTE = {
+# How the server ended -- so that "it is just gone" gets a cause.
+# On Linux negative codes mean: terminated by this signal.
+_EXIT_TEXTS = {
     -9: "vom System hart beendet (SIGKILL) -- meist Speicher voll oder `kill -9`.",
     -11: "Speicherzugriffsfehler (Segfault) in einer C-Bibliothek, Details in "
          "~/.rosmaster/diagnose/absturz.txt.",
@@ -424,10 +426,10 @@ _ENDE_TEXTE = {
 }
 
 
-def _ende_erklaeren(code: int) -> None:
+def _explain_exit(code: int) -> None:
     if code in (0, 130, -2):
         return
-    text = _ENDE_TEXTE.get(code, "mit einem Fehler beendet, siehe Log oben.")
+    text = _EXIT_TEXTS.get(code, "mit einem Fehler beendet, siehe Log oben.")
     print(f"\n  Server beendet (Code {code}): {text}")
     print("  Mehr auf der Seite /diagnose unter „Abstürze & Hänger“.\n")
 

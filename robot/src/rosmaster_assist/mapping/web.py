@@ -25,27 +25,41 @@ class SaveMapRequest(BaseModel):
     name: str | None = Field(default=None, max_length=64)
 
 
-def create_mapping_router(manager: MappingManager | None = None, fahrt=None) -> APIRouter:
+class PointRequest(BaseModel):
+    """A point on the map (m, map frame), heading optional (degrees)."""
+
+    x: float
+    y: float
+    # Alias: the JSON field stays "winkel" (API contract), whatever the code calls it.
+    angle: float | None = Field(default=None, alias="winkel")
+
+
+class LoadRequest(BaseModel):
+    name: str = Field(max_length=64)
+
+
+def create_mapping_router(manager: MappingManager | None = None, drive=None) -> APIRouter:
     """Create the mapping routes.
 
     The manager is intentionally created here (not started here). Opening
     /map therefore does not start SLAM; only POST /api/mapping/start does.
 
-    ``fahrt`` steuert die Kartierfahrt (automatisches Abfahren des Raums).
-    Der Server reicht ein Objekt mit ``starten() -> str | None`` (Fehlertext
-    oder None), ``stoppen(grund)``, ``aktiv`` und ``zustand()`` herein: Nur
-    er kennt Watchdog, Heimfahrt und Interaktion, die dafür weichen müssen.
+    ``drive`` is the server's ``MapControl`` (api/map_control.py): start/stop
+    the mapping drive, load a map, drive to a point, set the pose. Only the
+    server knows the watchdog, homing and interaction, which have to give way
+    for this. Without it (tests) there is only mapping and the map.
     """
     mapping_manager = manager or MappingManager()
     router = APIRouter()
-    # Offene /map-Seiten. Die Kartierfahrt wird von dort gestartet und
-    # braucht jemanden, der zusieht: Schließt die letzte, hält er an --
-    # dieselbe Totmannschaltung wie bei der App.
-    seiten = {"offen": 0}
+
+    def _control():
+        if drive is None:
+            raise HTTPException(status_code=503, detail="Kartensteuerung ist nicht eingerichtet.")
+        return drive
 
     def _status() -> dict[str, Any]:
         status = mapping_manager.status()
-        status["fahrt"] = fahrt.zustand() if fahrt is not None else None
+        status["fahrt"] = drive.state() if drive is not None else None
         return status
 
     @router.get("/map", include_in_schema=False)
@@ -59,7 +73,7 @@ def create_mapping_router(manager: MappingManager | None = None, fahrt=None) -> 
         try:
             return await run_in_threadpool(_status)
         except Exception as exc:  # report Docker/ROS problems as an API response
-            log.exception("Mapping-Status konnte nicht gelesen werden")
+            log.exception("Could not read mapping status")
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @router.post("/api/mapping/start")
@@ -67,38 +81,38 @@ def create_mapping_router(manager: MappingManager | None = None, fahrt=None) -> 
         try:
             return await run_in_threadpool(mapping_manager.start)
         except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
-            log.exception("Mapping konnte nicht gestartet werden")
+            log.exception("Could not start mapping")
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except Exception as exc:
-            log.exception("Unerwarteter Fehler beim Mapping-Start")
+            log.exception("Unexpected error while starting mapping")
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     @router.post("/api/mapping/stop")
     async def mapping_stop() -> dict[str, Any]:
-        # Erst anhalten: Ohne SLAM und Lidar-Odometrie fährt er blind.
-        if fahrt is not None:
-            fahrt.stoppen("Mapping gestoppt")
+        # Stop first: without SLAM and scan odometry it drives blind.
+        if drive is not None:
+            drive.stop("Mapping gestoppt")
         try:
             return await run_in_threadpool(mapping_manager.stop)
         except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
-            log.exception("Mapping konnte nicht gestoppt werden")
+            log.exception("Could not stop mapping")
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @router.post("/api/mapping/fahrt/start")
-    async def fahrt_start() -> dict[str, Any]:
-        if fahrt is None:
+    async def drive_start() -> dict[str, Any]:
+        if drive is None:
             raise HTTPException(status_code=503, detail="Kartierfahrt ist nicht eingerichtet.")
-        fehler = fahrt.starten()
-        if fehler:
-            raise HTTPException(status_code=409, detail=fehler)
-        return fahrt.zustand()
+        error = drive.start()
+        if error:
+            raise HTTPException(status_code=409, detail=error)
+        return drive.state()
 
     @router.post("/api/mapping/fahrt/stop")
-    async def fahrt_stop() -> dict[str, Any]:
-        if fahrt is None:
+    async def drive_stop() -> dict[str, Any]:
+        if drive is None:
             raise HTTPException(status_code=503, detail="Kartierfahrt ist nicht eingerichtet.")
-        fahrt.stoppen("vom Nutzer beendet")
-        return fahrt.zustand()
+        drive.stop("vom Nutzer beendet")
+        return drive.state()
 
     @router.get("/api/mapping/map")
     async def mapping_map() -> dict[str, Any]:
@@ -116,12 +130,52 @@ def create_mapping_router(manager: MappingManager | None = None, fahrt=None) -> 
         except RuntimeError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except OSError as exc:
-            log.exception("Karte konnte nicht gespeichert werden")
+            log.exception("Could not save map")
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     @router.get("/api/mapping/maps")
     async def mapping_maps() -> list[dict[str, Any]]:
         return await run_in_threadpool(mapping_manager.list_maps)
+
+    # --- Using the map ------------------------------------------------------------
+
+    @router.post("/api/mapping/laden")
+    async def mapping_load(request: LoadRequest) -> dict[str, Any]:
+        try:
+            return await run_in_threadpool(_control().load, request.name)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except OSError as exc:
+            log.exception("Could not load map")
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @router.get("/api/mapping/ortung")
+    async def mapping_localization() -> dict[str, Any]:
+        return _control().display()
+
+    @router.post("/api/mapping/ziel")
+    async def mapping_goal(request: PointRequest) -> dict[str, Any]:
+        control = _control()
+        error = control.target(request.x, request.y, request.angle)
+        if error:
+            raise HTTPException(status_code=409, detail=error)
+        return control.display()
+
+    @router.post("/api/mapping/ziel/stop")
+    async def mapping_goal_stop() -> dict[str, Any]:
+        control = _control()
+        control.goal_stop()
+        return control.display()
+
+    @router.post("/api/mapping/pose")
+    async def mapping_pose(request: PointRequest) -> dict[str, Any]:
+        control = _control()
+        error = control.set_pose(request.x, request.y, request.angle)
+        if error:
+            raise HTTPException(status_code=409, detail=error)
+        return control.display()
 
     @router.websocket("/api/mapping/ws")
     async def mapping_websocket(websocket: WebSocket) -> None:
@@ -129,8 +183,12 @@ def create_mapping_router(manager: MappingManager | None = None, fahrt=None) -> 
         await websocket.accept()
         last_map_received_at: float | None = None
         last_status_at = 0.0
-        letzte_fahrt: dict[str, Any] | None = None
-        seiten["offen"] += 1
+        last_drive: dict[str, Any] | None = None
+        last_localization: dict[str, Any] | None = None
+        # The page counts as a watcher: if all of them close (and no app is
+        # open), a mapping drive or goal drive stops after a deadline.
+        if drive is not None:
+            drive.page_opened()
         try:
             while True:
                 now = asyncio.get_running_loop().time()
@@ -147,13 +205,18 @@ def create_mapping_router(manager: MappingManager | None = None, fahrt=None) -> 
                         )
                     last_status_at = now
 
-                # Die Kartierfahrt öfter melden: Sie fragt kein Docker ab,
-                # und wer zusieht, will wissen, was der Roboter gerade tut.
-                if fahrt is not None:
-                    zustand = fahrt.zustand()
-                    if zustand != letzte_fahrt:
-                        await websocket.send_json({"type": "fahrt", "data": zustand})
-                        letzte_fahrt = zustand
+                # Report the mapping drive more often: it does not query Docker,
+                # and whoever is watching wants to know what the robot is doing.
+                if drive is not None:
+                    state = drive.state()
+                    if state != last_drive:
+                        await websocket.send_json({"type": "fahrt", "data": state})
+                        last_drive = state
+                    # Where it is on the map, where it is heading.
+                    localization = drive.display()
+                    if localization != last_localization:
+                        await websocket.send_json({"type": "ortung", "data": localization})
+                        last_localization = localization
 
                 payload = await run_in_threadpool(mapping_manager.get_map)
                 if payload is not None:
@@ -166,16 +229,14 @@ def create_mapping_router(manager: MappingManager | None = None, fahrt=None) -> 
         except WebSocketDisconnect:
             return
         except Exception:
-            log.exception("Mapping-WebSocket wurde unerwartet beendet")
+            log.exception("Mapping WebSocket closed unexpectedly")
             try:
                 await websocket.close(code=1011)
             except Exception:
                 pass
         finally:
-            seiten["offen"] -= 1
-            if seiten["offen"] <= 0 and fahrt is not None and fahrt.aktiv:
-                log.warning("Keine /map-Seite mehr offen -- Kartierfahrt hält an")
-                fahrt.stoppen("Seite /map geschlossen")
+            if drive is not None:
+                drive.page_closed()
 
     # Expose the instance for optional application shutdown handling.
     router.mapping_manager = mapping_manager  # type: ignore[attr-defined]

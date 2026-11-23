@@ -1,4 +1,4 @@
-"""Hilfen rund um serielle Geräte (Board, Lidar)."""
+"""Helpers for serial devices (board, lidar)."""
 
 from __future__ import annotations
 
@@ -6,36 +6,36 @@ import glob
 import os
 
 
-def wer_haelt(pfad: str) -> list[str]:
-    """Andere Prozesse, die das Gerät gerade offen haben.
+def who_holds(path: str) -> list[str]:
+    """Other processes that currently have the device open.
 
-    Für Fehlermeldungen: ein sterbender Lese-Thread, "Device or resource
-    busy" oder ein Lidar, der nur Datenmüll liefert, heißen fast immer, dass
-    ein zweites Programm am selben Port hängt -- eine vergessene zweite
-    Instanz, ein Jupyter-Notebook, ein ROS-Knoten. Wer das ist, soll im Log
-    stehen, statt dass man es suchen muss.
+    For error messages: a dying reader thread, "Device or resource busy" or
+    a lidar that only delivers garbage almost always mean that a second
+    program is attached to the same port -- a forgotten second instance, a
+    Jupyter notebook, a ROS node. Who that is should be in the log instead
+    of having to hunt for it.
 
-    Liest /proc direkt, damit kein lsof nötig ist. Prozesse anderer Benutzer
-    (root) bleiben dabei unsichtbar, die eigenen genügen in aller Regel.
+    Reads /proc directly so no lsof is needed. Processes of other users
+    (root) stay invisible that way; our own are usually enough.
     """
     try:
-        ziel = os.path.realpath(pfad)
+        target = os.path.realpath(path)
     except OSError:
         return []
-    eigene = str(os.getpid())
-    treffer = []
-    for fd_ordner in glob.glob("/proc/[0-9]*/fd"):
-        pid = fd_ordner.split("/")[2]
-        if pid == eigene:
+    own = str(os.getpid())
+    hits = []
+    for fd_folder in glob.glob("/proc/[0-9]*/fd"):
+        pid = fd_folder.split("/")[2]
+        if pid == own:
             continue
         try:
             if not any(
-                os.readlink(f"{fd_ordner}/{fd}") == ziel for fd in os.listdir(fd_ordner)
+                os.readlink(f"{fd_folder}/{fd}") == target for fd in os.listdir(fd_folder)
             ):
                 continue
             with open(f"/proc/{pid}/cmdline", "rb") as f:
-                befehl = f.read().replace(b"\0", b" ").decode(errors="replace").strip()
+                command = f.read().replace(b"\0", b" ").decode(errors="replace").strip()
         except OSError:
-            continue  # Prozess inzwischen beendet oder fremder Benutzer
-        treffer.append(f"PID {pid}: {befehl[:150]}")
-    return treffer
+            continue  # process has exited meanwhile or belongs to another user
+        hits.append(f"PID {pid}: {command[:150]}")
+    return hits

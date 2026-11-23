@@ -1,9 +1,9 @@
-// Seite /healthbot: Prüfung starten, Ablauf und Begründung verfolgen.
+// page /healthbot: start a check, follow the procedure and its reasons
 //
-// Zwei Quellen: Der WebSocket liefert Pose und Kurzstatus im Takt der
-// Statusmeldungen (und nimmt die Befehle an), /healthbot/status die
-// ausführlichen Daten (Zeitleiste, Zeichen, Stupser, Skelett). So bleibt die
-// Statusmeldung für alle anderen Clients klein.
+// two sources: the websocket brings pose and short status at the state rate
+// (and takes the commands), /healthbot/status the full details (timeline,
+// signs, nudges, skeleton), so the state message stays small for all other
+// clients
 
 "use strict";
 
@@ -14,32 +14,32 @@ const ui = {
   statusText: el("status-text"),
   alarm: el("hb-alarm"),
   alarmText: el("hb-alarm-text"),
-  schritte: el("hb-schritte"),
-  zustand: el("hb-zustand"),
-  schritt: el("hb-schritt"),
-  startHier: el("hb-start-hier"),
-  startZiel: el("hb-start-ziel"),
+  steps: el("hb-steps"),
+  state: el("hb-state"),
+  step: el("hb-step"),
+  startHere: el("hb-start-here"),
+  startGoal: el("hb-start-goal"),
   stop: el("hb-stop"),
-  wache: el("hb-wache"),
-  stupsenAus: el("hb-stupsen-aus"),
-  karte: el("hb-karte"),
-  zielText: el("hb-ziel-text"),
-  bild: el("hb-bild"),
-  skelett: el("hb-skelett"),
+  watch: el("hb-watch"),
+  nudgeOff: el("hb-nudge-off"),
+  map: el("hb-map"),
+  goalText: el("hb-goal-text"),
+  image: el("hb-image"),
+  skeleton: el("hb-skeleton"),
   checks: el("hb-checks"),
-  urteil: el("hb-urteil"),
-  keineStupser: el("hb-keine-stupser"),
-  stupser: el("hb-stupser"),
-  antwortForm: el("hb-antwort-form"),
-  antwort: el("hb-antwort"),
+  verdict: el("hb-verdict"),
+  noNudges: el("hb-no-nudges"),
+  nudges: el("hb-nudges"),
+  answerForm: el("hb-answer-form"),
+  answer: el("hb-answer"),
   sim: el("hb-sim"),
   simText: el("hb-sim-text"),
-  simKnoepfe: el("hb-sim-knoepfe"),
+  simButtons: el("hb-sim-buttons"),
   timeline: el("hb-timeline"),
 };
 
-// Klartext für die Zustände des Ablaufs (zustandserkennung/ablauf.py).
-const ZUSTAND_TEXT = {
+// display text for the procedure states (health/procedure.py)
+const STATE_TEXT = {
   bereit: "bereit",
   anfahrt: "Anfahrt",
   gesamtbild: "Gesamtbild",
@@ -52,36 +52,36 @@ const ZUSTAND_TEXT = {
   keine_person: "keine Person",
   abgebrochen: "abgebrochen",
 };
-// Reihenfolge der Schrittanzeige; alles danach ist "Ergebnis".
-const REIHE = ["anfahrt", "gesamtbild", "ansprechen", "anstupsen"];
-const ENDE = ["nachfrage", "hilfe", "ansprechbar", "unauffaellig", "keine_person", "abgebrochen"];
+// order of the step display; every final state counts as "end"
+const SEQUENCE = ["anfahrt", "gesamtbild", "ansprechen", "anstupsen"];
+const FINAL = ["nachfrage", "hilfe", "ansprechbar", "unauffaellig", "keine_person", "abgebrochen"];
 
-const SZENE_TEXT = {
+const SCENE_TEXT = {
   liegend_regungslos: "Person liegt regungslos",
   liegend_bewegt: "Person liegt, bewegt sich",
 };
 
 let socket = null;
-let pose = null;          // {x, y, winkel} aus der Statusmeldung
-let ziel = null;          // vom Nutzer angetippter Ort {x, y}
-let status = null;        // letzte Antwort von /healthbot/status
-let scan = [];            // [[winkel°, abstand m], ...] relativ zum Roboter
-let karte = null;         // Belegungskarte der Kartierung als Bild, falls vorhanden
-let skelettLinien = [];
-let letzteTimeline = -1;
+let pose = null;          // {x, y, winkel} from the state message, odometry frame
+let goal = null;          // place tapped by the user {x, y}
+let status = null;        // last answer of /healthbot/status
+let scan = [];            // [[angle deg, distance m], ...] relative to the robot
+let occupancy = null;     // occupancy map of the mapping as an image, if there is one
+let skeletonLines = [];
+let lastTimeline = -1;
 
-// ------------------------------------------------------------------ WebSocket
+// ------------------------------------------------------------------ websocket
 
-function verbinden() {
+function connect() {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   socket = new WebSocket(`${proto}//${location.host}/ws`);
-  socket.onopen = () => setzeVerbunden(true);
+  socket.onopen = () => setConnected(true);
   socket.onclose = () => {
-    setzeVerbunden(false);
-    setTimeout(verbinden, 1500);
+    setConnected(false);
+    setTimeout(connect, 1500);
   };
   socket.onerror = () => {
-    // onclose folgt direkt danach und baut neu auf.
+    // onclose follows right after and reconnects
   };
   socket.onmessage = (ev) => {
     let msg;
@@ -92,197 +92,198 @@ function verbinden() {
     }
     if (msg.type === "state") {
       if (msg.pose) pose = msg.pose;
-      if (msg.healthbot) zeigeKurz(msg.healthbot);
+      if (msg.healthbot) showShort(msg.healthbot);
     } else if (msg.type === "alert" && msg.level === "emergency") {
-      zeigeAlarm(msg.text);
+      showAlarm(msg.text);
     }
   };
 }
 
-function setzeVerbunden(ja) {
-  ui.status.className = `status ${ja ? "online" : "offline"}`;
-  ui.statusText.textContent = ja ? "verbunden" : "getrennt";
+function setConnected(yes) {
+  ui.status.className = `status ${yes ? "online" : "offline"}`;
+  ui.statusText.textContent = yes ? "verbunden" : "getrennt";
 }
 
-function senden(nachricht) {
+function send(message) {
   if (socket && socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify(nachricht));
+    socket.send(JSON.stringify(message));
     return true;
   }
   return false;
 }
 
-// ------------------------------------------------------------------ Bedienung
+// ------------------------------------------------------------------ controls
 
-ui.startHier.addEventListener("click", () => senden({ type: "health_check" }));
-ui.startZiel.addEventListener("click", () => {
-  if (ziel) senden({ type: "health_check", x: ziel.x, y: ziel.y });
+ui.startHere.addEventListener("click", () => send({ type: "health_check" }));
+ui.startGoal.addEventListener("click", () => {
+  if (goal) send({ type: "health_check", x: goal.x, y: goal.y });
 });
-ui.stop.addEventListener("click", () => senden({ type: "health_stop" }));
-ui.wache.addEventListener("change", () => senden({ type: "health_wache", an: ui.wache.checked }));
+ui.stop.addEventListener("click", () => send({ type: "health_stop" }));
+ui.watch.addEventListener("change", () => send({ type: "health_wache", an: ui.watch.checked }));
 
-ui.antwortForm.addEventListener("submit", (ev) => {
+ui.answerForm.addEventListener("submit", (ev) => {
   ev.preventDefault();
-  const text = ui.antwort.value.trim();
-  if (text && senden({ type: "speech", text })) ui.antwort.value = "";
+  const text = ui.answer.value.trim();
+  if (text && send({ type: "speech", text })) ui.answer.value = "";
 });
 
-// ------------------------------------------------------------------ Anzeige
+// ------------------------------------------------------------------ display
 
-function zeigeKurz(hb) {
-  // Der Kurzstatus kommt öfter als die Abfrage: Schritt und Alarm sofort zeigen.
-  zeigeZustand(hb.zustand, hb.schritt, hb.aktiv);
+function showShort(hb) {
+  // the short status arrives more often than the poll, so step and alarm show at once
+  showState(hb.zustand, hb.schritt, hb.aktiv);
   ui.alarm.hidden = !hb.alarm;
-  ui.wache.checked = !!hb.wache;
+  ui.watch.checked = !!hb.wache;
 }
 
-function zeigeAlarm(text) {
+function showAlarm(text) {
   ui.alarm.hidden = false;
   ui.alarmText.textContent = text;
 }
 
-function zeigeZustand(zustand, schritt, aktiv) {
-  ui.zustand.textContent = ZUSTAND_TEXT[zustand] || zustand || "–";
-  ui.zustand.className = `hb-marke z-${zustand}`;
-  ui.schritt.textContent = schritt || "";
-  ui.startHier.disabled = !!aktiv;
-  ui.startZiel.disabled = !!aktiv || !ziel;
-  const jetzt = REIHE.indexOf(zustand);
-  const fertig = ENDE.includes(zustand);
-  for (const li of ui.schritte.children) {
-    const z = li.dataset.z;
-    const i = REIHE.indexOf(z);
-    li.classList.toggle("aktiv", z === zustand || (z === "ende" && fertig));
-    li.classList.toggle("erledigt", (i >= 0 && jetzt > i) || (i >= 0 && fertig));
+function showState(state, step, active) {
+  ui.state.textContent = STATE_TEXT[state] || state || "–";
+  ui.state.className = `hb-badge z-${state}`;
+  ui.step.textContent = step || "";
+  ui.startHere.disabled = !!active;
+  ui.startGoal.disabled = !!active || !goal;
+  const now = SEQUENCE.indexOf(state);
+  const finished = FINAL.includes(state);
+  for (const li of ui.steps.children) {
+    const s = li.dataset.state;
+    const i = SEQUENCE.indexOf(s);
+    li.classList.toggle("current", s === state || (s === "end" && finished));
+    li.classList.toggle("done", i >= 0 && (now > i || finished));
   }
 }
 
-function zeigeChecks(checks) {
+function showChecks(checks) {
   ui.checks.replaceChildren(
     ...checks.map((c) => {
       const d = document.createElement("div");
       d.className = `hb-check ${c.zustand}`;
-      const ampel = document.createElement("span");
-      ampel.className = "hb-check-ampel";
-      ampel.setAttribute("aria-hidden", "true");
-      const titel = document.createElement("strong");
-      titel.textContent = c.titel;
-      const urteil = document.createElement("span");
-      urteil.className = "hb-check-urteil";
-      urteil.textContent = { auffaellig: "auffällig", ok: "unauffällig" }[c.zustand] || "noch offen";
+      const light = document.createElement("span");
+      light.className = "hb-check-light";
+      light.setAttribute("aria-hidden", "true");
+      const title = document.createElement("strong");
+      title.textContent = c.titel;
+      const verdict = document.createElement("span");
+      verdict.className = "hb-check-verdict";
+      verdict.textContent = { auffaellig: "auffällig", ok: "unauffällig" }[c.zustand] || "noch offen";
       const text = document.createElement("p");
       text.textContent = c.text || "";
-      d.append(ampel, titel, urteil, text);
+      d.append(light, title, verdict, text);
       return d;
     }),
   );
 }
 
-function zeigeUrteil(u) {
-  const stufe = u ? u.stufe : "unbekannt";
-  ui.urteil.className = `hb-urteil ${stufe}`;
-  ui.urteil.querySelector(".hb-urteil-stufe").textContent =
-    { notfall: "NOTFALL", auffaellig: "auffällig", ansprechbar: "ansprechbar", unauffaellig: "unauffällig" }[stufe] || "–";
-  ui.urteil.querySelector(".hb-urteil-text").textContent = u ? u.text : "noch keine Bewertung";
-  ui.urteil.querySelector(".hb-punkte").textContent = u ? `${u.punkte} von 4 Zeichen` : "";
+function showVerdict(u) {
+  const level = u ? u.stufe : "unbekannt";
+  ui.verdict.className = `hb-verdict ${level}`;
+  ui.verdict.querySelector(".hb-verdict-level").textContent =
+    { notfall: "NOTFALL", auffaellig: "auffällig", ansprechbar: "ansprechbar", unauffaellig: "unauffällig" }[level] || "–";
+  ui.verdict.querySelector(".hb-verdict-text").textContent = u ? u.text : "noch keine Bewertung";
+  ui.verdict.querySelector(".hb-points").textContent = u ? `${u.punkte} von 4 Zeichen` : "";
 }
 
-function zeigeStupser(stupser) {
-  ui.keineStupser.hidden = stupser.length > 0;
-  ui.stupser.replaceChildren(
-    ...stupser.map((s) => {
+function showNudges(nudges) {
+  ui.noNudges.hidden = nudges.length > 0;
+  ui.nudges.replaceChildren(
+    ...nudges.map((s) => {
       const li = document.createElement("li");
-      const reaktion = s.reaktion === undefined ? "" : s.reaktion ? " · Reaktion!" : " · keine Reaktion";
-      li.textContent = `Stups ${s.nr}: ${(s.weg_m * 100).toFixed(0)} cm vor, Ende durch ${s.grund}${reaktion}`;
+      // the reaction is only known once the check after the nudge has finished
+      const reaction = s.reaktion === undefined ? "" : s.reaktion ? " · Reaktion!" : " · keine Reaktion";
+      li.textContent = `Stups ${s.nr}: ${(s.weg_m * 100).toFixed(0)} cm vor, Ende durch ${s.grund}${reaction}`;
       return li;
     }),
   );
 }
 
-function uhrzeit(t) {
+function clockTime(t) {
   return new Date(t * 1000).toLocaleTimeString("de-DE");
 }
 
-function zeigeTimeline(eintraege) {
-  // Nur neu aufbauen, wenn etwas dazukam; sonst springt die Auswahl beim Lesen.
-  const kennung = eintraege.length ? eintraege.length + eintraege[eintraege.length - 1].zeit : 0;
-  if (kennung === letzteTimeline) return;
-  letzteTimeline = kennung;
+function showTimeline(entries) {
+  // rebuild only when something was added, otherwise a text selection jumps while reading
+  const key = entries.length ? entries.length + entries[entries.length - 1].zeit : 0;
+  if (key === lastTimeline) return;
+  lastTimeline = key;
   ui.timeline.replaceChildren(
-    ...eintraege
+    ...entries
       .slice()
       .reverse()
       .map((e) => {
         const li = document.createElement("li");
         li.className = `z-${e.zustand}`;
-        const zeit = document.createElement("time");
-        zeit.textContent = uhrzeit(e.zeit);
-        const marke = document.createElement("span");
-        marke.className = `hb-marke z-${e.zustand}`;
-        marke.textContent = ZUSTAND_TEXT[e.zustand] || e.zustand;
+        const time = document.createElement("time");
+        time.textContent = clockTime(e.zeit);
+        const badge = document.createElement("span");
+        badge.className = `hb-badge z-${e.zustand}`;
+        badge.textContent = STATE_TEXT[e.zustand] || e.zustand;
         const text = document.createElement("span");
         text.textContent = e.text;
-        li.append(zeit, marke, text);
+        li.append(time, badge, text);
         return li;
       }),
   );
 }
 
-function zeigeSimulation(sim, szenen) {
-  ui.sim.hidden = !szenen || szenen.length === 0;
+function showSimulation(sim, scenes) {
+  ui.sim.hidden = !scenes || scenes.length === 0;
   if (ui.sim.hidden) return;
   ui.simText.textContent = sim && sim.szene
-    ? `Jetzt: ${SZENE_TEXT[sim.szene] || sim.szene} bei (${sim.x.toFixed(2)}, ${sim.y.toFixed(2)}).`
+    ? `Jetzt: ${SCENE_TEXT[sim.szene] || sim.szene} bei (${sim.x.toFixed(2)}, ${sim.y.toFixed(2)}).`
     : "Jetzt: keine Person.";
-  if (ui.simKnoepfe.children.length) return;
-  for (const szene of [...szenen, null]) {
+  if (ui.simButtons.children.length) return;
+  for (const scene of [...scenes, null]) {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "btn";
-    b.textContent = szene ? SZENE_TEXT[szene] || szene : "Person entfernen";
-    b.addEventListener("click", () => simulieren(szene));
-    ui.simKnoepfe.append(b);
+    b.textContent = scene ? SCENE_TEXT[scene] || scene : "Person entfernen";
+    b.addEventListener("click", () => simulate(scene));
+    ui.simButtons.append(b);
   }
 }
 
-async function simulieren(szene) {
-  const ort = ziel || { x: 1.5, y: 0.0 };
+async function simulate(scene) {
+  const place = goal || { x: 1.5, y: 0.0 };
   try {
     await fetch("/healthbot/simulation", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ szene, x: ort.x, y: ort.y }),
+      body: JSON.stringify({ szene: scene, x: place.x, y: place.y }),
     });
   } catch {
-    // Beim nächsten Abfragen sieht man, ob es geklappt hat.
+    // the next poll shows whether it worked
   }
-  abfragen();
+  poll();
 }
 
-// ------------------------------------------------------------------ Abfragen
+// ------------------------------------------------------------------ polling
 
-async function abfragen() {
+async function poll() {
   try {
     const r = await fetch("/healthbot/status", { cache: "no-store" });
     if (!r.ok) return;
     status = await r.json();
   } catch {
-    return; // Verbindung kurz weg: beim nächsten Takt wieder.
+    return; // connection briefly gone, next tick tries again
   }
-  zeigeZustand(status.zustand, status.schritt, status.aktiv);
+  showState(status.zustand, status.schritt, status.aktiv);
   ui.alarm.hidden = !status.alarm;
   if (status.alarm && status.urteil) ui.alarmText.textContent = status.urteil.text;
-  ui.wache.checked = !!status.wache;
-  ui.stupsenAus.hidden = status.stupsen_aktiv !== false;
-  zeigeChecks(status.checks || []);
-  zeigeUrteil(status.urteil);
-  zeigeStupser(status.stupser || []);
-  zeigeTimeline(status.timeline || []);
-  zeigeSimulation(status.simulation, status.szenen);
-  skelettZeichnen();
+  ui.watch.checked = !!status.wache;
+  ui.nudgeOff.hidden = status.stupsen_aktiv !== false;
+  showChecks(status.checks || []);
+  showVerdict(status.urteil);
+  showNudges(status.stupser || []);
+  showTimeline(status.timeline || []);
+  showSimulation(status.simulation, status.szenen);
+  drawSkeleton();
 }
 
-async function scanHolen() {
+async function fetchScan() {
   try {
     const r = await fetch("/lidar/scan", { cache: "no-store" });
     if (r.ok) scan = (await r.json()).punkte || [];
@@ -291,141 +292,141 @@ async function scanHolen() {
   }
 }
 
-async function karteHolen() {
-  // Die Belegungskarte gibt es nur, solange bzw. nachdem kartiert wurde.
+async function fetchOccupancy() {
+  // the occupancy map only exists while or after mapping ran
   try {
     const r = await fetch("/api/mapping/map", { cache: "no-store" });
     if (!r.ok) {
-      karte = null;
+      occupancy = null;
       return;
     }
-    karte = karteAlsBild(await r.json());
+    occupancy = occupancyImage(await r.json());
   } catch {
-    karte = null;
+    occupancy = null;
   }
 }
 
-function karteAlsBild(m) {
+function occupancyImage(m) {
   const info = m.info || {};
-  const b = info.width;
+  const w = info.width;
   const h = info.height;
-  if (!b || !h || !m.data_b64) return null;
-  const roh = atob(m.data_b64);
+  if (!w || !h || !m.data_b64) return null;
+  const raw = atob(m.data_b64);
   const c = document.createElement("canvas");
-  c.width = b;
+  c.width = w;
   c.height = h;
   const ctx = c.getContext("2d");
-  const bild = ctx.createImageData(b, h);
-  for (let i = 0; i < b * h; i++) {
-    let v = roh.charCodeAt(i);
-    if (v > 127) v -= 256; // int8: -1 = unbekannt
-    // Zeile 0 der Karte liegt unten (ROS), im Bild oben: spiegeln.
-    const zeile = h - 1 - Math.floor(i / b);
-    const p = (zeile * b + (i % b)) * 4;
-    const belegt = v > 50;
-    bild.data[p] = bild.data[p + 1] = bild.data[p + 2] = belegt ? 220 : 120;
-    bild.data[p + 3] = v < 0 ? 0 : belegt ? 200 : 40;
+  const img = ctx.createImageData(w, h);
+  for (let i = 0; i < w * h; i++) {
+    let v = raw.charCodeAt(i);
+    if (v > 127) v -= 256; // int8, -1 = unknown
+    // map row 0 is at the bottom (ros) but at the top in the image, so flip
+    const row = h - 1 - Math.floor(i / w);
+    const p = (row * w + (i % w)) * 4;
+    const occupied = v > 50;
+    img.data[p] = img.data[p + 1] = img.data[p + 2] = occupied ? 220 : 120;
+    img.data[p + 3] = v < 0 ? 0 : occupied ? 200 : 40;
   }
-  ctx.putImageData(bild, 0, 0);
+  ctx.putImageData(img, 0, 0);
   const o = (info.origin && info.origin.position) || { x: 0, y: 0 };
-  return { bild: c, aufloesung: info.resolution, x0: o.x, y0: o.y, breite: b, hoehe: h };
+  return { image: c, resolution: info.resolution, x0: o.x, y0: o.y, width: w, height: h };
 }
 
-// ------------------------------------------------------------------ Karte
+// ------------------------------------------------------------------ map
 
-// Ausschnitt: so groß, dass Roboter, Startpunkt und Ziel hineinpassen.
-function ausschnitt() {
-  const punkte = [[0, 0]];
-  if (pose) punkte.push([pose.x, pose.y]);
-  if (ziel) punkte.push([ziel.x, ziel.y]);
-  const xs = punkte.map((p) => p[0]);
-  const ys = punkte.map((p) => p[1]);
+// view large enough for robot, start point and goal
+function viewport() {
+  const points = [[0, 0]];
+  if (pose) points.push([pose.x, pose.y]);
+  if (goal) points.push([goal.x, goal.y]);
+  const xs = points.map((p) => p[0]);
+  const ys = points.map((p) => p[1]);
   const mx = (Math.min(...xs) + Math.max(...xs)) / 2;
   const my = (Math.min(...ys) + Math.max(...ys)) / 2;
-  const halb = Math.max(2.5, (Math.max(...xs) - Math.min(...xs)) / 2 + 1.5, (Math.max(...ys) - Math.min(...ys)) / 2 + 1.5);
-  return { mx, my, halb };
+  const half = Math.max(2.5, (Math.max(...xs) - Math.min(...xs)) / 2 + 1.5, (Math.max(...ys) - Math.min(...ys)) / 2 + 1.5);
+  return { mx, my, half };
 }
 
-// Weltkoordinaten (x vorn, y links) -> Bildpunkte: x nach oben, y nach links.
-function inBild(a, x, y) {
-  const c = ui.karte;
-  const s = c.width / (2 * a.halb);
-  return [c.width / 2 - (y - a.my) * s, c.height / 2 - (x - a.mx) * s];
+// world coordinates (x forward, y left) to pixels with x pointing up and y pointing left
+function toPixel(v, x, y) {
+  const c = ui.map;
+  const s = c.width / (2 * v.half);
+  return [c.width / 2 - (y - v.my) * s, c.height / 2 - (x - v.mx) * s];
 }
 
-function ausBild(a, px, py) {
-  const c = ui.karte;
-  const s = c.width / (2 * a.halb);
-  return { x: a.mx + (c.height / 2 - py) / s, y: a.my + (c.width / 2 - px) / s };
+function fromPixel(v, px, py) {
+  const c = ui.map;
+  const s = c.width / (2 * v.half);
+  return { x: v.mx + (c.height / 2 - py) / s, y: v.my + (c.width / 2 - px) / s };
 }
 
-let aktuellerAusschnitt = ausschnitt();
+let currentViewport = viewport();
 
-function karteZeichnen() {
-  const c = ui.karte;
+function drawMap() {
+  const c = ui.map;
   const ctx = c.getContext("2d");
-  const a = (aktuellerAusschnitt = ausschnitt());
-  const s = c.width / (2 * a.halb);
+  const v = (currentViewport = viewport());
+  const s = c.width / (2 * v.half);
   ctx.clearRect(0, 0, c.width, c.height);
 
-  if (karte) {
-    // Karte im eigenen Rahmen: Ursprung = Start der Kartierung, also wie der
-    // Startpunkt der Odometrie, wenn beide am selben Ort begonnen haben.
+  if (occupancy) {
+    // the map has its own frame with the mapping start as origin, so it only
+    // lines up with the odometry start point if both began at the same place
     ctx.save();
-    const [px, py] = inBild(a, karte.x0, karte.y0);
+    const [px, py] = toPixel(v, occupancy.x0, occupancy.y0);
     ctx.translate(px, py);
     ctx.rotate(-Math.PI / 2);
-    ctx.scale(karte.aufloesung * s, karte.aufloesung * s);
-    ctx.drawImage(karte.bild, 0, -karte.hoehe);
+    ctx.scale(occupancy.resolution * s, occupancy.resolution * s);
+    ctx.drawImage(occupancy.image, 0, -occupancy.height);
     ctx.restore();
   }
 
-  // Meterraster
+  // one meter grid
   ctx.strokeStyle = "#2a2e37";
   ctx.lineWidth = 1;
-  for (let m = Math.floor(a.mx - a.halb); m <= a.mx + a.halb; m++) {
-    const [, py] = inBild(a, m, 0);
+  for (let m = Math.floor(v.mx - v.half); m <= v.mx + v.half; m++) {
+    const [, py] = toPixel(v, m, 0);
     ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(c.width, py); ctx.stroke();
   }
-  for (let m = Math.floor(a.my - a.halb); m <= a.my + a.halb; m++) {
-    const [px] = inBild(a, 0, m);
+  for (let m = Math.floor(v.my - v.half); m <= v.my + v.half; m++) {
+    const [px] = toPixel(v, 0, m);
     ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, c.height); ctx.stroke();
   }
 
-  // Lidar, vom Roboter aus in Weltkoordinaten gedreht.
+  // lidar points are relative to the robot, so rotate them into world coordinates
   if (pose && scan.length) {
     const th = (pose.winkel * Math.PI) / 180;
     ctx.fillStyle = "#4da3ff";
     for (const [w, d] of scan) {
       const r = th + (w * Math.PI) / 180;
-      const [px, py] = inBild(a, pose.x + d * Math.cos(r), pose.y + d * Math.sin(r));
+      const [px, py] = toPixel(v, pose.x + d * Math.cos(r), pose.y + d * Math.sin(r));
       ctx.fillRect(px - 1, py - 1, 2, 2);
     }
   }
 
-  // Startpunkt
-  const [hx, hy] = inBild(a, 0, 0);
+  // start point as a house
+  const [hx, hy] = toPixel(v, 0, 0);
   ctx.fillStyle = "#3ecf8e";
   ctx.beginPath();
   ctx.moveTo(hx, hy - 9); ctx.lineTo(hx + 8, hy); ctx.lineTo(hx + 5, hy); ctx.lineTo(hx + 5, hy + 7);
   ctx.lineTo(hx - 5, hy + 7); ctx.lineTo(hx - 5, hy); ctx.lineTo(hx - 8, hy); ctx.closePath();
   ctx.fill();
 
-  // Ziel: das angetippte und das, mit dem der Healthbot gerade arbeitet.
-  const zielHb = status && status.ziel;
-  for (const z of [ziel, zielHb]) {
-    if (!z) continue;
-    const [zx, zy] = inBild(a, z.x, z.y);
-    ctx.strokeStyle = z === zielHb ? "#f05d5d" : "#f5a524";
+  // the tapped goal and the one the healthbot is working with
+  const hbGoal = status && status.ziel;
+  for (const g of [goal, hbGoal]) {
+    if (!g) continue;
+    const [gx, gy] = toPixel(v, g.x, g.y);
+    ctx.strokeStyle = g === hbGoal ? "#f05d5d" : "#f5a524";
     ctx.lineWidth = 2.5;
-    ctx.beginPath(); ctx.moveTo(zx - 7, zy - 7); ctx.lineTo(zx + 7, zy + 7);
-    ctx.moveTo(zx + 7, zy - 7); ctx.lineTo(zx - 7, zy + 7); ctx.stroke();
-    ctx.beginPath(); ctx.arc(zx, zy, 11, 0, 2 * Math.PI); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(gx - 7, gy - 7); ctx.lineTo(gx + 7, gy + 7);
+    ctx.moveTo(gx + 7, gy - 7); ctx.lineTo(gx - 7, gy + 7); ctx.stroke();
+    ctx.beginPath(); ctx.arc(gx, gy, 11, 0, 2 * Math.PI); ctx.stroke();
   }
 
-  // Roboter als Dreieck in Blickrichtung
+  // robot as a triangle pointing where it looks
   if (pose) {
-    const [rx, ry] = inBild(a, pose.x, pose.y);
+    const [rx, ry] = toPixel(v, pose.x, pose.y);
     const th = (pose.winkel * Math.PI) / 180;
     ctx.save();
     ctx.translate(rx, ry);
@@ -438,31 +439,31 @@ function karteZeichnen() {
   }
 }
 
-ui.karte.addEventListener("click", (ev) => {
-  const r = ui.karte.getBoundingClientRect();
-  const px = ((ev.clientX - r.left) / r.width) * ui.karte.width;
-  const py = ((ev.clientY - r.top) / r.height) * ui.karte.height;
-  const p = ausBild(aktuellerAusschnitt, px, py);
-  ziel = { x: Math.round(p.x * 100) / 100, y: Math.round(p.y * 100) / 100 };
-  ui.zielText.textContent = `Ziel: x ${ziel.x.toFixed(2)} m (vorn), y ${ziel.y.toFixed(2)} m (links).`;
-  ui.startZiel.disabled = !!(status && status.aktiv);
+ui.map.addEventListener("click", (ev) => {
+  const r = ui.map.getBoundingClientRect();
+  const px = ((ev.clientX - r.left) / r.width) * ui.map.width;
+  const py = ((ev.clientY - r.top) / r.height) * ui.map.height;
+  const p = fromPixel(currentViewport, px, py);
+  goal = { x: Math.round(p.x * 100) / 100, y: Math.round(p.y * 100) / 100 };
+  ui.goalText.textContent = `Ziel: x ${goal.x.toFixed(2)} m (vorn), y ${goal.y.toFixed(2)} m (links).`;
+  ui.startGoal.disabled = !!(status && status.aktiv);
 });
 
-// ------------------------------------------------------------------ Skelett
+// ------------------------------------------------------------------ skeleton
 
-async function skelettLinienHolen() {
-  // Die Verbindungslinien der Keypoints liefert der Server einmal mit.
+async function fetchSkeletonLines() {
+  // the server sends the keypoint connections along with the pose
   try {
     const r = await fetch("/interaktion/pose", { cache: "no-store" });
-    if (r.ok) skelettLinien = (await r.json()).skelett || [];
+    if (r.ok) skeletonLines = (await r.json()).skelett || [];
   } catch {
-    // ohne Linien zeichnen wir nur die Punkte
+    // without lines only the points are drawn
   }
 }
 
-function skelettZeichnen() {
-  const c = ui.skelett;
-  const img = ui.bild;
+function drawSkeleton() {
+  const c = ui.skeleton;
+  const img = ui.image;
   c.width = img.clientWidth;
   c.height = img.clientHeight;
   const ctx = c.getContext("2d");
@@ -476,7 +477,7 @@ function skelettZeichnen() {
   const kp = p.kp || [];
   ctx.strokeStyle = "#3ecf8e";
   ctx.lineWidth = 3;
-  for (const [a, b] of skelettLinien) {
+  for (const [a, b] of skeletonLines) {
     const pa = kp[a];
     const pb = kp[b];
     if (!pa || !pb || pa[2] < 0.3 || pb[2] < 0.3) continue;
@@ -494,16 +495,16 @@ function skelettZeichnen() {
   }
 }
 
-// ------------------------------------------------------------------ Takt
+// ------------------------------------------------------------------ timing
 
-verbinden();
-skelettLinienHolen();
-abfragen();
-karteHolen();
-setInterval(abfragen, 700);
-setInterval(scanHolen, 500);
-setInterval(karteHolen, 5000);
-(function malen() {
-  karteZeichnen();
-  requestAnimationFrame(malen);
+connect();
+fetchSkeletonLines();
+poll();
+fetchOccupancy();
+setInterval(poll, 700);
+setInterval(fetchScan, 500);
+setInterval(fetchOccupancy, 5000);
+(function paint() {
+  drawMap();
+  requestAnimationFrame(paint);
 })();

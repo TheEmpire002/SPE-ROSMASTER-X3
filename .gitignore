@@ -18,8 +18,11 @@ Thumbs.db
 # Laufzeit-Artefakte
 logs/
 *.log
-maps/*.pgm
-maps/*.yaml
+# Gespeicherte Karten (Standard: robot/src/rosmaster_assist/data/maps/).
+# Mit "**/", sonst gälte die Regel nur für einen maps-Ordner im Wurzelverzeichnis.
+**/maps/*.pgm
+**/maps/*.yaml
+**/maps/*.json
 
 # Lokale Konfiguration (Geheimnisse, WLAN, Broker-Adressen)
 robot/.env

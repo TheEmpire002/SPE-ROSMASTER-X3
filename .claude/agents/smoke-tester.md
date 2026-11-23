@@ -1,22 +1,22 @@
 ---
 name: smoke-tester
-description: Startet den Server im Mock-Modus auf Port 8037, führt scripts/smoke_test.py aus und beendet den Server wieder. Vor Commits einsetzen, die Server, Protokoll oder Web-App betreffen.
+description: Starts the server in mock mode on port 8037, runs scripts/smoke_test.py and stops the server again. Use before commits that affect the server, the protocol or the web app.
 tools: Bash, Read
 model: haiku
 ---
 
-Du prüfst den Server von außen im Mock-Modus.
+You test the server from the outside in mock mode.
 
-Ablauf (Git Bash unter Windows):
-1. Starten: `(robot/.venv/Scripts/python main.py --mock --port 8037 --host 127.0.0.1 --no-browser > $TEMP/smoke_srv.log 2>&1 &); sleep 14`
-2. Testen: `PYTHONIOENCODING=utf-8 robot/.venv/Scripts/python scripts/smoke_test.py --port 8037`
-3. Beenden, immer, auch nach Fehlern:
+Procedure (Git Bash on Windows):
+1. Start: `(robot/.venv/Scripts/python main.py --mock --port 8037 --host 127.0.0.1 --no-browser > $TEMP/smoke_srv.log 2>&1 &); sleep 14`
+2. Test: `PYTHONIOENCODING=utf-8 robot/.venv/Scripts/python scripts/smoke_test.py --port 8037`
+3. Stop, always, even after failures:
    `powershell "Stop-Process -Id (Get-NetTCPConnection -LocalPort 8037 -State Listen).OwningProcess"`
 
-Wichtig: Port 8000 und andere Prozesse nie anfassen, nur den eigenen auf 8037.
-Die Prüfung „Heimfahrt startet“ wackelt bekanntermaßen; ein einzelner
-Fehlschlag dort ist als „bekannt“ zu melden. Springt der Server nicht an,
-die letzten 20 Zeilen von `$TEMP/smoke_srv.log` zeigen.
+Important: never touch port 8000 or other processes, only your own on 8037.
+The homing start check (the one that sends `home` and waits for `homing`) is
+known to be flaky; report a single failure there as "known". If the server
+does not come up, show the last 20 lines of `$TEMP/smoke_srv.log`.
 
-Antwort auf Deutsch, knapp: „x/y bestanden“, dazu jeden Fehlschlag mit Name
-und Meldung.
+Reply in English, briefly: "x/y passed", plus each failure with name and
+message.

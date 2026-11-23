@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
-"""Prüft gegen einen laufenden Server, ob die Grundfunktionen stimmen.
+"""Checks against a running server whether the basic functions work.
 
-Der Server muss dafür bereits laufen (am besten im Mock-Modus):
+The server must already be running for this (ideally in mock mode):
 
     Terminal 1:   python -m rosmaster_assist.main --mock
     Terminal 2:   python scripts/smoke_test.py
 
-Benötigt zusätzlich das Paket `websockets`:
+Additionally needs the package `websockets`:
 
     pip install websockets
 
-Getestet wird bewusst von außen über echtes HTTP und echtes WebSocket --
-also genau der Weg, den die App auch nimmt.
+Testing deliberately happens from outside over real HTTP and real
+WebSocket -- exactly the path the app takes as well.
 
-Auf dem Roboter: Das Skript erkennt am gemeldeten Antrieb, ob echte Hardware
-dranhängt, und überspringt die Fahrtests dann. Wer sie trotzdem will, bockt
-die Räder auf und hängt `--allow-motion` an.
+On the robot: the script recognizes from the reported driver whether real
+hardware is attached, and then skips the drive tests. Anyone who wants them
+anyway jacks up the wheels and adds `--allow-motion`.
 """
 
 from __future__ import annotations
@@ -31,11 +31,11 @@ import urllib.request
 try:
     import websockets
 except ImportError:
-    sys.exit("Fehlt: pip install websockets")
+    sys.exit("Missing: pip install websockets")
 
-# Das Tempolimit holt sich der Test beim Server ab, statt es hier zu
-# wiederholen -- sonst müsste man es bei jeder Änderung an zwei Stellen
-# nachziehen und merkt das Vergessen erst am rot gewordenen Test.
+# The test fetches the speed limit from the server instead of repeating it
+# here -- otherwise every change would have to be made in two places, and a
+# forgotten one would only show up as a red test.
 COMMAND_TIMEOUT_S = 0.5
 
 _passed = 0
@@ -49,14 +49,14 @@ def check(name: str, ok: bool, detail: str = "") -> None:
         print(f"  [ok]    {name}")
     else:
         _failed += 1
-        print(f"  [FEHLER] {name}  {detail}")
+        print(f"  [ERROR] {name}  {detail}")
 
 
 async def next_of(ws, kind: str, limit: int = 10) -> dict | None:
-    """Wartet auf die nächste Nachricht eines bestimmten Typs.
+    """Waits for the next message of a given type.
 
-    Nötig, weil der Server unabhängig davon regelmäßig Statusmeldungen
-    schickt -- die gewünschte Antwort kommt also selten als Erstes.
+    Needed because the server sends status messages regularly regardless --
+    so the desired answer rarely comes first.
     """
     for _ in range(limit):
         msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=3))
@@ -76,97 +76,98 @@ def test_http(base: str) -> None:
 
 
 def test_camera(base: str) -> None:
-    print("\nKamera")
+    print("\nCamera")
     try:
         with urllib.request.urlopen(base + "/camera/snapshot", timeout=10) as r:
             data = r.read()
-            typ = r.headers.get("Content-Type", "")
+            kind = r.headers.get("Content-Type", "")
     except urllib.error.HTTPError as exc:
-        # 503 heißt: Kamera abgeschaltet oder noch kein Bild. Das ist kein
-        # Fehler im Sinne dieses Tests -- nur eine Information.
-        print(f"  [--]     kein Bild ({exc.code}) -- Kamera aus oder noch nicht bereit")
+        # 503 means: camera disabled or no image yet. That is not a
+        # failure in the sense of this test -- just information.
+        print(f"  [--]     no image ({exc.code}) -- camera off or not ready yet")
         return
     except urllib.error.URLError as exc:
-        check("Einzelbild abrufbar", False, str(exc))
+        check("snapshot retrievable", False, str(exc))
         return
 
     check(
-        f"Einzelbild abrufbar ({typ}, {len(data)} Bytes)",
-        len(data) > 100 and typ.startswith("image/"),
+        f"snapshot retrievable ({kind}, {len(data)} bytes)",
+        len(data) > 100 and kind.startswith("image/"),
     )
 
-    # Ein stehendes Bild sieht im Browser aus wie ein laufender Stream.
-    # Deshalb zwei Aufnahmen vergleichen.
+    # A frozen image looks like a running stream in the browser.
+    # So compare two snapshots.
     time.sleep(1.0)
     with urllib.request.urlopen(base + "/camera/snapshot", timeout=10) as r:
-        zweites = r.read()
-    check("Bild aktualisiert sich", zweites != data, "zweimal dasselbe Bild")
+        second = r.read()
+    check("image updates", second != data, "same image twice")
 
 
-async def drive_until(ws, cmd: dict, treffer, seconds: float = 3.0) -> dict | None:
-    """Schickt einen Fahrbefehl im Takt und wartet auf den passenden Status.
+async def drive_until(ws, cmd: dict, hits, seconds: float = 3.0) -> dict | None:
+    """Sends a drive command repeatedly and waits for the matching status.
 
-    Ein einzelner Befehl reicht nicht: der Watchdog hält nach einer halben
-    Sekunde an, und Statusmeldungen kommen ebenfalls nur alle halbe Sekunde.
-    Ein Einzelbefehl kann also längst gestoppt sein, bevor der erste Status
-    ihn zeigt. Die App sendet dauerhaft -- der Test macht es genauso.
+    A single command is not enough: the watchdog stops after half a second,
+    and status messages also only come every half second. A single command
+    may therefore have stopped long before the first status shows it. The
+    app sends continuously -- the test does the same.
     """
     loop = asyncio.get_running_loop()
-    ende = loop.time() + seconds
-    letzter = None
+    end = loop.time() + seconds
+    last = None
 
-    while loop.time() < ende:
+    while loop.time() < end:
         await ws.send(json.dumps(cmd))
         try:
             msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=0.1))
         except asyncio.TimeoutError:
             continue
         if msg.get("type") == "state":
-            letzter = msg
-            if treffer(msg):
+            last = msg
+            if hits(msg):
                 return msg
 
-    return letzter
+    return last
 
 
-async def wait_for_state(ws, treffer, seconds: float = 3.0) -> dict | None:
-    """Wartet auf einen Zustand, der ``treffer`` erfüllt -- ohne zu senden.
+async def wait_for_state(ws, hits, seconds: float = 3.0) -> dict | None:
+    """Waits for a state that satisfies ``hits`` -- without sending.
 
-    Nötig, weil nach einer Fahrphase noch ältere Statusmeldungen im Puffer
-    liegen. Die nächstbeste zu nehmen würde den Zustand von vor ein paar
-    hundert Millisekunden prüfen.
+    Needed because after a drive phase older status messages are still in
+    the buffer. Taking the next one would check the state from a few hundred
+    milliseconds ago.
     """
     loop = asyncio.get_running_loop()
-    ende = loop.time() + seconds
-    letzter = None
+    end = loop.time() + seconds
+    last = None
 
-    while loop.time() < ende:
+    while loop.time() < end:
         try:
             msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=0.2))
         except asyncio.TimeoutError:
             continue
         if msg.get("type") == "state":
-            letzter = msg
-            if treffer(msg):
+            last = msg
+            if hits(msg):
                 return msg
 
-    return letzter
+    return last
 
 
 async def _test_motion(ws, driver: str | None, max_vx: float) -> None:
-    """Fahrtests. Bewegt bei echtem Antrieb tatsächlich den Roboter."""
+    """Drive tests. With a real driver this actually moves the robot."""
     if driver != "mock":
-        print(f"  [!] Antrieb '{driver}' -- der Roboter fährt jetzt kurz an.")
+        print(f"  [!] driver '{driver}' -- the robot will now move briefly.")
 
-    # Überhöhter Fahrbefehl muss auf das Tempolimit gekappt werden.
-    # Seit der Anfahrrampe im Watchdog (RAMPE_* in config) steht das Limit
-    # nicht mehr sofort im Status, sondern erst nach einigen Sekunden
-    # Beschleunigen. In der Simulation wird darauf gewartet; am echten
-    # Roboter wäre das eine Vollgasfahrt durch den Raum -- dort reicht der
-    # Nachweis, dass der Wert das Limit nie überschreitet.
-    # Die Simulation fährt dabei im Kreis (omega am Limit): geradeaus kämen
-    # bis zum Limit gut 15 m zusammen, und der Roboter stünde für die Tests
-    # danach außerhalb des gedachten Raums.
+    # An excessive drive command must be capped to the speed limit.
+    # Since the acceleration ramp in the watchdog (RAMP_* in config) the limit
+    # no longer shows up in the status right away, only after a few seconds
+    # of accelerating. The simulation waits for that; on the real robot that
+    # would be a full-throttle drive through the room -- there it is enough
+    # to show that the value never exceeds the limit.
+    # The simulation drives in a circle meanwhile (omega at the limit):
+    # straight ahead it would cover a good 15 m until reaching the limit, and
+    # the robot would then be outside the imaginary room for the following
+    # tests.
     if driver == "mock":
         state = await drive_until(
             ws,
@@ -183,19 +184,19 @@ async def _test_motion(ws, driver: str | None, max_vx: float) -> None:
             seconds=1.0,
         )
         ok = state is not None and 0.0 < state["vx"] <= max_vx + 1e-6
-    check(f"vx=99.0 wird auf {max_vx} begrenzt", ok, f"bekommen: {state}")
+    check(f"vx=99.0 is capped to {max_vx}", ok, f"got: {state}")
 
-    # Keine weiteren Befehle -> der Watchdog muss von selbst anhalten.
-    # Dabei liegen noch Statusmeldungen aus der Fahrphase im Puffer; es wird
-    # also auf den Stillstand gewartet, statt die nächstbeste zu nehmen.
+    # No further commands -> the watchdog must stop on its own.
+    # Status messages from the drive phase are still in the buffer, so we
+    # wait for standstill instead of taking the next one.
     state = await wait_for_state(ws, lambda m: m["vx"] == 0.0 and m["omega"] == 0.0)
     check(
-        "Watchdog hält ohne Befehle an",
+        "watchdog stops without commands",
         state is not None and state["vx"] == 0.0 and state["omega"] == 0.0,
-        f"bekommen: {state}",
+        f"got: {state}",
     )
 
-    # Sicherheitshalber explizit stoppen, falls oben etwas schiefging.
+    # Stop explicitly to be safe, in case something went wrong above.
     await ws.send(json.dumps({"type": "stop"}))
 
     await _test_collision(ws)
@@ -203,96 +204,96 @@ async def _test_motion(ws, driver: str | None, max_vx: float) -> None:
 
 
 async def _test_collision(ws) -> None:
-    """Kollisionsvermeidung: sperrt zum Hindernis, lässt den Rest zu.
+    """Collision avoidance: blocks towards the obstacle, allows the rest.
 
-    Beginnt mit ``set_home``: Der Tempolimit-Test davor fährt mehrere Meter
-    weit, und in der Simulation stünde der Roboter danach außerhalb des
-    gedachten Raums -- dort sieht der Lidar nichts, was er sperren könnte.
+    Starts with ``set_home``: the speed limit test before drives several
+    meters, and in the simulation the robot would then be outside the
+    imaginary room -- there the lidar sees nothing it could block on.
     """
     await ws.send(json.dumps({"type": "set_home"}))
     await asyncio.sleep(1.0)
 
-    async def fahren(vx, vy, omega, sek=1.2):
+    async def simulate_drive(vx, vy, omega, sect=1.2):
         loop = asyncio.get_running_loop()
-        ende = loop.time() + sek
-        letzter = None
-        while loop.time() < ende:
+        end = loop.time() + sect
+        last = None
+        while loop.time() < end:
             await ws.send(json.dumps({"type": "drive", "vx": vx, "vy": vy, "omega": omega}))
             try:
                 msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=0.15))
                 if msg.get("type") == "state":
-                    letzter = msg
+                    last = msg
             except asyncio.TimeoutError:
                 pass
         await ws.send(json.dumps({"type": "stop"}))
-        return letzter or {}
+        return last or {}
 
     await ws.send(json.dumps({"type": "collision", "enabled": True, "distance": 1.5}))
     await next_of(ws, "collision")
 
-    # Auf ein Hindernis zufahren, bis gesperrt wird. Nicht einfach einmal
-    # Gas geben und messen: am Startpunkt kann die freie Strecke größer
-    # sein als der eingestellte Mindestabstand -- dann wäre "fährt" das
-    # richtige Verhalten und der Test prüfte nichts.
-    gesperrt = False
+    # Drive towards an obstacle until it blocks. Do not just accelerate
+    # once and measure: at the start the free distance can be larger than
+    # the configured minimum distance -- then "drives" would be the correct
+    # behavior and the test would check nothing.
+    blocked = False
     for _ in range(6):
-        zustand = await fahren(0.4, 0.25, 0.0, 0.8)
-        if abs(zustand.get("vx", 1.0)) < 1e-6 and abs(zustand.get("vy", 1.0)) < 1e-6:
-            gesperrt = True
+        state = await simulate_drive(0.4, 0.25, 0.0, 0.8)
+        if abs(state.get("vx", 1.0)) < 1e-6 and abs(state.get("vy", 1.0)) < 1e-6:
+            blocked = True
             break
-    check("hält vor einem Hindernis an", gesperrt, "fuhr ungebremst weiter")
+    check("stops in front of an obstacle", blocked, "kept driving unbraked")
 
-    # Drehen darf nie gesperrt werden -- sonst kommt man nicht mehr frei.
-    gedreht = await fahren(0.0, 0.0, 0.5, 1.0)
+    # Turning must never be blocked -- otherwise the robot can no longer get free.
+    turned = await simulate_drive(0.0, 0.0, 0.5, 1.0)
     check(
-        "Drehen bleibt trotzdem erlaubt",
-        abs(gedreht.get("omega", 0.0)) > 0.1,
-        f"omega={gedreht.get('omega')}",
+        "turning is still allowed",
+        abs(turned.get("omega", 0.0)) > 0.1,
+        f"omega={turned.get('omega')}",
     )
 
     await ws.send(json.dumps({"type": "collision", "enabled": False}))
     z = await next_of(ws, "collision")
-    check("Abschalten wird übernommen", bool(z) and z.get("enabled") is False)
+    check("disabling is applied", bool(z) and z.get("enabled") is False)
 
-    frei = await fahren(0.5, 0.0, 0.0)
+    free = await simulate_drive(0.5, 0.0, 0.0)
     check(
-        "ausgeschaltet fährt er wieder",
-        abs(frei.get("vx", 0.0)) > 0.1,
-        f"vx={frei.get('vx')}",
+        "when disabled it drives again",
+        abs(free.get("vx", 0.0)) > 0.1,
+        f"vx={free.get('vx')}",
     )
 
 
 async def _test_homing(ws) -> None:
-    """Wegfahren, Home drücken, zurückkommen.
+    """Drive away, press home, come back.
 
-    Prüft die Positionsverfolgung und die Heimfahrt zusammen -- einzeln
-    sagen sie wenig aus.
+    Checks position tracking and homing together -- on their own they say
+    little.
     """
     await ws.send(json.dumps({"type": "set_home"}))
     await asyncio.sleep(0.3)
 
-    # Diagonal wegfahren: so wird auch die Seitwärtsfahrt mitgeprüft.
+    # Drive away diagonally: that also checks sideways driving.
     loop = asyncio.get_running_loop()
-    ende = loop.time() + 2.0
-    while loop.time() < ende:
+    end = loop.time() + 2.0
+    while loop.time() < end:
         await ws.send(json.dumps({"type": "drive", "vx": 0.5, "vy": 0.3, "omega": 0.0}))
         await asyncio.sleep(0.1)
     await ws.send(json.dumps({"type": "stop"}))
 
-    weg = await wait_for_state(ws, lambda m: _abstand(m) > 0.5, seconds=5)
-    entfernung = _abstand(weg) if weg else 0.0
-    check(f"Position wird mitgeführt ({entfernung:.2f} m entfernt)", entfernung > 0.5)
+    path = await wait_for_state(ws, lambda m: _distance(m) > 0.5, seconds=5)
+    dist = _distance(path) if path else 0.0
+    check(f"position is tracked ({dist:.2f} m away)", dist > 0.5)
 
     await ws.send(json.dumps({"type": "home"}))
-    gestartet = await wait_for_state(ws, lambda m: m.get("homing") is True, seconds=5)
-    check("Heimfahrt startet", bool(gestartet and gestartet.get("homing")))
+    started = await wait_for_state(ws, lambda m: m.get("homing") is True, seconds=5)
+    check("homing starts", bool(started and started.get("homing")))
 
-    fertig = await wait_for_state(ws, lambda m: m.get("homing") is False, seconds=40)
-    rest = _abstand(fertig) if fertig else 99.0
-    check(f"kommt zum Startpunkt zurück (Restabweichung {rest:.2f} m)", rest < 0.25)
+    done = await wait_for_state(ws, lambda m: m.get("homing") is False, seconds=40)
+    rest = _distance(done) if done else 99.0
+    check(f"returns to the start (remaining deviation {rest:.2f} m)", rest < 0.25)
 
 
-def _abstand(state: dict | None) -> float:
+def _distance(state: dict | None) -> float:
     if not state or not state.get("pose"):
         return 0.0
     p = state["pose"]
@@ -302,53 +303,53 @@ def _abstand(state: dict | None) -> float:
 async def test_websocket(ws_url: str, allow_motion: bool) -> None:
     print("\nWebSocket")
     async with websockets.connect(ws_url) as ws:
-        # Die Grenzwerte kommen unaufgefordert direkt nach dem Verbinden.
+        # The limits arrive unrequested right after connecting.
         lim = await next_of(ws, "limits")
-        check("Server nennt seine Grenzwerte", lim is not None, f"bekommen: {lim}")
+        check("server reports its limits", lim is not None, f"got: {lim}")
         max_vx = lim["max_vx"] if lim else 0.0
 
         await ws.send(json.dumps({"type": "ping"}))
         check("ping -> pong", await next_of(ws, "pong") is not None)
 
-        # Welcher Antrieb läuft dort drüben? Entscheidet, ob wir fahren dürfen.
+        # Which driver is running over there? Decides whether we may drive.
         state = await next_of(ws, "state")
         driver = state.get("driver") if state else None
-        check("Server meldet seinen Antrieb", driver is not None, f"bekommen: {state}")
+        check("server reports its driver", driver is not None, f"got: {state}")
 
         if driver == "mock" or allow_motion:
             await _test_motion(ws, driver, max_vx)
         else:
-            print(f"  [übersprungen] Fahrtests -- echter Antrieb '{driver}' erkannt")
-            print("                 Der Roboter würde sich bewegen.")
-            print("                 Räder aufbocken, dann: --allow-motion")
+            print(f"  [skipped] drive tests -- real driver '{driver}' detected")
+            print("            The robot would move.")
+            print("            Jack up the wheels, then: --allow-motion")
 
-        # ESP-Daten müssen unverändert an alle Clients zurückkommen.
+        # ESP data must come back unchanged to all clients.
         await ws.send(json.dumps({"type": "vitals", "bpm": 72, "motion": True}))
         vitals = await next_of(ws, "vitals")
         check(
-            "Vitaldaten werden weitergereicht",
+            "vital data is passed on",
             vitals is not None and vitals["bpm"] == 72 and vitals["motion"] is True,
-            f"bekommen: {vitals}",
+            f"got: {vitals}",
         )
 
-        # Unsinn darf den Server nicht umbringen.
+        # Nonsense must not kill the server.
         await ws.send(json.dumps({"type": "gibtsnicht"}))
         err = await next_of(ws, "error")
-        check("Unbekannter Typ liefert Fehlermeldung", err is not None)
+        check("unknown type returns an error message", err is not None)
 
 
 async def main_async(host: str, port: int, allow_motion: bool) -> int:
     base = f"http://{host}:{port}"
-    print(f"Teste {base}")
+    print(f"Testing {base}")
 
     test_http(base)
     test_camera(base)
     try:
         await test_websocket(f"ws://{host}:{port}/ws", allow_motion)
     except (OSError, asyncio.TimeoutError) as exc:
-        check("WebSocket-Verbindung", False, f"{exc} -- läuft der Server?")
+        check("WebSocket connection", False, f"{exc} -- is the server running?")
 
-    print(f"\n{_passed} ok, {_failed} fehlgeschlagen\n")
+    print(f"\n{_passed} ok, {_failed} failed\n")
     return 1 if _failed else 0
 
 
@@ -359,7 +360,7 @@ def main() -> int:
     p.add_argument(
         "--allow-motion",
         action="store_true",
-        help="Fahrtests auch mit echter Hardware. NUR mit aufgebockten Rädern!",
+        help="Drive tests also with real hardware. ONLY with the wheels jacked up!",
     )
     args = p.parse_args()
     return asyncio.run(main_async(args.host, args.port, args.allow_motion))

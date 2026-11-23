@@ -1,298 +1,298 @@
 /*
- * Einstellungen -- als eigene Seite (/einstellungen) und als Modal in der
- * Steuerung. Beide haben dieselben Elemente (#einstellungen, #einst-meldung,
- * #alle-zurueck). Alles in einer Funktion, damit sich die Namen hier nicht
- * mit denen aus app.js in die Quere kommen.
+ * Settings -- as a page of its own (/einstellungen) and as a modal in the
+ * control page. Both have the same elements (#einstellungen, #einst-meldung,
+ * #alle-zurueck). Everything inside one function so the names here do not
+ * get in the way of those from app.js.
  *
- * Alles, was hier steht, kommt vom Roboter (GET /settings): Blöcke,
- * Grenzen, Standardwerte, Hilfetexte. Die Seite kennt keine einzige
- * Einstellung selbst -- kommt auf dem Roboter eine dazu, erscheint sie
- * hier ohne Änderung an dieser Datei.
+ * Everything shown here comes from the robot (GET /settings): blocks,
+ * limits, defaults, help texts. The page does not know a single setting
+ * itself -- if the robot gains a new one, it appears here without any
+ * change to this file.
  *
- * Gespeichert wird jede Änderung sofort (POST /settings), nicht erst mit
- * einem Knopf: sonst probiert man am Roboter etwas aus und wundert sich,
- * warum sich nichts tut.
+ * Every change is saved immediately (POST /settings), not only with a
+ * button: otherwise you try something out on the robot and wonder why
+ * nothing happens.
  */
 
 (() => {
 
 const main = document.getElementById("einstellungen");
-const meldung = document.getElementById("einst-meldung");
+const message = document.getElementById("einst-meldung");
 
-/** key -> {eintrag, zeile, eingaben...}, um nach dem Speichern nachzuziehen. */
-const zeilen = new Map();
+/** key -> {entry, row, inputs...}, to update them after saving. */
+const rows = new Map();
 
-function zeigeMeldung(text, fehler = false) {
-  meldung.textContent = text;
-  meldung.classList.toggle("fehler", fehler);
-  meldung.hidden = false;
-  clearTimeout(zeigeMeldung.timer);
-  zeigeMeldung.timer = setTimeout(() => { meldung.hidden = true; }, fehler ? 8000 : 3000);
+function showMessage(text, isError = false) {
+  message.textContent = text;
+  message.classList.toggle("fehler", isError);
+  message.hidden = false;
+  clearTimeout(showMessage.timer);
+  showMessage.timer = setTimeout(() => { message.hidden = true; }, isError ? 8000 : 3000);
 }
 
-/** Nachkommastellen aus der Schrittweite, damit 0.1 nicht als 0.10000001 erscheint. */
-function stellen(schritt) {
-  if (!schritt || Number.isInteger(schritt)) return 0;
-  return String(schritt).split(".")[1]?.length ?? 2;
+/** Decimal places from the step size, so 0.1 does not show up as 0.10000001. */
+function decimals(step) {
+  if (!step || Number.isInteger(step)) return 0;
+  return String(step).split(".")[1]?.length ?? 2;
 }
 
-function formatiere(e, wert) {
-  if (e.typ === "bool") return wert ? "an" : "aus";
-  if (e.typ === "float") return Number(wert).toFixed(stellen(e.schritt));
-  return String(wert);
+function formatValue(e, value) {
+  if (e.typ === "bool") return value ? "an" : "aus";
+  if (e.typ === "float") return Number(value).toFixed(decimals(e.schritt));
+  return String(value);
 }
 
-async function senden(pfad, daten) {
-  let antwort;
+async function post(path, data) {
+  let response;
   try {
-    antwort = await fetch(pfad, {
+    response = await fetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(daten),
+      body: JSON.stringify(data),
     });
   } catch {
-    zeigeMeldung("Roboter nicht erreichbar", true);
+    showMessage("Roboter nicht erreichbar", true);
     return null;
   }
-  const json = await antwort.json().catch(() => ({}));
-  if (!antwort.ok) {
-    zeigeMeldung(json.fehler || `Fehler ${antwort.status}`, true);
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    showMessage(json.fehler || `Fehler ${response.status}`, true);
     return null;
   }
   return json;
 }
 
-async function setzen(key, wert) {
-  const json = await senden("/settings", { [key]: wert });
+async function setValue(key, value) {
+  const json = await post("/settings", { [key]: value });
   if (json) {
-    uebernehmen(json);
+    applyValues(json);
     if (json.geaendert?.length) {
-      zeigeMeldung(json.neustart_noetig?.length
+      showMessage(json.neustart_noetig?.length
         ? "Gespeichert, wirkt nach Neustart des Servers"
         : "Gespeichert");
     }
   } else {
-    // Abgelehnt: die Anzeige auf den Wert zurückstellen, der wirklich gilt.
-    laden();
+    // Rejected: reset the display to the value that actually applies.
+    load();
   }
 }
 
-/** Werte aus einer Antwort in die bestehenden Zeilen schreiben. */
-function uebernehmen(liste) {
-  for (const gruppe of liste.gruppen) {
-    for (const e of gruppe.einstellungen) {
-      const z = zeilen.get(e.key);
-      if (!z) continue;
-      z.eintrag = e;
-      z.setzeWert(e.wert);
-      const geaendert = JSON.stringify(e.wert) !== JSON.stringify(e.standard);
-      z.zeile.classList.toggle("geaendert", geaendert);
-      z.zurueck.hidden = !geaendert;
+/** Write the values from a response into the existing rows. */
+function applyValues(list) {
+  for (const group of list.gruppen) {
+    for (const e of group.einstellungen) {
+      const r = rows.get(e.key);
+      if (!r) continue;
+      r.entry = e;
+      r.setValue(e.wert);
+      const changed = JSON.stringify(e.wert) !== JSON.stringify(e.standard);
+      r.row.classList.toggle("geaendert", changed);
+      r.resetButton.hidden = !changed;
     }
   }
 }
 
-function baueSteuerung(e) {
+function buildControl(e) {
   const box = document.createElement("div");
   box.className = "einst-steuerung";
-  let setzeWert;
+  let setDisplay;
 
   if (e.typ === "bool") {
-    const schalter = document.createElement("input");
-    schalter.type = "checkbox";
-    schalter.className = "einst-schalter";
-    schalter.addEventListener("change", () => setzen(e.key, schalter.checked));
-    box.append(schalter);
-    setzeWert = (w) => { schalter.checked = Boolean(w); };
+    const toggle = document.createElement("input");
+    toggle.type = "checkbox";
+    toggle.className = "einst-schalter";
+    toggle.addEventListener("change", () => setValue(e.key, toggle.checked));
+    box.append(toggle);
+    setDisplay = (w) => { toggle.checked = Boolean(w); };
   } else if (e.typ === "auswahl") {
-    const auswahl = document.createElement("select");
+    const select = document.createElement("select");
     for (const option of e.optionen) {
       const o = document.createElement("option");
       o.value = String(option);
       o.textContent = e.einheit ? `${option} ${e.einheit}` : String(option);
-      auswahl.append(o);
+      select.append(o);
     }
-    auswahl.addEventListener("change", () => setzen(e.key, auswahl.value));
-    box.append(auswahl);
-    setzeWert = (w) => { auswahl.value = String(w); };
+    select.addEventListener("change", () => setValue(e.key, select.value));
+    box.append(select);
+    setDisplay = (w) => { select.value = String(w); };
   } else {
-    // Regler zum Schieben, Zahlenfeld zum genauen Eintippen.
-    const regler = document.createElement("input");
-    regler.type = "range";
-    regler.min = e.min;
-    regler.max = e.max;
-    regler.step = e.schritt ?? "any";
-    const zahl = document.createElement("input");
-    zahl.type = "number";
-    zahl.min = e.min;
-    zahl.max = e.max;
-    zahl.step = e.schritt ?? "any";
-    const einheit = document.createElement("span");
-    einheit.className = "einst-einheit";
-    einheit.textContent = e.einheit;
+    // Slider for dragging, number field for typing an exact value.
+    const slider = document.createElement("input");
+    slider.type = "range";
+    slider.min = e.min;
+    slider.max = e.max;
+    slider.step = e.schritt ?? "any";
+    const number = document.createElement("input");
+    number.type = "number";
+    number.min = e.min;
+    number.max = e.max;
+    number.step = e.schritt ?? "any";
+    const unit = document.createElement("span");
+    unit.className = "einst-einheit";
+    unit.textContent = e.einheit;
 
-    // Beim Ziehen nur anzeigen; gespeichert wird beim Loslassen, sonst
-    // gingen dutzende Anfragen pro Sekunde raus.
-    regler.addEventListener("input", () => {
-      zahl.value = formatiere(e, regler.value);
+    // While dragging only display; saving happens on release, otherwise
+    // dozens of requests per second would go out.
+    slider.addEventListener("input", () => {
+      number.value = formatValue(e, slider.value);
     });
-    regler.addEventListener("change", () => setzen(e.key, Number(regler.value)));
-    zahl.addEventListener("change", () => {
-      if (zahl.value === "") return;
-      setzen(e.key, Number(zahl.value));
+    slider.addEventListener("change", () => setValue(e.key, Number(slider.value)));
+    number.addEventListener("change", () => {
+      if (number.value === "") return;
+      setValue(e.key, Number(number.value));
     });
-    box.append(regler, zahl, einheit);
-    setzeWert = (w) => {
-      regler.value = w;
-      zahl.value = formatiere(e, w);
+    box.append(slider, number, unit);
+    setDisplay = (w) => {
+      slider.value = w;
+      number.value = formatValue(e, w);
     };
   }
-  return { box, setzeWert };
+  return { box, setDisplay };
 }
 
-function baueZeile(e) {
-  const zeile = document.createElement("div");
-  zeile.className = "einst-zeile";
+function buildRow(e) {
+  const row = document.createElement("div");
+  row.className = "einst-zeile";
 
-  const kopf = document.createElement("div");
-  kopf.className = "einst-label";
+  const head = document.createElement("div");
+  head.className = "einst-label";
   const label = document.createElement("label");
   label.textContent = e.label;
-  kopf.append(label);
+  head.append(label);
   if (e.neustart) {
     const n = document.createElement("span");
     n.className = "einst-neustart";
     n.textContent = "Neustart";
-    kopf.append(n);
+    head.append(n);
   }
 
-  const { box, setzeWert } = baueSteuerung(e);
+  const { box, setDisplay } = buildControl(e);
 
-  const zurueck = document.createElement("button");
-  zurueck.type = "button";
-  zurueck.className = "einst-zurueck";
-  zurueck.title = `Standard: ${formatiere(e, e.standard)} ${e.einheit}`.trim();
-  zurueck.textContent = "↺";
-  zurueck.addEventListener("click", async () => {
-    const json = await senden("/settings/reset", { keys: [e.key] });
+  const resetButton = document.createElement("button");
+  resetButton.type = "button";
+  resetButton.className = "einst-zurueck";
+  resetButton.title = `Standard: ${formatValue(e, e.standard)} ${e.einheit}`.trim();
+  resetButton.textContent = "↺";
+  resetButton.addEventListener("click", async () => {
+    const json = await post("/settings/reset", { keys: [e.key] });
     if (json) {
-      uebernehmen(json);
-      zeigeMeldung(`${e.label}: zurück auf ${formatiere(e, e.standard)} ${e.einheit}`.trim());
+      applyValues(json);
+      showMessage(`${e.label}: zurück auf ${formatValue(e, e.standard)} ${e.einheit}`.trim());
     }
   });
-  box.append(zurueck);
+  box.append(resetButton);
 
-  zeile.append(kopf, box);
+  row.append(head, box);
   if (e.hilfe) {
-    const hilfe = document.createElement("p");
-    hilfe.className = "einst-hilfe";
-    hilfe.textContent = e.hilfe;
-    zeile.append(hilfe);
+    const help = document.createElement("p");
+    help.className = "einst-hilfe";
+    help.textContent = e.hilfe;
+    row.append(help);
   }
   const standard = document.createElement("p");
   standard.className = "einst-standard";
-  standard.textContent = `Standard: ${formatiere(e, e.standard)} ${e.einheit}`.trim();
-  zeile.append(standard);
+  standard.textContent = `Standard: ${formatValue(e, e.standard)} ${e.einheit}`.trim();
+  row.append(standard);
 
-  zeilen.set(e.key, { eintrag: e, zeile, zurueck, setzeWert });
-  return zeile;
+  rows.set(e.key, { entry: e, row, resetButton, setValue: setDisplay });
+  return row;
 }
 
-/* --- Kameras: was tatsächlich ankommt --------------------------------- */
+/* --- Cameras: what actually arrives ------------------------------------ */
 
-let kameraListe = null;
+let cameraList = null;
 
-function baueKameraAnzeige(panel) {
-  const titel = document.createElement("h3");
-  titel.className = "einst-unter";
-  titel.textContent = "Kameras gerade";
-  kameraListe = document.createElement("ul");
-  kameraListe.className = "einst-kameras";
-  panel.append(titel, kameraListe);
-  kamerasAktualisieren();
-  setInterval(kamerasAktualisieren, 2000);
+function buildCameraDisplay(panel) {
+  const title = document.createElement("h3");
+  title.className = "einst-unter";
+  title.textContent = "Kameras gerade";
+  cameraList = document.createElement("ul");
+  cameraList.className = "einst-kameras";
+  panel.append(title, cameraList);
+  refreshCameras();
+  setInterval(refreshCameras, 2000);
 }
 
-async function kamerasAktualisieren() {
-  // Nur nachfragen, solange die Liste zu sehen ist -- im geschlossenen
-  // Modal wären das sinnlose Anfragen alle zwei Sekunden.
-  if (!kameraListe || kameraListe.offsetParent === null) return;
-  let daten;
+async function refreshCameras() {
+  // Only poll while the list is visible -- in the closed modal these
+  // would be pointless requests every two seconds.
+  if (!cameraList || cameraList.offsetParent === null) return;
+  let data;
   try {
-    const antwort = await fetch("/cameras", { cache: "no-store" });
-    if (!antwort.ok) return;
-    daten = await antwort.json();
+    const response = await fetch("/cameras", { cache: "no-store" });
+    if (!response.ok) return;
+    data = await response.json();
   } catch {
     return;
   }
-  kameraListe.replaceChildren(...(daten.kameras || []).map((k) => {
+  cameraList.replaceChildren(...(data.kameras || []).map((k) => {
     const li = document.createElement("li");
     const name = document.createElement("span");
     name.textContent = `${k.kamera} (${k.name})`;
-    const wert = document.createElement("span");
-    wert.className = k.geoeffnet ? "ok" : "fehlt";
-    wert.textContent = k.geoeffnet
+    const value = document.createElement("span");
+    value.className = k.geoeffnet ? "ok" : "fehlt";
+    value.textContent = k.geoeffnet
       ? `${k.fps_ist ?? "?"} von ${k.fps_soll ?? "?"} fps · ${k.geraet ?? ""}`
       : (k.letzter_fehler || "nicht geöffnet");
-    li.append(name, wert);
+    li.append(name, value);
     return li;
   }));
 }
 
-/* --- Aufbau ------------------------------------------------------------ */
+/* --- Building the page ------------------------------------------------- */
 
-async function laden() {
-  let liste;
+async function load() {
+  let list;
   try {
-    const antwort = await fetch("/settings", { cache: "no-store" });
-    liste = await antwort.json();
+    const response = await fetch("/settings", { cache: "no-store" });
+    list = await response.json();
   } catch {
-    zeigeMeldung("Roboter nicht erreichbar", true);
+    showMessage("Roboter nicht erreichbar", true);
     return;
   }
 
-  // Schon aufgebaut (Modal erneut geöffnet): nur die Werte auffrischen --
-  // sie können sich inzwischen geändert haben, etwa von einem anderen Gerät.
-  if (zeilen.size) {
-    uebernehmen(liste);
-    kamerasAktualisieren();
+  // Already built (modal opened again): only refresh the values --
+  // they may have changed meanwhile, e.g. from another device.
+  if (rows.size) {
+    applyValues(list);
+    refreshCameras();
     return;
   }
 
-  for (const gruppe of liste.gruppen) {
-    if (!gruppe.einstellungen.length) continue;
+  for (const group of list.gruppen) {
+    if (!group.einstellungen.length) continue;
     const panel = document.createElement("section");
     panel.className = "panel einst-gruppe";
     const h2 = document.createElement("h2");
-    h2.textContent = gruppe.titel;
+    h2.textContent = group.titel;
     panel.append(h2);
-    if (gruppe.text) {
+    if (group.text) {
       const p = document.createElement("p");
       p.className = "einst-text";
-      p.textContent = gruppe.text;
+      p.textContent = group.text;
       panel.append(p);
     }
-    for (const e of gruppe.einstellungen) panel.append(baueZeile(e));
-    if (gruppe.id === "kamera") baueKameraAnzeige(panel);
+    for (const e of group.einstellungen) panel.append(buildRow(e));
+    if (group.id === "kamera") buildCameraDisplay(panel);
     main.append(panel);
   }
-  uebernehmen(liste);
-  kamerasAktualisieren(); // erst jetzt sichtbar, vorher würde es übersprungen
+  applyValues(list);
+  refreshCameras(); // only visible now, before it would have been skipped
 }
 
 document.getElementById("alle-zurueck").addEventListener("click", async () => {
   if (!confirm("Alle Einstellungen auf die Werte aus config.py zurücksetzen?")) return;
-  const json = await senden("/settings/reset", {});
+  const json = await post("/settings/reset", {});
   if (json) {
-    uebernehmen(json);
-    zeigeMeldung(json.geaendert?.length
+    applyValues(json);
+    showMessage(json.geaendert?.length
       ? `${json.geaendert.length} Einstellungen zurückgesetzt`
       : "Es war schon alles auf Standard");
   }
 });
 
-// Auf der eigenen Seite gleich laden; im Modal der Steuerung erst beim
-// Öffnen, damit die Seite beim Start nicht unnötig nachfragt.
-window.einstellungenLaden = laden;
-if (!document.getElementById("einst-dialog")) laden();
+// On its own page load right away; in the control page's modal only on
+// opening, so the page does not poll needlessly at startup.
+window.einstellungenLaden = load;
+if (!document.getElementById("einst-dialog")) load();
 })();

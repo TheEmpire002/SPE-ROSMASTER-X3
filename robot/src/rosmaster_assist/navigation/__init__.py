@@ -1,26 +1,26 @@
-"""Positionsverfolgung und automatische Fahrten.
+"""Position tracking and automatic drives.
 
-Die Bausteine:
+The building blocks:
 
-``Odometry``            schreibt die Position aus der Fahrbewegung fort (driftet)
-``Localizer``           zieht sie per Lidar-Abgleich wieder gerade (driftet nicht)
-``Homing``              fährt damit zum Startpunkt zurück
-``Hinderniserkennung``  benennt, was der Lidar sieht (Wand, Stuhl, Tisch, Mensch)
-``Erkunder``            fährt autonom umher und weicht allem aus
-``Manoever``            fährt genau "2 Meter vor" oder dreht "90 Grad" (Lidar misst)
-``Kartierfahrt``        zweiter Modus des Erkunders: Raum abfahren wie ein Saugroboter
-``ScanOdometrie``       Position samt Blickrichtung aus dem Lidar (beim Kartieren)
+``Odometry``            dead-reckons the position from the motion (drifts)
+``Localizer``           pulls it straight again via lidar matching (does not drift)
+``Homing``              uses it to drive back to the starting point
+``ObstacleDetection``   names what the lidar sees (Wand, Stuhl, Tisch, Mensch)
+``Explorer``            drives around autonomously and avoids everything
+``Maneuver``            drives exactly "2 meters forward" or turns "90 degrees" (lidar measures)
+``MappingDrive``        second mode of the explorer: covers the room like a robot vacuum
+``ScanOdometry``        position including heading from the lidar (while mapping)
 
-Warum beide Ortungsverfahren: Die Koppelnavigation ist immer verfügbar,
-aber ungenau. Der Lidar ist genau, braucht aber Wiedererkennung. Zusammen
-ergänzen sie sich -- Details in ``localizer.py``.
+Why both localization methods: dead reckoning is always available but
+inaccurate. The lidar is accurate but needs recognition. Together they
+complement each other -- details in ``localizer.py``.
 """
 
-from .explorer import Erkunder
-from .hindernisse import Hinderniserkennung
+from .explorer import Explorer
+from .obstacles import ObstacleDetection
 from .homing import Homing
 from .localizer import Localizer
-from .manoever import Manoever
+from .maneuver import Maneuver
 from .odometry import Odometry
 
-__all__ = ["Erkunder", "Hinderniserkennung", "Homing", "Localizer", "Manoever", "Odometry"]
+__all__ = ["Explorer", "ObstacleDetection", "Homing", "Localizer", "Maneuver", "Odometry"]

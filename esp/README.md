@@ -1,42 +1,42 @@
-# ESP32 — Personentracking und Vitaldaten
+# ESP32 — person tracking and vital signs
 
-Noch nicht implementiert. Dieser Ordner beschreibt, was der ESP tun soll und
-wie er sich anbindet, damit jemand direkt loslegen kann.
+Not implemented yet. This folder describes what the ESP is supposed to do and
+how it connects, so that someone can get started right away.
 
-## Aufgabe
+## Task
 
-Der ESP32 beobachtet eine Person im Raum und meldet:
+The ESP32 observes a person in the room and reports:
 
-- **Bewegung** — ist jemand aktiv? Längere Bewegungslosigkeit kann auf einen
-  Sturz hindeuten.
-- **Puls** — Richtwert, kein Messgerät.
+- **Motion** — is someone active? A longer period without motion can indicate
+  a fall.
+- **Pulse** — a rough guide value, not a measuring instrument.
 
-## Anbindung
+## Connection
 
-Der ESP verbindet sich per WLAN auf denselben WebSocket wie die App:
+The ESP connects over Wi-Fi to the same WebSocket as the app:
 
 ```
-ws://<IP-des-Pi>:8000/ws
+ws://<IP-of-the-Pi>:8000/ws
 ```
 
-und schickt im Sekundentakt:
+and sends once per second:
 
 ```json
 {"type": "vitals", "bpm": 72, "motion": true}
 ```
 
-Der Roboter reicht das unverändert an alle verbundenen Apps weiter. Mehr
-passiert vorerst nicht — die Bewertung kommt später und bewusst serverseitig,
-nicht auf dem ESP.
+The robot forwards this unchanged to all connected apps. Nothing more happens
+for now — the evaluation comes later and deliberately on the server side, not
+on the ESP.
 
-Das vollständige Protokoll steht in [`docs/api.md`](../docs/api.md), der
-verbindliche Vertrag in
+The full protocol is in [`docs/api.md`](../docs/api.md), the binding contract
+in
 [`robot/src/rosmaster_assist/protocol.py`](../robot/src/rosmaster_assist/protocol.py).
 
-## Zum Testen ohne ESP
+## Testing without an ESP
 
-Mit laufendem Server lassen sich Messwerte von Hand einspeisen — nützlich, um
-die Anzeige in der App zu prüfen:
+With the server running, readings can be fed in by hand — useful for checking
+the display in the app:
 
 ```python
 # pip install websockets
@@ -50,10 +50,10 @@ async def main():
 asyncio.run(main())
 ```
 
-## Offene Fragen
+## Open questions
 
-- Welcher Pulssensor? (z.B. MAX30102 über I²C)
-- Bewegungserkennung über PIR-Sensor oder über die Kamera mit dem AI HAT+?
-  Die Kamera wäre deutlich zuverlässiger, aber aufwendiger.
-- Trägt die Person den ESP am Körper, oder hängt er im Raum? Davon hängt ab,
-  ob Pulsmessung überhaupt möglich ist.
+- Which pulse sensor? (e.g. MAX30102 via I²C)
+- Motion detection via a PIR sensor or via the camera with the AI HAT+?
+  The camera would be much more reliable, but more work.
+- Does the person wear the ESP on the body, or does it hang in the room? This
+  decides whether pulse measurement is possible at all.
