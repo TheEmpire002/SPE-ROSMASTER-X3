@@ -141,15 +141,21 @@ class Homing:
         """Pose in a map known -- then it drives by map."""
         return self._localization is not None and self._planner is not None and self._localization.confident
 
+    def map_pose(self) -> tuple[float, float, float] | None:
+        """Pose in the map (x, y, radians) while it is known, otherwise None."""
+        return self._localization.pose() if self.map_ready else None
+
     def start(self, target: tuple[float, float] | None = None, angle: float | None = None,
-              kind: str | None = None, corridor=None, fallback_points=None) -> bool:
+              kind: str | None = None, corridor=None, fallback_points=None,
+              blocked_enough_m: float = 0.0) -> bool:
         """Begin homing or the drive to ``target`` (map frame, m).
 
         ``angle`` (radians): align like this at the goal. ``kind="zurueck"``:
         the way back along ``corridor`` (breadcrumbs), ``fallback_points``
         if no path is found. False if a drive is already running or a goal
         is requested without a confident pose in the map (the reason is then
-        in ``last_reason``).
+        in ``last_reason``). ``blocked_enough_m`` as in ``start_to``: blocked
+        this close to the goal counts as arrived (person on the floor).
         """
         if self.active:
             return False
@@ -158,7 +164,7 @@ class Homing:
             return False
         self._reason = None
         self._arrived = False
-        self._set_goal(0.0, 0.0, None, "Startpunkt", 0.0)
+        self._set_goal(0.0, 0.0, None, "Startpunkt", blocked_enough_m)
         self._target = None if target is None else (float(target[0]), float(target[1]))
         self._kind = kind
         self._corridor = corridor
@@ -460,6 +466,11 @@ class Homing:
                     or (verdict is not None and verdict.share == 0.0 and not command.is_stop())
                 )
                 if state == pf.OFF_PATH or blocked:
+                    rest = math.hypot(target[0] - pose[0], target[1] - pose[1])
+                    if blocked and rest <= self._blocked_enough_m:
+                        # the goal itself is in the way (person on the floor)
+                        self._finish_blocked(rest)
+                        return
                     blocked_since = blocked_since or now
                     if state == pf.OFF_PATH or now - blocked_since > config.NAV_BLOCKED_S:
                         replans += 1

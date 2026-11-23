@@ -118,6 +118,26 @@ def _kp_px(person: dict, index: int) -> tuple[float, float] | None:
     return kp[index][0] * config.CAMERA_WIDTH, kp[index][1] * config.CAMERA_HEIGHT
 
 
+# yolov8 pose keypoints: nose and eyes for eye contact, knees and ankles
+# for the nudge
+HEAD_POINTS = (0, 1, 2)
+LEG_POINTS = (13, 14, 15, 16)
+
+
+def part_angle(person: dict | None, indices, fov_deg: float) -> float | None:
+    """Horizontal angle (degrees, left positive like "winkel") of a body part.
+
+    Mean x of the keypoints that are seen well enough; None if none is.
+    """
+    if person is None:
+        return None
+    kp = person.get("kp") or []
+    xs = [kp[i][0] for i in indices if i < len(kp) and kp[i][2] >= config.POSE_KP_MIN_CONF]
+    if not xs:
+        return None
+    return (0.5 - sum(xs) / len(xs)) * fov_deg
+
+
 def _middle(a, b):
     if a is None and b is None:
         return None

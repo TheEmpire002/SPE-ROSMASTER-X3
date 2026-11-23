@@ -145,12 +145,14 @@
             <div class="button-row" style="margin-top:9px">
               <button id="zielModus" type="button" disabled>➜ Hierhin fahren</button>
               <button id="poseModus" type="button" disabled>⌖ Hier stehe ich</button>
+              <button id="personModus" type="button" disabled>🧍 Person prüfen</button>
             </div>
             <div class="button-row" style="margin-top:9px">
               <button id="heimButton" type="button" disabled>⌂ Zum Ausgangspunkt</button>
               <button id="zielStop" class="stop" type="button" disabled>■ Fahrt abbrechen</button>
             </div>
             <div class="help" id="modusHilfe" style="margin-top:7px"></div>
+            <div class="ortung idle" id="healthText" style="margin-top:7px" hidden></div>
           </div>
 
           <div class="full">
@@ -496,6 +498,23 @@
           ctx.lineWidth = 2 * dpr;
           ctx.strokeRect(sx - 6 * dpr, sy - 6 * dpr, 12 * dpr, 12 * dpr);
         }
+        // healthbot: the area it searches for the person, and its drive there
+        const health = localization.healthbot || {};
+        if (health.aktiv && health.ziel) {
+          const [hx, hy] = worldToCanvas(health.ziel[0], health.ziel[1]);
+          ctx.strokeStyle = '#ff6b8a';
+          ctx.fillStyle = '#ff6b8a22';
+          ctx.lineWidth = 2 * dpr;
+          ctx.beginPath();
+          ctx.arc(hx, hy, metersToPixels(health.radius_m || 1.5), 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          drawDot(health.ziel[0], health.ziel[1], '#ff6b8a', 5);
+          const hd = health.fahrt || {};
+          if (o.pose && hd.aktiv && hd.weg && hd.weg.length) {
+            drawLine([[o.pose.x, o.pose.y], ...hd.weg], '#ff6b8a', 2.5, [7, 5]);
+          }
+        }
         const drive = localization.fahrt || {};
         const mappingDrive = localization.kartierfahrt || {};
         const route = drive.aktiv ? drive.weg : mappingDrive.weg;
@@ -561,11 +580,20 @@
         field.classList.toggle('unsicher', !!o.karte && !o.sicher);
         // Driving only with a confident pose; "Hier stehe ich" works with any map.
         const canDrive = !!o.karte && !!o.sicher && !driveActive;
+        const health = d.healthbot;
         $('zielModus').disabled = !canDrive;
         $('heimButton').disabled = !canDrive;
         $('poseModus').disabled = !o.karte;
-        $('zielStop').disabled = !drive.aktiv;
+        $('personModus').disabled = !canDrive || !health || health.aktiv;
+        $('zielStop').disabled = !drive.aktiv && !(health && health.aktiv);
         if (mode === 'ziel' && !canDrive) setMode(null);
+        if (mode === 'person' && $('personModus').disabled) setMode(null);
+        const healthField = $('healthText');
+        healthField.hidden = !(health && health.aktiv);
+        if (health && health.aktiv) {
+          healthField.textContent = `Healthbot: ${health.schritt || health.zustand || 'läuft'}`
+            + (health.ziel ? ` · Punkt (${health.ziel[0].toFixed(2)}, ${health.ziel[1].toFixed(2)})` : '');
+        }
         if (mode === 'pose' && !o.karte) setMode(null);
         setLive(d.kartieren, o);
         const mission = (d.anker || {}).mission;
@@ -646,12 +674,15 @@
         mode = mode === newMode ? null : newMode;
         $('zielModus').classList.toggle('aktiv', mode === 'ziel');
         $('poseModus').classList.toggle('aktiv', mode === 'pose');
+        $('personModus').classList.toggle('aktiv', mode === 'person');
         canvas.classList.toggle('zielen', !!mode);
         $('modusHilfe').textContent = mode === 'ziel'
           ? 'Auf die Karte tippen: Dorthin fährt er, auf einem Weg um Wände herum.'
           : mode === 'pose'
             ? 'Auf die Karte tippen, wo er steht -- mit Ziehen auch, wohin er schaut.'
-            : '';
+            : mode === 'person'
+              ? 'Auf die Karte tippen, wo die Person ist: Er fährt hin, sucht sie im Umkreis, spricht sie an und stupst sie an, wenn sie sich nicht regt.'
+              : '';
       }
 
       async function mapTapped(start, end) {
@@ -668,6 +699,9 @@
           } else if (mode === 'pose') {
             setLocalization(await api('/api/mapping/pose', { method: 'POST', body: JSON.stringify(request) }));
             message('Suche die Lage an der gezeigten Stelle …');
+          } else if (mode === 'person') {
+            setLocalization(await api('/api/mapping/person', { method: 'POST', body: JSON.stringify(request) }));
+            message(`Healthbot fährt zu (${x.toFixed(2)}, ${y.toFixed(2)}) und sucht die Person.`);
           }
         } catch (error) { message(error.message, true); }
         setMode(null);
@@ -821,6 +855,7 @@
 
       $('zielModus').addEventListener('click', () => setMode('ziel'));
       $('poseModus').addEventListener('click', () => setMode('pose'));
+      $('personModus').addEventListener('click', () => setMode('person'));
       $('zielStop').addEventListener('click', async () => {
         try { setLocalization(await api('/api/mapping/ziel/stop', { method: 'POST' })); }
         catch (error) { message(error.message, true); }

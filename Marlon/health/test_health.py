@@ -269,6 +269,39 @@ class Homing:
         self.last_reason = reason
 
 
+class MapHoming(Homing):
+    """Map-frame homing: the map frame is the world frame of the test."""
+
+    def __init__(self, world: World, ready: bool = True) -> None:
+        super().__init__(world)
+        self.ready = ready
+        self.map_goals: list[tuple[float, float] | None] = []
+        self.enough: list[float] = []
+
+    @property
+    def map_ready(self) -> bool:
+        return self.ready
+
+    def map_pose(self):
+        if not self.ready:
+            return None
+        self.world.update()
+        return self.world.x, self.world.y, self.world.th
+
+    def start(self, target=None, angle=None, corridor=None, blocked_enough_m=0.0) -> bool:
+        if self.active:
+            return False
+        self.map_goals.append(None if target is None else tuple(target))
+        self.enough.append(blocked_enough_m)
+        self._goal = (0.0, 0.0) if target is None else tuple(target)
+        self._end = time.monotonic() + 0.1
+        self.last_reason = None
+        return True
+
+    def state(self) -> dict:
+        return {"aktiv": self.active, "weg": [], "ziel": None}
+
+
 class Speech:
     available = True
 
@@ -313,10 +346,11 @@ class Mukke:
 
 class Setup:
     def __init__(self, person: str | None = "liegend", moving: bool = False, answers=None,
-                 lidar_sees: bool = True, on_finished=None) -> None:
+                 lidar_sees: bool = True, on_finished=None, by_map: bool | None = None) -> None:
         self.world = World(person, moving, lidar_sees)
         self.watchdog = Watchdog(self.world)
-        self.homing = Homing(self.world)
+        # by_map: True map ready, False map homing without a pose, None odometry only
+        self.homing = Homing(self.world) if by_map is None else MapHoming(self.world, by_map)
         self.pose = Pose(self.world)
         self.speech = Speech(answers or {})
         self.voice = Voice(self.speech)
@@ -762,6 +796,100 @@ async def case_failing_on_finished() -> None:
         logger.disabled = old_disabled
 
 
+async def until_done_watching(a: Setup, timeout_s: float = 60.0) -> dict:
+    """Like until_done, but notes what the camera tilt would have been told."""
+    seen = {"still": False, "tracked": False, "tracked_while_still": False}
+    end = time.monotonic() + timeout_s
+    while a.hb.active and time.monotonic() < end:
+        still = a.hb.camera_still
+        tracked = a.hb.tracked_person is not None
+        seen["still"] |= still
+        seen["tracked"] |= tracked
+        await asyncio.sleep(0.02)
+    await asyncio.sleep(0)
+    return seen
+
+
+async def case_map_frame() -> None:
+    print("Point on the map: drives by map, faces the person, aims at the legs")
+    a = Setup("liegend", by_map=True)
+    check("starts", a.hb.start(*sim.STANDARD_LOCATION, "karte", frame="karte") is None)
+    view = a.hb.map_view()
+    check("map view shows the point and area", view["aktiv"] and view["ziel"] == list(sim.STANDARD_LOCATION)
+          and view["radius_m"] == config.HEALTH_AREA_RADIUS_M, str(view))
+    seen = await until_done_watching(a)
+    s = a.hb.status()
+    check("state hilfe", s["zustand"] == pr.HELP, s["zustand"] + " / " + s["schritt"])
+    check("by map there and back", a.homing.map_goals == [sim.STANDARD_LOCATION, None], str(a.homing.map_goals))
+    check("no dead-reckoning goals", a.homing.goals == [], str(a.homing.goals))
+    check("arrives when blocked close enough", a.homing.enough[0] == config.HEALTH_BLOCKED_ENOUGH_M,
+          str(a.homing.enough))
+    check("target frame karte", (s["ziel"] or {}).get("rahmen") == "karte", str(s["ziel"]))
+    steps = [e["text"] for e in s["timeline"]]
+    check("looks into the face", "schaut der Person ins Gesicht" in steps, str(steps))
+    check("aims at the legs", "zielt auf die Beine" in steps, str(steps))
+    check("tilt held still while observing", seen["still"])
+    check("tilt follows the person", seen["tracked"])
+    check("tilt released at the end", not a.hb.camera_still and a.hb.tracked_person is None)
+    check("nudged", len(s["stupser"]) == config.HEALTH_NUDGE_COUNT, str(s["stupser"]))
+    check("never deeper than the nudge depth into the person",
+          a.watchdog.smallest_air >= config.ROBOT_FRONT_M - config.HEALTH_NUDGE_DEPTH_M - 0.01,
+          f"{a.watchdog.smallest_air:.3f}")
+    r = check_record(a, "alarm")
+    if r:
+        check("record target frame", r["target_frame"] == "karte", str(r.get("target_frame")))
+
+
+async def case_map_outside_area() -> None:
+    print("Point on the map far from the person: nobody in the area")
+    a = Setup("liegend", by_map=True)
+    point = (0.5, 2.0)  # about 3.6 m from the person
+    check("starts", a.hb.start(*point, "karte", frame="karte") is None)
+    await a.until_done()
+    s = a.hb.status()
+    check("state keine_person", s["zustand"] == pr.NO_PERSON, s["zustand"] + " / " + s["schritt"])
+    check("not nudged", not s["stupser"], str(s["stupser"]))
+    check("home by map", a.homing.map_goals == [point, None], str(a.homing.map_goals))
+
+
+async def case_map_refused() -> None:
+    print("Map frame without a pose in the map or without a point is refused")
+    a = Setup("liegend", by_map=False)
+    reason = a.hb.start(1.0, 1.0, "karte", frame="karte")
+    check("refused without map pose", reason is not None and "Karte" in reason, str(reason))
+    check("not active", not a.hb.active)
+    b = Setup("liegend", by_map=True)
+    reason = b.hb.start(None, None, "karte", frame="karte")
+    check("refused without point", reason is not None, str(reason))
+    c = Setup("liegend")
+    reason = c.hb.start(1.0, 1.0, "karte", frame="karte")
+    check("refused with odometry-only homing", reason is not None, str(reason))
+    check("map view without point", c.hb.map_view()["ziel"] is None)
+
+
+def test_camera_tilt_hold() -> None:
+    print("Camera tilt holds still while the healthbot observes")
+    from rosmaster_assist.sensors.camera_tilt import CameraTilt
+
+    class Driver:
+        connected = False
+
+    hold = {"on": True}
+    head_high = {"winkel": 0.0, "zeit": 1.0, "kp": [[0.5, 0.05, 0.9]] * 17,
+                 "box": [0.4, 0.0, 0.6, 0.9]}
+    tilt = CameraTilt(Driver(), person_source=lambda: head_high, hold_source=lambda: hold["on"])
+    tilt._target = tilt._angle + 10.0  # a move under way
+    now = time.monotonic()
+    tilt._track(now, 0.1)
+    check("held: move stops where it is", tilt._target == tilt._angle, f"{tilt._target} vs {tilt._angle}")
+    before = tilt._target
+    tilt._track(now + 30.0, 0.1)
+    check("held: no return to home and no tracking", tilt._target == before)
+    hold["on"] = False
+    tilt._track(now + 30.1, 0.1)
+    check("released: tracks the head again", tilt._target != before, f"{tilt._target}")
+
+
 async def run_all() -> None:
     await case_without_camera()
     await case_motionless()
@@ -775,6 +903,9 @@ async def run_all() -> None:
     await case_below_lidar()
     await case_watch()
     await case_failing_on_finished()
+    await case_map_refused()
+    await case_map_frame()
+    await case_map_outside_area()
 
 
 def main() -> None:
@@ -789,6 +920,7 @@ def main() -> None:
     try:
         test_assessment()
         test_detection()
+        test_camera_tilt_hold()
         asyncio.run(run_all())
     finally:
         for n, v in old.items():

@@ -281,10 +281,14 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     interaction = Interaction(
         watchdog, lidar, pose, voice, drive_connected=lambda: driver.connected, odometry=odometry
     )
-    # tilt servo of the person camera: keeps the person in question in the frame
+    # tilt servo of the person camera: keeps the person in question in the
+    # frame; during a healthbot check that is the person under check (eye
+    # contact), and it holds still while the healthbot watches for movement
     camera_tilt = CameraTilt(
-        driver, person_source=lambda: interaction.target_person,
+        driver,
+        person_source=lambda: healthbot.tracked_person or interaction.target_person,
         fov_deg=person_camera.fov_deg if person_camera is not None else None,
+        hold_source=lambda: healthbot.camera_still,
     )
     # Gets the voice so it can stop listening while the robot itself speaks
     # (otherwise it would understand itself), and MUKKE: while music plays
@@ -497,6 +501,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         scan_odometry=scan_odometry,
     )
     map_control.also_cancel.append(healthbot.cancel)
+    map_control.healthbot = healthbot
     # mapping drives take over the wheels; other test runs keep going
     map_control.also_cancel.append(lambda reason=None: test_runs.drives and test_runs.stop(reason))
     app.state.map_control = map_control
@@ -1872,6 +1877,9 @@ async def _handle(
         x, y = msg.get("x"), msg.get("y")
         if (x is None) != (y is None) or (x is not None and not (_is_number(x) and _is_number(y))):
             return alert_message("warning", "Healthbot: x und y müssen beide Zahlen sein")
+        frame = msg.get("rahmen") or "odom"
+        if frame not in ("odom", "karte"):
+            return alert_message("warning", "Healthbot: rahmen muss \"odom\" oder \"karte\" sein")
         if not healthbot.active:
             # only one program steers
             homing.cancel("Healthbot gestartet")
@@ -1881,7 +1889,7 @@ async def _handle(
                 interaction.cancel("Healthbot gestartet")
             if maneuver is not None:
                 maneuver.cancel("Healthbot gestartet")
-        reason = healthbot.start(x, y, "eingabe")
+        reason = healthbot.start(x, y, "eingabe", frame=frame)
         if reason is not None:
             return alert_message("warning", f"Healthbot: {reason}")
         text = ("Healthbot: prüft hier" if x is None

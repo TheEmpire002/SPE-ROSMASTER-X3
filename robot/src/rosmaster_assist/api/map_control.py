@@ -63,6 +63,8 @@ class MapControl:
         self._frontiers_time = 0.0
         # further cancel(reason) callbacks this module does not know, e.g. the healthbot
         self.also_cancel: list = []
+        # set by the server: checks a person at a point on the map
+        self.healthbot = None
 
         # always-on mapping
         self._mapper = live_mapper
@@ -245,7 +247,39 @@ class MapControl:
 
     def goal_stop(self, reason: str = "vom Nutzer abgebrochen") -> None:
         self._homing.cancel(reason)
+        # "Fahrt abbrechen" on the page also ends a person check started there
+        if self.healthbot is not None and self.healthbot.active:
+            self.healthbot.cancel(reason)
         self._watchdog.stop()
+
+    def check_person(self, x, y) -> str | None:
+        """Drive to a point on the map and check the person there. Error text or None."""
+        if self.healthbot is None:
+            return "Healthbot gibt es hier nicht"
+        if self.healthbot.active:
+            return "Healthbot prüft schon"
+        try:
+            x, y = float(x), float(y)
+        except (TypeError, ValueError):
+            return "x und y müssen Zahlen sein (Meter im Kartenrahmen)"
+        if not all(math.isfinite(v) for v in (x, y)):
+            return "x und y müssen endlich sein"
+        occ_map = self._localization.occ_map
+        if occ_map is None:
+            return "Keine Karte geladen"
+        if not self._localization.confident:
+            return "Lage in der Karte unbekannt -- erst auf der Karte zeigen, wo er steht"
+        if not self._driver.connected:
+            return "Keine Verbindung zum Antrieb"
+        # the person may lie on unknown floor, but the area must touch the map
+        if occ_map.nearest_free(x, y, config.HEALTH_AREA_RADIUS_M) is None:
+            return "Punkt liegt außerhalb der bekannten Karte"
+        self._cancel_others("Healthbot gestartet")
+        reason = self.healthbot.start(x, y, "karte", frame="karte")
+        if reason is not None:
+            return f"Healthbot: {reason}"
+        self._report("info", f"Healthbot: prüft bei ({x:.2f}, {y:.2f})")
+        return None
 
     def set_pose(self, x, y, angle_deg=None) -> str | None:
         try:
@@ -503,6 +537,7 @@ class MapControl:
             "kartieren": self.live_status(),
             "brotkrumen": self.crumbs.display(),
             "anker": {k: [round(v, 3) for v in a["pose"]] for k, a in self.crumbs.anchors.items()},
+            "healthbot": self.healthbot.map_view() if self.healthbot is not None else None,
         }
 
     def state_brief(self) -> dict[str, Any] | None:

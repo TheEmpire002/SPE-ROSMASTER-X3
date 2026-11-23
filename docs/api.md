@@ -186,7 +186,7 @@ Right after connecting, the robot sends on its own, in this order:
 | `speech` | `text` (string) | Treat the text as if it had been spoken into the microphone (see "Speech commands in detail"). For trying things out without a microphone and in `--mock`. | `alert` „Sprachbefehl: …“ to all if a command was recognized; otherwise `alert` (info) „Kein Befehl erkannt …“ (no command recognized); without `text` `error` |
 | `set_home` | – | The current position becomes the new start point (0, 0, 0°), the lidar reference is re-recorded. With a map and a confident pose, the position also becomes the map's origin (and is remembered in its file). | `alert` to all |
 | `collision` | `enabled` (bool, optional), `distance` (m, optional) | Collision avoidance on/off, minimum distance. `distance` is clamped to 0.15–1.5 m. | `collision` to all |
-| `health_check` | `x`, `y` (m in the odometry frame like homing, not the map frame; optional: both or neither) | Healthbot check (new 05.11., see "Healthbot" under HTTP): drive to the spot, look at the person, address them, nudge them if they do not answer, call for help. Without `x`/`y` it checks a person near the robot. **Drives and nudges, only on the floor.** Cancels homing, autonomous driving, interaction and precise drive commands. Any drive input ≠ 0, `stop`, `move`/`turn`, `explore`, `home`, `interaction_start` or a voice „Robi stopp“ cancels it. | `alert` to all; otherwise `alert` (warning) with reason |
+| `health_check` | `x`, `y` (m in the odometry frame like homing; optional: both or neither); `rahmen` optional: `"odom"` (default) or `"karte"` (new 23.11.: x/y in the map frame, needs a confident map pose; drives by map and only checks a person within `HEALTH_AREA_RADIUS_M` of the point) | Healthbot check (new 05.11., see "Healthbot" under HTTP): drive to the spot, look at the person, address them, nudge them if they do not answer, call for help. Without `x`/`y` it checks a person near the robot. **Drives and nudges, only on the floor.** Cancels homing, autonomous driving, interaction and precise drive commands. Any drive input ≠ 0, `stop`, `move`/`turn`, `explore`, `home`, `interaction_start` or a voice „Robi stopp“ cancels it. | `alert` to all; otherwise `alert` (warning) with reason |
 | `health_stop` | – | Cancel the check, stop alarm music, stop. | none |
 | `health_wache` | `an` (bool) | Watch: look out for a lying person on its own and then start a check. Does not drive off as long as nobody is seen. | none; `alert` (warning) if not possible |
 | `beep` | `ms` (int, default 100) | Buzzer. | none |
@@ -1020,6 +1020,7 @@ User interface: `GET /map`.
 | `POST /api/mapping/ziel` | drive to a point, body `{"x": 2.5, "y": -1.0, "winkel": 90}` (`winkel` optional); 409 with reason if not possible |
 | `POST /api/mapping/ziel/stop` | cancel the goal drive |
 | `POST /api/mapping/pose` | "I am here", body as for `ziel`: search for the pose there |
+| `POST /api/mapping/person` | healthbot check at a point on the map (new 23.11.), body `{"x": 2.5, "y": -1.0}`: same checks as `ziel`, then `health_check` with `rahmen: "karte"`; 409 with reason if not possible (also „Healthbot prüft schon“). `POST /api/mapping/ziel/stop` also cancels it |
 | `GET /api/mapping/live` | always-on mapping in detail (new 05.11., see "Always-on mapping") |
 | `POST /api/mapping/live` | on/off, body `{"aktiv": false}`; returns the same as `GET` |
 | `POST /api/mapping/mission/start` | „Missionsstart hier“; 409 with reason without a confident pose in the main map |
@@ -1116,7 +1117,9 @@ same rotated by 180°); then it asks.
   "fahrt": {"aktiv": true, "art": "ziel", "nach_karte": true, "ziel": [3.5, -1.0],
             "weg": [[1.2, 1.8], [3.5, -1.0]], "rest_m": 2.4, "grund": null},
   "kartierfahrt": {"weg": [], "ziel": null},
-  "luecken": [[1.4, 1.85]]
+  "luecken": [[1.4, 1.85]],
+  "healthbot": {"aktiv": true, "zustand": "anfahrt", "schritt": "fährt zur gemeldeten Stelle",
+                "ziel": [2.5, -1.0], "radius_m": 1.5, "fahrt": {"aktiv": true, "weg": ["..."]}}
 }
 ```
 
@@ -1128,9 +1131,12 @@ count accepted/rejected matches. `spur` (trail) is the path driven (one
 point per 10 cm), `fahrt.weg` the planned path, `luecken` (frontiers) are the
 open transitions into the unknown (only while a `/map` page is open). The
 `/map` page shows all of this on the map and has the buttons „Hierhin
-fahren“ (drive here), „Hier stehe ich“ (I am here), „Zum Ausgangspunkt“ (to
-the origin) and „Fahrt abbrechen“ (cancel drive). Values: `NAV_*` in
-`config.py`.
+fahren“ (drive here), „Hier stehe ich“ (I am here), „Person prüfen“ (check
+a person, see "Healthbot"), „Zum Ausgangspunkt“ (to the origin) and „Fahrt
+abbrechen“ (cancel drive). `healthbot` is `null` without a healthbot; `ziel`
+and `fahrt` are only set for a check started in the map frame (`fahrt` is
+the healthbot's own drive, `fahrt` above stays the goal drive). Values:
+`NAV_*` in `config.py`.
 
 **Always-on mapping (new 05.11., E14).** Without a separate mapping mode the
 robot maps on every drive, into one **main map** (`LIVE_MAP_NAME` =
@@ -1225,7 +1231,23 @@ gently if there is no answer, call for help (alarm music, `alert`
 | `POST /healthbot/simulation` | only `--mock`: `{"szene": "liegt", "x": 2.0, "y": 0.5}` puts a simulated person into the scene (`x`/`y` optional). 400 with `fehler` for an unknown scene, 404 without mock. |
 
 Every finished check (any outcome) is stored as a run like the tests below
-(`typ: "health"`), so it can be looked at later without the robot.
+(`typ: "health"`), so it can be looked at later without the robot. The
+record has `target_frame` (`"odom"`/`"karte"`); `ziel` in the status has
+`rahmen`.
+
+**Point on the map (new 23.11.).** On the `/map` page „🧍 Person prüfen“ and
+a tap on the map (`POST /api/mapping/person`) start a check in the map
+frame: it drives there by map (arrives early when blocked within
+`HEALTH_BLOCKED_ENOUGH_M`), turns towards the point and only picks a person
+whose position (lidar distance in their direction + map pose) lies within
+`HEALTH_AREA_RADIUS_M` of it; someone elsewhere in the room is ignored. The
+page draws the area and the drive. To address the person it turns until
+their face (keypoints nose/eyes) is centred for up to `HEALTH_FACE_S`, the
+camera tilt follows the person under check (eye contact) and holds still
+while it watches for movement. For nudging it aims at the legs (keypoints
+knees/ankles, `HEALTH_NUDGE_AT_LEGS`) and measures the distance there with
+the lidar (±`HEALTH_LEG_HALF_DEG`); without visible legs it nudges the body
+centre as before. It goes home by map.
 
 How "lying" is decided (since 23.11.): the person under check is tracked
 from frame to frame (a second person walking past does not take over). The

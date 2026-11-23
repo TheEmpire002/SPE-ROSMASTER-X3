@@ -63,6 +63,10 @@ From the app / the ESP to the robot
                                                           person's condition (x, y in m, odometry
                                                           frame like homing; without x/y: check
                                                           here).
+                                                          Optional "rahmen": "karte": x, y in the
+                                                          map frame, drives by map and only checks
+                                                          a person within HEALTH_AREA_RADIUS_M of
+                                                          the point ("odom" = default).
                                                           Drives and nudges! Only on the floor.
 {"type": "health_stop"}                                   cancel the healthbot check, stop
 {"type": "health_wache", "an": true}                      healthbot watch: detect a lying person

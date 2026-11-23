@@ -15,6 +15,9 @@ cut off. A servo on the expansion board tilts the camera.
   tilt the camera had when the image was taken, not from the current one;
   otherwise it would correct the same error several times and overshoot.
   Nobody in view for ``CAMERA_TILT_RETURN_S``: back slowly to the home tilt.
+- **Hold.** While ``hold_source()`` is true (healthbot observing whether
+  the person moves) it keeps its angle: a moving camera would shift all
+  keypoints and look like movement.
 - **Gentle.** At most ``CAMERA_TILT_SPEED_DEG_S``: a jerk blurs the picture,
   and a servo starting at full force pulls a current spike from the board
   (USB dropouts on the X3).
@@ -77,10 +80,12 @@ class CameraTilt:
         driver: DriveBase,
         person_source: Callable[[], dict | None] | None = None,
         fov_deg: float | None = None,
+        hold_source: Callable[[], bool] | None = None,
     ) -> None:
         self._driver = driver
         # the person whose head is kept in the frame, or None
         self._person_source = person_source
+        self._hold_source = hold_source
         self._vfov = vertical_fov(fov_deg if fov_deg else config.CAMERA_FOV_DEG)
         self.auto = bool(config.CAMERA_TILT_AUTO)
         home = _clamp(config.CAMERA_TILT_HOME_DEG)
@@ -154,6 +159,12 @@ class CameraTilt:
                 log.exception("Camera tilt step failed")
 
     def _track(self, now: float, dt: float) -> None:
+        if self._hold_source is not None and self._hold_source():
+            # freeze where it is (a move under way stops too) and do not count
+            # this as "nobody in view"
+            self._target = self._angle
+            self._last_person = now
+            return
         person = self._person_source() if self._person_source is not None else None
         if person is None:
             self._tracking = False

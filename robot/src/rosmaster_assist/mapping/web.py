@@ -174,6 +174,14 @@ def create_mapping_router(manager: MappingManager | None = None, drive=None) -> 
             raise HTTPException(status_code=409, detail=error)
         return control.display()
 
+    @router.post("/api/mapping/person")
+    async def mapping_person(request: PointRequest) -> dict[str, Any]:
+        control = _control()
+        error = control.check_person(request.x, request.y)
+        if error:
+            raise HTTPException(status_code=409, detail=error)
+        return control.display()
+
     @router.post("/api/mapping/ziel/stop")
     async def mapping_goal_stop() -> dict[str, Any]:
         control = _control()

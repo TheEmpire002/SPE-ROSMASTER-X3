@@ -29,6 +29,8 @@ import math
 import os
 import time
 
+import numpy as np
+
 from .. import config
 from ..protocol import DriveCommand, alert_message
 from ..safety import drive_guard
@@ -96,6 +98,9 @@ class Healthbot:
         self._person: dict | None = None
         # pose runs for the check only until the robot heads home
         self._pose_on = False
+        # true while observing: a moving tilt servo would shift all keypoints
+        # and look like the person moving
+        self._camera_still = False
         self._nudges: list[dict] = []
         self._reset_record()
 
@@ -146,6 +151,30 @@ class Healthbot:
             "kamera": getattr(self._pose, "camera_name", None),
         }
 
+    def map_view(self) -> dict:
+        """For the /map page: the point under check, its area and the drive there."""
+        by_map = self._by_map()
+        return {
+            "aktiv": self.active,
+            "zustand": self._state,
+            "schritt": self._step,
+            "ziel": [self._target["x"], self._target["y"]] if by_map else None,
+            "radius_m": config.HEALTH_AREA_RADIUS_M,
+            "fahrt": self._homing.state() if by_map and self.active else None,
+        }
+
+    @property
+    def tracked_person(self) -> dict | None:
+        """The person under check for the camera tilt (eye contact), else None."""
+        if not (self.active and self._pose_on):
+            return None
+        return self._seen()
+
+    @property
+    def camera_still(self) -> bool:
+        """The tilt servo should hold its angle (observing the person)."""
+        return self.active and self._camera_still
+
     def _person_summary(self) -> dict | None:
         # live frame instead of the stored one: the stored frame is seconds old
         # while the robot speaks or listens and would sit beside the person
@@ -179,10 +208,14 @@ class Healthbot:
 
     # ------------------------------------------------------------------ control
 
-    def start(self, x: float | None = None, y: float | None = None, source: str = "eingabe") -> str | None:
+    def start(self, x: float | None = None, y: float | None = None, source: str = "eingabe",
+              frame: str = "odom") -> str | None:
         """Begin a check. Without a target: check a person near here.
 
-        Returns None or the (German, user-facing) reason why it does not work.
+        ``frame`` says what x/y mean: "odom" (odometry frame, dead reckoning)
+        or "karte" (map frame: drives by map and only checks a person within
+        HEALTH_AREA_RADIUS_M of the point). Returns None or the (German,
+        user-facing) reason why it does not work.
         """
         if not config.HEALTH_ACTIVE:
             return "abgeschaltet (config.HEALTH_ACTIVE)"
@@ -190,6 +223,11 @@ class Healthbot:
             return "läuft schon"
         if self._pose is None or not getattr(self._pose, "available", False):
             return "keine Pose-Erkennung -- ohne Kamera kein Gesamtbild"
+        by_map = frame == "karte"
+        if by_map and (x is None or y is None):
+            return "für die Karte fehlt der Punkt (x, y)"
+        if by_map and not getattr(self._homing, "map_ready", False):
+            return "Lage in der Karte unbekannt -- erst auf der Karte zeigen, wo er steht"
         self._timeline = []
         self._checks = am.empty()
         self._verdict = None
@@ -199,7 +237,10 @@ class Healthbot:
         self._reset_record()
         self._started_at = time.time()
         self._source = source
-        self._target = None if x is None or y is None else {"x": round(float(x), 2), "y": round(float(y), 2), "quelle": source}
+        self._target = None if x is None or y is None else {
+            "x": round(float(x), 2), "y": round(float(y), 2), "quelle": source,
+            "rahmen": "karte" if by_map else "odom",
+        }
         self._task = asyncio.create_task(self._procedure())
         # done callback instead of finally: it also fires when the task is
         # cancelled before it ever ran
@@ -305,6 +346,7 @@ class Healthbot:
             "duration_s": None if self._started_at is None else round(ended - self._started_at, 2),
             "source": self._source,
             "target": None if self._target is None else {"x": self._target["x"], "y": self._target["y"]},
+            "target_frame": None if self._target is None else self._target["rahmen"],
             "outcome": outcome,
             "state": self._state,
             "verdict": None if self._verdict is None else dict(self._verdict),
@@ -351,12 +393,21 @@ class Healthbot:
         people = self._pose.people() if self._pose is not None else []
         return am.pick(people, self._person)
 
-    def _distance(self, person: dict | None) -> float | None:
+    def _distance(self, person: dict | None, leg_angle: float | None = None) -> float | None:
         """Lidar distance to the person (nearest point of their piece),
-        otherwise the nearest thing straight ahead."""
+        otherwise the nearest thing straight ahead. With ``leg_angle`` the
+        distance to the legs in a narrow window."""
         points = self._points()
         if points is None:
             return None
+        if leg_angle is not None:
+            # only the nearest point in the window: the piece would grow over
+            # the whole body and give the distance to its nearest part
+            p = np.asarray(points, dtype=float)
+            w = np.degrees(np.arctan2(p[:, 1], p[:, 0]))
+            near = p[np.abs((w - leg_angle + 180.0) % 360.0 - 180.0) <= config.HEALTH_LEG_HALF_DEG]
+            if len(near):
+                return float(np.min(np.hypot(near[:, 0], near[:, 1])))
         if person is not None:
             half = (person["box"][2] - person["box"][0]) * self._pose.fov_deg / 2
             piece = am.lidar_piece(points, person["winkel"], half)
@@ -365,6 +416,62 @@ class Healthbot:
         scan = self._lidar.latest()
         d = scan.min_distance(0.0, 15.0) if scan is not None else math.inf
         return d if math.isfinite(d) else None
+
+    def _by_map(self) -> bool:
+        return self._target is not None and self._target["rahmen"] == "karte"
+
+    def _frame_pose(self) -> tuple[float, float, float] | None:
+        """Pose (x, y, radians) in the frame of the target."""
+        if self._by_map():
+            return self._homing.map_pose()
+        x, y, deg = self._odometry.pose()
+        return x, y, math.radians(deg)
+
+    def _in_area(self, person: dict) -> bool:
+        """Is the person within HEALTH_AREA_RADIUS_M of the point on the map?
+
+        Their position comes from the lidar distance in their direction.
+        Without a map point, pose or lidar distance it cannot tell and lets
+        them count, as before.
+        """
+        if not self._by_map():
+            return True
+        pose = self._frame_pose()
+        d = self._distance(person)
+        if pose is None or d is None:
+            return True
+        a = pose[2] + math.radians(person["winkel"])
+        px, py = pose[0] + d * math.cos(a), pose[1] + d * math.sin(a)
+        return math.hypot(px - self._target["x"], py - self._target["y"]) <= config.HEALTH_AREA_RADIUS_M
+
+    def _part_angle(self, person: dict | None, indices) -> float | None:
+        assert self._pose is not None
+        return am.part_angle(person, indices, self._pose.fov_deg)
+
+    def _leg_angle(self, person: dict | None) -> float | None:
+        if not config.HEALTH_NUDGE_AT_LEGS:
+            return None
+        return self._part_angle(person, am.LEG_POINTS)
+
+    async def _aim(self, indices, duration: float) -> float | None:
+        """Turn until the body part (keypoints) is centred in the image.
+
+        Returns its angle at the end, None if it was not seen.
+        """
+        deadline = time.monotonic() + duration
+        angle = None
+        while time.monotonic() < deadline:
+            p = self._seen()
+            if p is not None:
+                self._person = p
+            angle = self._part_angle(p, indices)
+            if angle is None or abs(angle) <= config.HEALTH_CENTERED_DEG:
+                break
+            limit = config.HEALTH_SEARCH_OMEGA
+            self._drive(omega=max(-limit, min(limit, math.radians(angle) * 1.5)))
+            await asyncio.sleep(_TICK_S)
+        self._watchdog.stop()
+        return angle
 
     def _travelled(self, start: tuple[float, float, float]) -> float:
         x, y, _ = self._odometry.pose()
@@ -414,13 +521,17 @@ class Healthbot:
         history: list[dict] = []
         last = None
         end = time.monotonic() + duration
-        while time.monotonic() < end:
-            p = self._seen()
-            if p is not None and p.get("zeit") != last:
-                last = p.get("zeit")
-                history.append(p)
-                self._person = p
-            await asyncio.sleep(_TICK_S)
+        self._camera_still = True
+        try:
+            while time.monotonic() < end:
+                p = self._seen()
+                if p is not None and p.get("zeit") != last:
+                    last = p.get("zeit")
+                    history.append(p)
+                    self._person = p
+                await asyncio.sleep(_TICK_S)
+        finally:
+            self._camera_still = False
         return history
 
     async def _turn_by(self, degrees: float) -> None:
@@ -443,7 +554,10 @@ class Healthbot:
         """Turn until a person is centred in the image. None after one round."""
         deadline = time.monotonic() + config.HEALTH_SEARCH_S
         while time.monotonic() < deadline:
-            p = self._seen()
+            people = self._pose.people() if self._pose is not None else []
+            # with a map point only who is in that area: someone standing
+            # elsewhere in the room is turned past
+            p = am.pick([q for q in people if self._in_area(q)], self._person)
             if p is not None:
                 self._person = p
                 if abs(p["winkel"]) <= config.HEALTH_CENTERED_DEG:
@@ -462,7 +576,13 @@ class Healthbot:
         # the check is over, nobody needs the skeleton on the way back
         self._use_pose(False)
         self._note("fährt zum Startpunkt zurück")
-        if not self._homing.start_to(0.0, 0.0, name="Startpunkt"):
+        if self._by_map() and getattr(self._homing, "map_ready", False):
+            # by map to its start in the map: dead reckoning over a longer
+            # drive through rooms would drift
+            started = self._homing.start()
+        else:
+            started = self._homing.start_to(0.0, 0.0, name="Startpunkt")
+        if not started:
             self._note("Heimfahrt startet nicht (läuft schon eine?)")
             return
         while self._homing.active:
@@ -492,19 +612,27 @@ class Healthbot:
         if self._target is not None:
             self._note(f"fährt zur gemeldeten Stelle ({self._target['x']:.2f}, {self._target['y']:.2f})", APPROACH)
             await self._send("info", "Healthbot: fahre zur gemeldeten Stelle")
-            self._homing.start_to(
-                self._target["x"], self._target["y"], tolerance=config.HEALTH_GOAL_TOLERANCE_M,
-                name="gemeldete Stelle", blocked_enough_m=config.HEALTH_BLOCKED_ENOUGH_M,
-            )
+            if self._by_map():
+                started = self._homing.start(
+                    target=(self._target["x"], self._target["y"]),
+                    blocked_enough_m=config.HEALTH_BLOCKED_ENOUGH_M,
+                )
+            else:
+                started = self._homing.start_to(
+                    self._target["x"], self._target["y"], tolerance=config.HEALTH_GOAL_TOLERANCE_M,
+                    name="gemeldete Stelle", blocked_enough_m=config.HEALTH_BLOCKED_ENOUGH_M,
+                )
+            if not started:
+                self._note(f"Anfahrt startet nicht: {self._homing.last_reason or 'läuft schon eine Fahrt?'}")
             while self._homing.active:
                 await asyncio.sleep(0.2)
             self._note(f"Anfahrt: {self._homing.last_reason or 'beendet'}")
             # turn towards the spot: the person lies there, not in the
             # direction of the last evasive manoeuvre
-            x, y, heading = self._odometry.pose()
-            if math.hypot(self._target["x"] - x, self._target["y"] - y) > 0.2:
-                bearing = math.degrees(math.atan2(self._target["y"] - y, self._target["x"] - x))
-                await self._turn_by((bearing - heading + 180.0) % 360.0 - 180.0)
+            pose = self._frame_pose()
+            if pose is not None and math.hypot(self._target["x"] - pose[0], self._target["y"] - pose[1]) > 0.2:
+                bearing = math.atan2(self._target["y"] - pose[1], self._target["x"] - pose[0])
+                await self._turn_by((math.degrees(bearing - pose[2]) + 180.0) % 360.0 - 180.0)
 
         # 2. overview
         self._note("sucht die Person", OVERVIEW)
@@ -526,6 +654,9 @@ class Healthbot:
 
         # 3. address
         self._note("spricht die Person an", ADDRESS)
+        # face centred by turning, the tilt servo does the height: eye contact
+        if await self._aim(am.HEAD_POINTS, config.HEALTH_FACE_S) is not None:
+            self._note("schaut der Person ins Gesicht")
         await self._speak(config.HEALTH_QUESTION)
         heard = await self._listen(config.HEALTH_ANSWER_S, "question")
         self._check(am.answer(heard))
@@ -583,6 +714,10 @@ class Healthbot:
             self._note("kommt nicht nah genug heran -- kein Stupsen möglich")
             return False
         for nr in range(1, config.HEALTH_NUDGE_COUNT + 1):
+            if config.HEALTH_NUDGE_AT_LEGS:
+                legs = await self._aim(am.LEG_POINTS, config.HEALTH_FACE_S)
+                self._note("zielt auf die Beine" if legs is not None
+                           else "Beine nicht zu sehen -- stupst die Körpermitte an")
             since = time.time()
             result = await self._nudge(nr)
             await self._back_off()
@@ -613,7 +748,8 @@ class Healthbot:
             p = self._seen()
             if p is not None:
                 self._person = p
-            d = self._distance(p)
+            legs = self._leg_angle(p)
+            d = self._distance(p, legs)
             if d is None:
                 self._watchdog.stop()
                 self._note("kein Lidar-Abstand zur Person")
@@ -622,7 +758,9 @@ class Healthbot:
                 self._watchdog.stop()
                 return True
             limit = config.HEALTH_APPROACH_OMEGA_MAX
-            omega = 0.0 if p is None else max(-limit, min(limit, math.radians(p["winkel"])))
+            # towards the legs when they are seen: that is where it nudges
+            aim = legs if legs is not None else (None if p is None else p["winkel"])
+            omega = 0.0 if aim is None else max(-limit, min(limit, math.radians(aim)))
             driven = self._drive(vx=config.HEALTH_APPROACH_SPEED, omega=omega)
             enough = config.HEALTH_NUDGE_START_M + config.HEALTH_APPROACH_ENOUGH_M
             if driven.vx <= 0.0 and self._watchdog.last_check is not None and d <= enough:
@@ -656,7 +794,8 @@ class Healthbot:
         guard see air. Contact = the wheels stop turning although it should
         drive; if the drive guard holds first, the nudge ends with GUARD_HOLDS.
         """
-        d = self._distance(self._seen())
+        p = self._seen()
+        d = self._distance(p, self._leg_angle(p))
         air = max(0.0, (d if d is not None else config.ROBOT_FRONT_M) - config.ROBOT_FRONT_M)
         # more air than _approach allows means the lidar looks over the
         # person at the wall; then do not trust the lidar value

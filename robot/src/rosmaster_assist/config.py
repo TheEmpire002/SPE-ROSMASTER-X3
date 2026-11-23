@@ -1957,6 +1957,19 @@ HEALTH_SEARCH_OMEGA = 0.4
 HEALTH_SEARCH_S = 18.0
 # A person counts as centred when less than this many degrees off.
 HEALTH_CENTERED_DEG = 8.0
+# check at a point on the map (/map, "Person prüfen"): only a person whose
+# lidar position lies within this radius (m) of the point counts, so
+# someone standing elsewhere in the room is not checked by mistake
+HEALTH_AREA_RADIUS_M = 1.5
+# before speaking it turns until the face is centred, so the camera (tilt
+# servo for the height) looks the person in the eye; at most this long (s)
+HEALTH_FACE_S = 4.0
+# nudge at the legs (knee and ankle keypoints) instead of the middle of
+# the body; without visible legs it falls back to the middle
+HEALTH_NUDGE_AT_LEGS = True
+# half width (degrees) of the lidar window around the legs: narrow, so the
+# distance is measured to the legs and not to the nearest body part
+HEALTH_LEG_HALF_DEG = 6.0
 
 # Wait this long (s) for an answer after asking.
 HEALTH_ANSWER_S = 6.0
