@@ -1355,7 +1355,9 @@ its `neigung` too.
 **Using the map (new 04.11.).** When a map exists, the robot knows where it
 is in it. During mapping this applies immediately; afterwards (mapping
 stopped) the map and the pose are kept, so it can drive in it right away. A
-saved map is loaded with `POST /api/mapping/laden` or `map_load`; it then
+saved map is loaded with `POST /api/mapping/laden` or `map_load` (on the
+`/map` page: the dropdown under „Karte nutzen“, new 23.11.; it replaces the
+old list at the bottom and is locked during mapping); it then
 looks for its pose at the map's origin, and if it cannot find itself there,
 you show it with `POST /api/mapping/pose` or `map_pose` (on the `/map`
 page: „Hier stehe ich“, tap, drag for the heading). Localization matches the
@@ -1550,6 +1552,16 @@ while it watches for movement. For nudging it aims at the legs (keypoints
 knees/ankles, `HEALTH_NUDGE_AT_LEGS`) and measures the distance there with
 the lidar (±`HEALTH_LEG_HALF_DEG`); without visible legs it nudges the body
 centre as before. It goes home by map.
+
+**Map choice on the healthbot page (new 23.11.).** A dropdown above the map
+on `GET /healthbot` offers „Ohne Karte (Odometrie)“, the map in use (or
+„Live-Karte“) and every saved map. Picking a saved map loads it
+(`POST /api/mapping/laden`). With a map chosen, the page draws the map
+pose (`state.karte.pose`), a tap sets a goal in the map frame and „Zum Ziel
+fahren & prüfen“ sends `health_check` with `rahmen: "karte"`; the button is
+locked while `karte.sicher` is false. Without a map it works as before in
+the odometry frame. A goal tapped in one frame is dropped when the frame
+changes.
 
 How "lying" is decided (since 23.11.): the person under check is tracked
 from frame to frame (a second person walking past does not take over). The

@@ -1186,3 +1186,10 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 
 - **What:** Upper tilt limit of the C270 raised from 30° to 60° (`CAMERA_TILT_MAX_DEG`, servo 150°) at the user's request; the sliders in the web app and on `/map` take the limits from the server.
 - **Open:** Check on the robot that the servo and the cable reach 60° without straining.
+
+### 23.11.2026 – Choose saved maps on /map and the healthbot page (Marlon, with Claude)
+
+- **What:** On `/map` a dropdown under „Karte nutzen“ picks one of the saved maps (replaces the list at the bottom). The healthbot page gets a dropdown above its map: without map (odometry), the map in use, or a saved map. With a map chosen it shows the map pose, and a tap plus „Zum Ziel fahren & prüfen“ starts the check in the map frame (`rahmen: "karte"`).
+- **Why:** The user wants to pick from the existing maps directly, and on the healthbot page the check should use the map instead of drifting odometry.
+- **Result:** No server change, only the two pages (they use `GET /api/mapping/maps`, `POST /api/mapping/laden` and `state.karte`). Checked in the mock: a saved test map shows up, loads, and the state carries its name, pose and `sicher`; both pages serve the dropdown; JS syntax checked with node.
+- **Open:** Try it in the browser on the robot (the robot currently runs `feat/object-detection`, the change is on `zustandserkennung`).

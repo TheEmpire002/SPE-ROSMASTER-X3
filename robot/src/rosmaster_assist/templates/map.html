@@ -149,8 +149,9 @@
           </div>
 
           <div class="full">
-            <label>Karte nutzen</label>
-            <div class="ortung idle" id="ortungText">Keine Karte. Kartieren oder unten eine gespeicherte Karte laden.</div>
+            <label for="kartenWahl">Karte nutzen</label>
+            <select id="kartenWahl" aria-label="Gespeicherte Karte wählen" style="width:100%;margin-bottom:9px" disabled></select>
+            <div class="ortung idle" id="ortungText">Keine Karte. Kartieren oder oben eine gespeicherte Karte wählen.</div>
             <div class="button-row" style="margin-top:9px">
               <button id="zielModus" type="button" disabled>➜ Hierhin fahren</button>
               <button id="poseModus" type="button" disabled>⌖ Hier stehe ich</button>
@@ -235,12 +236,6 @@
             <input id="mapName" type="text" maxlength="64" placeholder="z. B. wohnzimmer">
             <div style="height:9px"></div>
             <button id="saveButton" class="secondary" type="button" disabled>Karte speichern</button>
-          </div>
-
-          <div class="full">
-            <label>Gespeicherte Karten</label>
-            <div id="savedMaps" class="saved-list"><div class="help">Noch keine gespeicherten Karten.</div></div>
-            <div class="help" style="margin-top:6px">Eine geladene Karte wird zur Hauptkarte und wächst beim Fahren weiter.</div>
           </div>
 
           <div class="message full" id="message">Warte auf Verbindung zur Mapping-API.</div>
@@ -382,6 +377,7 @@
         // SLAM running: keep its section open, it has the stop button
         if (active && !mappingActive) $('erstBox').open = true;
         mappingActive = active;
+        showMapChoice();
         // Map from an earlier run (e.g. in a second tab)? Discard it.
         if (mapPayload && s.started_at && (mapPayload.received_at || 0) < s.started_at) clearMap();
         if (s.fahrt) setDriveState(s.fahrt);
@@ -812,6 +808,7 @@
           text += ` · letzte Fahrt: ${drive.grund}`;
         }
         field.textContent = text;
+        showMapChoice();
         field.classList.toggle('idle', !o.karte);
         field.classList.toggle('unsicher', !!o.karte && !o.sicher);
         // Driving only with a confident pose; "Hier stehe ich" works with any map.
@@ -1042,41 +1039,59 @@
         catch (error) { message(`API nicht erreichbar: ${error.message}`, true); }
       }
 
+      // saved maps in the dropdown; the selected one is the map in use
+      let savedMaps = [];
+
+      function currentMapName() {
+        return (localization && localization.ortung && localization.ortung.name) || '';
+      }
+
+      function showMapChoice() {
+        const select = $('kartenWahl');
+        if (document.activeElement === select) return;  // do not jump while the user picks
+        const current = currentMapName();
+        const names = savedMaps.map((m) => m.name);
+        const options = [];
+        if (!names.includes(current)) {
+          options.push(['', !names.length ? 'Keine gespeicherten Karten'
+            : current ? `„${current}“ (nicht gespeichert)` : '– Karte wählen –']);
+        }
+        for (const name of names) options.push([name, name]);
+        const wanted = options.map(([v, t]) => v + '|' + t).join('/');
+        if (select.dataset.options !== wanted) {
+          select.replaceChildren(...options.map(([value, text]) => {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = text;
+            return option;
+          }));
+          select.dataset.options = wanted;
+        }
+        select.value = names.includes(current) ? current : '';
+        select.disabled = mappingActive || !names.length;
+        select.title = mappingActive ? 'Erst das Mapping stoppen'
+          : 'Eine gewählte Karte wird zur Hauptkarte und wächst beim Fahren weiter.';
+      }
+
       async function refreshSavedMaps() {
         try {
-          const maps = await api('/api/mapping/maps');
-          const container = $('savedMaps');
-          container.replaceChildren();
-          if (!maps.length) {
-            const empty = document.createElement('div');
-            empty.className = 'help';
-            empty.textContent = 'Noch keine gespeicherten Karten.';
-            container.append(empty);
-            return;
-          }
-          for (const item of maps) {
-            const row = document.createElement('div');
-            row.className = 'saved-item';
-            const name = document.createElement('span');
-            name.textContent = item.name;
-            const loadButton = document.createElement('button');
-            loadButton.type = 'button';
-            loadButton.textContent = 'Laden';
-            loadButton.title = 'Diese Karte laden und darin fahren';
-            loadButton.disabled = mappingActive;
-            loadButton.addEventListener('click', async () => {
-              message(`Lade Karte „${item.name}“ …`);
-              try {
-                await api('/api/mapping/laden', { method: 'POST', body: JSON.stringify({ name: item.name }) });
-                view.fitted = false;
-                message(`Karte „${item.name}“ geladen -- sie wächst beim Fahren weiter. Er sucht seine Lage an der letzten Stelle und am Ausgangspunkt -- klappt das nicht, mit „Hier stehe ich“ zeigen.`);
-              } catch (error) { message(error.message, true); }
-            });
-            row.append(name, loadButton);
-            container.append(row);
-          }
+          savedMaps = await api('/api/mapping/maps');
+          showMapChoice();
         } catch (error) { message(`Kartenliste: ${error.message}`, true); }
       }
+
+      $('kartenWahl').addEventListener('change', async (event) => {
+        const name = event.target.value;
+        event.target.blur();
+        if (!name || name === currentMapName()) { showMapChoice(); return; }
+        message(`Lade Karte „${name}“ …`);
+        try {
+          await api('/api/mapping/laden', { method: 'POST', body: JSON.stringify({ name }) });
+          view.fitted = false;
+          message(`Karte „${name}“ geladen -- sie wächst beim Fahren weiter. Er sucht seine Lage an der letzten Stelle und am Ausgangspunkt -- klappt das nicht, mit „Hier stehe ich“ zeigen.`);
+        } catch (error) { message(error.message, true); }
+        showMapChoice();
+      });
 
       function connectWebSocket() {
         const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';

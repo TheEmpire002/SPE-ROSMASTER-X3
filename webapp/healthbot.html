@@ -61,6 +61,10 @@
   <!-- robot, start point, goal, lidar; tapping sets the goal -->
   <section class="panel">
     <h2>Karte</h2>
+    <div class="hb-row">
+      <select id="hb-map-choice" aria-label="Karte wählen"
+              title="Mit Karte: Ort in der Karte, er fährt nach Karte hin und sucht die Person nur dort"></select>
+    </div>
     <canvas id="hb-map" class="hb-map" width="480" height="480"
             aria-label="Karte, antippen setzt den Ort der Meldung"></canvas>
     <p class="hb-note">

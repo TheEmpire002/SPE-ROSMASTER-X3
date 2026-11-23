@@ -24,6 +24,7 @@ const ui = {
   nudgeOff: el("hb-nudge-off"),
   map: el("hb-map"),
   goalText: el("hb-goal-text"),
+  mapChoice: el("hb-map-choice"),
   image: el("hb-image"),
   skeleton: el("hb-skeleton"),
   checks: el("hb-checks"),
@@ -62,8 +63,12 @@ const SCENE_TEXT = {
 };
 
 let socket = null;
-let pose = null;          // {x, y, winkel} from the state message, odometry frame
-let goal = null;          // place tapped by the user {x, y}
+let odomPose = null;      // {x, y, winkel} from the state message, odometry frame
+let pose = null;          // the pose in the frame shown (odometry or map)
+let mapInfo = null;       // state.karte: name, pose, sicher of the map in use, or null
+let savedMaps = [];       // names of the saved maps
+let useMap = true;        // show and check in the map frame when a map is in use
+let goal = null;          // place tapped by the user {x, y, rahmen}
 let status = null;        // last answer of /healthbot/status
 let scan = [];            // [[angle deg, distance m], ...] relative to the robot
 let occupancy = null;     // occupancy map of the mapping as an image, if there is one
@@ -91,7 +96,9 @@ function connect() {
       return;
     }
     if (msg.type === "state") {
-      if (msg.pose) pose = msg.pose;
+      if (msg.pose) odomPose = msg.pose;
+      mapInfo = msg.karte || null;
+      updateFrame();
       if (msg.healthbot) showShort(msg.healthbot);
     } else if (msg.type === "alert" && msg.level === "emergency") {
       showAlarm(msg.text);
@@ -116,7 +123,92 @@ function send(message) {
 
 ui.startHere.addEventListener("click", () => send({ type: "health_check" }));
 ui.startGoal.addEventListener("click", () => {
-  if (goal) send({ type: "health_check", x: goal.x, y: goal.y });
+  if (!goal) return;
+  const msg = { type: "health_check", x: goal.x, y: goal.y };
+  if (goal.rahmen === "karte") msg.rahmen = "karte";
+  send(msg);
+});
+
+// ------------------------------------------------------------------ map choice
+
+function frame() {
+  return useMap && mapInfo ? "karte" : "odom";
+}
+
+function updateFrame() {
+  const f = frame();
+  pose = f === "karte" ? mapInfo.pose : odomPose;
+  // a goal tapped in the other frame would be a different place
+  if (goal && goal.rahmen !== f) {
+    goal = null;
+    ui.goalText.textContent = "Kein Ziel gesetzt.";
+  }
+  showMapChoice();
+  updateGoalButton();
+}
+
+function updateGoalButton(active = !!(status && status.aktiv)) {
+  const unsure = frame() === "karte" && !(mapInfo && mapInfo.sicher);
+  ui.startGoal.disabled = active || !goal || unsure;
+  ui.startGoal.title = !goal ? "Erst in der Karte einen Ort antippen"
+    : unsure ? "Lage in der Karte unsicher -- auf der Seite Karte mit „Hier stehe ich“ zeigen"
+      : "";
+}
+
+function showMapChoice() {
+  const select = ui.mapChoice;
+  if (document.activeElement === select) return; // do not jump while the user picks
+  const options = [["", "Ohne Karte (Odometrie)"]];
+  if (mapInfo && !mapInfo.name) options.push(["*", "Live-Karte"]);
+  else if (mapInfo && !savedMaps.includes(mapInfo.name)) options.push([mapInfo.name, `Karte „${mapInfo.name}“`]);
+  for (const name of savedMaps) options.push([name, `Karte „${name}“`]);
+  const wanted = options.map(([v, t]) => `${v}|${t}`).join("/");
+  if (select.dataset.options !== wanted) {
+    select.replaceChildren(...options.map(([value, text]) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = text;
+      return option;
+    }));
+    select.dataset.options = wanted;
+  }
+  select.value = frame() === "karte" ? mapInfo.name || "*" : "";
+}
+
+async function fetchSavedMaps() {
+  try {
+    const r = await fetch("/api/mapping/maps", { cache: "no-store" });
+    if (r.ok) savedMaps = (await r.json()).map((m) => m.name);
+  } catch {
+    // keep the old list, the next call tries again
+  }
+  showMapChoice();
+}
+
+ui.mapChoice.addEventListener("change", async () => {
+  const name = ui.mapChoice.value;
+  ui.mapChoice.blur();
+  if (!name) {
+    useMap = false;
+  } else if (name === "*" || (mapInfo && mapInfo.name === name)) {
+    useMap = true;
+  } else {
+    ui.goalText.textContent = `Lade Karte „${name}“ …`;
+    try {
+      const r = await fetch("/api/mapping/laden", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+      useMap = true;
+      ui.goalText.textContent = `Karte „${name}“ geladen. Er sucht seine Lage darin.`;
+    } catch (e) {
+      ui.goalText.textContent = `Karte laden fehlgeschlagen: ${e.message}`;
+    }
+    fetchOccupancy();
+  }
+  updateFrame();
 });
 ui.stop.addEventListener("click", () => send({ type: "health_stop" }));
 ui.watch.addEventListener("change", () => send({ type: "health_wache", an: ui.watch.checked }));
@@ -146,7 +238,7 @@ function showState(state, step, active) {
   ui.state.className = `hb-badge z-${state}`;
   ui.step.textContent = step || "";
   ui.startHere.disabled = !!active;
-  ui.startGoal.disabled = !!active || !goal;
+  updateGoalButton(!!active);
   const now = SEQUENCE.indexOf(state);
   const finished = FINAL.includes(state);
   for (const li of ui.steps.children) {
@@ -271,6 +363,7 @@ async function poll() {
     return; // connection briefly gone, next tick tries again
   }
   showState(status.zustand, status.schritt, status.aktiv);
+  updateGoalButton();
   ui.alarm.hidden = !status.alarm;
   if (status.alarm && status.urteil) ui.alarmText.textContent = status.urteil.text;
   ui.watch.checked = !!status.wache;
@@ -381,8 +474,8 @@ function drawMap() {
   ctx.clearRect(0, 0, c.width, c.height);
 
   if (occupancy) {
-    // the map has its own frame with the mapping start as origin, so it only
-    // lines up with the odometry start point if both began at the same place
+    // the map has its own frame; without the map frame it only lines up
+    // with odometry if both began at the same place
     ctx.save();
     const [px, py] = toPixel(v, occupancy.x0, occupancy.y0);
     ctx.translate(px, py);
@@ -423,8 +516,8 @@ function drawMap() {
   ctx.lineTo(hx - 5, hy + 7); ctx.lineTo(hx - 5, hy); ctx.lineTo(hx - 8, hy); ctx.closePath();
   ctx.fill();
 
-  // the tapped goal and the one the healthbot is working with
-  const hbGoal = status && status.ziel;
+  // the tapped goal and the one the healthbot is working with, if in this frame
+  const hbGoal = status && status.ziel && (status.ziel.rahmen || "odom") === frame() ? status.ziel : null;
   for (const g of [goal, hbGoal]) {
     if (!g) continue;
     const [gx, gy] = toPixel(v, g.x, g.y);
@@ -455,9 +548,11 @@ ui.map.addEventListener("click", (ev) => {
   const px = ((ev.clientX - r.left) / r.width) * ui.map.width;
   const py = ((ev.clientY - r.top) / r.height) * ui.map.height;
   const p = fromPixel(currentViewport, px, py);
-  goal = { x: Math.round(p.x * 100) / 100, y: Math.round(p.y * 100) / 100 };
-  ui.goalText.textContent = `Ziel: x ${goal.x.toFixed(2)} m (vorn), y ${goal.y.toFixed(2)} m (links).`;
-  ui.startGoal.disabled = !!(status && status.aktiv);
+  goal = { x: Math.round(p.x * 100) / 100, y: Math.round(p.y * 100) / 100, rahmen: frame() };
+  ui.goalText.textContent = goal.rahmen === "karte"
+    ? `Ziel in der Karte: x ${goal.x.toFixed(2)} m, y ${goal.y.toFixed(2)} m -- er sucht die Person im Umkreis.`
+    : `Ziel: x ${goal.x.toFixed(2)} m (vorn), y ${goal.y.toFixed(2)} m (links).`;
+  updateGoalButton();
 });
 
 // ------------------------------------------------------------------ skeleton
@@ -512,6 +607,8 @@ connect();
 fetchSkeletonLines();
 poll();
 fetchOccupancy();
+fetchSavedMaps();
+setInterval(fetchSavedMaps, 15000);
 setInterval(poll, 700);
 setInterval(fetchScan, 500);
 setInterval(fetchOccupancy, 5000);
