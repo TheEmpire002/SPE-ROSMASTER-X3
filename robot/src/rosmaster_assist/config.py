@@ -1210,6 +1210,18 @@ PANORAMA_SHOTS = 12
 PANORAMA_SETTLE_S = 0.6
 PANORAMA_SCALE = 0.75
 PANORAMA_JPEG_QUALITY = 85
+# blending: weight (1 - angle off the shot's axis / half fov) ** power. 1 blends
+# across the whole overlap (close objects show twice), 8 only about +-3 deg
+# around the seam
+PANORAMA_BLEND_POWER = 8
+# brightness matching between shots: on/off, expected brightness noise in
+# the overlaps (0..255), how far factors may stray from 1, hard limits
+PANORAMA_GAIN = True
+PANORAMA_GAIN_NOISE = 10.0
+PANORAMA_GAIN_SPREAD = 0.1
+PANORAMA_GAIN_LIMITS = (0.6, 1.6)
+# keep the single shots with their headings beside the panorama
+PANORAMA_KEEP_SHOTS = True
 
 # --- Camera tilt servo (person camera, up and down) ------------------------------
 # details in sensors/camera_tilt.py. servo on the expansion board, moved with

@@ -25,6 +25,7 @@ import logging
 import math
 import os
 import re
+import shutil
 import threading
 import time
 from pathlib import Path
@@ -175,8 +176,12 @@ class MapPhotos:
     def _count_photos(self) -> int:
         return sum(1 for p in self._photos if p.get("art", "foto") == "foto")
 
-    def add_panorama(self, current, pose, data: bytes, shots: int) -> dict[str, Any] | None:
-        """Store a stitched panorama taken at ``pose`` (centre = its heading)."""
+    def add_panorama(self, current, pose, data: bytes, shots) -> dict[str, Any] | None:
+        """Store a stitched panorama taken at ``pose`` (centre = its heading).
+
+        ``shots``: the single photos as ``[(jpeg, heading_rad), ...]``; kept in
+        ``<id>/`` with their headings for re-stitching and a 3d model later
+        """
         if current is None:
             self.last_error = "Keine Karte für das Panorama"
             return None
@@ -193,7 +198,11 @@ class MapPhotos:
             "zeit": round(time.time(), 1),
             "quelle": "hand",
             "kamera": getattr(self._camera, "name", None),
-            "aufnahmen": shots,
+            "aufnahmen": len(shots),
+            "einzelbilder": [
+                {"datei": f"{photo_id}/{k:02d}.jpg", "winkel": round(math.degrees(hd) % 360.0, 2)}
+                for k, (_, hd) in enumerate(shots)
+            ] if config.PANORAMA_KEEP_SHOTS else [],
         }
         with self._lock:
             self._photos.append(entry)
@@ -201,6 +210,14 @@ class MapPhotos:
             self.stand += 1
         # called from a worker thread already, so write right here
         self._write(current, entry, data, photos)
+        if self.last_error is None and config.PANORAMA_KEEP_SHOTS:
+            try:
+                folder = self._folder(current[0]) / photo_id
+                folder.mkdir(parents=True, exist_ok=True)
+                for k, (jpeg, _) in enumerate(shots):
+                    (folder / f"{k:02d}.jpg").write_bytes(jpeg)
+            except OSError:
+                log.warning("Single shots of panorama %s not saved", photo_id, exc_info=True)
         return entry if self.last_error is None else None
 
     def _capture(self, current, pose, source: str) -> dict[str, Any] | None:
@@ -274,6 +291,8 @@ class MapPhotos:
         folder = self._folder(name)
         try:
             (folder / entry["datei"]).unlink(missing_ok=True)
+            if entry.get("art") == "panorama":
+                shutil.rmtree(folder / entry["id"], ignore_errors=True)
             self._write_index(folder, frame_id, photos)
         except OSError:
             log.warning("Map photo %s could not be deleted", photo_id, exc_info=True)

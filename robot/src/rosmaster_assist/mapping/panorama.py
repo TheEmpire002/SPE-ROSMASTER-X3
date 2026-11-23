@@ -63,8 +63,7 @@ def stitch(shots, hfov_deg: float):
     v = np.arange(height, dtype=np.float32)
     elevation = (v - (height - 1) / 2) / f_out
 
-    total = np.zeros((height, width, 3), np.float32)
-    weights = np.zeros((height, width), np.float32)
+    layers = []
     for image, heading in shots:
         if image.shape[:2] != (h, w):
             image = cv2.resize(image, (w, h))
@@ -79,14 +78,63 @@ def stitch(shots, hfov_deg: float):
         warped = cv2.remap(image, map_x.astype(np.float32), map_y.astype(np.float32),
                            cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
         inside = (map_y >= 0) & (map_y <= h - 1)
-        # soft towards the image edges, so seams blend
-        weight = (1.0 - np.abs(a) / half)[None, :] * inside
-        total[:, cols] += warped.astype(np.float32) * weight[..., None]
+        layers.append((cols, warped.astype(np.float32), inside, a))
+
+    gains = _gains(layers) if config.PANORAMA_GAIN else [1.0] * len(layers)
+    total = np.zeros((height, width, 3), np.float32)
+    weights = np.zeros((height, width), np.float32)
+    for (cols, warped, inside, a), gain in zip(layers, gains):
+        # nearly winner-take-all: the shot that looked most directly at a
+        # column dominates, so close objects (parallax, the camera is not on
+        # the turning axis) do not show twice; blended only near the seam
+        weight = ((1.0 - np.abs(a) / half) ** config.PANORAMA_BLEND_POWER)[None, :] * inside
+        total[:, cols] += warped * (gain * weight)[..., None]
         weights[:, cols] += weight
     seen = weights > 1e-6
     out = np.zeros_like(total)
     out[seen] = total[seen] / weights[seen][:, None]
     return out.clip(0, 255).astype(np.uint8)
+
+
+def _gains(layers) -> list[float]:
+    """One brightness factor per shot, so neighbours match in their overlap.
+
+    the camera exposes every shot by itself (a window in view makes the
+    next one darker). least squares like opencv's gain compensator: equal
+    brightness in each overlap, factors close to 1
+    """
+    import numpy as np
+
+    n = len(layers)
+    if n < 2:
+        return [1.0] * n
+    alpha = 1.0 / config.PANORAMA_GAIN_NOISE ** 2
+    beta = 1.0 / config.PANORAMA_GAIN_SPREAD ** 2
+    A = np.zeros((n, n))
+    b = np.zeros(n)
+    for i in range(n):
+        for j in range(i + 1, n):
+            ci, wi, ii, _ = layers[i]
+            cj, wj, ij, _ = layers[j]
+            common, pi, pj = np.intersect1d(ci, cj, assume_unique=True, return_indices=True)
+            if len(common) == 0:
+                continue
+            both = ii[:, pi] & ij[:, pj]
+            count = float(both.sum())
+            if count < 100:
+                continue
+            mi = float(wi[:, pi][both].mean())
+            mj = float(wj[:, pj][both].mean())
+            for a_, b_, ma, mb in ((i, j, mi, mj), (j, i, mj, mi)):
+                A[a_, a_] += count * (alpha * ma * ma + beta)
+                A[a_, b_] -= count * alpha * ma * mb
+                b[a_] += count * beta
+    try:
+        gains = np.linalg.solve(A + np.eye(n) * 1e-9, b)
+    except np.linalg.LinAlgError:
+        return [1.0] * n
+    lo, hi = config.PANORAMA_GAIN_LIMITS
+    return [float(min(hi, max(lo, g))) if np.isfinite(g) else 1.0 for g in gains]
 
 
 class Panorama:
@@ -187,7 +235,7 @@ class Panorama:
             if jpeg is None:
                 return self._end("Panorama ließ sich nicht zusammensetzen")
             entry = await asyncio.to_thread(self._photos.add_panorama, current, start_pose,
-                                            jpeg, len(shots))
+                                            jpeg, shots)
             if entry is None:
                 return self._end(self._photos.last_error or "Panorama nicht gespeichert")
             self.reason = "fertig"
