@@ -184,6 +184,9 @@
               <button id="panoStart" type="button" disabled>🔄 Rundum-Panorama hier</button>
               <button id="panoStop" class="stop" type="button" disabled>■ Panorama abbrechen</button>
             </div>
+            <label class="check" id="panoNeigungZeile" hidden style="margin-top:7px">Kamerawinkel
+              <input type="range" id="panoNeigung" min="-30" max="30" step="1" value="15" style="flex:1">
+              <span id="panoNeigungWert">15°</span></label>
             <div class="help" id="panoText" style="margin-top:7px">Dreht sich einmal im Kreis und setzt die Fotos zu einem 360°-Bild zusammen. Braucht etwas Platz rundherum.</div>
           </div>
 
@@ -686,7 +689,7 @@
         };
         img.src = p.url;
         const when = new Date(p.zeit * 1000).toLocaleString('de-DE');
-        $('panoInfo').textContent = `${when} · x ${p.x.toFixed(2)} m, y ${p.y.toFixed(2)} m · ${p.aufnahmen || '?'} Aufnahmen${p.kamera ? ` · ${p.kamera}` : ''} · ziehen zum Umschauen`;
+        $('panoInfo').textContent = `${when} · x ${p.x.toFixed(2)} m, y ${p.y.toFixed(2)} m · ${p.aufnahmen || '?'} Aufnahmen${p.kamera ? ` · ${p.kamera}` : ''}${p.neigung ? ` · ${p.neigung}° geneigt` : ''} · ziehen zum Umschauen`;
         $('panoAnsicht').hidden = false;
         drawPano();
         draw();
@@ -825,6 +828,18 @@
           choice.value = cams.some((c) => c.name === keep) ? keep : (pn.kamera || '');
         }
         choice.disabled = !pn || !pn.verfuegbar || pn.aktiv || cams.length < 2;
+        const tilt = pn && pn.neigung;
+        const slider = $('panoNeigung');
+        $('panoNeigungZeile').hidden = !tilt || choice.value !== tilt.kamera;
+        $('panoNeigungZeile').dataset.kamera = tilt ? tilt.kamera : '';
+        if (tilt) {
+          slider.min = tilt.min;
+          slider.max = tilt.max;
+          // the server's value until the user moves the slider
+          if (!slider.dataset.touched) slider.value = tilt.winkel;
+          $('panoNeigungWert').textContent = `${slider.value}°`;
+        }
+        slider.disabled = !pn || pn.aktiv;
         if (!pn || !pn.verfuegbar) {
           $('panoStart').disabled = true;
           $('panoStop').disabled = true;
@@ -1138,13 +1153,23 @@
       $('panoStart').addEventListener('click', async () => {
         try {
           const kamera = $('panoKamera').value || null;
-          setLocalization(await api('/api/mapping/panorama', { method: 'POST', body: JSON.stringify({ kamera }) }));
+          const request = { kamera };
+          if (!$('panoNeigungZeile').hidden) request.neigung = Number($('panoNeigung').value);
+          setLocalization(await api('/api/mapping/panorama', { method: 'POST', body: JSON.stringify(request) }));
           message('Panorama startet -- er dreht sich gleich einmal im Kreis.');
         } catch (error) { message(error.message, true); }
       });
       $('panoStop').addEventListener('click', async () => {
         try { setLocalization(await api('/api/mapping/panorama/stop', { method: 'POST' })); }
         catch (error) { message(error.message, true); }
+      });
+      $('panoNeigung').addEventListener('input', () => {
+        $('panoNeigung').dataset.touched = '1';
+        $('panoNeigungWert').textContent = `${$('panoNeigung').value}°`;
+      });
+      $('panoKamera').addEventListener('change', () => {
+        const zeile = $('panoNeigungZeile');
+        zeile.hidden = !zeile.dataset.kamera || $('panoKamera').value !== zeile.dataset.kamera;
       });
       $('panoZu').addEventListener('click', closePanorama);
       $('panoAnsicht').addEventListener('click', (event) => { if (event.target === $('panoAnsicht')) closePanorama(); });

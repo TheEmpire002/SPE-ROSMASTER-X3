@@ -1223,9 +1223,12 @@ PANORAMA_GAIN_LIMITS = (0.6, 1.6)
 # keep the single shots with their headings beside the panorama
 PANORAMA_KEEP_SHOTS = True
 # camera from CAMERA_ROLES used until another is chosen on /map; the orbbec
-# sees wider (fewer, larger overlaps), the c270 is levelled on its servo first
+# sees wider (fewer, larger overlaps), the c270 sits on the tilt servo
 PANORAMA_CAMERA = "orientierung"
-# time for the tilt servo to reach level before the first shot (s)
+# tilt of the servo camera during a panorama until another is chosen on /map
+# (deg, + = up); slightly up shows walls and furniture instead of floor
+PANORAMA_TILT_DEG = 15.0
+# time for the tilt servo to reach its angle before the first shot (s)
 PANORAMA_TILT_WAIT_S = 1.0
 
 # --- Camera tilt servo (person camera, up and down) ------------------------------

@@ -121,7 +121,7 @@ class MapControl:
         if self.panorama is not None:
             self.panorama.cancel(reason)
 
-    def start_panorama(self, camera: str | None = None) -> str | None:
+    def start_panorama(self, camera: str | None = None, tilt_deg: float | None = None) -> str | None:
         """Turn on the spot and take an all-round panorama here with ``camera``."""
         if self.panorama is None:
             return "Panorama ist nicht eingerichtet"
@@ -129,7 +129,7 @@ class MapControl:
             return "Panorama läuft schon"
         self._cancel_others("Panorama gestartet")
         self.stop("Panorama gestartet")
-        return self.panorama.start(camera)
+        return self.panorama.start(camera, tilt_deg)
 
     def _cancel_others(self, reason: str) -> None:
         """Only one program steers."""

@@ -180,7 +180,7 @@ class MapPhotos:
                      camera: str | None = None) -> dict[str, Any] | None:
         """Store a stitched panorama taken at ``pose`` (centre = its heading).
 
-        ``shots``: the single photos as ``[(jpeg, heading_rad), ...]``; kept in
+        ``shots``: the single photos as ``[(jpeg, heading_rad, pitch_rad), ...]``; kept in
         ``<id>/`` with their headings for re-stitching and a 3d model later
         """
         if current is None:
@@ -200,9 +200,11 @@ class MapPhotos:
             "quelle": "hand",
             "kamera": camera or getattr(self._camera, "name", None),
             "aufnahmen": len(shots),
+            "neigung": round(math.degrees(sum(s[2] for s in shots) / len(shots)), 1) if shots else 0.0,
             "einzelbilder": [
-                {"datei": f"{photo_id}/{k:02d}.jpg", "winkel": round(math.degrees(hd) % 360.0, 2)}
-                for k, (_, hd) in enumerate(shots)
+                {"datei": f"{photo_id}/{k:02d}.jpg", "winkel": round(math.degrees(hd) % 360.0, 2),
+                 "neigung": round(math.degrees(pt), 1)}
+                for k, (_, hd, pt) in enumerate(shots)
             ] if config.PANORAMA_KEEP_SHOTS else [],
         }
         with self._lock:
@@ -215,7 +217,7 @@ class MapPhotos:
             try:
                 folder = self._folder(current[0]) / photo_id
                 folder.mkdir(parents=True, exist_ok=True)
-                for k, (jpeg, _) in enumerate(shots):
+                for k, (jpeg, _, _) in enumerate(shots):
                     (folder / f"{k:02d}.jpg").write_bytes(jpeg)
             except OSError:
                 log.warning("Single shots of panorama %s not saved", photo_id, exc_info=True)

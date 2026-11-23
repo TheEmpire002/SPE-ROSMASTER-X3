@@ -53,6 +53,8 @@ class ReturnRequest(BaseModel):
 class PanoramaRequest(BaseModel):
     # camera name from CAMERA_ROLES; missing = the last one used
     kamera: str | None = None
+    # tilt (deg, + = up) for the camera on the servo; missing = the last one
+    neigung: float | None = Field(default=None, ge=-90.0, le=90.0)
 
 
 def create_mapping_router(manager: MappingManager | None = None, drive=None) -> APIRouter:
@@ -285,7 +287,10 @@ def create_mapping_router(manager: MappingManager | None = None, drive=None) -> 
     @router.post("/api/mapping/panorama")
     async def panorama_start(request: PanoramaRequest | None = None) -> dict[str, Any]:
         control = _control()
-        error = control.start_panorama(request.kamera if request is not None else None)
+        error = control.start_panorama(
+            request.kamera if request is not None else None,
+            request.neigung if request is not None else None,
+        )
         if error:
             raise HTTPException(status_code=409, detail=error)
         return control.display()

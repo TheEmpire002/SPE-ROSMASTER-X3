@@ -35,10 +35,10 @@ RUNNING = "laeuft"
 
 
 def stitch(shots, hfov_deg: float):
-    """Cylindrical panorama from ``[(image_bgr, heading_rad), ...]``.
+    """Cylindrical panorama from ``[(image_bgr, heading_rad, pitch_rad), ...]``.
 
-    the centre column looks along the first shot's heading; returns the
-    image (bgr) or None
+    pitch: how far the camera looks up (+) or down (-); the centre column
+    looks along the first shot's heading; returns the image (bgr) or None
     """
     import cv2
     import numpy as np
@@ -50,21 +50,22 @@ def stitch(shots, hfov_deg: float):
     f = (w / 2) / math.tan(half)
     f_out = f * config.PANORAMA_SCALE
     width = int(round(2 * math.pi * f_out))
-    # between two shots the cylinder reaches up to 1/cos(step/2) beyond the
-    # image's top and bottom edge; slightly lower, so no black scallops remain
-    height = int(round(h * config.PANORAMA_SCALE * 0.95))
+    # drawn taller than one shot, then cropped to the rows every column sees
+    height = int(round(h * config.PANORAMA_SCALE * 1.4))
     centre = shots[0][1]
+    pitch_mean = sum(s[2] for s in shots) / len(shots)
     cx, cy = (w - 1) / 2, (h - 1) / 2
 
     # azimuth of every column: left edge = centre + 180 deg, then clockwise
     u = np.arange(width, dtype=np.float32)
     azimuth = centre + math.pi - (u + 0.5) * (2 * math.pi / width)
-    # height on the cylinder as tangent of the elevation
+    # tangent of the angle below the horizon per row, centred on the view
+    # height the camera looked at
     v = np.arange(height, dtype=np.float32)
-    elevation = (v - (height - 1) / 2) / f_out
+    below = (v - (height - 1) / 2) / f_out - math.tan(pitch_mean)
 
     layers = []
-    for image, heading in shots:
+    for image, heading, pitch in shots:
         if image.shape[:2] != (h, w):
             image = cv2.resize(image, (w, h))
         rel = np.arctan2(np.sin(azimuth - heading), np.cos(azimuth - heading))
@@ -72,12 +73,19 @@ def stitch(shots, hfov_deg: float):
         if not len(cols):
             continue
         a = rel[cols]
+        # ray of each panorama pixel turned into the camera, which is pitched
+        # up by `pitch`: vertical edges stay vertical, no saw-tooth at seams
+        sp, cp = math.sin(pitch), math.cos(pitch)
+        fwd = cp * np.cos(a)[None, :] - sp * below[:, None]
+        down = sp * np.cos(a)[None, :] + cp * below[:, None]
+        ahead = fwd > 1e-3
+        fwd = np.where(ahead, fwd, 1.0)
         # a point left of the camera's axis (a > 0) lies left in the image
-        map_x = np.broadcast_to(cx - f * np.tan(a), (height, len(cols)))
-        map_y = cy + elevation[:, None] * (f / np.cos(a))[None, :]
+        map_x = cx - f * np.sin(a)[None, :] / fwd
+        map_y = cy + f * down / fwd
         warped = cv2.remap(image, map_x.astype(np.float32), map_y.astype(np.float32),
                            cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
-        inside = (map_y >= 0) & (map_y <= h - 1)
+        inside = ahead & (map_y >= 0) & (map_y <= h - 1) & (map_x >= 0) & (map_x <= w - 1)
         layers.append((cols, warped.astype(np.float32), inside, a))
 
     gains = _gains(layers) if config.PANORAMA_GAIN else [1.0] * len(layers)
@@ -91,6 +99,21 @@ def stitch(shots, hfov_deg: float):
         total[:, cols] += warped * (gain * weight)[..., None]
         weights[:, cols] += weight
     seen = weights > 1e-6
+    # keep the longest run of rows seen in (nearly) every column: no black
+    # scallops between the shots
+    full = seen.mean(axis=1) >= 0.995
+    best, run_start, best_range = 0, None, None
+    for row, ok in enumerate(list(full) + [False]):
+        if ok and run_start is None:
+            run_start = row
+        elif not ok and run_start is not None:
+            if row - run_start > best:
+                best, best_range = row - run_start, (run_start, row)
+            run_start = None
+    if best_range is None:
+        return None
+    top, bottom = best_range
+    total, weights, seen = total[top:bottom], weights[top:bottom], seen[top:bottom]
     out = np.zeros_like(total)
     out[seen] = total[seen] / weights[seen][:, None]
     return out.clip(0, 255).astype(np.uint8)
@@ -154,6 +177,7 @@ class Panorama:
         self.camera_name = (config.PANORAMA_CAMERA if config.PANORAMA_CAMERA in self._cameras
                             else next(iter(self._cameras), None))
         self._camera = self._cameras.get(self.camera_name)
+        self.tilt_deg = float(config.PANORAMA_TILT_DEG)
         self._task: asyncio.Task[None] | None = None
         self._state = OFF
         self._text = ""
@@ -181,10 +205,19 @@ class Panorama:
             "grund": self.reason,
             "kamera": self.camera_name,
             "kameras": [{"name": name, "label": cam.label} for name, cam in self._cameras.items()],
+            # tilt angle for the camera on the servo (others look straight)
+            "neigung": {
+                "kamera": self._tilt_camera,
+                "winkel": self.tilt_deg,
+                "min": config.CAMERA_TILT_MIN_DEG,
+                "max": config.CAMERA_TILT_MAX_DEG,
+            } if self._tilt is not None and self._tilt.available else None,
         }
 
-    def start(self, camera: str | None = None) -> str | None:
-        """Start here with ``camera`` (name, None = the last one); returns an error text (german)."""
+    def start(self, camera: str | None = None, tilt_deg: float | None = None) -> str | None:
+        """Start here with ``camera`` (name, None = the last one) and, for the
+        camera on the tilt servo, ``tilt_deg`` (+ = up, None = the last one);
+        returns an error text (german)."""
         if not self.available:
             return "Panorama geht nur mit Kamera und Lidar"
         if self.active:
@@ -198,6 +231,9 @@ class Panorama:
         # switched only once the start is sure, so a refused start keeps the old one
         if camera is not None:
             self.camera_name, self._camera = camera, self._cameras[camera]
+        if tilt_deg is not None:
+            self.tilt_deg = max(config.CAMERA_TILT_MIN_DEG,
+                                min(config.CAMERA_TILT_MAX_DEG, float(tilt_deg)))
         self.reason = None
         self._task = asyncio.create_task(self._run())
         return None
@@ -217,13 +253,13 @@ class Panorama:
         start_pose = self._localization.pose()
         # turned so far, measured by the lidar during each turn
         turned = 0.0
-        shots: list[tuple[bytes, float]] = []
+        shots: list[tuple[bytes, float, float]] = []
         self._photos.paused = True
         self._maneuver.quiet = True
-        tilt_before = self._level_tilt()
+        tilt_before = self._aim_tilt()
         try:
             if tilt_before is not None:
-                # servo needs time to reach level before the first shot
+                # servo needs time to reach the angle before the first shot
                 await asyncio.sleep(config.PANORAMA_TILT_WAIT_S)
             for i in range(shots_wanted):
                 self._step = i + 1
@@ -231,7 +267,7 @@ class Panorama:
                 frame = await self._fresh_frame()
                 if frame is None:
                     return self._end("kein frisches Kamerabild")
-                shots.append((frame, start_pose[2] + turned))
+                shots.append((frame, start_pose[2] + turned, self._pitch(tilt_before)))
                 if i == shots_wanted - 1:
                     break
                 other = self._busy() if self._busy is not None else None
@@ -270,15 +306,21 @@ class Panorama:
             self._restore_tilt(tilt_before)
             self._state = OFF
 
-    def _level_tilt(self):
-        """Level the tilted camera; returns (auto, angle) to restore, or None."""
+    def _aim_tilt(self):
+        """Set the servo camera to ``tilt_deg``; returns (auto, angle) to restore, or None."""
         tilt = self._tilt
         if tilt is None or self.camera_name != self._tilt_camera or not tilt.available:
             return None
         state = tilt.state()
-        # a tilted camera would bend the horizon into a wave around the cylinder
-        tilt.set(0.0)
+        # fixed for the whole turn; stitching takes the angle into account
+        tilt.set(self.tilt_deg)
         return state["auto"], state["ziel"]
+
+    def _pitch(self, tilt_before) -> float:
+        """Measured tilt of the camera right now (rad), 0 for fixed cameras."""
+        if tilt_before is None:
+            return 0.0
+        return math.radians(self._tilt.state()["winkel"])
 
     def _restore_tilt(self, before) -> None:
         if before is None:
@@ -313,10 +355,10 @@ class Panorama:
         import numpy as np
 
         images = []
-        for data, heading in shots:
+        for data, heading, pitch in shots:
             image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
             if image is not None:
-                images.append((image, heading))
+                images.append((image, heading, pitch))
         started = time.perf_counter()
         pano = stitch(images, self._camera.fov_deg)
         if pano is None:
