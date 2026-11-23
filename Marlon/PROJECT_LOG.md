@@ -1069,3 +1069,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 ### 23.11.2026 – Map photos cleared, single shots off
 - **What:** At the user's request all photos and panoramas of `first_big_map` were deleted on the robot (folder `first_big_map_bilder`), and the single shots of a panorama are no longer kept (`PANORAMA_KEEP_SHOTS = False`).
 - **Why:** The test images are no longer needed; the single shots are not used for now.
+
+### 23.11.2026 – Camera tilt up to 60°
+- **What:** Upper tilt limit of the C270 raised from 30° to 60° (`CAMERA_TILT_MAX_DEG`, servo 150°) at the user's request; the sliders in the web app and on `/map` take the limits from the server.
+- **Open:** Check on the robot that the servo and the cable reach 60° without straining.

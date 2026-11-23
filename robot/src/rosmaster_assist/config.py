@@ -1256,9 +1256,10 @@ CAMERA_TILT_CHANNEL = 1
 # larger servo angles tilt it up (+1) or down (-1); check both on the robot
 CAMERA_TILT_SERVO_CENTER_DEG = 90
 CAMERA_TILT_SERVO_SIGN = 1
-# tilt range (deg, up positive); the servo test went from 60 to 120
+# tilt range (deg, up positive); the servo test went from 60 to 120, up to
+# +60 (servo 150) on request so the camera can look up at standing people
 CAMERA_TILT_MIN_DEG = -30.0
-CAMERA_TILT_MAX_DEG = 30.0
+CAMERA_TILT_MAX_DEG = 60.0
 # tilt at startup and where auto mode returns to when nobody is in view
 CAMERA_TILT_HOME_DEG = 0.0
 # servo moves at most this fast (deg/s): no jerk in the picture, and small
