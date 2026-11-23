@@ -101,8 +101,6 @@ class ObjectDetection:
         self._thread: threading.Thread | None = None
         self._objects: list[dict] = []
         self._time = 0.0
-        self._image = None          # last decoded camera image (bgr) for the view
-        self._image_time = 0.0
         # setup problem (no hailo, no model): permanent; runtime errors of
         # the hailo go to _error and are retried
         self._setup_error: str | None = None
@@ -208,28 +206,26 @@ class ObjectDetection:
             }
 
     def annotated_jpeg(self, quality: int = 80) -> tuple[bytes, float] | None:
-        """The last computed image with boxes and names, plus its time; None
-        before the first one. drawn on demand, costs nothing without a viewer"""
+        """The live camera image with the latest boxes and names, plus the
+        capture time; None without an image. drawn on demand, costs nothing
+        without a viewer"""
         cv2 = self._cv2
-        with self._lock:
-            image, taken, objects = self._image, self._image_time, list(self._objects)
-            error = self._setup_error or self._error
+        if self._camera is None or cv2 is None:
+            return None
+        # live frame at camera rate, boxes from the last detection: the view
+        # stays fluid although the hailo computes fewer images per second
+        frame, taken = self._camera.latest_with_time()
+        if frame is None:
+            return None
+        image = cv2.imdecode(self._np.frombuffer(frame[0], dtype=self._np.uint8), cv2.IMREAD_COLOR)
         if image is None:
-            if self._camera is None or cv2 is None:
-                return None
-            # no detection yet (hailo missing or still opening): plain image with a note
-            frame = self._camera.latest()
-            if frame is None:
-                return None
-            image = cv2.imdecode(self._np.frombuffer(frame[0], dtype=self._np.uint8), cv2.IMREAD_COLOR)
-            if image is None:
-                return None
-            taken = time.monotonic()
-            objects = []
-            note = error or "Objekterkennung startet …"
-        else:
-            image = image.copy()
-            note = None
+            return None
+        with self._lock:
+            fresh = self._time and time.monotonic() - self._time <= config.OBJECTS_MAX_AGE_S
+            objects = list(self._objects) if fresh else []
+            error = self._setup_error or self._error
+            started = self._time > 0
+        note = error or (None if started else "Objekterkennung startet …")
         h, w = image.shape[:2]
         thick = max(2, w // 400)
         scale = max(0.45, w / 1800)
@@ -281,9 +277,9 @@ class ObjectDetection:
                     hailo.close()
                     hailo = None
                 with self._lock:
-                    # a view opened later must not show an old frame
+                    # a view opened later must not show old boxes
                     self._objects = []
-                    self._image = None
+                    self._time = 0.0
                 self._wake.wait(config.OBJECTS_IDLE_POLL_S)
                 self._wake.clear()
                 continue
@@ -299,7 +295,6 @@ class ObjectDetection:
                 log.warning("Object detection failed: %s -- reopening in %.0f s", e, config.OBJECTS_REOPEN_S)
                 with self._lock:
                     self._error = f"Hailo: {e}"
-                    self._image = None
                 if hailo is not None:
                     hailo.close()
                     hailo = None
@@ -355,8 +350,6 @@ class ObjectDetection:
         with self._lock:
             self._objects = found
             self._time = captured
-            self._image = image
-            self._image_time = captured
             self._ms = 1000.0 * (time.perf_counter() - started)
 
 

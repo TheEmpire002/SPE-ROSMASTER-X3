@@ -815,12 +815,16 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             # Views of the depth camera -- a separate list because they are not
             # cameras with role and settings (the settings page lists "kameras").
             "tiefe": [
-                {"name": "tiefe", "kamera": "Tiefe", "basis": "/tiefe"},
-                {"name": "tiefe-ueber", "kamera": "Tiefe + Farbbild", "basis": "/tiefe/ueberlagert"},
+                # quelle (new 23.11.): the camera whose tile shows this view
+                {"name": "tiefe", "kamera": "Tiefe", "basis": "/tiefe",
+                 "quelle": config.DEPTH_OVERLAY_CAMERA},
+                {"name": "tiefe-ueber", "kamera": "Tiefe + Farbbild", "basis": "/tiefe/ueberlagert",
+                 "quelle": config.DEPTH_OVERLAY_CAMERA},
             ] if depth is not None else [],
             # camera image with boxes and names of the detected objects (new 23.11.)
             "objekte": [
-                {"name": "objekte", "kamera": "Objekte (KI)", "basis": "/objekte"},
+                {"name": "objekte", "kamera": "Objekte (KI)", "basis": "/objekte",
+                 "quelle": objects.camera_name},
             ] if objects.available or objects.camera_name is not None else [],
             "kameras": [
                 {
@@ -983,7 +987,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                             f"--{BOUNDARY}\r\nContent-Type: image/jpeg\r\n"
                             f"Content-Length: {len(data)}\r\n\r\n".encode() + data + b"\r\n"
                         )
-                    await asyncio.sleep(1.0 / max(1.0, config.OBJECTS_HZ * 2))
+                    await asyncio.sleep(1.0 / max(1.0, config.OBJECTS_STREAM_FPS))
             finally:
                 objects.activate(False, who)
 

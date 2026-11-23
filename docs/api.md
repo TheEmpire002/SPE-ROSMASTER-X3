@@ -712,12 +712,16 @@ disabled (`CAMERA_ENABLED = False`), `stream` and `snapshot` respond with
   "standard": "orientierung",
   "personen": "personen",
   "tiefe": [
-    { "name": "tiefe", "kamera": "Tiefe", "basis": "/tiefe" },
+    { "name": "tiefe", "kamera": "Tiefe", "basis": "/tiefe", "quelle": "orientierung" },
     {
       "name": "tiefe-ueber",
       "kamera": "Tiefe + Farbbild",
-      "basis": "/tiefe/ueberlagert"
+      "basis": "/tiefe/ueberlagert",
+      "quelle": "orientierung"
     }
+  ],
+  "objekte": [
+    { "name": "objekte", "kamera": "Objekte (KI)", "basis": "/objekte", "quelle": "orientierung" }
   ],
   "kameras": [
     {
@@ -889,8 +893,12 @@ detection running (driving, `OBJECTS_WITH_PEOPLE`).
 | `GET /objekte/snapshot` | a single frame of it (JPEG) |
 | `GET /objekte/status` | `verfuegbar`, `aktiv`, `fehler`, `kamera`, `modell`, `rechenzeit_ms`, `letzte_erkennung_vor_s`, `anzahl`, and `objekte`: `[{klasse, score, box: [x1, y1, x2, y2] 0..1, winkel: [from, to] degrees, left +}]` |
 
-`GET /cameras` lists the view under `objekte` (`[{name, kamera, basis}]`,
-like `tiefe`); the app offers it as „Objekte (KI)“ in the camera switcher.
+`GET /cameras` lists the view under `objekte` (`[{name, kamera, basis, quelle}]`,
+like `tiefe`); the app offers it as the mode „Objekte (KI)“. The view shows
+the live camera image (`OBJECTS_STREAM_FPS`) with the boxes of the latest
+detection (`OBJECTS_HZ`, at most `OBJECTS_MAX_AGE_S` old), so it stays fluid
+although the Hailo computes fewer images per second. The boxes may trail a
+moving object by up to one detection (about 0.1 s).
 Objects standing on the floor (person, chair, table, sofa, bed, plant, …)
 name the lidar obstacles in their direction: `state.autonomie.hindernisse[]`
 then has e.g. `art: "Stuhl"`, `quelle: "Kamera+Lidar"` instead of the shape
@@ -913,8 +921,14 @@ counts as an obstacle. In addition there is the distance at the image center
 watching switches the camera on; after closing, it turns off again. The
 overlay only roughly lines up, because the cameras have different fields of
 view and sit 2–3 cm apart. It can be adjusted with `DEPTH_OVERLAY_SHIFT_PX`
-and `DEPTH_OVERLAY_ZOOM`. In the app both views can be selected in the
-camera switcher, but not under „Alle“ (all).
+and `DEPTH_OVERLAY_ZOOM`.
+
+**Camera panel of the app** (new 23.11.): all cameras are always shown side
+by side. The mode buttons „Farbe“, „Tiefe“, „Tiefe + Farbbild“, „Objekte
+(KI)“ only change the tile of the camera named in the view's `quelle`
+(new field in `/cameras`, the camera the view belongs to); the other
+cameras keep their colour image. Without `quelle` the default camera takes
+the view.
 
 ### Autonomous driving
 

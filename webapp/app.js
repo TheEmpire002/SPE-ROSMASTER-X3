@@ -66,21 +66,6 @@ const ui = {
   collisionOut: el("collision-out"),
   collisionState: el("collision-state"),
   log: el("log"),
-  vx: el("val-vx"),
-  vy: el("val-vy"),
-  omega: el("val-omega"),
-  driver: el("val-driver"),
-  bpm: el("val-bpm"),
-  motion: el("val-motion"),
-  btnExplore: el("btn-explore"),
-  btnRecord: el("btn-record"),
-  autoState: el("val-auto-zustand"),
-  autoFree: el("val-auto-frei"),
-  autoDuration: el("val-auto-dauer"),
-  autoPeople: el("val-auto-menschen"),
-  autoCamera: el("val-auto-kamera"),
-  autoText: el("auto-text"),
-  obstacles: el("hindernisse"),
   camSelect: el("cam-wahl"),
   btnInteraction: el("btn-interaktion"),
   btnFollow: el("btn-folgen"),
@@ -150,10 +135,6 @@ function handleMessage(msg) {
       break;
 
     case "state":
-      ui.vx.textContent = `${msg.vx.toFixed(2)} m/s`;
-      ui.vy.textContent = `${msg.vy.toFixed(2)} m/s`;
-      ui.omega.textContent = `${msg.omega.toFixed(2)} rad/s`;
-      ui.driver.textContent = msg.driver + (msg.connected ? "" : " (getrennt)");
       showPose(msg.pose);
       setHomeButton(msg.homing === true);
       showCollision(msg.collision);
@@ -169,10 +150,7 @@ function handleMessage(msg) {
       break;
 
     case "vitals":
-      ui.bpm.textContent = msg.bpm != null ? `${msg.bpm} bpm` : "—";
-      ui.motion.textContent =
-        msg.motion == null ? "—" : msg.motion ? "ja" : "nein";
-      break;
+      break; // pulse panel removed, the esp still sends them
 
     case "alert":
       logLine(msg.text, msg.level);
@@ -476,191 +454,31 @@ function showCollision(c) {
   ui.collisionState.className = cls;
 }
 
-// --- Lidar view ------------------------------------------------------------------
-
-/*
- * Top view: the robot in the middle, forward is up. The points come via
- * HTTP instead of the WebSocket -- one revolution is several hundred
- * values, and they would needlessly load the control channel.
- */
-const LIDAR_HZ = 3;
-const LIDAR_RANGE_M = 5;
-
-const lidarCanvas = el("lidar");
-const lidarInfo = el("lidar-info");
-const lidarCtx = lidarCanvas ? lidarCanvas.getContext("2d") : null;
-
-async function fetchLidar() {
-  if (!lidarCtx) return;
-  try {
-    const response = await fetch(`/lidar/scan?t=${Date.now()}`);
-    const data = await response.json();
-    drawLidar(data.punkte || []);
-    lidarInfo.textContent = data.punkte && data.punkte.length
-      ? `${data.punkte.length} Punkte · Kreise alle 1 m · Reichweite ${LIDAR_RANGE_M} m`
-      : (data.hinweis || "keine Daten");
-  } catch {
-    lidarInfo.textContent = "Lidar nicht erreichbar";
-  }
-}
-
-function drawLidar(points) {
-  const b = lidarCanvas.width;
-  const center = b / 2;
-  const scale = (b / 2 - 10) / LIDAR_RANGE_M;
-
-  lidarCtx.clearRect(0, 0, b, b);
-
-  // Distance rings as a scale, otherwise the point cloud says nothing.
-  lidarCtx.strokeStyle = "#2e323c";
-  lidarCtx.lineWidth = 1;
-  for (let m = 1; m <= LIDAR_RANGE_M; m++) {
-    lidarCtx.beginPath();
-    lidarCtx.arc(center, center, m * scale, 0, Math.PI * 2);
-    lidarCtx.stroke();
-  }
-
-  lidarCtx.fillStyle = "#4da3ff";
-  for (const [deg, dist] of points) {
-    const a = (deg * Math.PI) / 180;
-    // Screen: x to the right, y down. Robot: x forward, y left.
-    // Hence swapped and mirrored, so that "forward" is up.
-    const px = center - dist * Math.sin(a) * scale;
-    const py = center - dist * Math.cos(a) * scale;
-    lidarCtx.fillRect(px - 1, py - 1, 2, 2);
-  }
-
-  drawObstacles(center, scale);
-
-  // The robot itself, facing up.
-  lidarCtx.fillStyle = "#3ecf8e";
-  lidarCtx.beginPath();
-  lidarCtx.moveTo(center, center - 7);
-  lidarCtx.lineTo(center - 5, center + 5);
-  lidarCtx.lineTo(center + 5, center + 5);
-  lidarCtx.closePath();
-  lidarCtx.fill();
-}
-
-if (lidarCtx) setInterval(fetchLidar, 1000 / LIDAR_HZ);
-
 // --- Autonomous driving --------------------------------------------------------
 
 /*
  * The server sends the state with every state message
- * (state.autonomie). The app only displays it and sends explore /
- * explore_stop -- decisions are made on the robot.
+ * (state.autonomie). The panel with the explore button is gone; driving
+ * autonomously starts by voice („Robi, erkunde“), and
+ * the app only keeps the state it still needs.
  */
 let autonomyActive = false;
-let obstacles = [];
 let personBoxes = [];
 // Which camera image the person boxes belong to (reported by the server).
 // null = unknown, e.g. with an older server -- then always, as before.
 let personCamera = null;
 
-/** Color per obstacle kind, the same in the list, lidar view and camera. */
-const KIND_COLOR = {
-  "Wand": "#9aa1ad",
-  "Stuhl": "#f5a524",
-  "Tisch": "#c58af9",
-  "Mensch": "#f05d5d",
-  "Bein (Mensch?)": "#ff9a8a",
-  "Bein (Stuhl/Tisch?)": "#e8c56a",
-  "Objekt": "#4da3ff",
-};
-const kindColor = (kind) => KIND_COLOR[kind] || "#4da3ff";
+const PERSON_COLOR = "#f05d5d";
 
-function setExploreButton(active) {
-  autonomyActive = active;
-  ui.btnExplore.textContent = active ? "Autonomes Fahren beenden" : "Autonom fahren";
-  ui.btnExplore.classList.toggle("aktiv", active);
-}
-
-ui.btnExplore.addEventListener("click", () => {
-  send({ type: autonomyActive ? "explore_stop" : "explore" });
-  // Like the home button: toggle immediately, the next status message
-  // corrects it if the server refuses (e.g. no lidar).
-  setExploreButton(!autonomyActive);
-});
-
-// Drive recorder: the server replies with a message (file name).
-ui.btnRecord.addEventListener("click", () => {
-  send({ type: "record_save" });
-});
-
+// the panel is gone, but the window-leave rule and the person boxes over
+// the camera still need the autonomy state
 function showAutonomy(a) {
   if (!a) return;
-  setExploreButton(a.aktiv === true);
-  ui.btnExplore.disabled = a.verfuegbar === false;
-
-  ui.autoState.textContent = a.aktiv ? a.zustand : (a.verfuegbar === false ? "kein Lidar" : "aus");
-  ui.autoFree.textContent = typeof a.frei_vorn === "number" ? `${a.frei_vorn.toFixed(2)} m` : "—";
-  ui.autoDuration.textContent = a.aktiv && typeof a.dauer_s === "number"
-    ? `${Math.floor(a.dauer_s / 60)}:${String(Math.floor(a.dauer_s % 60)).padStart(2, "0")} min · ${a.ausweichen ?? 0}× ausgewichen`
-    : "—";
-
-  obstacles = a.hindernisse || [];
+  autonomyActive = a.aktiv === true;
   personBoxes = a.personen || [];
-
-  const humans = obstacles.filter((h) => h.art === "Mensch").length;
-  ui.autoPeople.textContent = `${humans} im Lidar · ${personBoxes.length} im Bild`;
-
   const pe = a.personenerkennung;
   if (pe && pe.kamera) personCamera = pe.kamera;
-  ui.autoCamera.textContent = !pe ? "—"
-    : !pe.verfuegbar ? (pe.fehler || "nicht verfügbar")
-    : pe.aktiv ? "erkennt Personen" : "bereit (läuft beim Fahren)";
-
-  let text = a.text || "—";
-  if (!a.aktiv && a.grund) text = `Zuletzt beendet: ${a.grund}`;
-  ui.autoText.textContent = text;
-
-  showObstacleList();
   drawPersons();
-}
-
-function showObstacleList() {
-  ui.obstacles.replaceChildren(...obstacles.map((h) => {
-    const li = document.createElement("li");
-    const kind = document.createElement("span");
-    kind.className = "art";
-    const dot = document.createElement("span");
-    dot.className = "farbe";
-    dot.style.background = kindColor(h.art);
-    kind.append(dot, document.createTextNode(h.art));
-    const where = document.createElement("span");
-    where.className = "wo";
-    // Angle as with the lidar: positive = left. More readable for humans than degrees.
-    const side = Math.abs(h.winkel) < 15 ? "vorn"
-      : Math.abs(h.winkel) > 165 ? "hinten"
-      : h.winkel > 0 ? "links" : "rechts";
-    where.textContent = `${h.abstand.toFixed(2)} m · ${side} (${h.winkel.toFixed(0)}°)`;
-    li.append(kind, where);
-    return li;
-  }));
-  if (!obstacles.length) {
-    const li = document.createElement("li");
-    li.textContent = "keine im Umkreis";
-    ui.obstacles.append(li);
-  }
-}
-
-/** Markers in the lidar view, same conversion as for the points. */
-function drawObstacles(center, scale) {
-  lidarCtx.font = "10px system-ui, sans-serif";
-  for (const h of obstacles) {
-    if (h.art === "Wand") continue; // walls are visible as the row of points
-    const px = center - h.y * scale;
-    const py = center - h.x * scale;
-    const r = Math.max(5, (h.breite / 2) * scale + 3);
-    lidarCtx.strokeStyle = kindColor(h.art);
-    lidarCtx.lineWidth = 2;
-    lidarCtx.beginPath();
-    lidarCtx.arc(px, py, r, 0, Math.PI * 2);
-    lidarCtx.stroke();
-    lidarCtx.fillStyle = kindColor(h.art);
-    lidarCtx.fillText(h.art, px + r + 2, py + 3);
-  }
 }
 
 /*
@@ -670,7 +488,8 @@ function drawObstacles(center, scale) {
  */
 function drawPersons() {
   tiles.forEach((t, i) => {
-    const matches = showsPersonCamera(t, i);
+    // person boxes only over the colour image, not over a depth/object view
+    const matches = !t.view && showsPersonCamera(t, i);
     drawBoxes(t, matches ? personBoxes : [], matches);
   });
 }
@@ -714,8 +533,8 @@ function drawBoxes(tile, boxes, showsPersons) {
 
   const { ox, oy, bw, bh } = imageArea(tile, w, h);
 
-  ctx.strokeStyle = kindColor("Mensch");
-  ctx.fillStyle = kindColor("Mensch");
+  ctx.strokeStyle = PERSON_COLOR;
+  ctx.fillStyle = PERSON_COLOR;
   ctx.lineWidth = 2;
   ctx.font = "12px system-ui, sans-serif";
   for (const b of boxes) {
@@ -1043,13 +862,14 @@ class CamTile {
     retry.textContent = "Erneut versuchen";
     retry.addEventListener("click", () => {
       loadCameras(); // maybe the camera is there by now
-      this.start(this.name);
+      this.start(this.name, this.view);
     });
     this.errorBox.append("Kein Bild. ", retry);
 
     this.el.append(this.img, this.overlay, this.label, this.errorBox);
 
     this.name = null; // null = default camera via /camera/...
+    this.view = null; // depth or object view shown instead of the colour image
     this.mode = "aus";
     this.timer = null;
     this.checkTimer = null;
@@ -1064,7 +884,7 @@ class CamTile {
   /* Without a camera name the old endpoints -- a server without /cameras
      knows those too. */
   base() {
-    const depth = depthViews.find((a) => a.name === this.name);
+    const depth = depthViews.find((a) => a.name === this.view);
     if (depth) return depth.basis;
     return this.name ? `/camera/${encodeURIComponent(this.name)}` : "/camera";
   }
@@ -1086,9 +906,10 @@ class CamTile {
    * The timestamp in the URL is needed because the browser would otherwise
    * take the aborted response from the cache and the image would stay black.
    */
-  start(name) {
+  start(name, view = null) {
     this.stop();
     this.name = name;
+    this.view = view;
     this.errorBox.hidden = true;
     this.mode = "mjpeg";
     this.startedWith = this.base(); // changes as soon as /cameras is loaded
@@ -1129,48 +950,54 @@ class CamTile {
 }
 
 /*
- * Several cameras: /cameras says which exist. Displayed is
- *   null     the default camera (/camera/stream) -- also works with a
- *            server that does not know /cameras yet,
- *   "alle"   all cameras side by side,
- *   <name>   exactly this one.
- * The choice is stored in the browser.
+ * Several cameras: /cameras says which exist, and all of them are always
+ * shown side by side. The mode (colour, depth, depth + colour, objects)
+ * only changes the tile of the camera the view belongs to (its "quelle");
+ * the other cameras keep their colour image. The mode is stored in the
+ * browser.
  */
-const ALL_VIEW = "alle";
-let camView = localStorage.getItem("camAnsicht");
+const COLOR_MODE = "farbe";
+let camMode = localStorage.getItem("camModus") || COLOR_MODE;
 let camDefault = null;
 let camList = [];
 let tiles = [];
-// Views of the depth camera (/tiefe/stream, above the color image):
-// selectable like cameras, but not with "alle" -- each one switches the
-// projector on, and that draws a lot of current from the USB hub.
+// views beside the colour images: depth images and the object view, each
+// with its own address and the camera it replaces
 let depthViews = [];
 
 function camerasToShow() {
-  if (camView === ALL_VIEW) {
-    return camList.length ? camList.map((k) => k.name) : [null];
-  }
-  return [camView];
+  return camList.length ? camList.map((k) => k.name) : [null];
 }
 
-function selectView(view) {
-  camView = view;
-  if (view) localStorage.setItem("camAnsicht", view);
-  else localStorage.removeItem("camAnsicht");
+/* Which view a camera tile shows in the current mode (null = colour). */
+function viewFor(name, shown) {
+  const v = depthViews.find((d) => d.name === camMode);
+  if (!v) return null;
+  const source = v.quelle ?? camDefault;
+  // source camera missing (no colour image): the first tile takes the view
+  const target = shown.includes(source) ? source : shown[0];
+  return (name ?? camDefault) === (target ?? camDefault) ? v.name : null;
+}
+
+function selectMode(mode) {
+  camMode = mode;
+  localStorage.setItem("camModus", mode);
   showCameras();
 }
 
-function cameraTitle(name) {
-  const info = camList.find((c) => c.name === name)
-    || depthViews.find((c) => c.name === name);
-  return info ? (info.kamera || info.name) : (name || "");
+function cameraTitle(name, view) {
+  const info = camList.find((c) => c.name === name);
+  const title = info ? (info.kamera || info.name) : (name || "");
+  const v = depthViews.find((c) => c.name === view);
+  return v ? `${title} · ${v.kamera}` : title;
 }
 
 function showCameras() {
   for (const k of tiles) k.stop();
-  tiles = camerasToShow().map((name) => {
+  const shown = camerasToShow();
+  tiles = shown.map((name) => {
     const k = new CamTile();
-    k.start(name);
+    k.start(name, viewFor(name, shown));
     return k;
   });
   ui.camGrid.replaceChildren(...tiles.map((k) => k.el));
@@ -1180,17 +1007,16 @@ function showCameras() {
   ui.camGrid.classList.toggle("mehrere", several);
   ui.camPanel.classList.toggle("wide-panel", several);
   for (const k of tiles) {
-    k.label.textContent = cameraTitle(k.name);
-    k.label.hidden = !several;
+    k.label.textContent = cameraTitle(k.name, k.view);
+    k.label.hidden = !several && !k.view;
   }
   markCamera();
   drawPersons();
 }
 
 function markCamera() {
-  const active = camView ?? camDefault;
   for (const b of ui.camSelect.children) {
-    b.classList.toggle("aktiv", b.dataset.name === active);
+    b.classList.toggle("aktiv", b.dataset.name === camMode);
   }
 }
 
@@ -1200,7 +1026,7 @@ function selectButton(name, text, title) {
   b.dataset.name = name;
   b.textContent = text;
   if (title) b.title = title;
-  b.addEventListener("click", () => selectView(name));
+  b.addEventListener("click", () => selectMode(name));
   return b;
 }
 
@@ -1216,45 +1042,33 @@ async function loadCameras() {
   camList = data.kameras || [];
   camDefault = data.standard;
   if (data.personen) personCamera = data.personen;
-  // extra views beside the cameras: depth images and (new 23.11.) the
-  // object view with boxes and names, both with their own address
   depthViews = [...(data.tiefe || []), ...(data.objekte || [])];
 
-  // After a robot restart the selected camera may be missing.
-  if (camView && camView !== ALL_VIEW && !camList.some((k) => k.name === camView)
-      && !depthViews.some((k) => k.name === camView)) {
-    camView = null;
-    localStorage.removeItem("camAnsicht");
+  // after a robot restart the selected view may be missing
+  if (camMode !== COLOR_MODE && !depthViews.some((k) => k.name === camMode)) {
+    camMode = COLOR_MODE;
+    localStorage.setItem("camModus", camMode);
   }
 
-  const buttons = camList.map((k) => {
-    let text = k.kamera || k.name;
-    if (k.name === data.personen) text += " · Personen";
-    if (!k.geoeffnet) text += " (kein Bild)";
-    return selectButton(k.name, text,
-      k.geoeffnet ? (k.geraet || k.name) : (k.letzter_fehler || "nicht geöffnet"));
-  });
-  if (camList.length > 1) {
-    buttons.push(selectButton(ALL_VIEW, camList.length === 2 ? "Beide" : "Alle",
-      "Alle Kameras nebeneinander"));
-  }
+  const buttons = [selectButton(COLOR_MODE, "Farbe", "Farbbild aller Kameras")];
   for (const t of depthViews) {
     buttons.push(selectButton(t.name, t.kamera, t.name === "objekte"
       ? "Was die Kamera-KI erkennt: Rahmen und Namen um Stühle, Tische, Menschen …"
       : "Was die Tiefenkamera misst: rot nah, blau fern, magenta Hindernis"));
   }
   ui.camSelect.replaceChildren(...buttons);
-  ui.camSelect.hidden = camList.length + depthViews.length < 2;
+  ui.camSelect.hidden = depthViews.length === 0;
 
   // Only rebuild if something really changes -- otherwise every reload
   // would briefly tear down all streams.
-  const wanted = camerasToShow().join("|");
-  const current = tiles.map((k) => k.name).join("|");
+  const shown = camerasToShow();
+  const wanted = shown.map((n) => `${n}:${viewFor(n, shown)}`).join("|");
+  const current = tiles.map((k) => `${k.name}:${k.view}`).join("|");
   if (wanted !== current || tiles.some((k) => k.startedWith !== k.base())) {
     showCameras();
     return;
   }
-  for (const k of tiles) k.label.textContent = cameraTitle(k.name);
+  for (const k of tiles) k.label.textContent = cameraTitle(k.name, k.view);
   markCamera();
 }
 
@@ -1267,7 +1081,7 @@ let camWasConnected = true;
 
 function onConnectionChange(connected) {
   if (connected && !camWasConnected) {
-    for (const k of tiles) k.start(k.name);
+    for (const k of tiles) k.start(k.name, k.view);
     loadCameras();
   }
   camWasConnected = connected;

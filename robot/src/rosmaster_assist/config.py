@@ -1209,14 +1209,18 @@ OBJECTS_ENABLED = True
 OBJECTS_HEF = "/usr/share/hailo-models/yolov8m_h10.hef"
 OBJECTS_CAMERA = "orientierung"
 # detections per second while someone needs it, the pose detection shares the chip
-OBJECTS_HZ = 5.0
+# (one detection takes about 27 ms on the hailo-10h)
+OBJECTS_HZ = 10.0
+# frames per second of the object view; it shows the live image with the
+# latest boxes, so it does not wait for the detection
+OBJECTS_STREAM_FPS = 15.0
 # boxes below this confidence are dropped (0..1); low values bring ghosts,
 # high ones miss chairs seen from the side
 OBJECTS_MIN_SCORE = 0.4
 # images older than this (s) are not computed, the box would be off
 OBJECTS_MAX_FRAME_AGE_S = 0.5
 # results older than this (s) no longer count, the object may be gone
-OBJECTS_MAX_AGE_S = 1.5
+OBJECTS_MAX_AGE_S = 1.0
 # pause before a failed hailo is reopened (s)
 OBJECTS_REOPEN_S = 2.0
 # how often the idle thread checks whether someone needs it (s)
