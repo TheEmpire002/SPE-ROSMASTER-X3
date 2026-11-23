@@ -123,7 +123,7 @@ def ensure_dependencies(py: Path) -> None:
     # Check every package individually, not just the first: when a new
     # dependency is added (most recently rplidar), an existing setup must
     # install it on the next start -- otherwise it is silently missing.
-    modules = ("rosmaster_assist", "fastapi", "numpy", "rplidar")
+    modules = ("rosmaster_assist", "fastapi", "numpy", "rplidar", "telegramify_markdown")
     if all(has_module(py, m) for m in modules):
         info("Abhängigkeiten vorhanden")
         return
