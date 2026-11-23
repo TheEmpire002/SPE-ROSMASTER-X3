@@ -29,6 +29,7 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 
 from .. import config, settings
+from .. import telegram
 from ..recording import Recorder
 from ..diagnostics import Diagnostics, LogBuffer
 from ..drive.base import DriveBase
@@ -974,6 +975,26 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                                 status_code=400)
         n = diagnostics.acknowledge(None if data.get("alle") else str(data["id"]))
         return {"quittiert": n}
+
+    @app.post("/telegram/send")
+    async def telegram_send(request: Request):
+        """Send text or Markdown to the configured Telegram chat."""
+        content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        if content_type != "application/json":
+            return JSONResponse({"fehler": "JSON erforderlich"}, status_code=415)
+        try:
+            data = await request.json()
+        except ValueError:
+            data = None
+        if (not isinstance(data, dict) or not isinstance(data.get("text"), str)
+                or not isinstance(data.get("markdown", False), bool)):
+            return JSONResponse({"fehler": "Ungültige Nachricht"}, status_code=400)
+        try:
+            await asyncio.to_thread(
+                telegram.send_message, data["text"], markdown=data.get("markdown", False))
+        except telegram.TelegramError as exc:
+            return JSONResponse({"fehler": str(exc)}, status_code=400)
+        return {"ok": True}
 
     # --- Music ("MUKKE") ---
     #

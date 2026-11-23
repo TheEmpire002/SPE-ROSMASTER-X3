@@ -8,6 +8,10 @@ open this file.
 import os
 from pathlib import Path
 
+TELEGRAM_SECRETS_PATH = Path(__file__).resolve().parents[2] / "telegram-secrets.json"
+TELEGRAM_TIMEOUT_S = 5.0
+TELEGRAM_MAX_MESSAGE_UTF16 = 4096
+
 # --- Serial connection to the expansion board --------------------------------
 
 # The port name differs depending on the image. Which one is right for you is

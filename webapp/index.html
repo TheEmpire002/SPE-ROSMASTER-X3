@@ -1,404 +1,757 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="de">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>ROSMASTER X3 — Steuerung</title>
-<link rel="stylesheet" href="/static/style.css">
-</head>
-<body>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, user-scalable=no"
+    />
+    <title>ROSMASTER X3 — Steuerung</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <header>
+      <div class="header-start">
+        <button
+          type="button"
+          id="btn-einst"
+          class="einst-knopf"
+          title="Einstellungen"
+          aria-label="Einstellungen"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="3" />
+            <path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+            />
+          </svg>
+          <span>Einstellungen</span>
+        </button>
+        <a
+          href="/diagnose"
+          id="btn-diagnose"
+          class="einst-knopf diag-knopf"
+          title="Diagnose &amp; Logs: Ausfälle, Akku, Probleme"
+          aria-label="Diagnose"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+          </svg>
+          <span>Diagnose</span>
+          <span id="diag-punkt" class="diag-punkt" hidden></span>
+        </a>
+        <a
+          href="/map"
+          id="btn-karte"
+          class="einst-knopf"
+          title="Karte: Lage, Fahrt zum Ziel, Rückweg"
+          aria-label="Karte"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" />
+            <line x1="8" y1="2" x2="8" y2="18" />
+            <line x1="16" y1="6" x2="16" y2="22" />
+          </svg>
+          <span>Karte</span>
+        </a>
+        <button
+          type="button"
+          id="btn-mukke"
+          class="einst-knopf mukke-knopf"
+          title="Musik auf dem Lautsprecher"
+          aria-label="MUKKE"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M9 18V5l12-2v13" />
+            <circle cx="6" cy="18" r="3" />
+            <circle cx="18" cy="16" r="3" />
+          </svg>
+          <span>MUKKE</span>
+        </button>
+        <button
+          type="button"
+          id="btn-telegram"
+          class="einst-knopf"
+          title="Telegram-Nachricht"
+          aria-label="Telegram-Nachricht"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M22 2 11 13" />
+            <path d="m22 2-7 20-4-9-9-4Z" />
+          </svg>
+          <span>Telegram</span>
+        </button>
+        <h1>ROSMASTER X3</h1>
+      </div>
+      <div id="status" class="status offline">
+        <span class="dot"></span><span id="status-text">getrennt</span>
+      </div>
+    </header>
 
-<header>
-  <div class="header-start">
-    <button type="button" id="btn-einst" class="einst-knopf"
-            title="Einstellungen" aria-label="Einstellungen">
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
-           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <circle cx="12" cy="12" r="3"/>
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-      </svg>
-      <span>Einstellungen</span>
-    </button>
-    <a href="/diagnose" id="btn-diagnose" class="einst-knopf diag-knopf"
-       title="Diagnose &amp; Logs: Ausfälle, Akku, Probleme" aria-label="Diagnose">
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
-           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-      </svg>
-      <span>Diagnose</span>
-      <span id="diag-punkt" class="diag-punkt" hidden></span>
-    </a>
-    <a href="/map" id="btn-karte" class="einst-knopf"
-       title="Karte: Lage, Fahrt zum Ziel, Rückweg" aria-label="Karte">
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
-           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
-        <line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>
-      </svg>
-      <span>Karte</span>
-    </a>
-    <button type="button" id="btn-mukke" class="einst-knopf mukke-knopf"
-            title="Musik auf dem Lautsprecher" aria-label="MUKKE">
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
-           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M9 18V5l12-2v13"/>
-        <circle cx="6" cy="18" r="3"/>
-        <circle cx="18" cy="16" r="3"/>
-      </svg>
-      <span>MUKKE</span>
-    </button>
-    <h1>ROSMASTER X3</h1>
-  </div>
-  <div id="status" class="status offline">
-    <span class="dot"></span><span id="status-text">getrennt</span>
-  </div>
-</header>
-
-<!-- Settings as a modal. einstellungen.js builds the content from
+    <!-- Settings as a modal. einstellungen.js builds the content from
      GET /settings when it is first opened. -->
-<dialog id="einst-dialog" class="einst-dialog" aria-labelledby="einst-titel">
-  <div class="einst-dialog-kopf">
-    <h1 id="einst-titel">Einstellungen</h1>
-    <button type="button" id="einst-schliessen" class="header-icon"
-            title="Schließen" aria-label="Schließen">✕</button>
-  </div>
-  <div id="einstellungen" class="einst-raster">
-    <section class="panel wide-panel einst-kopf">
-      <p>
-        Änderungen gelten sofort und werden auf dem Roboter gespeichert.
-        Mit <span class="einst-neustart">Neustart</span> markierte Werte
-        wirken erst nach einem Neustart des Servers.
-      </p>
-      <button type="button" id="alle-zurueck" class="btn">Alles auf Standard</button>
-      <p id="einst-meldung" class="einst-meldung" hidden></p>
-    </section>
-  </div>
-</dialog>
-
-<!-- Music on the robot's speaker (POST /mukke/...). -->
-<dialog id="mukke-dialog" class="einst-dialog mukke-dialog" aria-labelledby="mukke-titel">
-  <div class="einst-dialog-kopf">
-    <h1 id="mukke-titel">MUKKE</h1>
-    <button type="button" id="mukke-schliessen" class="header-icon"
-            title="Schließen" aria-label="Schließen">✕</button>
-  </div>
-  <div class="mukke-inhalt">
-    <form id="mukke-form" class="mukke-form">
-      <input type="url" id="mukke-url" class="mukke-url" required
-             placeholder="YouTube-Link einfügen, z. B. https://youtu.be/…"
-             autocomplete="off">
-      <button type="submit" class="btn btn-primary">Abspielen</button>
-    </form>
-
-    <div class="mukke-jetzt">
-      <span class="mukke-label">Läuft gerade</span>
-      <span id="mukke-titel-jetzt" class="mukke-titel-jetzt">nichts</span>
-    </div>
-
-    <div class="mukke-steuerung">
-      <button type="button" id="mukke-pause" class="btn" disabled>Pause</button>
-      <button type="button" id="mukke-stop" class="btn" disabled>Stopp</button>
-      <label class="mukke-laut">
-        <span>Lautstärke</span>
-        <input type="range" id="mukke-lautstaerke" min="0" max="100" step="5">
-        <output id="mukke-lautstaerke-out">–</output>
-      </label>
-    </div>
-
-    <p id="mukke-meldung" class="einst-meldung" hidden></p>
-  </div>
-</dialog>
-
-<main>
-
-  <section id="cam-panel" class="panel">
-    <h2>Kamera</h2>
-    <!-- Switcher, filled from /cameras. Empty with only one camera. -->
-    <div id="cam-wahl" class="cam-wahl" hidden></div>
-    <!-- One tile per displayed camera, built in app.js (CamKachel). -->
-    <div id="cam-feld" class="cam-feld"></div>
-  </section>
-
-  <section class="panel">
-    <h2>Steuerung</h2>
-
-    <!-- Mecanum wheels: the middle row moves sideways, it does not turn. -->
-    <div class="pad">
-      <button class="pad-btn" data-vx="1"  data-vy="1"  title="vorwärts links">↖</button>
-      <button class="pad-btn" data-vx="1"  data-vy="0"  title="vorwärts">↑</button>
-      <button class="pad-btn" data-vx="1"  data-vy="-1" title="vorwärts rechts">↗</button>
-
-      <button class="pad-btn" data-vx="0"  data-vy="1"  title="seitwärts links">←</button>
-      <button class="pad-btn stop" id="stop" title="Not-Stopp">■</button>
-      <button class="pad-btn" data-vx="0"  data-vy="-1" title="seitwärts rechts">→</button>
-
-      <button class="pad-btn" data-vx="-1" data-vy="1"  title="rückwärts links">↙</button>
-      <button class="pad-btn" data-vx="-1" data-vy="0"  title="rückwärts">↓</button>
-      <button class="pad-btn" data-vx="-1" data-vy="-1" title="rückwärts rechts">↘</button>
-    </div>
-
-    <div class="pad-row">
-      <button class="pad-btn wide" data-omega="1"  title="links drehen">⟲</button>
-      <button class="pad-btn wide" data-omega="-1" title="rechts drehen">⟳</button>
-    </div>
-
-    <label class="slider">
-      Max-Tempo <output id="maxspeed-out">—</output>
-      <input type="range" id="maxspeed" min="0.1" max="1" step="0.05" value="1">
-    </label>
-
-    <label class="slider">
-      Tempo <output id="speed-out">—</output>
-      <input type="range" id="speed" min="10" max="100" step="5" value="40">
-    </label>
-
-    <p class="hint">
-      Max-Tempo begrenzt, was der Regler darunter ausreizen kann.
-      Die Obergrenze gibt der Roboter vor.
-    </p>
-
-    <label class="switch">
-      <input type="checkbox" id="collision">
-      <span>Kollisionsvermeidung</span>
-      <output id="collision-state" class="switch-state">aus</output>
-    </label>
-
-    <label class="slider" id="collision-row" hidden>
-      Mindestabstand <output id="collision-out">0.35 m</output>
-      <input type="range" id="collision-dist" min="0.15" max="1.5" step="0.05" value="0.35">
-    </label>
-
-    <p class="hint">
-      Tastatur: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> fahren ·
-      <kbd>Q</kbd><kbd>E</kbd> drehen · <kbd>U</kbd><kbd>I</kbd> Kamera hoch/runter ·
-      <kbd>Leertaste</kbd> Stopp
-    </p>
-  </section>
-
-  <!-- Precise drive commands (genau.js): {"type": "move"} / {"type": "turn"}, the lidar measures. -->
-  <section class="panel">
-    <h2>Genau fahren</h2>
-
-    <div class="genau-zeile">
-      <label>Strecke
-        <input type="number" id="genau-meter" min="0.05" max="5" step="0.05" value="1"> m
-      </label>
-      <div class="genau-knoepfe">
-        <button type="button" class="btn" data-richtung="vor" title="vorwärts">↑ vor</button>
-        <button type="button" class="btn" data-richtung="zurueck" title="rückwärts">↓ zurück</button>
-        <button type="button" class="btn" data-richtung="links" title="seitwärts links">← links</button>
-        <button type="button" class="btn" data-richtung="rechts" title="seitwärts rechts">→ rechts</button>
+    <dialog
+      id="einst-dialog"
+      class="einst-dialog"
+      aria-labelledby="einst-titel"
+    >
+      <div class="einst-dialog-kopf">
+        <h1 id="einst-titel">Einstellungen</h1>
+        <button
+          type="button"
+          id="einst-schliessen"
+          class="header-icon"
+          title="Schließen"
+          aria-label="Schließen"
+        >
+          ✕
+        </button>
       </div>
-    </div>
-
-    <div class="genau-zeile">
-      <label>Winkel
-        <input type="number" id="genau-grad" min="1" max="720" step="5" value="90"> °
-      </label>
-      <div class="genau-knoepfe">
-        <button type="button" class="btn" data-drehen="1" title="gegen den Uhrzeigersinn">⟲ links</button>
-        <button type="button" class="btn" data-drehen="-1" title="im Uhrzeigersinn">⟳ rechts</button>
+      <div id="einstellungen" class="einst-raster">
+        <section class="panel wide-panel einst-kopf">
+          <p>
+            Änderungen gelten sofort und werden auf dem Roboter gespeichert. Mit
+            <span class="einst-neustart">Neustart</span> markierte Werte wirken
+            erst nach einem Neustart des Servers.
+          </p>
+          <button type="button" id="alle-zurueck" class="btn">
+            Alles auf Standard
+          </button>
+          <p id="einst-meldung" class="einst-meldung" hidden></p>
+        </section>
       </div>
-    </div>
+    </dialog>
 
-    <p class="hint" id="genau-text">Das Lidar misst, wie weit er wirklich gefahren ist und hält ihn gerade. Abbrechen: Stopp.</p>
-  </section>
+    <!-- Music on the robot's speaker (POST /mukke/...). -->
+    <dialog
+      id="mukke-dialog"
+      class="einst-dialog mukke-dialog"
+      aria-labelledby="mukke-titel"
+    >
+      <div class="einst-dialog-kopf">
+        <h1 id="mukke-titel">MUKKE</h1>
+        <button
+          type="button"
+          id="mukke-schliessen"
+          class="header-icon"
+          title="Schließen"
+          aria-label="Schließen"
+        >
+          ✕
+        </button>
+      </div>
+      <div class="mukke-inhalt">
+        <form id="mukke-form" class="mukke-form">
+          <input
+            type="url"
+            id="mukke-url"
+            class="mukke-url"
+            required
+            placeholder="YouTube-Link einfügen, z. B. https://youtu.be/…"
+            autocomplete="off"
+          />
+          <button type="submit" class="btn btn-primary">Abspielen</button>
+        </form>
 
-  <section class="panel">
-    <h2>Autonomes Fahren</h2>
+        <div class="mukke-jetzt">
+          <span class="mukke-label">Läuft gerade</span>
+          <span id="mukke-titel-jetzt" class="mukke-titel-jetzt">nichts</span>
+        </div>
 
-    <dl class="readout">
-      <dt>Zustand</dt>    <dd id="val-auto-zustand">—</dd>
-      <dt>Frei vorn</dt>  <dd id="val-auto-frei">—</dd>
-      <dt>Fahrzeit</dt>   <dd id="val-auto-dauer">—</dd>
-      <dt>Menschen</dt>   <dd id="val-auto-menschen">—</dd>
-      <dt>Kamera-KI</dt>  <dd id="val-auto-kamera">—</dd>
-    </dl>
+        <div class="mukke-steuerung">
+          <button type="button" id="mukke-pause" class="btn" disabled>
+            Pause
+          </button>
+          <button type="button" id="mukke-stop" class="btn" disabled>
+            Stopp
+          </button>
+          <label class="mukke-laut">
+            <span>Lautstärke</span>
+            <input
+              type="range"
+              id="mukke-lautstaerke"
+              min="0"
+              max="100"
+              step="5"
+            />
+            <output id="mukke-lautstaerke-out">–</output>
+          </label>
+        </div>
 
-    <div class="home-buttons">
-      <button type="button" id="btn-explore" class="btn btn-primary">
-        Autonom fahren
-      </button>
-      <button type="button" id="btn-record" class="btn"
-              title="Die letzte Minute (Lidar, Befehle, Zustände) auf dem Roboter speichern">
-        Fahrt speichern
-      </button>
-    </div>
+        <p id="mukke-meldung" class="einst-meldung" hidden></p>
+      </div>
+    </dialog>
 
-    <p class="hint" id="auto-text">—</p>
+    <dialog
+      id="telegram-dialog"
+      class="einst-dialog mukke-dialog"
+      aria-labelledby="telegram-titel"
+    >
+      <div class="einst-dialog-kopf">
+        <h1 id="telegram-titel">Telegram</h1>
+        <button
+          type="button"
+          id="telegram-schliessen"
+          class="header-icon"
+          title="Schließen"
+          aria-label="Schließen"
+        >
+          ✕
+        </button>
+      </div>
+      <form id="telegram-form" class="telegram-form">
+        <label for="telegram-text">Nachricht</label>
+        <textarea
+          id="telegram-text"
+          rows="7"
+          maxlength="4096"
+          required
+        ></textarea>
+        <label for="telegram-datei">Markdown-Datei</label>
+        <input
+          type="file"
+          id="telegram-datei"
+          accept=".md,.markdown,text/markdown,text/plain"
+        />
+        <label class="telegram-format"
+          ><input type="checkbox" id="telegram-markdown" /> Markdown
+          formatieren</label
+        >
+        <button type="submit" id="telegram-senden" class="btn btn-primary">
+          Senden
+        </button>
+        <p
+          id="telegram-meldung"
+          class="einst-meldung"
+          role="status"
+          aria-live="polite"
+          hidden
+        ></p>
+      </form>
+    </dialog>
 
-    <h2>Hindernisse</h2>
-    <ul id="hindernisse" class="hindernisse"></ul>
+    <main>
+      <section id="cam-panel" class="panel">
+        <h2>Kamera</h2>
+        <!-- Switcher, filled from /cameras. Empty with only one camera. -->
+        <div id="cam-wahl" class="cam-wahl" hidden></div>
+        <!-- One tile per displayed camera, built in app.js (CamKachel). -->
+        <div id="cam-feld" class="cam-feld"></div>
+      </section>
 
-    <p class="hint">
-      Test 1: Der Roboter fährt zufällig herum und weicht allem aus, was der
-      Lidar sieht. Vor Menschen wartet er kurz. Jede Fahreingabe, der
-      Not-Stopp oder dieser Knopf beenden die Fahrt.
-      Lief etwas falsch, gleich „Fahrt speichern“ drücken: Die letzte Minute
-      lässt sich dann am Rechner mit <code>scripts/replay.py</code> nachspielen.
-    </p>
-  </section>
+      <section class="panel">
+        <h2>Steuerung</h2>
 
-  <section class="panel">
-    <h2>Interaktion</h2>
+        <!-- Mecanum wheels: the middle row moves sideways, it does not turn. -->
+        <div class="pad">
+          <button
+            class="pad-btn"
+            data-vx="1"
+            data-vy="1"
+            title="vorwärts links"
+          >
+            ↖
+          </button>
+          <button class="pad-btn" data-vx="1" data-vy="0" title="vorwärts">
+            ↑
+          </button>
+          <button
+            class="pad-btn"
+            data-vx="1"
+            data-vy="-1"
+            title="vorwärts rechts"
+          >
+            ↗
+          </button>
 
-    <dl class="readout">
-      <dt>Modus</dt>    <dd id="val-ia-modus">—</dd>
-      <dt>Person</dt>   <dd id="val-ia-person">—</dd>
-      <dt>Ziel</dt>     <dd id="val-ia-ziel">—</dd>
-      <dt>Geste</dt>    <dd id="val-ia-geste">—</dd>
-      <dt>Stimme</dt>   <dd id="val-stimme">—</dd>
-      <dt>Ohr</dt>      <dd id="val-sprache">—</dd>
-      <dt>Kamera</dt>   <dd id="val-neigung">—</dd>
-    </dl>
+          <button
+            class="pad-btn"
+            data-vx="0"
+            data-vy="1"
+            title="seitwärts links"
+          >
+            ←
+          </button>
+          <button class="pad-btn stop" id="stop" title="Not-Stopp">■</button>
+          <button
+            class="pad-btn"
+            data-vx="0"
+            data-vy="-1"
+            title="seitwärts rechts"
+          >
+            →
+          </button>
 
-    <!-- Tilt servo of the person camera (camera_tilt). Auto keeps the person in the frame. -->
-    <div id="neigung" class="neigung" hidden>
-      <span>▼</span>
-      <input type="range" id="neigung-regler" min="-30" max="60" step="1" value="0"
-             title="Kamera neigen: links runter, rechts hoch">
-      <span>▲</span>
-      <button type="button" id="btn-neigung-gerade" class="btn" title="Kamera waagerecht">gerade</button>
-    </div>
-    <label id="neigung-auto-zeile" class="switch" hidden>
-      <input type="checkbox" id="neigung-auto">
-      <span>Kamera folgt der Person</span>
-      <output id="neigung-auto-state" class="switch-state">aus</output>
-    </label>
+          <button
+            class="pad-btn"
+            data-vx="-1"
+            data-vy="1"
+            title="rückwärts links"
+          >
+            ↙
+          </button>
+          <button class="pad-btn" data-vx="-1" data-vy="0" title="rückwärts">
+            ↓
+          </button>
+          <button
+            class="pad-btn"
+            data-vx="-1"
+            data-vy="-1"
+            title="rückwärts rechts"
+          >
+            ↘
+          </button>
+        </div>
 
-    <!-- Live feed from the microphone (GET /sprache/live, WebSocket /sprache/ton). -->
-    <label class="switch">
-      <input type="checkbox" id="mikro-lesen">
-      <span>Mikrofon mitlesen</span>
-      <output id="mikro-lesen-state" class="switch-state">aus</output>
-    </label>
-    <label class="switch">
-      <input type="checkbox" id="mikro-hoeren">
-      <span>Mikrofon mithören</span>
-      <output id="mikro-hoeren-state" class="switch-state">aus</output>
-    </label>
-    <!-- Announcement: your own microphone -> robot's speaker (WebSocket /sprache/durchsage). -->
-    <label class="switch">
-      <input type="checkbox" id="mikro-sprechen">
-      <span>Über den Roboter sprechen</span>
-      <output id="mikro-sprechen-state" class="switch-state">aus</output>
-    </label>
-    <p id="mikro-sprechen-hinweis" class="mikro-hinweis" hidden></p>
-    <div id="mikro-live" class="mikro-live" hidden>
-      <div class="mikro-pegel" title="Lautstärke am Mikrofon"><div id="mikro-pegel-balken"></div></div>
-      <p id="mikro-teil" class="mikro-teil">—</p>
-      <ul id="mikro-ereignisse" class="mikro-ereignisse"></ul>
-    </div>
+        <div class="pad-row">
+          <button class="pad-btn wide" data-omega="1" title="links drehen">
+            ⟲
+          </button>
+          <button class="pad-btn wide" data-omega="-1" title="rechts drehen">
+            ⟳
+          </button>
+        </div>
 
-    <div class="home-buttons">
-      <button type="button" id="btn-interaktion" class="btn btn-primary">
-        Interaktion an
-      </button>
-      <button type="button" id="btn-folgen" class="btn">
-        Folge mir
-      </button>
-    </div>
-    <!-- Pause stops, release ends following. -->
-    <div class="home-buttons">
-      <button type="button" id="btn-ia-pause" class="btn" disabled>
-        Pause
-      </button>
-      <button type="button" id="btn-ia-loslassen" class="btn" disabled>
-        Loslassen
-      </button>
-    </div>
+        <label class="slider">
+          Max-Tempo <output id="maxspeed-out">—</output>
+          <input
+            type="range"
+            id="maxspeed"
+            min="0.1"
+            max="1"
+            step="0.05"
+            value="1"
+          />
+        </label>
 
-    <p class="hint" id="ia-text">—</p>
+        <label class="slider">
+          Tempo <output id="speed-out">—</output>
+          <input
+            type="range"
+            id="speed"
+            min="10"
+            max="100"
+            step="5"
+            value="40"
+          />
+        </label>
 
-    <!-- Speak text through the robot's speaker (say). -->
-    <form id="say-form" class="say-form">
-      <input type="text" id="say-text" maxlength="300"
-             placeholder="Etwas sagen lassen …" autocomplete="off">
-      <button type="submit" class="btn">Sagen</button>
-    </form>
+        <p class="hint">
+          Max-Tempo begrenzt, was der Regler darunter ausreizen kann. Die
+          Obergrenze gibt der Roboter vor.
+        </p>
 
-    <form id="speech-form" class="say-form">
-      <input type="text" id="speech-text" maxlength="200"
-             placeholder="Sprachbefehl tippen, z. B. „Robi folgen“" autocomplete="off">
-      <button type="submit" class="btn">Hören</button>
-    </form>
+        <label class="switch">
+          <input type="checkbox" id="collision" />
+          <span>Kollisionsvermeidung</span>
+          <output id="collision-state" class="switch-state">aus</output>
+        </label>
 
-    <p class="hint">
-      Handzeichen vor der Kamera: <strong>Folgen</strong> – einen Arm über
-      den Kopf halten · <strong>Stopp</strong> – beide Hände über die
-      Schultern halten · <strong>Herkommen</strong> – vor dem Körper auf und
-      ab winken · <strong>Weggehen</strong> – Hand seitlich wegwischen.
-      Nur am Boden benutzen. Jede Fahreingabe und der Not-Stopp beenden
-      die Interaktion.
-    </p>
-    <p class="hint">
-      Sprachbefehle ins Mikrofon, immer mit <strong>„Robi“</strong>:
-      folgen · komm her · geh weg · nach Hause · erkunde · Musik aus ·
-      hallo (Interaktion an) · gute Nacht (aus). <strong>„Stopp“</strong>
-      geht auch ohne „Robi“.
-    </p>
-  </section>
+        <label class="slider" id="collision-row" hidden>
+          Mindestabstand <output id="collision-out">0.35 m</output>
+          <input
+            type="range"
+            id="collision-dist"
+            min="0.15"
+            max="1.5"
+            step="0.05"
+            value="0.35"
+          />
+        </label>
 
-  <section class="panel">
-    <h2>Lidar</h2>
-    <canvas id="lidar" class="lidar" width="320" height="320"></canvas>
-    <p class="hint" id="lidar-info">—</p>
-  </section>
+        <p class="hint">
+          Tastatur: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> fahren ·
+          <kbd>Q</kbd><kbd>E</kbd> drehen · <kbd>U</kbd><kbd>I</kbd> Kamera
+          hoch/runter · <kbd>Leertaste</kbd> Stopp
+        </p>
+      </section>
 
-  <section class="panel">
-    <h2>Startpunkt</h2>
+      <!-- Precise drive commands (genau.js): {"type": "move"} / {"type": "turn"}, the lidar measures. -->
+      <section class="panel">
+        <h2>Genau fahren</h2>
 
-    <dl class="readout">
-      <dt>Entfernung</dt> <dd id="val-dist">—</dd>
-      <dt>Position</dt>   <dd id="val-pos">—</dd>
-      <dt>Blickrichtung</dt> <dd id="val-winkel">—</dd>
-    </dl>
+        <div class="genau-zeile">
+          <label
+            >Strecke
+            <input
+              type="number"
+              id="genau-meter"
+              min="0.05"
+              max="5"
+              step="0.05"
+              value="1"
+            />
+            m
+          </label>
+          <div class="genau-knoepfe">
+            <button
+              type="button"
+              class="btn"
+              data-richtung="vor"
+              title="vorwärts"
+            >
+              ↑ vor
+            </button>
+            <button
+              type="button"
+              class="btn"
+              data-richtung="zurueck"
+              title="rückwärts"
+            >
+              ↓ zurück
+            </button>
+            <button
+              type="button"
+              class="btn"
+              data-richtung="links"
+              title="seitwärts links"
+            >
+              ← links
+            </button>
+            <button
+              type="button"
+              class="btn"
+              data-richtung="rechts"
+              title="seitwärts rechts"
+            >
+              → rechts
+            </button>
+          </div>
+        </div>
 
-    <div class="home-buttons">
-      <button type="button" id="btn-home" class="btn btn-primary">
-        Nach Hause
-      </button>
-      <button type="button" id="btn-sethome" class="btn">
-        Startpunkt hier setzen
-      </button>
-    </div>
+        <div class="genau-zeile">
+          <label
+            >Winkel
+            <input
+              type="number"
+              id="genau-grad"
+              min="1"
+              max="720"
+              step="5"
+              value="90"
+            />
+            °
+          </label>
+          <div class="genau-knoepfe">
+            <button
+              type="button"
+              class="btn"
+              data-drehen="1"
+              title="gegen den Uhrzeigersinn"
+            >
+              ⟲ links
+            </button>
+            <button
+              type="button"
+              class="btn"
+              data-drehen="-1"
+              title="im Uhrzeigersinn"
+            >
+              ⟳ rechts
+            </button>
+          </div>
+        </div>
 
-    <p class="hint">
-      Die Position wird aus der Fahrbewegung mitgerechnet, nicht gemessen —
-      sie wird mit der Zeit ungenauer. Der Roboter weicht unterwegs
-      <strong>keinen Hindernissen aus</strong>. Jede Eingabe bricht die
-      Heimfahrt ab.
-    </p>
-  </section>
+        <p class="hint" id="genau-text">
+          Das Lidar misst, wie weit er wirklich gefahren ist und hält ihn
+          gerade. Abbrechen: Stopp.
+        </p>
+      </section>
 
-  <section class="panel">
-    <h2>Zustand</h2>
-    <dl class="readout">
-      <dt>vorwärts</dt>   <dd id="val-vx">0.00 m/s</dd>
-      <dt>seitwärts</dt>  <dd id="val-vy">0.00 m/s</dd>
-      <dt>drehen</dt>     <dd id="val-omega">0.00 rad/s</dd>
-      <dt>Antrieb</dt>    <dd id="val-driver">—</dd>
-    </dl>
+      <section class="panel">
+        <h2>Autonomes Fahren</h2>
 
-    <h2>Person</h2>
-    <dl class="readout">
-      <dt>Puls</dt>      <dd id="val-bpm">—</dd>
-      <dt>Bewegung</dt>  <dd id="val-motion">—</dd>
-    </dl>
-    <p class="hint">Prototyp, kein Medizinprodukt.</p>
-  </section>
+        <dl class="readout">
+          <dt>Zustand</dt>
+          <dd id="val-auto-zustand">—</dd>
+          <dt>Frei vorn</dt>
+          <dd id="val-auto-frei">—</dd>
+          <dt>Fahrzeit</dt>
+          <dd id="val-auto-dauer">—</dd>
+          <dt>Menschen</dt>
+          <dd id="val-auto-menschen">—</dd>
+          <dt>Kamera-KI</dt>
+          <dd id="val-auto-kamera">—</dd>
+        </dl>
 
-  <section class="panel wide-panel">
-    <h2>Meldungen</h2>
-    <ul id="log" class="log"></ul>
-  </section>
+        <div class="home-buttons">
+          <button type="button" id="btn-explore" class="btn btn-primary">
+            Autonom fahren
+          </button>
+          <button
+            type="button"
+            id="btn-record"
+            class="btn"
+            title="Die letzte Minute (Lidar, Befehle, Zustände) auf dem Roboter speichern"
+          >
+            Fahrt speichern
+          </button>
+        </div>
 
-</main>
+        <p class="hint" id="auto-text">—</p>
 
-<script src="/static/einstellungen.js"></script>
-<script src="/static/app.js"></script>
-<script src="/static/mukke.js"></script>
-<script src="/static/mikro.js"></script>
-<script src="/static/genau.js"></script>
-</body>
+        <h2>Hindernisse</h2>
+        <ul id="hindernisse" class="hindernisse"></ul>
+
+        <p class="hint">
+          Test 1: Der Roboter fährt zufällig herum und weicht allem aus, was der
+          Lidar sieht. Vor Menschen wartet er kurz. Jede Fahreingabe, der
+          Not-Stopp oder dieser Knopf beenden die Fahrt. Lief etwas falsch,
+          gleich „Fahrt speichern“ drücken: Die letzte Minute lässt sich dann am
+          Rechner mit <code>scripts/replay.py</code> nachspielen.
+        </p>
+      </section>
+
+      <section class="panel">
+        <h2>Interaktion</h2>
+
+        <dl class="readout">
+          <dt>Modus</dt>
+          <dd id="val-ia-modus">—</dd>
+          <dt>Person</dt>
+          <dd id="val-ia-person">—</dd>
+          <dt>Ziel</dt>
+          <dd id="val-ia-ziel">—</dd>
+          <dt>Geste</dt>
+          <dd id="val-ia-geste">—</dd>
+          <dt>Stimme</dt>
+          <dd id="val-stimme">—</dd>
+          <dt>Ohr</dt>
+          <dd id="val-sprache">—</dd>
+          <dt>Kamera</dt>
+          <dd id="val-neigung">—</dd>
+        </dl>
+
+        <!-- Tilt servo of the person camera (camera_tilt). Auto keeps the person in the frame. -->
+        <div id="neigung" class="neigung" hidden>
+          <span>▼</span>
+          <input
+            type="range"
+            id="neigung-regler"
+            min="-30"
+            max="60"
+            step="1"
+            value="0"
+            title="Kamera neigen: links runter, rechts hoch"
+          />
+          <span>▲</span>
+          <button
+            type="button"
+            id="btn-neigung-gerade"
+            class="btn"
+            title="Kamera waagerecht"
+          >
+            gerade
+          </button>
+        </div>
+        <label id="neigung-auto-zeile" class="switch" hidden>
+          <input type="checkbox" id="neigung-auto" />
+          <span>Kamera folgt der Person</span>
+          <output id="neigung-auto-state" class="switch-state">aus</output>
+        </label>
+
+        <!-- Live feed from the microphone (GET /sprache/live, WebSocket /sprache/ton). -->
+        <label class="switch">
+          <input type="checkbox" id="mikro-lesen" />
+          <span>Mikrofon mitlesen</span>
+          <output id="mikro-lesen-state" class="switch-state">aus</output>
+        </label>
+        <label class="switch">
+          <input type="checkbox" id="mikro-hoeren" />
+          <span>Mikrofon mithören</span>
+          <output id="mikro-hoeren-state" class="switch-state">aus</output>
+        </label>
+        <!-- Announcement: your own microphone -> robot's speaker (WebSocket /sprache/durchsage). -->
+        <label class="switch">
+          <input type="checkbox" id="mikro-sprechen" />
+          <span>Über den Roboter sprechen</span>
+          <output id="mikro-sprechen-state" class="switch-state">aus</output>
+        </label>
+        <p id="mikro-sprechen-hinweis" class="mikro-hinweis" hidden></p>
+        <div id="mikro-live" class="mikro-live" hidden>
+          <div class="mikro-pegel" title="Lautstärke am Mikrofon">
+            <div id="mikro-pegel-balken"></div>
+          </div>
+          <p id="mikro-teil" class="mikro-teil">—</p>
+          <ul id="mikro-ereignisse" class="mikro-ereignisse"></ul>
+        </div>
+
+        <div class="home-buttons">
+          <button type="button" id="btn-interaktion" class="btn btn-primary">
+            Interaktion an
+          </button>
+          <button type="button" id="btn-folgen" class="btn">Folge mir</button>
+        </div>
+        <!-- Pause stops, release ends following. -->
+        <div class="home-buttons">
+          <button type="button" id="btn-ia-pause" class="btn" disabled>
+            Pause
+          </button>
+          <button type="button" id="btn-ia-loslassen" class="btn" disabled>
+            Loslassen
+          </button>
+        </div>
+
+        <p class="hint" id="ia-text">—</p>
+
+        <!-- Speak text through the robot's speaker (say). -->
+        <form id="say-form" class="say-form">
+          <input
+            type="text"
+            id="say-text"
+            maxlength="300"
+            placeholder="Etwas sagen lassen …"
+            autocomplete="off"
+          />
+          <button type="submit" class="btn">Sagen</button>
+        </form>
+
+        <form id="speech-form" class="say-form">
+          <input
+            type="text"
+            id="speech-text"
+            maxlength="200"
+            placeholder="Sprachbefehl tippen, z. B. „Robi folgen“"
+            autocomplete="off"
+          />
+          <button type="submit" class="btn">Hören</button>
+        </form>
+
+        <p class="hint">
+          Handzeichen vor der Kamera: <strong>Folgen</strong> – einen Arm über
+          den Kopf halten · <strong>Stopp</strong> – beide Hände über die
+          Schultern halten · <strong>Herkommen</strong> – vor dem Körper auf und
+          ab winken · <strong>Weggehen</strong> – Hand seitlich wegwischen. Nur
+          am Boden benutzen. Jede Fahreingabe und der Not-Stopp beenden die
+          Interaktion.
+        </p>
+        <p class="hint">
+          Sprachbefehle ins Mikrofon, immer mit <strong>„Robi“</strong>: folgen
+          · komm her · geh weg · nach Hause · erkunde · Musik aus · hallo
+          (Interaktion an) · gute Nacht (aus). <strong>„Stopp“</strong>
+          geht auch ohne „Robi“.
+        </p>
+      </section>
+
+      <section class="panel">
+        <h2>Lidar</h2>
+        <canvas id="lidar" class="lidar" width="320" height="320"></canvas>
+        <p class="hint" id="lidar-info">—</p>
+      </section>
+
+      <section class="panel">
+        <h2>Startpunkt</h2>
+
+        <dl class="readout">
+          <dt>Entfernung</dt>
+          <dd id="val-dist">—</dd>
+          <dt>Position</dt>
+          <dd id="val-pos">—</dd>
+          <dt>Blickrichtung</dt>
+          <dd id="val-winkel">—</dd>
+        </dl>
+
+        <div class="home-buttons">
+          <button type="button" id="btn-home" class="btn btn-primary">
+            Nach Hause
+          </button>
+          <button type="button" id="btn-sethome" class="btn">
+            Startpunkt hier setzen
+          </button>
+        </div>
+
+        <p class="hint">
+          Die Position wird aus der Fahrbewegung mitgerechnet, nicht gemessen —
+          sie wird mit der Zeit ungenauer. Der Roboter weicht unterwegs
+          <strong>keinen Hindernissen aus</strong>. Jede Eingabe bricht die
+          Heimfahrt ab.
+        </p>
+      </section>
+
+      <section class="panel">
+        <h2>Zustand</h2>
+        <dl class="readout">
+          <dt>vorwärts</dt>
+          <dd id="val-vx">0.00 m/s</dd>
+          <dt>seitwärts</dt>
+          <dd id="val-vy">0.00 m/s</dd>
+          <dt>drehen</dt>
+          <dd id="val-omega">0.00 rad/s</dd>
+          <dt>Antrieb</dt>
+          <dd id="val-driver">—</dd>
+        </dl>
+
+        <h2>Person</h2>
+        <dl class="readout">
+          <dt>Puls</dt>
+          <dd id="val-bpm">—</dd>
+          <dt>Bewegung</dt>
+          <dd id="val-motion">—</dd>
+        </dl>
+        <p class="hint">Prototyp, kein Medizinprodukt.</p>
+      </section>
+
+      <section class="panel wide-panel">
+        <h2>Meldungen</h2>
+        <ul id="log" class="log"></ul>
+      </section>
+    </main>
+
+    <script src="/static/einstellungen.js"></script>
+    <script src="/static/app.js"></script>
+    <script src="/static/mukke.js"></script>
+    <script src="/static/telegram.js"></script>
+    <script src="/static/mikro.js"></script>
+    <script src="/static/genau.js"></script>
+  </body>
 </html>

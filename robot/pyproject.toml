@@ -12,6 +12,7 @@ dependencies = [
     "uvicorn[standard]>=0.34",
     "numpy>=1.24",
     "rplidar-roboticia>=0.9",
+    "telegramify-markdown>=1.4,<2",
 ]
 
 [project.optional-dependencies]

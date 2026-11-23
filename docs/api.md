@@ -5,10 +5,10 @@ script to the robot, without reading the server code.
 
 The robot offers two channels:
 
-| Channel | Address | Used for |
-|---|---|---|
-| **WebSocket** | `ws://<Pi-IP>:8000/ws` | Driving, homing, settings; live state from the robot |
-| **HTTP** | `http://<Pi-IP>:8000/...` | Camera image, lidar scan, diagnostics |
+| Channel       | Address                   | Used for                                             |
+| ------------- | ------------------------- | ---------------------------------------------------- |
+| **WebSocket** | `ws://<Pi-IP>:8000/ws`    | Driving, homing, settings; live state from the robot |
+| **HTTP**      | `http://<Pi-IP>:8000/...` | Camera image, lidar scan, diagnostics                |
 
 `hostname -I` on the Pi shows the IP. Port 8000 is the default
 (`--port` at startup, `PORT` in `config.py`).
@@ -61,15 +61,15 @@ why the robot keeps stopping.
 
 The same everywhere, for drive commands, position and lidar:
 
-| Quantity | Unit | Direction |
-|---|---|---|
-| `vx` | m/s | forward positive |
-| `vy` | m/s | **left** positive (mecanum: strafe sideways without turning) |
-| `omega` | rad/s | counterclockwise positive (= turn left) |
-| Lidar angle | degrees, 0–360 | 0° = front (camera), 90° = left, 180° = rear, 270° = right |
-| Lidar distance | meters | only 0.15–8 m, everything else is already discarded |
-| Position `x`, `y` | meters | relative to the start point: `x` in the heading at start, `y` to the left of it |
-| Position `winkel` | **degrees** | counterclockwise, 0 = heading at start |
+| Quantity          | Unit           | Direction                                                                       |
+| ----------------- | -------------- | ------------------------------------------------------------------------------- |
+| `vx`              | m/s            | forward positive                                                                |
+| `vy`              | m/s            | **left** positive (mecanum: strafe sideways without turning)                    |
+| `omega`           | rad/s          | counterclockwise positive (= turn left)                                         |
+| Lidar angle       | degrees, 0–360 | 0° = front (camera), 90° = left, 180° = rear, 270° = right                      |
+| Lidar distance    | meters         | only 0.15–8 m, everything else is already discarded                             |
+| Position `x`, `y` | meters         | relative to the start point: `x` in the heading at start, `y` to the left of it |
+| Position `winkel` | **degrees**    | counterclockwise, 0 = heading at start                                          |
 
 The start point is where the server was started or where `set_home` was
 last sent.
@@ -119,7 +119,8 @@ ws.onmessage = (e) => {
 // Driving: send at a steady rate for as long as the robot should move.
 let motion = { vx: 0, vy: 0, omega: 0 };
 setInterval(() => {
-  if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "drive", ...motion }));
+  if (ws.readyState === WebSocket.OPEN)
+    ws.send(JSON.stringify({ type: "drive", ...motion }));
 }, 100);
 
 // Camera image: simply embed as <img>.
@@ -157,40 +158,40 @@ Right after connecting, the robot sends on its own, in this order:
 
 ### To the robot
 
-| `type` | Fields | Effect | Response |
-|---|---|---|---|
-| `drive` | `vx`, `vy`, `omega` (numbers, missing = 0) | Drive. See rules 1, 3, 4. Cancels a running homing as soon as a value is ≠ 0; zero commands are ignored during homing. | none; `error` for invalid values |
-| `stop` | – | Stop immediately; cancel homing, autonomous driving and interaction. | none |
-| `explore` | – | Start autonomous driving (see below). Needs the lidar; cancels homing. | `alert` to all; without lidar `alert` (warning) |
-| `explore_stop` | – | End autonomous driving and stop. | `alert` to all |
-| `move` | `richtung`: `"vor"` (forward) / `"zurueck"` (back) / `"links"` (left) / `"rechts"` (right), `meter` (0 < m ≤ 5) | Drive exactly this far; left/right strafes sideways (see "Precise drive commands in detail"). Needs the lidar; cancels homing, autonomous driving and interaction. Cancel with `stop` or a drive input ≠ 0. | `alert` to all, at the end an `alert` with the result (warning if not achieved); otherwise `alert` (warning) |
-| `turn` | `grad` (+ = left, − = right, magnitude 1–720) | Turn on the spot by exactly this angle (degrees). Otherwise like `move`. | like `move` |
-| `home` | – | Drive back to the start point autonomously (see below). With a map and a confident pose in it: along a planned path to the map's origin. | `alert` to all |
-| `home_cancel` | – | Cancel homing and stop. | `alert` to all |
-| `goto` | `x`, `y` (m in the map frame), `winkel` (degrees, optional: heading at the goal) | Drive to this point of the map, along a planned path around walls (new 04.11., see "Using the map" under Mapping). Needs a map and a confident pose in it; cancels other drives. Technically runs as homing with a goal: `state.homing` is `true`; `stop`, `home_cancel` and drive inputs end it. | `alert` to all; without map/pose `alert` (warning) with reason |
-| `goto_cancel` | – | Cancel the goal drive and stop (like `home_cancel`). | – |
-| `map_pose` | `x`, `y` (m), `winkel` (degrees, optional) | "I am here": localization searches for the robot's pose around this point (narrower with `winkel`). For the case where it does not find itself after loading a map. | `alert` (info); without map `alert` (warning) |
-| `map_load` | `name` (saved map) | Load a saved map to drive in it. Localization then searches for the pose at the map's origin. Not during mapping. With always-on mapping (new 05.11.) the loaded map becomes the main map and keeps growing; the pose is searched at its last saved pose first. | `alert` (info/warning) |
-| `mission_start` | – | „Missionsstart hier“ (new 05.11.): the current pose becomes the anchor `mission` in the main map; the way back leads here. Needs a confident pose in the main map. | `alert` (info); otherwise `alert` (warning) with reason |
-| `return` | `ziel`: `"mission"` (default) / `"home"` | Drive back to the mission start (or the map's origin) along the trail driven (see "Way back" under Mapping). Runs as homing with a goal (`state.homing` is `true`, `state.karte.fahrt.art` is `"zurueck"`); cancel with `goto_cancel`, `stop` or a drive input. | `alert` (info); otherwise `alert` (warning) with reason |
-| `map_live` | `aktiv` (bool) | Always-on mapping on/off. Off: the map stays as it is, the pose is still tracked. On: it confirms the pose first, then writes again. | `alert` (info/warning) |
-| `interaction_start` | – | Interaction mode on: the robot waits for hand signals (see "Interaction in detail"). Needs lidar and pose detection; cancels homing and autonomous driving. | `alert` to all; otherwise `alert` (warning) |
-| `interaction_stop` | – | Interaction mode off and stop. | `alert` to all |
-| `follow` | `ziel_id` (optional, number) | "Follow me" without a gesture. Turns interaction mode on if needed. It follows the person in view, the largest one if there are several. `ziel_id` (the `id` from `/interaktion/pose`) makes that person the starting target; the app no longer sends it since 04.11., an unknown ID is ignored. | `alert` to all |
-| `follow_pause` | – | Stop, the target stays remembered (new 03.11.). Only in `folgen`, `herkommen`, `weggehen`, `sucht`. | – |
-| `follow_resume` | – | After `follow_pause`, continue to the same target. | – |
-| `follow_stop` | – | End following, stop, release the target; interaction mode stays on. | `alert` to all |
-| `record_save` | `notiz` (string, optional, at most 200 characters; a note) | Save the last minute of the drive recorder to a file (new 03.11., see "Drive recorder" under HTTP). Does not drive. | `alert` (info) „Fahrt gespeichert: <name>“ (drive saved); when disabled `alert` (warning) |
-| `say` | `text` (string, at most 300 characters), `vorrang` (bool, optional) | Speak through the loudspeaker (see "Voice in detail"). `vorrang: true` (priority) interrupts the current sentence and clears the queue. | none; without `text` `error`, without loudspeaker/synthesis `alert` (warning) |
-| `say_stop` | – | Go silent immediately, clear the queue. | none |
-| `speech` | `text` (string) | Treat the text as if it had been spoken into the microphone (see "Speech commands in detail"). For trying things out without a microphone and in `--mock`. | `alert` „Sprachbefehl: …“ to all if a command was recognized; otherwise `alert` (info) „Kein Befehl erkannt …“ (no command recognized); without `text` `error` |
-| `set_home` | – | The current position becomes the new start point (0, 0, 0°), the lidar reference is re-recorded. With a map and a confident pose, the position also becomes the map's origin (and is remembered in its file). | `alert` to all |
-| `collision` | `enabled` (bool, optional), `distance` (m, optional) | Collision avoidance on/off, minimum distance. `distance` is clamped to 0.15–1.5 m. | `collision` to all |
-| `beep` | `ms` (int, default 100) | Buzzer. | none |
-| `vitals` | `bpm` (number/null), `motion` (bool/null) | Readings from the ESP32, relayed to all. | `vitals` to all |
-| `box` | `action`: `"open"` / `"close"` | Not built yet. | `alert` „Box ist noch nicht angebaut“ (box not attached yet) |
-| `camera_tilt` | `winkel` (degrees, 0 = horizontal, + = up) or `schritt` (tilt by this much), and/or `auto` (`true`/`false`) | Tilt the person camera (C270) with its servo (new 18.11., see "Camera tilt in detail"). `winkel`/`schritt` switch auto off. | without servo `alert` (warning); without any field or with a non-number `error` |
-| `ping` | – | Check the connection. | `pong` |
+| `type`              | Fields                                                                                                          | Effect                                                                                                                                                                                                                                                                                            | Response                                                                                                                                                       |
+| ------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `drive`             | `vx`, `vy`, `omega` (numbers, missing = 0)                                                                      | Drive. See rules 1, 3, 4. Cancels a running homing as soon as a value is ≠ 0; zero commands are ignored during homing.                                                                                                                                                                            | none; `error` for invalid values                                                                                                                               |
+| `stop`              | –                                                                                                               | Stop immediately; cancel homing, autonomous driving and interaction.                                                                                                                                                                                                                              | none                                                                                                                                                           |
+| `explore`           | –                                                                                                               | Start autonomous driving (see below). Needs the lidar; cancels homing.                                                                                                                                                                                                                            | `alert` to all; without lidar `alert` (warning)                                                                                                                |
+| `explore_stop`      | –                                                                                                               | End autonomous driving and stop.                                                                                                                                                                                                                                                                  | `alert` to all                                                                                                                                                 |
+| `move`              | `richtung`: `"vor"` (forward) / `"zurueck"` (back) / `"links"` (left) / `"rechts"` (right), `meter` (0 < m ≤ 5) | Drive exactly this far; left/right strafes sideways (see "Precise drive commands in detail"). Needs the lidar; cancels homing, autonomous driving and interaction. Cancel with `stop` or a drive input ≠ 0.                                                                                       | `alert` to all, at the end an `alert` with the result (warning if not achieved); otherwise `alert` (warning)                                                   |
+| `turn`              | `grad` (+ = left, − = right, magnitude 1–720)                                                                   | Turn on the spot by exactly this angle (degrees). Otherwise like `move`.                                                                                                                                                                                                                          | like `move`                                                                                                                                                    |
+| `home`              | –                                                                                                               | Drive back to the start point autonomously (see below). With a map and a confident pose in it: along a planned path to the map's origin.                                                                                                                                                          | `alert` to all                                                                                                                                                 |
+| `home_cancel`       | –                                                                                                               | Cancel homing and stop.                                                                                                                                                                                                                                                                           | `alert` to all                                                                                                                                                 |
+| `goto`              | `x`, `y` (m in the map frame), `winkel` (degrees, optional: heading at the goal)                                | Drive to this point of the map, along a planned path around walls (new 04.11., see "Using the map" under Mapping). Needs a map and a confident pose in it; cancels other drives. Technically runs as homing with a goal: `state.homing` is `true`; `stop`, `home_cancel` and drive inputs end it. | `alert` to all; without map/pose `alert` (warning) with reason                                                                                                 |
+| `goto_cancel`       | –                                                                                                               | Cancel the goal drive and stop (like `home_cancel`).                                                                                                                                                                                                                                              | –                                                                                                                                                              |
+| `map_pose`          | `x`, `y` (m), `winkel` (degrees, optional)                                                                      | "I am here": localization searches for the robot's pose around this point (narrower with `winkel`). For the case where it does not find itself after loading a map.                                                                                                                               | `alert` (info); without map `alert` (warning)                                                                                                                  |
+| `map_load`          | `name` (saved map)                                                                                              | Load a saved map to drive in it. Localization then searches for the pose at the map's origin. Not during mapping. With always-on mapping (new 05.11.) the loaded map becomes the main map and keeps growing; the pose is searched at its last saved pose first.                                   | `alert` (info/warning)                                                                                                                                         |
+| `mission_start`     | –                                                                                                               | „Missionsstart hier“ (new 05.11.): the current pose becomes the anchor `mission` in the main map; the way back leads here. Needs a confident pose in the main map.                                                                                                                                | `alert` (info); otherwise `alert` (warning) with reason                                                                                                        |
+| `return`            | `ziel`: `"mission"` (default) / `"home"`                                                                        | Drive back to the mission start (or the map's origin) along the trail driven (see "Way back" under Mapping). Runs as homing with a goal (`state.homing` is `true`, `state.karte.fahrt.art` is `"zurueck"`); cancel with `goto_cancel`, `stop` or a drive input.                                   | `alert` (info); otherwise `alert` (warning) with reason                                                                                                        |
+| `map_live`          | `aktiv` (bool)                                                                                                  | Always-on mapping on/off. Off: the map stays as it is, the pose is still tracked. On: it confirms the pose first, then writes again.                                                                                                                                                              | `alert` (info/warning)                                                                                                                                         |
+| `interaction_start` | –                                                                                                               | Interaction mode on: the robot waits for hand signals (see "Interaction in detail"). Needs lidar and pose detection; cancels homing and autonomous driving.                                                                                                                                       | `alert` to all; otherwise `alert` (warning)                                                                                                                    |
+| `interaction_stop`  | –                                                                                                               | Interaction mode off and stop.                                                                                                                                                                                                                                                                    | `alert` to all                                                                                                                                                 |
+| `follow`            | `ziel_id` (optional, number)                                                                                    | "Follow me" without a gesture. Turns interaction mode on if needed. It follows the person in view, the largest one if there are several. `ziel_id` (the `id` from `/interaktion/pose`) makes that person the starting target; the app no longer sends it since 04.11., an unknown ID is ignored.  | `alert` to all                                                                                                                                                 |
+| `follow_pause`      | –                                                                                                               | Stop, the target stays remembered (new 03.11.). Only in `folgen`, `herkommen`, `weggehen`, `sucht`.                                                                                                                                                                                               | –                                                                                                                                                              |
+| `follow_resume`     | –                                                                                                               | After `follow_pause`, continue to the same target.                                                                                                                                                                                                                                                | –                                                                                                                                                              |
+| `follow_stop`       | –                                                                                                               | End following, stop, release the target; interaction mode stays on.                                                                                                                                                                                                                               | `alert` to all                                                                                                                                                 |
+| `record_save`       | `notiz` (string, optional, at most 200 characters; a note)                                                      | Save the last minute of the drive recorder to a file (new 03.11., see "Drive recorder" under HTTP). Does not drive.                                                                                                                                                                               | `alert` (info) „Fahrt gespeichert: <name>“ (drive saved); when disabled `alert` (warning)                                                                      |
+| `say`               | `text` (string, at most 300 characters), `vorrang` (bool, optional)                                             | Speak through the loudspeaker (see "Voice in detail"). `vorrang: true` (priority) interrupts the current sentence and clears the queue.                                                                                                                                                           | none; without `text` `error`, without loudspeaker/synthesis `alert` (warning)                                                                                  |
+| `say_stop`          | –                                                                                                               | Go silent immediately, clear the queue.                                                                                                                                                                                                                                                           | none                                                                                                                                                           |
+| `speech`            | `text` (string)                                                                                                 | Treat the text as if it had been spoken into the microphone (see "Speech commands in detail"). For trying things out without a microphone and in `--mock`.                                                                                                                                        | `alert` „Sprachbefehl: …“ to all if a command was recognized; otherwise `alert` (info) „Kein Befehl erkannt …“ (no command recognized); without `text` `error` |
+| `set_home`          | –                                                                                                               | The current position becomes the new start point (0, 0, 0°), the lidar reference is re-recorded. With a map and a confident pose, the position also becomes the map's origin (and is remembered in its file).                                                                                     | `alert` to all                                                                                                                                                 |
+| `collision`         | `enabled` (bool, optional), `distance` (m, optional)                                                            | Collision avoidance on/off, minimum distance. `distance` is clamped to 0.15–1.5 m.                                                                                                                                                                                                                | `collision` to all                                                                                                                                             |
+| `beep`              | `ms` (int, default 100)                                                                                         | Buzzer.                                                                                                                                                                                                                                                                                           | none                                                                                                                                                           |
+| `vitals`            | `bpm` (number/null), `motion` (bool/null)                                                                       | Readings from the ESP32, relayed to all.                                                                                                                                                                                                                                                          | `vitals` to all                                                                                                                                                |
+| `box`               | `action`: `"open"` / `"close"`                                                                                  | Not built yet.                                                                                                                                                                                                                                                                                    | `alert` „Box ist noch nicht angebaut“ (box not attached yet)                                                                                                   |
+| `camera_tilt`       | `winkel` (degrees, 0 = horizontal, + = up) or `schritt` (tilt by this much), and/or `auto` (`true`/`false`)     | Tilt the person camera (C270) with its servo (new 18.11., see "Camera tilt in detail"). `winkel`/`schritt` switch auto off.                                                                                                                                                                       | without servo `alert` (warning); without any field or with a non-number `error`                                                                                |
+| `ping`              | –                                                                                                               | Check the connection.                                                                                                                                                                                                                                                                             | `pong`                                                                                                                                                         |
 
 An unknown `type` returns `{"type": "error", "text": "Unbekannter Nachrichtentyp: …"}`.
 
@@ -199,7 +200,7 @@ An unknown `type` returns `{"type": "error", "text": "Unbekannter Nachrichtentyp
 **`limits`**: once on connect.
 
 ```json
-{"type": "limits", "max_vx": 1.0, "max_vy": 1.0, "max_omega": 3.0}
+{ "type": "limits", "max_vx": 1.0, "max_vy": 1.0, "max_omega": 3.0 }
 ```
 
 These are the limits for manual control (`MAX_SPEED_*`). Following, exploring
@@ -217,37 +218,71 @@ it only turns.
   "driver": "rosmaster",
   "connected": true,
   "homing": false,
-  "vx": 0.2, "vy": 0.0, "omega": 0.0,
-  "pose": {"x": 1.234, "y": -0.05, "winkel": 12.5, "gemessen": true},
-  "collision": {"enabled": false, "distance": 0.35, "verfuegbar": true, "blockiert": false},
-  "autonomie": {"aktiv": false, "verfuegbar": true, "zustand": null, "...": "siehe unten"},
-  "interaktion": {"aktiv": false, "verfuegbar": true, "modus": null, "...": "siehe unten"},
-  "stimme": {"verfuegbar": true, "spricht": false, "text": "Ich bin bereit."},
-  "sprache": {"verfuegbar": true, "geweckt": false, "gehoert": "robi folgen", "befehl": "folgen"},
-  "karte": {"name": "hauptkarte", "live": false, "pose": {"x": 2.1, "y": -0.4, "winkel": 87.0},
-            "sicher": true, "text": "Lage in der Karte bekannt",
-            "fahrt": {"aktiv": true, "art": "ziel", "ziel": [3.5, -1.0], "rest_m": 2.4, "grund": null,
-                      "wartet": null},
-            "kartieren": {"aktiv": true, "zustand": "integriert", "grund": null},
-            "mission": [0.4, 1.2, 1.571], "spur_m": 6.3}
+  "vx": 0.2,
+  "vy": 0.0,
+  "omega": 0.0,
+  "pose": { "x": 1.234, "y": -0.05, "winkel": 12.5, "gemessen": true },
+  "collision": {
+    "enabled": false,
+    "distance": 0.35,
+    "verfuegbar": true,
+    "blockiert": false
+  },
+  "autonomie": {
+    "aktiv": false,
+    "verfuegbar": true,
+    "zustand": null,
+    "...": "siehe unten"
+  },
+  "interaktion": {
+    "aktiv": false,
+    "verfuegbar": true,
+    "modus": null,
+    "...": "siehe unten"
+  },
+  "stimme": { "verfuegbar": true, "spricht": false, "text": "Ich bin bereit." },
+  "sprache": {
+    "verfuegbar": true,
+    "geweckt": false,
+    "gehoert": "robi folgen",
+    "befehl": "folgen"
+  },
+  "karte": {
+    "name": "hauptkarte",
+    "live": false,
+    "pose": { "x": 2.1, "y": -0.4, "winkel": 87.0 },
+    "sicher": true,
+    "text": "Lage in der Karte bekannt",
+    "fahrt": {
+      "aktiv": true,
+      "art": "ziel",
+      "ziel": [3.5, -1.0],
+      "rest_m": 2.4,
+      "grund": null,
+      "wartet": null
+    },
+    "kartieren": { "aktiv": true, "zustand": "integriert", "grund": null },
+    "mission": [0.4, 1.2, 1.571],
+    "spur_m": 6.3
+  }
 }
 ```
 
-| Field | Meaning |
-|---|---|
-| `driver` | `"rosmaster"` = real motors, `"mock"` = simulation |
-| `connected` | Connection to the motor board is up. `false` after a USB dropout; the server reconnects on its own. |
-| `homing` | Homing is running |
-| `vx`, `vy`, `omega` | what the robot is **currently executing**, after limiting and collision avoidance. Since the acceleration ramp in the watchdog (29.10.), the value rises gradually after a drive command (`RAMP_*` in `config.py`, can be turned off and adjusted under Settings → „Fahren & Motoren“); a stop takes effect immediately. |
-| `pose` | estimated position, see Conventions. `gemessen: false` (not measured) means: computed from the commands only, considerably less accurate. |
-| `collision.verfuegbar` | whether a lidar is present that can see obstacles (available) |
-| `collision.blockiert` | collision avoidance is currently holding back a motion (blocked) |
-| `autonomie` | autonomous driving and detected obstacles, see "Autonomous driving in detail" |
-| `interaktion` | interaction mode (hand signals, following), see "Interaction in detail". Missing on older servers. |
-| `stimme` | voice output: `verfuegbar` (sound comes out), `spricht` (speaking a sentence right now), `text` (last sentence spoken, or `null`). See "Voice in detail". Missing on older servers. |
-| `sprache` | speech commands: `verfuegbar` (microphone and model ready), `geweckt` (awake: „Robi“ was just said on its own, the next sentence needs no name), `gehoert` (last sentence understood, or `null`), `befehl` (recognized command, for a few seconds, otherwise `null`), `pause` (why the microphone is deliberately closed right now, e.g. „Mapping läuft“; then `verfuegbar` is `false`, otherwise `null`). See "Speech commands in detail". Missing on older servers. |
-| `kamera_neigung` | Tilt servo of the person camera (new 18.11.), only present when `CAMERA_TILT_ENABLED`: `verfuegbar`, `winkel` (current tilt, degrees, + = up), `ziel` (where it is moving to), `auto`, `min`/`max` (range), `verfolgt` (auto is keeping a person in the frame right now). |
-| `karte` | Only present when a map exists (new 04.11.): `name` (saved map, `null` for the live map during mapping), `live`, `pose` (pose **in the map frame**, not to be confused with `pose` above in the odometry frame; `null` while unknown), `sicher` (confident; `goto` only works then), `text`, `fahrt` (running or last map-based drive: `art` (kind) `"heim"` (home) / `"ziel"` (goal) / `"zurueck"` (way back, new 05.11.), `ziel` (goal), `rest_m` (remaining distance), `grund` (reason), `wartet` (new 05.11.: „wartet auf Ortung“ while it stands and searches for its pose, otherwise `null`), `vermutet` (new 05.11.: `true` while it follows a guessed path through the unknown, see "Guessed paths")). New 05.11.: `kartieren` (always-on mapping: `aktiv`, `zustand` `"integriert"` (writing) / `"bestaetigt"` (confirming the pose) / `"eingefroren"` (frozen, the map does not change) / `"pausiert"` (paused) / `"start"` (no map yet, founding one at standstill) / `"aus"` (off), `grund` (German reason); `null` when switched off), `mission` (anchor `[x, y, radians]` or `null`), `spur_m` (trail length in m since the mission start, else in total). See "Using the map" under Mapping. |
+| Field                  | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `driver`               | `"rosmaster"` = real motors, `"mock"` = simulation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `connected`            | Connection to the motor board is up. `false` after a USB dropout; the server reconnects on its own.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `homing`               | Homing is running                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `vx`, `vy`, `omega`    | what the robot is **currently executing**, after limiting and collision avoidance. Since the acceleration ramp in the watchdog (29.10.), the value rises gradually after a drive command (`RAMP_*` in `config.py`, can be turned off and adjusted under Settings → „Fahren & Motoren“); a stop takes effect immediately.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `pose`                 | estimated position, see Conventions. `gemessen: false` (not measured) means: computed from the commands only, considerably less accurate.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `collision.verfuegbar` | whether a lidar is present that can see obstacles (available)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `collision.blockiert`  | collision avoidance is currently holding back a motion (blocked)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `autonomie`            | autonomous driving and detected obstacles, see "Autonomous driving in detail"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `interaktion`          | interaction mode (hand signals, following), see "Interaction in detail". Missing on older servers.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `stimme`               | voice output: `verfuegbar` (sound comes out), `spricht` (speaking a sentence right now), `text` (last sentence spoken, or `null`). See "Voice in detail". Missing on older servers.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `sprache`              | speech commands: `verfuegbar` (microphone and model ready), `geweckt` (awake: „Robi“ was just said on its own, the next sentence needs no name), `gehoert` (last sentence understood, or `null`), `befehl` (recognized command, for a few seconds, otherwise `null`), `pause` (why the microphone is deliberately closed right now, e.g. „Mapping läuft“; then `verfuegbar` is `false`, otherwise `null`). See "Speech commands in detail". Missing on older servers.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `kamera_neigung`       | Tilt servo of the person camera (new 18.11.), only present when `CAMERA_TILT_ENABLED`: `verfuegbar`, `winkel` (current tilt, degrees, + = up), `ziel` (where it is moving to), `auto`, `min`/`max` (range), `verfolgt` (auto is keeping a person in the frame right now).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `karte`                | Only present when a map exists (new 04.11.): `name` (saved map, `null` for the live map during mapping), `live`, `pose` (pose **in the map frame**, not to be confused with `pose` above in the odometry frame; `null` while unknown), `sicher` (confident; `goto` only works then), `text`, `fahrt` (running or last map-based drive: `art` (kind) `"heim"` (home) / `"ziel"` (goal) / `"zurueck"` (way back, new 05.11.), `ziel` (goal), `rest_m` (remaining distance), `grund` (reason), `wartet` (new 05.11.: „wartet auf Ortung“ while it stands and searches for its pose, otherwise `null`), `vermutet` (new 05.11.: `true` while it follows a guessed path through the unknown, see "Guessed paths")). New 05.11.: `kartieren` (always-on mapping: `aktiv`, `zustand` `"integriert"` (writing) / `"bestaetigt"` (confirming the pose) / `"eingefroren"` (frozen, the map does not change) / `"pausiert"` (paused) / `"start"` (no map yet, founding one at standstill) / `"aus"` (off), `grund` (German reason); `null` when switched off), `mission` (anchor `[x, y, radians]` or `null`), `spur_m` (trail length in m since the mission start, else in total). See "Using the map" under Mapping. |
 
 **`collision`**: on connect and after every change, fields as in
 `state.collision`.
@@ -255,7 +290,11 @@ it only turns.
 **`alert`**: messages for humans.
 
 ```json
-{"type": "alert", "level": "warning", "text": "Hindernis in 0.31 m -- Fahrt gesperrt"}
+{
+  "type": "alert",
+  "level": "warning",
+  "text": "Hindernis in 0.31 m -- Fahrt gesperrt"
+}
 ```
 
 `level` is `"info"`, `"warning"` or `"emergency"`. `emergency` is intended
@@ -295,6 +334,7 @@ is set, `home` no longer drives in a straight line but along a planned path
 to the **map's origin** (where mapping began, or where `set_home` was last
 pressed) -- through doors, into other rooms. The same drive is behind
 `goto`. Differences from the drive without a map:
+
 - speed `NAV_DRIVE_SPEED` (0.25 m/s), turns slowly into the direction of
   travel, at the goal into the requested heading if one was given
 - arrived at `NAV_GOAL_TOLERANCE_M` (0.15 m)
@@ -399,32 +439,44 @@ If OpenCV is installed, the person camera (Logitech C270, see
   "festgefahren": 0,
   "grund": null,
   "hindernisse": [
-    {"art": "Stuhl", "winkel": 31.5, "abstand": 0.84, "breite": 0.41,
-     "x": 0.71, "y": 0.44, "quelle": "Lidar"}
+    {
+      "art": "Stuhl",
+      "winkel": 31.5,
+      "abstand": 0.84,
+      "breite": 0.41,
+      "x": 0.71,
+      "y": 0.44,
+      "quelle": "Lidar"
+    }
   ],
-  "personen": [{"x1": 0.41, "y1": 0.1, "x2": 0.62, "y2": 0.95, "score": 1.2}],
-  "personenerkennung": {"verfuegbar": true, "aktiv": true, "fehler": null,
-                        "kamera": "personen", "letzte_erkennung_vor_s": 0.3}
+  "personen": [{ "x1": 0.41, "y1": 0.1, "x2": 0.62, "y2": 0.95, "score": 1.2 }],
+  "personenerkennung": {
+    "verfuegbar": true,
+    "aktiv": true,
+    "fehler": null,
+    "kamera": "personen",
+    "letzte_erkennung_vor_s": 0.3
+  }
 }
 ```
 
-| Field | Meaning |
-|---|---|
-| `aktiv` | an autonomous drive is running (active) |
-| `verfuegbar` | lidar present, `explore` possible (available) |
-| `modus` | `zufall` (random, `explore`) or `karte` (mapping drive, see [Mapping](#mapping-slam)); `null` when off |
-| `kartierfahrt` | only in mode `karte`: `{"schritt", "text", "randweg_m", "bahnen"}` (step, text, wall-follow distance in m, lanes) |
-| `zustand` | state: `faehrt` (driving), `dreht` (turning), `wartet` (waiting), `wartet auf Mensch` (waiting for person), `wartet auf Lidar` (waiting for lidar), `befreit sich` (unsticking, new 03.11.), `hochgehoben` (lifted, new 03.11., F2), `kartiert` (mapping); `null` when off |
-| `text` | explanation for display |
-| `frei_vorn` | free distance in the corridor in front of the robot (m) |
-| `dauer_s` | duration of the current drive (s) |
-| `ausweichen`, `menschen`, `befreien` | counters for this drive: avoidance maneuvers, people encountered, unstick attempts (`befreien` new 03.11., missing on older servers) |
-| `tiefe` | points in the obstacle memory (depth camera and phantoms); `null` without depth camera (new 04.11.) |
-| `festgefahren` | how often the progress watch detected being stuck during this drive (new 04.11.) |
-| `grund` | why the last drive ended (reason) |
-| `hindernisse` | the 12 nearest obstacles, nearest first. `art` (kind), `winkel` in degrees as for the lidar, `abstand` (distance, m), `breite` (width, m), `x`/`y` center in robot coordinates (m), `quelle` (source) |
-| `personen` | person boxes in the person camera image, relative to the image size (0..1) |
-| `personenerkennung` | whether camera person detection works; `fehler` (error) e.g. „opencv fehlt“; `kamera`: which camera image the boxes refer to (name as in `/cameras`) |
+| Field                                | Meaning                                                                                                                                                                                                                                                                    |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `aktiv`                              | an autonomous drive is running (active)                                                                                                                                                                                                                                    |
+| `verfuegbar`                         | lidar present, `explore` possible (available)                                                                                                                                                                                                                              |
+| `modus`                              | `zufall` (random, `explore`) or `karte` (mapping drive, see [Mapping](#mapping-slam)); `null` when off                                                                                                                                                                     |
+| `kartierfahrt`                       | only in mode `karte`: `{"schritt", "text", "randweg_m", "bahnen"}` (step, text, wall-follow distance in m, lanes)                                                                                                                                                          |
+| `zustand`                            | state: `faehrt` (driving), `dreht` (turning), `wartet` (waiting), `wartet auf Mensch` (waiting for person), `wartet auf Lidar` (waiting for lidar), `befreit sich` (unsticking, new 03.11.), `hochgehoben` (lifted, new 03.11., F2), `kartiert` (mapping); `null` when off |
+| `text`                               | explanation for display                                                                                                                                                                                                                                                    |
+| `frei_vorn`                          | free distance in the corridor in front of the robot (m)                                                                                                                                                                                                                    |
+| `dauer_s`                            | duration of the current drive (s)                                                                                                                                                                                                                                          |
+| `ausweichen`, `menschen`, `befreien` | counters for this drive: avoidance maneuvers, people encountered, unstick attempts (`befreien` new 03.11., missing on older servers)                                                                                                                                       |
+| `tiefe`                              | points in the obstacle memory (depth camera and phantoms); `null` without depth camera (new 04.11.)                                                                                                                                                                        |
+| `festgefahren`                       | how often the progress watch detected being stuck during this drive (new 04.11.)                                                                                                                                                                                           |
+| `grund`                              | why the last drive ended (reason)                                                                                                                                                                                                                                          |
+| `hindernisse`                        | the 12 nearest obstacles, nearest first. `art` (kind), `winkel` in degrees as for the lidar, `abstand` (distance, m), `breite` (width, m), `x`/`y` center in robot coordinates (m), `quelle` (source)                                                                      |
+| `personen`                           | person boxes in the person camera image, relative to the image size (0..1)                                                                                                                                                                                                 |
+| `personenerkennung`                  | whether camera person detection works; `fehler` (error) e.g. „opencv fehlt“; `kamera`: which camera image the boxes refer to (name as in `/cameras`)                                                                                                                       |
 
 ### Interaction in detail
 
@@ -441,12 +493,12 @@ finished. Commands during this time (follow, stop …) apply afterwards.
 Reason: pose detection, speaking and motors at the same time made the USB
 power supply collapse.
 
-| Hand signal | How | Mode afterwards |
-|---|---|---|
-| Follow | hold one arm above your head (1 s) | `folgen` (following): stays `FOLLOW_DISTANCE_M` (1.0 m) behind the person |
-| Stop | hold both hands above your shoulders (0.4 s) | `bereit` (ready): stops immediately |
-| Come here | wave up and down in front of your body | `herkommen` (come here): approaches to `COME_HERE_DISTANCE_M` (0.7 m), then `bereit` |
-| Go away | swipe your hand sideways | `weggehen` (go away): `GO_AWAY_DISTANCE_M` (1.0 m) backward, then `bereit` |
+| Hand signal | How                                          | Mode afterwards                                                                      |
+| ----------- | -------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Follow      | hold one arm above your head (1 s)           | `folgen` (following): stays `FOLLOW_DISTANCE_M` (1.0 m) behind the person            |
+| Stop        | hold both hands above your shoulders (0.4 s) | `bereit` (ready): stops immediately                                                  |
+| Come here   | wave up and down in front of your body       | `herkommen` (come here): approaches to `COME_HERE_DISTANCE_M` (0.7 m), then `bereit` |
+| Go away     | swipe your hand sideways                     | `weggehen` (go away): `GO_AWAY_DISTANCE_M` (1.0 m) backward, then `bereit`           |
 
 - The direction to the person comes from the camera, the distance from the
   lidar (the person's cluster in that direction; a chair in front does not
@@ -474,27 +526,27 @@ power supply collapse.
   "verfuegbar": true,
   "modus": "folgen",
   "text": "hält Abstand (1.20 m)",
-  "person": {"winkel": -8.5, "abstand": 1.2},
+  "person": { "winkel": -8.5, "abstand": 1.2 },
   "personen": 1,
   "geste": "folgen",
   "grund": null,
   "pausiert": false,
-  "ziel": {"zustand": "following", "id": 3, "sicherheit": 1.0, "grund": null}
+  "ziel": { "zustand": "following", "id": 3, "sicherheit": 1.0, "grund": null }
 }
 ```
 
-| Field | Meaning |
-|---|---|
-| `aktiv` | interaction mode is on (active) |
-| `verfuegbar` | lidar and pose detection present, `interaction_start` possible (available) |
-| `modus` | `bereit` (ready), `folgen` (following), `herkommen` (coming here), `weggehen` (going away), `sucht` (searching); `null` when off |
-| `text` | explanation for display; while following, coming here and going away, new (03.11., F3) e.g. „umfährt Hindernis (links, 0.62 m)“ (detouring around obstacle) or „hochgehoben -- wartet, bis er wieder steht“ (lifted, waiting until it stands again) |
-| `person` | tracked person: `winkel` in degrees as for the lidar, `abstand` (distance) in m (`null` if the lidar sees nothing there); `null` without a person |
-| `personen` | how many people the camera currently sees |
-| `geste` | last recognized gesture (`folgen`, `stopp`, `herkommen`, `weggehen`), for a few seconds, otherwise `null` |
-| `grund` | why the mode last ended (reason); „hochgehoben -- angehalten“ (new 03.11., F3) if it was lifted while driving -- afterwards `bereit` and the announcement „Ich wurde hochgehoben. Ich bleibe stehen.“ |
-| `pausiert` | `true` after `follow_pause` (paused): stands still, mode and target are kept. Any mode change (including the stop gesture) ends the pause. Missing on older servers. |
-| `ziel` | whom it follows (target lock 03.11., simplified 04.11.): `zustand` (state) is `idle`, `acquiring_target`, `following`, `target_temporarily_lost` or `searching_for_target` (`safe_stop` only from servers before 04.11.). `id` is the internal track ID (changes when the person was briefly out of view; do not display it), `sicherheit` (confidence) is 1 while following, `grund` says why it stopped (e.g. „Person nicht wiedergefunden“). Details in `docs/interaction.md`. Missing on older servers. |
+| Field        | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `aktiv`      | interaction mode is on (active)                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `verfuegbar` | lidar and pose detection present, `interaction_start` possible (available)                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `modus`      | `bereit` (ready), `folgen` (following), `herkommen` (coming here), `weggehen` (going away), `sucht` (searching); `null` when off                                                                                                                                                                                                                                                                                                                                                                            |
+| `text`       | explanation for display; while following, coming here and going away, new (03.11., F3) e.g. „umfährt Hindernis (links, 0.62 m)“ (detouring around obstacle) or „hochgehoben -- wartet, bis er wieder steht“ (lifted, waiting until it stands again)                                                                                                                                                                                                                                                         |
+| `person`     | tracked person: `winkel` in degrees as for the lidar, `abstand` (distance) in m (`null` if the lidar sees nothing there); `null` without a person                                                                                                                                                                                                                                                                                                                                                           |
+| `personen`   | how many people the camera currently sees                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `geste`      | last recognized gesture (`folgen`, `stopp`, `herkommen`, `weggehen`), for a few seconds, otherwise `null`                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `grund`      | why the mode last ended (reason); „hochgehoben -- angehalten“ (new 03.11., F3) if it was lifted while driving -- afterwards `bereit` and the announcement „Ich wurde hochgehoben. Ich bleibe stehen.“                                                                                                                                                                                                                                                                                                       |
+| `pausiert`   | `true` after `follow_pause` (paused): stands still, mode and target are kept. Any mode change (including the stop gesture) ends the pause. Missing on older servers.                                                                                                                                                                                                                                                                                                                                        |
+| `ziel`       | whom it follows (target lock 03.11., simplified 04.11.): `zustand` (state) is `idle`, `acquiring_target`, `following`, `target_temporarily_lost` or `searching_for_target` (`safe_stop` only from servers before 04.11.). `id` is the internal track ID (changes when the person was briefly out of view; do not display it), `sicherheit` (confidence) is 1 while following, `grund` says why it stopped (e.g. „Person nicht wiedergefunden“). Details in `docs/interaction.md`. Missing on older servers. |
 
 ### Camera tilt in detail
 
@@ -586,20 +638,20 @@ after 1 s with „Ja?“ (`SPEECH_WAKE_REPLY`), unless a command arrived by
 then. The 5 s for the command only start counting down once it has
 finished speaking.
 
-| Command | Examples (German phrases) | Acts like |
-|---|---|---|
-| `folgen` | „Robi, folgen“, „Robi, folge mir“, „Robi, komm mit“ | `follow` |
-| `herkommen` | „Robi, komm her“ | `interaction_start`, then mode `herkommen` |
-| `weggehen` | „Robi, geh weg“, „Robi, zurück“ | `interaction_start`, then mode `weggehen` |
-| `stopp` | „Stopp“, „Halt“ | during interaction: mode `bereit` (interaction stays on); otherwise `stop` |
-| `nach_hause` | „Robi, fahr nach Hause“ | `home` |
-| `erkunden` | „Robi, erkunde“ | `explore` |
-| `musik_aus` | „Robi, Musik aus“, „Robi, Ruhe“ | `POST /mukke/stop` |
-| `ladada` | „La da da“ (without wake word) | `POST /mukke/play` with `SPEECH_LADADA_URL` |
-| `beatbox` | „Robi, Beatbox“ | `POST /mukke/play` with `SPEECH_BEATBOX_URL` |
-| `start` | „Hallo Robi“ | `interaction_start` |
-| `aus` | „Robi, gute Nacht“ | `interaction_stop`, cancel homing/explorer |
-| `manoever` | „Robi, fahr zwei Meter vor“, „Robi, einen halben Meter nach links“, „Robi, dreh dich um neunzig Grad nach rechts“, „Robi, dreh dich um“ (180°) | `move` or `turn`; it announces what it is doing |
+| Command      | Examples (German phrases)                                                                                                                      | Acts like                                                                  |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `folgen`     | „Robi, folgen“, „Robi, folge mir“, „Robi, komm mit“                                                                                            | `follow`                                                                   |
+| `herkommen`  | „Robi, komm her“                                                                                                                               | `interaction_start`, then mode `herkommen`                                 |
+| `weggehen`   | „Robi, geh weg“, „Robi, zurück“                                                                                                                | `interaction_start`, then mode `weggehen`                                  |
+| `stopp`      | „Stopp“, „Halt“                                                                                                                                | during interaction: mode `bereit` (interaction stays on); otherwise `stop` |
+| `nach_hause` | „Robi, fahr nach Hause“                                                                                                                        | `home`                                                                     |
+| `erkunden`   | „Robi, erkunde“                                                                                                                                | `explore`                                                                  |
+| `musik_aus`  | „Robi, Musik aus“, „Robi, Ruhe“                                                                                                                | `POST /mukke/stop`                                                         |
+| `ladada`     | „La da da“ (without wake word)                                                                                                                 | `POST /mukke/play` with `SPEECH_LADADA_URL`                                |
+| `beatbox`    | „Robi, Beatbox“                                                                                                                                | `POST /mukke/play` with `SPEECH_BEATBOX_URL`                               |
+| `start`      | „Hallo Robi“                                                                                                                                   | `interaction_start`                                                        |
+| `aus`        | „Robi, gute Nacht“                                                                                                                             | `interaction_stop`, cancel homing/explorer                                 |
+| `manoever`   | „Robi, fahr zwei Meter vor“, „Robi, einen halben Meter nach links“, „Robi, dreh dich um neunzig Grad nach rechts“, „Robi, dreh dich um“ (180°) | `move` or `turn`; it announces what it is doing                            |
 
 - Commands are executed through the same paths as the app's commands, with
   the same checks and messages. If a command is refused, the warning goes to
@@ -618,25 +670,25 @@ finished speaking.
 The robot operates all cameras it finds, each with its own image. Each one
 has a name:
 
-| Name | Camera | Used for |
-|---|---|---|
-| `orientierung` | Orbbec, color image | Orientation, driving. **Default camera.** |
-| `personen` | Logitech C270 | Person detection |
-| `usb1`, `usb2`, … | further USB cameras | nothing fixed |
-| `csi` | camera on the ribbon cable, if present | nothing fixed |
+| Name              | Camera                                 | Used for                                  |
+| ----------------- | -------------------------------------- | ----------------------------------------- |
+| `orientierung`    | Orbbec, color image                    | Orientation, driving. **Default camera.** |
+| `personen`        | Logitech C270                          | Person detection                          |
+| `usb1`, `usb2`, … | further USB cameras                    | nothing fixed                             |
+| `csi`             | camera on the ribbon cable, if present | nothing fixed                             |
 
 `orientierung` and `personen` are always listed, even if the camera is
 currently missing (then `geoeffnet: false`, not opened). The robot keeps
 looking for them in the background. Assignment is by USB ID
 (`config.CAMERA_ROLES`).
 
-| Endpoint | Returns |
-|---|---|
-| `GET /cameras` | all cameras with state and addresses, see below |
-| `GET /camera/<name>/stream` | MJPEG stream (`multipart/x-mixed-replace`) of this camera. Usable directly in `<img src>`, up to `CAMERA_FPS` frames/s (default 15, at most 30, adjustable on the settings page). |
-| `GET /camera/<name>/snapshot` | a single frame (usually `image/jpeg`). `503` as long as none is available yet. Good for image processing: just fetch at the desired rate. |
-| `GET /camera/<name>/status` | diagnostics for this camera, see below |
-| `GET /camera/stream`, `/camera/snapshot`, `/camera/status` | the same for the default camera (`config.CAMERA_DEFAULT`) |
+| Endpoint                                                   | Returns                                                                                                                                                                           |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /cameras`                                             | all cameras with state and addresses, see below                                                                                                                                   |
+| `GET /camera/<name>/stream`                                | MJPEG stream (`multipart/x-mixed-replace`) of this camera. Usable directly in `<img src>`, up to `CAMERA_FPS` frames/s (default 15, at most 30, adjustable on the settings page). |
+| `GET /camera/<name>/snapshot`                              | a single frame (usually `image/jpeg`). `503` as long as none is available yet. Good for image processing: just fetch at the desired rate.                                         |
+| `GET /camera/<name>/status`                                | diagnostics for this camera, see below                                                                                                                                            |
+| `GET /camera/stream`, `/camera/snapshot`, `/camera/status` | the same for the default camera (`config.CAMERA_DEFAULT`)                                                                                                                         |
 
 An unknown name returns `404`. Default resolution 640×480. If the camera is
 disabled (`CAMERA_ENABLED = False`), `stream` and `snapshot` respond with
@@ -650,16 +702,29 @@ disabled (`CAMERA_ENABLED = False`), `stream` and `snapshot` respond with
   "standard": "orientierung",
   "personen": "personen",
   "tiefe": [
-    {"name": "tiefe", "kamera": "Tiefe", "basis": "/tiefe"},
-    {"name": "tiefe-ueber", "kamera": "Tiefe + Farbbild", "basis": "/tiefe/ueberlagert"}
+    { "name": "tiefe", "kamera": "Tiefe", "basis": "/tiefe" },
+    {
+      "name": "tiefe-ueber",
+      "kamera": "Tiefe + Farbbild",
+      "basis": "/tiefe/ueberlagert"
+    }
   ],
   "kameras": [
-    {"name": "orientierung", "kamera": "Orbbec (Farbbild)", "geoeffnet": true,
-     "stream": "/camera/orientierung/stream",
-     "snapshot": "/camera/orientierung/snapshot", "...": "wie /camera/status"},
-    {"name": "personen", "kamera": "Logitech C270", "geoeffnet": false,
-     "letzter_fehler": "Öffnen fehlgeschlagen: nicht angeschlossen (USB 046d)",
-     "...": "..."}
+    {
+      "name": "orientierung",
+      "kamera": "Orbbec (Farbbild)",
+      "geoeffnet": true,
+      "stream": "/camera/orientierung/stream",
+      "snapshot": "/camera/orientierung/snapshot",
+      "...": "wie /camera/status"
+    },
+    {
+      "name": "personen",
+      "kamera": "Logitech C270",
+      "geoeffnet": false,
+      "letzter_fehler": "Öffnen fehlgeschlagen: nicht angeschlossen (USB 046d)",
+      "...": "..."
+    }
   ]
 }
 ```
@@ -673,12 +738,20 @@ Image at `<basis>/stream` or `<basis>/snapshot`, see [Depth camera](#depth-camer
 
 ```json
 {
-  "kamera": "Orbbec (Farbbild)", "geoeffnet": true, "thread_laeuft": true,
-  "bilder_gesamt": 5321, "letztes_bild_vor_s": 0.1,
-  "bildgroesse_bytes": 41230, "format": "image/jpeg",
-  "letzter_fehler": null, "neu_geoeffnet": 0,
-  "name": "orientierung", "geraet": "/dev/video0", "fov_deg": 66.0,
-  "fps_ist": 14.8, "fps_soll": 15
+  "kamera": "Orbbec (Farbbild)",
+  "geoeffnet": true,
+  "thread_laeuft": true,
+  "bilder_gesamt": 5321,
+  "letztes_bild_vor_s": 0.1,
+  "bildgroesse_bytes": 41230,
+  "format": "image/jpeg",
+  "letzter_fehler": null,
+  "neu_geoeffnet": 0,
+  "name": "orientierung",
+  "geraet": "/dev/video0",
+  "fov_deg": 66.0,
+  "fps_ist": 14.8,
+  "fps_soll": 15
 }
 ```
 
@@ -696,7 +769,14 @@ Other fields: `thread_laeuft` (capture thread running), `bilder_gesamt`
 **`GET /lidar/scan`**: the last complete revolution.
 
 ```json
-{"punkte": [[0.0, 1.52], [1.1, 1.53], [358.9, 1.51]], "alter_s": 0.12}
+{
+  "punkte": [
+    [0.0, 1.52],
+    [1.1, 1.53],
+    [358.9, 1.51]
+  ],
+  "alter_s": 0.12
+}
 ```
 
 - `punkte` (points): list of `[angle_deg, distance_m]`, conventions see
@@ -718,13 +798,22 @@ xy = [(m * math.cos(math.radians(g)), m * math.sin(math.radians(g))) for g, m in
 
 ```json
 {
-  "lidar": "RPLIDAR A1", "geoeffnet": true, "thread_laeuft": true,
-  "umdrehungen": 1204, "punkte_letzte_runde": 312, "letzte_runde_vor_s": 0.1,
-  "letzter_fehler": null, "neu_verbunden": 0,
+  "lidar": "RPLIDAR A1",
+  "geoeffnet": true,
+  "thread_laeuft": true,
+  "umdrehungen": 1204,
+  "punkte_letzte_runde": 312,
+  "letzte_runde_vor_s": 0.1,
+  "letzter_fehler": null,
+  "neu_verbunden": 0,
   "ortung": {
-    "lidar_vorhanden": true, "referenz_aufgenommen": true, "referenzpunkte": 318,
-    "korrekturen": 85, "verworfen": 3,
-    "letztes_residuum_m": 0.031, "letzte_korrektur_m": 0.004
+    "lidar_vorhanden": true,
+    "referenz_aufgenommen": true,
+    "referenzpunkte": 318,
+    "korrekturen": 85,
+    "verworfen": 3,
+    "letztes_residuum_m": 0.031,
+    "letzte_korrektur_m": 0.004
   }
 }
 ```
@@ -743,13 +832,21 @@ integrated via OpenNI2; for setup see [hardware.md](hardware.md#depth-camera-orb
 ```json
 {
   "kamera": {
-    "verfuegbar": true, "verbunden": true, "aktiv_fuer": ["erkunder"],
-    "bilder_pro_s": 7.6, "hindernisse": 12, "frei_zellen": 230, "naechstes": [0.71, 0.12],
-    "boden_erkannt": true, "kamera_hoehe_m": 0.214, "neigung_grad": -1.5,
-    "bildwinkel_grad": 57.9, "fehler": null
+    "verfuegbar": true,
+    "verbunden": true,
+    "aktiv_fuer": ["erkunder"],
+    "bilder_pro_s": 7.6,
+    "hindernisse": 12,
+    "frei_zellen": 230,
+    "naechstes": [0.71, 0.12],
+    "boden_erkannt": true,
+    "kamera_hoehe_m": 0.214,
+    "neigung_grad": -1.5,
+    "bildwinkel_grad": 57.9,
+    "fehler": null
   },
   "hinweis": null,
-  "gedaechtnis": {"punkte": 14, "phantome": 0, "rahmen": "lidar"},
+  "gedaechtnis": { "punkte": 14, "phantome": 0, "rahmen": "lidar" },
   "fortschritt_aktiv": true
 }
 ```
@@ -770,12 +867,12 @@ detection and mounting pose while standing still.
 
 **Viewing the depth image** (new 04.11., needs OpenCV on the Pi):
 
-| Endpoint | Returns |
-|---|---|
-| `GET /tiefe/stream` | MJPEG: depth image in color |
-| `GET /tiefe/snapshot` | a single frame of it (JPEG) |
-| `GET /tiefe/ueberlagert/stream` | the same, semi-transparent over the Orbbec's color image (`DEPTH_OVERLAY_CAMERA`) |
-| `GET /tiefe/ueberlagert/snapshot` | a single frame of it |
+| Endpoint                          | Returns                                                                           |
+| --------------------------------- | --------------------------------------------------------------------------------- |
+| `GET /tiefe/stream`               | MJPEG: depth image in color                                                       |
+| `GET /tiefe/snapshot`             | a single frame of it (JPEG)                                                       |
+| `GET /tiefe/ueberlagert/stream`   | the same, semi-transparent over the Orbbec's color image (`DEPTH_OVERLAY_CAMERA`) |
+| `GET /tiefe/ueberlagert/snapshot` | a single frame of it                                                              |
 
 Red is near, blue far (`DEPTH_VIEW_NEAR_M` to `DEPTH_VIEW_FAR_M`). Black
 means no measurement: closer than ~0.6 m, too far, reflective. Magenta
@@ -789,8 +886,8 @@ camera switcher, but not under „Alle“ (all).
 
 ### Autonomous driving
 
-| Endpoint | Returns |
-|---|---|
+| Endpoint                | Returns                                                       |
+| ----------------------- | ------------------------------------------------------------- |
 | `GET /autonomie/status` | the same as `state.autonomie`, for checking without WebSocket |
 
 ### Settings
@@ -800,22 +897,38 @@ frame rate, lidar, autonomy …). In the web app the gear icon at the top
 right opens them as a dialog; as a separate page they are available at
 `/einstellungen`.
 
-| Endpoint | Returns |
-|---|---|
-| `GET /settings` | all settings grouped in blocks, with value, default and limits |
-| `POST /settings` | Body `{"CAMERA_FPS": 20, "EXPLORE_SPEED": 0.15}`: sets the values. All or nothing: if one is invalid, you get `400` with `{"fehler": "…"}` (error), and nothing is changed. |
-| `POST /settings/reset` | Body `{"keys": ["CAMERA_FPS"]}` for individual values, `{}` for all: back to the values from `config.py` |
+| Endpoint               | Returns                                                                                                                                                                     |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /settings`        | all settings grouped in blocks, with value, default and limits                                                                                                              |
+| `POST /settings`       | Body `{"CAMERA_FPS": 20, "EXPLORE_SPEED": 0.15}`: sets the values. All or nothing: if one is invalid, you get `400` with `{"fehler": "…"}` (error), and nothing is changed. |
+| `POST /settings/reset` | Body `{"keys": ["CAMERA_FPS"]}` for individual values, `{}` for all: back to the values from `config.py`                                                                    |
 
 `GET /settings`:
 
 ```json
 {
   "gruppen": [
-    {"id": "kamera", "titel": "Kameras", "text": "…", "einstellungen": [
-      {"key": "CAMERA_FPS", "label": "Bilder pro Sekunde", "typ": "int",
-       "wert": 15, "standard": 15, "min": 1, "max": 30, "schritt": 1,
-       "einheit": "fps", "optionen": null, "hilfe": "…", "neustart": false}
-    ]}
+    {
+      "id": "kamera",
+      "titel": "Kameras",
+      "text": "…",
+      "einstellungen": [
+        {
+          "key": "CAMERA_FPS",
+          "label": "Bilder pro Sekunde",
+          "typ": "int",
+          "wert": 15,
+          "standard": 15,
+          "min": 1,
+          "max": 30,
+          "schritt": 1,
+          "einheit": "fps",
+          "optionen": null,
+          "hilfe": "…",
+          "neustart": false
+        }
+      ]
+    }
   ]
 }
 ```
@@ -842,10 +955,10 @@ only allows `GET` for foreign pages.
 
 ### Interaction
 
-| Endpoint | Returns |
-|---|---|
-| `GET /interaktion/status` | the same as `state.interaktion`, plus `pose`: `verfuegbar` (available), `simuliert` (simulated), `aktiv` (active), `fehler` (error), `fps`, `bilder` (frames), `letzte_erkennung_vor_s` (seconds since last detection), `kamera` (which camera image the keypoints refer to, name as in `/cameras`) |
-| `GET /interaktion/pose` | `personen`: detected people, largest first, each with `box` [x1, y1, x2, y2] and `kp` (17 × [x, y, confidence], COCO order), relative to the image size (0..1), plus `score`, `winkel` (angle), `id` (internal track ID, `null` while the tracker does not know the person yet; do not display it as a person number, it changes after every gap) and `ziel` (`true` for the person it follows); `skelett`: point pairs to connect (skeleton). Empty while the mode is off. |
+| Endpoint                  | Returns                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /interaktion/status` | the same as `state.interaktion`, plus `pose`: `verfuegbar` (available), `simuliert` (simulated), `aktiv` (active), `fehler` (error), `fps`, `bilder` (frames), `letzte_erkennung_vor_s` (seconds since last detection), `kamera` (which camera image the keypoints refer to, name as in `/cameras`)                                                                                                                                                                         |
+| `GET /interaktion/pose`   | `personen`: detected people, largest first, each with `box` [x1, y1, x2, y2] and `kp` (17 × [x, y, confidence], COCO order), relative to the image size (0..1), plus `score`, `winkel` (angle), `id` (internal track ID, `null` while the tracker does not know the person yet; do not display it as a person number, it changes after every gap) and `ziel` (`true` for the person it follows); `skelett`: point pairs to connect (skeleton). Empty while the mode is off. |
 
 ### Drive recorder
 
@@ -859,11 +972,11 @@ pose (20 Hz) and state changes (explorer, interaction, homing). Only
 own computer with `scripts/replay.py` and test new avoidance logic against
 them.
 
-| Endpoint | Returns |
-|---|---|
-| `GET /aufzeichnung/status` | `aktiv` (active), `puffer_s` (buffer length), `ereignisse` (events), `scans`, `dauer_s` (what is currently in the buffer), `ordner` (folder), `gespeichert` (saved since start), `letzte_datei` (last file). When disabled only `{"aktiv": false}`. |
-| `GET /aufzeichnung/liste` | `dateien` (files): each with `name`, `bytes`, `zeit` (time), newest first |
-| `GET /aufzeichnung/datei/<name>` | the file for download (`application/gzip`). Unknown or invalid name `404`. |
+| Endpoint                         | Returns                                                                                                                                                                                                                                             |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /aufzeichnung/status`       | `aktiv` (active), `puffer_s` (buffer length), `ereignisse` (events), `scans`, `dauer_s` (what is currently in the buffer), `ordner` (folder), `gespeichert` (saved since start), `letzte_datei` (last file). When disabled only `{"aktiv": false}`. |
+| `GET /aufzeichnung/liste`        | `dateien` (files): each with `name`, `bytes`, `zeit` (time), newest first                                                                                                                                                                           |
+| `GET /aufzeichnung/datei/<name>` | the file for download (`application/gzip`). Unknown or invalid name `404`.                                                                                                                                                                          |
 
 File format: gzip-compressed JSON Lines. The first line is the header
 (`version`, `erstellt` (created), `notiz` (note), `dauer_s`, `antrieb`
@@ -871,13 +984,13 @@ File format: gzip-compressed JSON Lines. The first line is the header
 followed by one event per line with `t` (seconds since the first event) and
 `art` (kind):
 
-| `art` | Fields |
-|---|---|
-| `scan` | `zeit` (end of revolution), `dauer` (duration), `w` (angle in tenths of a degree), `r` (distance in mm) |
-| `befehl` | command: `quelle` (source), `soll` (requested) and `safe` (each `[vx, vy, omega]`) |
-| `stop` | – (hard stop via the watchdog) |
-| `odo` | `v` (board speed), `pose` (`[x, y, theta_grad]`, theta in degrees), `ist` (current command), `misst` (whether `v` is measured rather than estimated) |
-| `zustand` | state: `erkunder` (explorer), `erkunder_text`, `erkunder_grund`, `interaktion`, `heimfahrt` (homing) – only on change |
+| `art`     | Fields                                                                                                                                               |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scan`    | `zeit` (end of revolution), `dauer` (duration), `w` (angle in tenths of a degree), `r` (distance in mm)                                              |
+| `befehl`  | command: `quelle` (source), `soll` (requested) and `safe` (each `[vx, vy, omega]`)                                                                   |
+| `stop`    | – (hard stop via the watchdog)                                                                                                                       |
+| `odo`     | `v` (board speed), `pose` (`[x, y, theta_grad]`, theta in degrees), `ist` (current command), `misst` (whether `v` is measured rather than estimated) |
+| `zustand` | state: `erkunder` (explorer), `erkunder_text`, `erkunder_grund`, `interaktion`, `heimfahrt` (homing) – only on change                                |
 
 ```bash
 curl -O http://<robot>:8000/aufzeichnung/datei/fahrt_20261103_141500.jsonl.gz
@@ -891,11 +1004,11 @@ USB overcurrent and disconnects, undervoltage, temperature, device
 failures, errors in the log) and turns it into problems with an explanation
 and steps to take. The page for it is `/diagnose`.
 
-| Endpoint | Returns |
-|---|---|
-| `GET /diagnose/status` | overall state, problems, readings, devices, timeline, battery history (see below) |
+| Endpoint                         | Returns                                                                                                                                                                                                                                                       |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /diagnose/status`           | overall state, problems, readings, devices, timeline, battery history (see below)                                                                                                                                                                             |
 | `GET /diagnose/protokoll?nach=N` | server log lines with number > `N`: `{"zeilen": [{"id", "zeit", "stufe", "quelle", "text"}], "letzte_id"}` (lines with id, time, level, source, text). `letzte_id` is always the server's latest number; if it is smaller than `N`, the server was restarted. |
-| `POST /diagnose/quittieren` | Body `{"id": "akku_schwach"}` or `{"alle": true}`: mark as seen (acknowledge). Without either, `400`. |
+| `POST /diagnose/quittieren`      | Body `{"id": "akku_schwach"}` or `{"alle": true}`: mark as seen (acknowledge). Without either, `400`.                                                                                                                                                         |
 
 `GET /diagnose/status` (abridged):
 
@@ -903,20 +1016,47 @@ and steps to take. The page for it is `/diagnose`.
 {
   "zeit": 1793260800.0,
   "simulation": false,
-  "gesamt": {"stufe": "warnung", "text": "Läuft, aber etwas stimmt nicht."},
+  "gesamt": { "stufe": "warnung", "text": "Läuft, aber etwas stimmt nicht." },
   "probleme": [
-    {"id": "akku_schwach", "schwere": "warnung", "titel": "Akku schwach (11.0 V)",
-     "was": "…", "tun": ["Bald laden.", "…"], "seit": 1793260700.0,
-     "zuletzt": 1793260800.0, "anzahl": 1, "besteht": true, "zustand": true,
-     "quittiert": false, "vor_s": 0.0}
+    {
+      "id": "akku_schwach",
+      "schwere": "warnung",
+      "titel": "Akku schwach (11.0 V)",
+      "was": "…",
+      "tun": ["Bald laden.", "…"],
+      "seit": 1793260700.0,
+      "zuletzt": 1793260800.0,
+      "anzahl": 1,
+      "besteht": true,
+      "zustand": true,
+      "quittiert": false,
+      "vor_s": 0.0
+    }
   ],
-  "messwerte": {"akku_v": 11.0, "akku_prozent": 23, "temp_c": 61.2, "…": "…"},
-  "geraete": [{"name": "Lidar", "ok": true, "text": "7.6 Hz", "neu": 0}],
-  "ereignisse": [{"id": 3, "zeit": 1793260790.0, "art": "spannung",
-                  "schwere": "warnung", "text": "Spannungseinbruch: 12.1 V → 11.3 V (beim Fahren)"}],
+  "messwerte": { "akku_v": 11.0, "akku_prozent": 23, "temp_c": 61.2, "…": "…" },
+  "geraete": [{ "name": "Lidar", "ok": true, "text": "7.6 Hz", "neu": 0 }],
+  "ereignisse": [
+    {
+      "id": 3,
+      "zeit": 1793260790.0,
+      "art": "spannung",
+      "schwere": "warnung",
+      "text": "Spannungseinbruch: 12.1 V → 11.3 V (beim Fahren)"
+    }
+  ],
   "akku_verlauf": [[1793260700.0, 11.4]],
-  "schwellen": {"akku_warn_v": 11.1, "akku_kritisch_v": 10.5, "temp_warn_c": 75.0, "cpu_max_mhz": 2000},
-  "quellen": {"kernel_log": "ok", "usb_zaehler": true, "vcgencmd": true, "akku": true}
+  "schwellen": {
+    "akku_warn_v": 11.1,
+    "akku_kritisch_v": 10.5,
+    "temp_warn_c": 75.0,
+    "cpu_max_mhz": 2000
+  },
+  "quellen": {
+    "kernel_log": "ok",
+    "usb_zaehler": true,
+    "vcgencmd": true,
+    "akku": true
+  }
 }
 ```
 
@@ -932,7 +1072,7 @@ and steps to take. The page for it is `/diagnose`.
 - `zustand: true`: a condition (battery, lidar gone …); `besteht` says
   whether it currently applies. `zustand: false`: a one-off incident (USB
   overcurrent), visible for `PROBLEM_WINDOW_S` seconds.
-- Acknowledged lasts until the next *new* occurrence.
+- Acknowledged lasts until the next _new_ occurrence.
 - `quellen.kernel_log`: `ok`, `keine Berechtigung` (no permission: add the
   user to the `systemd-journal` group), `nicht vorhanden` (not present:
   Windows, simulation) or `Fehler beim Lesen` (read error).
@@ -957,19 +1097,76 @@ and steps to take. The page for it is `/diagnose`.
     root port, new ones since startup and rate per minute. From
     `USB_STORM_PER_MIN` on, the page reports a persistent USB overload.
 
+### Telegram
+
+`POST /telegram/send` sends a message from the Pi to its one configured
+Telegram chat. Body: `{"text": "Hallo", "markdown": false}`. Set
+`markdown` to `true` for ordinary Markdown; it is converted to Telegram
+message entities. The browser's Telegram dialog accepts typed text or loads
+a Markdown file into the editor before sending. Maximum: 4096 UTF-16 code
+units. Success is `{"ok": true}`; invalid input, missing configuration or
+delivery errors return HTTP 400 with `{"fehler": "..."}`. Requests must
+use `Content-Type: application/json`, otherwise the server returns 415.
+
+Setup on the Pi:
+
+1. Create a bot with BotFather and start a private chat with it (or add it
+   to the desired group). Obtain that chat's ID using Telegram's Bot API.
+2. Install the project dependencies, including `telegramify-markdown`, with
+   `robot/.venv/bin/pip install -e robot`.
+3. Copy `robot/telegram-secrets.example.json` to
+   `robot/telegram-secrets.json` **on the Pi** and fill in `bot_token` and
+   `chat_id`. Restrict access with `chmod 600 robot/telegram-secrets.json`.
+   This file is Git-ignored; transfer it securely or create it directly on
+   the Pi, never commit it. The environment variables `TELEGRAM_BOT_TOKEN`
+   and `TELEGRAM_CHAT_ID` override the corresponding file values.
+4. Restart the server. It needs internet access to reach Telegram.
+
+For a private chat, send the bot a message first. To find the chat ID,
+temporarily fill in the token in the Pi's secrets file, then run:
+
+```bash
+robot/.venv/bin/python - <<'PY'
+import json
+from urllib.request import urlopen
+
+with open("robot/telegram-secrets.json", encoding="utf-8") as source:
+  token = json.load(source)["bot_token"]
+try:
+  with urlopen(f"https://api.telegram.org/bot{token}/getUpdates", timeout=5) as response:
+    updates = json.load(response)["result"]
+  for update in updates:
+    message = update.get("message") or update.get("channel_post") or {}
+    if "chat" in message:
+      print(message["chat"]["id"])
+except Exception:
+  print("Could not retrieve updates; check the token and internet connection")
+PY
+```
+
+Enter the appropriate ID as `chat_id`; do not share the token. `getUpdates`
+requires that no webhook is configured for the bot.
+
+Other Python code may call `rosmaster_assist.telegram.send_message(text,
+markdown=False)`; callers must handle `TelegramError` and run it outside
+the event loop. This does not automatically connect any robot event to
+Telegram. Telegram delivery can fail and must not be the only emergency
+notification. The server has no authentication: anyone with network access
+can send to the configured chat, so keep it on a trusted network.
+
 ### Music („MUKKE“)
 
 Plays the audio of a YouTube link on the robot's USB loudspeaker. Playback
 happens on the robot, not in the browser. In the web app, the „MUKKE“
 button at the top left opens the dialog for it.
 
-| Endpoint | Returns |
-|---|---|
-| `GET /mukke/status` | `laeuft` (playing), `pausiert` (paused), `titel` (title), `url`, `lautstaerke` (volume, 0–100), `fehler` (why nothing played last time), `verfuegbar` (available) and `hinweis` (what is missing, e.g. „mpv fehlt“) |
-| `POST /mukke/play` | Body `{"url": "https://youtu.be/…"}`. Replaces whatever is playing. Only links from youtube.com, music.youtube.com and youtu.be, otherwise `400` with `{"fehler": "…"}`. |
-| `POST /mukke/pause` | toggle pause |
-| `POST /mukke/stop` | stop |
-| `POST /mukke/volume` | Body `{"lautstaerke": 70}`: fraction of the overall volume `VOLUME` (mpv gets both multiplied) |
+| Endpoint             | Returns                                                                                                                                                                                                             |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /mukke/status`  | `laeuft` (playing), `pausiert` (paused), `titel` (title), `url`, `lautstaerke` (volume, 0–100), `fehler` (why nothing played last time), `verfuegbar` (available) and `hinweis` (what is missing, e.g. „mpv fehlt“) |
+| `POST /mukke/play`   | Body `{"url": "https://youtu.be/…"}`. Replaces whatever is playing. Only links from youtube.com, music.youtube.com and youtu.be, otherwise `400` with `{"fehler": "…"}`.                                            |
+| `POST /mukke/pause`  | toggle pause                                                                                                                                                                                                        |
+| `POST /mukke/stop`   | stop                                                                                                                                                                                                                |
+| `POST /mukke/volume` | Body `{"lautstaerke": 70}`: fraction of the overall volume `VOLUME` (mpv gets both multiplied)                                                                                                                      |
 
 All `POST`s respond with the new state, like `/mukke/status`. It takes a few
 seconds until the title is known (yt-dlp first has to find the audio track).
@@ -977,18 +1174,18 @@ Requirements on the Pi: `mpv` and `yt-dlp`, see `docs/hardware.md`.
 
 ### Voice
 
-| Endpoint | Returns |
-|---|---|
+| Endpoint             | Returns                                                                                                                                                                                                                                                                                                                                                                                  |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /stimme/status` | `aktiviert` (enabled), `verfuegbar` (available), `simuliert` (simulated), `ausgabe` (output: `piper`, `espeak`, `text`, `simuliert`), `geraet` (ALSA name), `spricht` (speaking), `warteschlange` (queued sentences), `zuletzt` (last sentence), `gesagt` (sentences spoken), `verworfen` (sentences dropped), `fehler` (error, e.g. a message from aplay if the loudspeaker is missing) |
 
 ### Speech commands
 
-| Endpoint | Returns |
-|---|---|
-| `GET /sprache/status` | `aktiviert` (enabled), `verfuegbar` (available), `simuliert` (simulated), `zustand` (state: `aus` off, `laedt` loading, `hoert` listening, `fehler` error, `simuliert`, `pausiert` paused), `pause` (why the microphone is deliberately closed right now, e.g. „Mapping läuft“, otherwise `null`), `mikrofon` (device name), `modell` (path), `weckwort` (wake word), `geweckt` (awake), `zuletzt_gehoert` (last heard), `letzter_befehl` (last command), `erkannt` (recognized count), `konfidenz` (lowest word confidence of the last sentence, 0..1), `verworfen` (rejected count), `zuletzt_verworfen` (last rejected: command, text, reason), `befehle` (all phrases per command), `fehler` (e.g. „vosk fehlt (pip install vosk sounddevice)“, „Vosk-Modell fehlt: …“ or „kein Mikrofon gefunden (vorhanden: …)“) |
-| `GET /sprache/live` | Live transcript (app: switch „Mikrofon mitlesen“, polls 4 times per second): `verfuegbar`, `zustand`, `mikrofon`, `rate` (Hz), `pegel` (level, 0..1, −60 dBFS to full scale), `teil` (partial: what Vosk understands of the current sentence so far), `taub` (deaf: it is speaking itself and evaluates nothing), `geweckt`, `ereignisse` (last sentences: `zeit` (Unix time), `text`, `ergebnis` (result) = `befehl` (command) / `verworfen` (rejected) / `weckwort` (wake word) / `ohne` (none), plus `befehl` and, for `verworfen`, the `grund` (reason)). The server only computes level and `teil` while someone is polling. |
-| `WS /sprache/ton` | Live listening (app: switch „Mikrofon mithören“): first a text message `{"rate": 16000}` (`null` while no microphone is open; resent on every change and, without audio, every second as a heartbeat: if nothing at all arrives for 5 s, the app reconnects), then the raw audio as binary messages, 16 bit little-endian, mono, blocks of 0.25 s. If the browser cannot keep up, blocks are dropped (`SPEECH_SOUND_BUFFER`). Data is only sent while someone is connected. |
-| `WS /sprache/durchsage` | Announcement (app: switch „Über den Roboter sprechen“): audio from the browser microphone live through the robot's loudspeaker. The server first replies `{"bereit": true|false, "grund": …}` (ready, reason), and again later if the loudspeaker fails or comes back. The client sends `{"rate": 16000}` and then raw audio as binary messages (16 bit little-endian, mono). Runs in the voice queue: music pauses, speech recognition stops listening for the duration, a stop aborts it. After `ANNOUNCE_PAUSE_S` (2 s) without audio, the loudspeaker is free again. Browsers only grant microphone access over HTTPS, so the same app additionally runs at `https://<robot>:8443` (`HTTPS_PORT`, self-signed certificate in `~/.rosmaster/https`; confirm the browser warning once). |
+| Endpoint                | Returns                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /sprache/status`   | `aktiviert` (enabled), `verfuegbar` (available), `simuliert` (simulated), `zustand` (state: `aus` off, `laedt` loading, `hoert` listening, `fehler` error, `simuliert`, `pausiert` paused), `pause` (why the microphone is deliberately closed right now, e.g. „Mapping läuft“, otherwise `null`), `mikrofon` (device name), `modell` (path), `weckwort` (wake word), `geweckt` (awake), `zuletzt_gehoert` (last heard), `letzter_befehl` (last command), `erkannt` (recognized count), `konfidenz` (lowest word confidence of the last sentence, 0..1), `verworfen` (rejected count), `zuletzt_verworfen` (last rejected: command, text, reason), `befehle` (all phrases per command), `fehler` (e.g. „vosk fehlt (pip install vosk sounddevice)“, „Vosk-Modell fehlt: …“ or „kein Mikrofon gefunden (vorhanden: …)“) |
+| `GET /sprache/live`     | Live transcript (app: switch „Mikrofon mitlesen“, polls 4 times per second): `verfuegbar`, `zustand`, `mikrofon`, `rate` (Hz), `pegel` (level, 0..1, −60 dBFS to full scale), `teil` (partial: what Vosk understands of the current sentence so far), `taub` (deaf: it is speaking itself and evaluates nothing), `geweckt`, `ereignisse` (last sentences: `zeit` (Unix time), `text`, `ergebnis` (result) = `befehl` (command) / `verworfen` (rejected) / `weckwort` (wake word) / `ohne` (none), plus `befehl` and, for `verworfen`, the `grund` (reason)). The server only computes level and `teil` while someone is polling.                                                                                                                                                                                      |
+| `WS /sprache/ton`       | Live listening (app: switch „Mikrofon mithören“): first a text message `{"rate": 16000}` (`null` while no microphone is open; resent on every change and, without audio, every second as a heartbeat: if nothing at all arrives for 5 s, the app reconnects), then the raw audio as binary messages, 16 bit little-endian, mono, blocks of 0.25 s. If the browser cannot keep up, blocks are dropped (`SPEECH_SOUND_BUFFER`). Data is only sent while someone is connected.                                                                                                                                                                                                                                                                                                                                            |
+| `WS /sprache/durchsage` | Announcement (app: switch „Über den Roboter sprechen“): audio from the browser microphone live through the robot's loudspeaker. The server first replies `{"bereit": true                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | false, "grund": …}`(ready, reason), and again later if the loudspeaker fails or comes back. The client sends`{"rate": 16000}`and then raw audio as binary messages (16 bit little-endian, mono). Runs in the voice queue: music pauses, speech recognition stops listening for the duration, a stop aborts it. After`ANNOUNCE_PAUSE_S`(2 s) without audio, the loudspeaker is free again. Browsers only grant microphone access over HTTPS, so the same app additionally runs at`https://<robot>:8443` (`HTTPS_PORT`, self-signed certificate in `~/.rosmaster/https`; confirm the browser warning once). |
 
 ### Mapping (SLAM)
 
@@ -996,36 +1193,36 @@ The map is built by slam_toolbox in the ROS container `x3`. The server
 feeds in lidar and position itself (E8 in [`decisions.md`](decisions.md)).
 User interface: `GET /map`.
 
-| Endpoint | Returns |
-|---|---|
-| `GET /api/mapping/status` | state (see below) |
-| `POST /api/mapping/start` | starts scan feed, map reception and SLAM; errors come back as 503 with text. Always-on mapping saves the main map first and pauses |
-| `POST /api/mapping/stop` | stops everything again (including the mapping drive); the last map remains available |
-| `POST /api/mapping/fahrt/start` | start the mapping drive (only while mapping is running, otherwise 409 with reason) |
-| `POST /api/mapping/fahrt/stop` | stop the mapping drive |
-| `GET /api/mapping/map` | last map (`nav_msgs/OccupancyGrid`, cells as Base64), 404 before the first one |
-| `POST /api/mapping/save` | saves the last map as PGM + YAML, body `{"name": "wohnzimmer"}` |
-| `GET /api/mapping/maps` | saved maps |
-| `POST /api/mapping/laden` | load a saved map to drive in it, body `{"name": "wohnzimmer"}`; 404 unknown, 409 during mapping |
-| `GET /api/mapping/ortung` | pose in the map, trail, running drive, open frontiers (see "Using the map") |
-| `POST /api/mapping/ziel` | drive to a point, body `{"x": 2.5, "y": -1.0, "winkel": 90}` (`winkel` optional); 409 with reason if not possible |
-| `POST /api/mapping/ziel/stop` | cancel the goal drive |
-| `POST /api/mapping/pose` | "I am here", body as for `ziel`: search for the pose there |
-| `GET /api/mapping/live` | always-on mapping in detail (new 05.11., see "Always-on mapping") |
-| `POST /api/mapping/live` | on/off, body `{"aktiv": false}`; returns the same as `GET` |
-| `POST /api/mapping/mission/start` | „Missionsstart hier“; 409 with reason without a confident pose in the main map |
-| `POST /api/mapping/zurueck` | way back, body `{"ziel": "mission"}` or `{"ziel": "home"}`; 409 with reason, 422 for another `ziel` |
-| `POST /api/mapping/hauptkarte/neu` | begin a new main map (the old one goes to `backups/`); it starts at the next standstill; 409 during mapping |
-| `POST /api/mapping/hauptkarte/uebernehmen` | after SLAM: the SLAM map becomes the main map (old one to `backups/`), the pose stays |
-| `POST /api/mapping/hauptkarte/verwerfen` | after SLAM: back to the main map, the pose is searched where the odometry expects it |
-| `GET /api/mapping/fotos` | photos of the current map (new 18.11., see "Photos on the map"): `karte`, `auto`, `verfuegbar`, `fotos` (list of `id`, `datei`, `x`, `y` (m, map frame), `winkel` (heading in degrees, 0 = map x axis, counter-clockwise), `zeit` (unix seconds), `quelle` `"auto"`/`"hand"`, `kamera`, `url`) |
-| `POST /api/mapping/panorama` | turn on the spot and take an all-round panorama here (new 18.11., see "Panoramas"); optional body `{"kamera": "<name from CAMERA_ROLES>", "neigung": <deg, + = up>}` (new 23.11., missing = the last one used; `neigung` only applies to the camera on the tilt servo and is clamped to its limits); cancels other drives; returns as `GET /api/mapping/ortung`; 409 with reason (no map, pose uncertain, no camera/lidar, unknown camera, already running) |
-| `POST /api/mapping/panorama/stop` | cancel the panorama |
-| `GET /api/mapping/fotos/{karte}/{datei}` | the photo as JPEG; 404 if unknown |
-| `POST /api/mapping/fotos` | take a photo now ("Foto hier"); returns the entry; 409 with reason without a map, with an uncertain pose or without a fresh camera image |
-| `POST /api/mapping/fotos/auto` | body `{"aktiv": false}`: automatic photos off/on (until the server restarts) |
-| `DELETE /api/mapping/fotos/{id}` | delete a photo; 404 if unknown |
-| `WS /api/mapping/ws` | `{"type": "status"}` every 3 s, `{"type": "map"}` on every new map, `{"type": "fahrt"}` on changes of the mapping drive, `{"type": "ortung"}` on changes of the pose (content as `GET /api/mapping/ortung`) |
+| Endpoint                                   | Returns                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/mapping/status`                  | state (see below)                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `POST /api/mapping/start`                  | starts scan feed, map reception and SLAM; errors come back as 503 with text. Always-on mapping saves the main map first and pauses                                                                                                                                                                                                                                                                                                                          |
+| `POST /api/mapping/stop`                   | stops everything again (including the mapping drive); the last map remains available                                                                                                                                                                                                                                                                                                                                                                        |
+| `POST /api/mapping/fahrt/start`            | start the mapping drive (only while mapping is running, otherwise 409 with reason)                                                                                                                                                                                                                                                                                                                                                                          |
+| `POST /api/mapping/fahrt/stop`             | stop the mapping drive                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `GET /api/mapping/map`                     | last map (`nav_msgs/OccupancyGrid`, cells as Base64), 404 before the first one                                                                                                                                                                                                                                                                                                                                                                              |
+| `POST /api/mapping/save`                   | saves the last map as PGM + YAML, body `{"name": "wohnzimmer"}`                                                                                                                                                                                                                                                                                                                                                                                             |
+| `GET /api/mapping/maps`                    | saved maps                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `POST /api/mapping/laden`                  | load a saved map to drive in it, body `{"name": "wohnzimmer"}`; 404 unknown, 409 during mapping                                                                                                                                                                                                                                                                                                                                                             |
+| `GET /api/mapping/ortung`                  | pose in the map, trail, running drive, open frontiers (see "Using the map")                                                                                                                                                                                                                                                                                                                                                                                 |
+| `POST /api/mapping/ziel`                   | drive to a point, body `{"x": 2.5, "y": -1.0, "winkel": 90}` (`winkel` optional); 409 with reason if not possible                                                                                                                                                                                                                                                                                                                                           |
+| `POST /api/mapping/ziel/stop`              | cancel the goal drive                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `POST /api/mapping/pose`                   | "I am here", body as for `ziel`: search for the pose there                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `GET /api/mapping/live`                    | always-on mapping in detail (new 05.11., see "Always-on mapping")                                                                                                                                                                                                                                                                                                                                                                                           |
+| `POST /api/mapping/live`                   | on/off, body `{"aktiv": false}`; returns the same as `GET`                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `POST /api/mapping/mission/start`          | „Missionsstart hier“; 409 with reason without a confident pose in the main map                                                                                                                                                                                                                                                                                                                                                                              |
+| `POST /api/mapping/zurueck`                | way back, body `{"ziel": "mission"}` or `{"ziel": "home"}`; 409 with reason, 422 for another `ziel`                                                                                                                                                                                                                                                                                                                                                         |
+| `POST /api/mapping/hauptkarte/neu`         | begin a new main map (the old one goes to `backups/`); it starts at the next standstill; 409 during mapping                                                                                                                                                                                                                                                                                                                                                 |
+| `POST /api/mapping/hauptkarte/uebernehmen` | after SLAM: the SLAM map becomes the main map (old one to `backups/`), the pose stays                                                                                                                                                                                                                                                                                                                                                                       |
+| `POST /api/mapping/hauptkarte/verwerfen`   | after SLAM: back to the main map, the pose is searched where the odometry expects it                                                                                                                                                                                                                                                                                                                                                                        |
+| `GET /api/mapping/fotos`                   | photos of the current map (new 18.11., see "Photos on the map"): `karte`, `auto`, `verfuegbar`, `fotos` (list of `id`, `datei`, `x`, `y` (m, map frame), `winkel` (heading in degrees, 0 = map x axis, counter-clockwise), `zeit` (unix seconds), `quelle` `"auto"`/`"hand"`, `kamera`, `url`)                                                                                                                                                              |
+| `POST /api/mapping/panorama`               | turn on the spot and take an all-round panorama here (new 18.11., see "Panoramas"); optional body `{"kamera": "<name from CAMERA_ROLES>", "neigung": <deg, + = up>}` (new 23.11., missing = the last one used; `neigung` only applies to the camera on the tilt servo and is clamped to its limits); cancels other drives; returns as `GET /api/mapping/ortung`; 409 with reason (no map, pose uncertain, no camera/lidar, unknown camera, already running) |
+| `POST /api/mapping/panorama/stop`          | cancel the panorama                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `GET /api/mapping/fotos/{karte}/{datei}`   | the photo as JPEG; 404 if unknown                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `POST /api/mapping/fotos`                  | take a photo now ("Foto hier"); returns the entry; 409 with reason without a map, with an uncertain pose or without a fresh camera image                                                                                                                                                                                                                                                                                                                    |
+| `POST /api/mapping/fotos/auto`             | body `{"aktiv": false}`: automatic photos off/on (until the server restarts)                                                                                                                                                                                                                                                                                                                                                                                |
+| `DELETE /api/mapping/fotos/{id}`           | delete a photo; 404 if unknown                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `WS /api/mapping/ws`                       | `{"type": "status"}` every 3 s, `{"type": "map"}` on every new map, `{"type": "fahrt"}` on changes of the mapping drive, `{"type": "ortung"}` on changes of the pose (content as `GET /api/mapping/ortung`)                                                                                                                                                                                                                                                 |
 
 `GET /api/mapping/map` and the `map` packets deliver the map **the robot is
 currently driving with**: the live map of the mapping run or, if a saved map
@@ -1036,12 +1233,20 @@ For feedback in the status:
 
 ```json
 {
-  "aktiv": true, "mapping_running": true, "map_available": false,
+  "aktiv": true,
+  "mapping_running": true,
+  "map_available": false,
   "hinweis": "SLAM läuft, warte auf die erste Karte (6 s). 31 Scans an ROS gegeben.",
   "hinweis_fehler": false,
-  "einspeisung": {"laeuft": true, "bereit": true, "scans": 31,
-                  "letzter_scan_vor_s": 0.1, "lidar_scan_vor_s": 0.1,
-                  "neustarts": 0, "fehler": null},
+  "einspeisung": {
+    "laeuft": true,
+    "bereit": true,
+    "scans": 31,
+    "letzter_scan_vor_s": 0.1,
+    "lidar_scan_vor_s": 0.1,
+    "neustarts": 0,
+    "fehler": null
+  },
   "slam_log": ["[INFO] [launch]: ...", "..."]
 }
 ```
@@ -1080,14 +1285,15 @@ Technically it is a mode of the explorer (`state.autonomie.modus =
 `explore_stop`, any drive input ≠ 0, `home`, `set_home`, interaction and
 `POST /api/mapping/stop`. The end is reported by `alert` „Autonomes Fahren
 beendet: Kartierfahrt fertig -- …“. What **no longer** ends it (new 04.11.):
-- *Page closed:* only when neither a `/map` page nor the app is connected
+
+- _Page closed:_ only when neither a `/map` page nor the app is connected
   does it stop, and even then only after `MAP_WATCHER_WAIT_S` (20 s). A
   phone whose screen briefly turns off therefore no longer ends it.
-- *Drive briefly gone (USB reset):* it stops and continues after
+- _Drive briefly gone (USB reset):_ it stops and continues after
   reconnecting (directly to the next frontier) if that happens within
   `MAPPING_DRIVE_RESUME_S` (60 s). `fahrt.unterbrochen` (interrupted) is
   `true` during that time. A `stop` discards the resumption.
-- *Lidar briefly gone:* it waits up to `MAPPING_DRIVE_LIDAR_WAIT_S` (30 s);
+- _Lidar briefly gone:_ it waits up to `MAPPING_DRIVE_LIDAR_WAIT_S` (30 s);
   for random exploring it stays at 3 s.
 
 **Photos on the map (new 18.11.).** While the pose in the main map or a
@@ -1152,14 +1358,34 @@ same rotated by 180°); then it asks.
 
 ```json
 {
-  "ortung": {"karte": true, "name": "wohnung", "live": false,
-             "pose": {"x": 2.1, "y": -0.4, "winkel": 87.0}, "sicher": true, "sucht": false,
-             "text": "Lage in der Karte bekannt", "anteil": 0.93, "residuum_m": 0.031,
-             "start": [0.0, 0.0, 0.0], "abgleiche": 412, "verworfen": 3},
+  "ortung": {
+    "karte": true,
+    "name": "wohnung",
+    "live": false,
+    "pose": { "x": 2.1, "y": -0.4, "winkel": 87.0 },
+    "sicher": true,
+    "sucht": false,
+    "text": "Lage in der Karte bekannt",
+    "anteil": 0.93,
+    "residuum_m": 0.031,
+    "start": [0.0, 0.0, 0.0],
+    "abgleiche": 412,
+    "verworfen": 3
+  },
   "spur": [[0.0, 0.0], [0.1, 0.02], "..."],
-  "fahrt": {"aktiv": true, "art": "ziel", "nach_karte": true, "ziel": [3.5, -1.0],
-            "weg": [[1.2, 1.8], [3.5, -1.0]], "rest_m": 2.4, "grund": null},
-  "kartierfahrt": {"weg": [], "ziel": null},
+  "fahrt": {
+    "aktiv": true,
+    "art": "ziel",
+    "nach_karte": true,
+    "ziel": [3.5, -1.0],
+    "weg": [
+      [1.2, 1.8],
+      [3.5, -1.0]
+    ],
+    "rest_m": 2.4,
+    "grund": null
+  },
+  "kartierfahrt": { "weg": [], "ziel": null },
   "luecken": [[1.4, 1.85]]
 }
 ```
@@ -1202,11 +1428,24 @@ außerhalb der bekannten Karte" otherwise).
 `GET /api/mapping/live` (also `kartieren` in `GET /api/mapping/ortung`):
 
 ```json
-{"aktiv": true, "zustand": "bestaetigt", "grund": "Lage nach der Suche noch nicht bestätigt",
- "bestaetigt": 4, "von": 10, "name": "hauptkarte", "groesse_m": [12.0, 8.0],
- "aufnahmen": 412, "eingefroren_mal": 2, "pausiert_von": [], "zu_gross": false,
- "ms": {"eintragen": 2.7, "schnappschuss": 48.0}, "waechst": true,
- "gespeichert": 1793880534.1, "speicherfehler": null, "slam_karte": false}
+{
+  "aktiv": true,
+  "zustand": "bestaetigt",
+  "grund": "Lage nach der Suche noch nicht bestätigt",
+  "bestaetigt": 4,
+  "von": 10,
+  "name": "hauptkarte",
+  "groesse_m": [12.0, 8.0],
+  "aufnahmen": 412,
+  "eingefroren_mal": 2,
+  "pausiert_von": [],
+  "zu_gross": false,
+  "ms": { "eintragen": 2.7, "schnappschuss": 48.0 },
+  "waechst": true,
+  "gespeichert": 1793880534.1,
+  "speicherfehler": null,
+  "slam_karte": false
+}
 ```
 
 `bestaetigt`/`von`: confirmation progress. `pausiert_von`: who paused
@@ -1256,13 +1495,13 @@ rooms, a door and furniture -- for trying out the room-to-room continuation.
 
 ### Miscellaneous
 
-| Endpoint | Returns |
-|---|---|
-| `GET /` | the bundled web app |
-| `GET /einstellungen` | the web app's settings page |
-| `GET /diagnose`, `GET /logs` | the web app's diagnostics page |
-| `GET /static/...` | its files (`webapp/`) |
-| `GET /docs` | automatically generated HTTP overview (FastAPI) |
+| Endpoint                     | Returns                                         |
+| ---------------------------- | ----------------------------------------------- |
+| `GET /`                      | the bundled web app                             |
+| `GET /einstellungen`         | the web app's settings page                     |
+| `GET /diagnose`, `GET /logs` | the web app's diagnostics page                  |
+| `GET /static/...`            | its files (`webapp/`)                           |
+| `GET /docs`                  | automatically generated HTTP overview (FastAPI) |
 
 ---
 
@@ -1296,6 +1535,7 @@ simulation.
 If you add new features in your own branch:
 
 **New WebSocket command**
+
 1. Add it to the header comment in `protocol.py` (that is the contract).
 2. Add a branch `if kind == "…":` in `_handle()` in `api/server.py`.
 3. Update this file (`docs/api.md`).
@@ -1315,18 +1555,18 @@ the model.
 
 **Where things are** (`robot/src/rosmaster_assist/`):
 
-| File | Content |
-|---|---|
-| `protocol.py` | message format, `DriveCommand` |
-| `api/server.py` | all endpoints, WebSocket handling, background loops |
-| `config.py` | all limits and settings in one place |
-| `safety/watchdog.py` | limiting, dead man's switch and acceleration ramp |
-| `safety/collision.py` | collision avoidance during manual driving (via the drive guard) |
-| `safety/drive_guard.py` | footprint-based collision check for all drives |
-| `navigation/odometry.py` | position estimation |
-| `navigation/localizer.py` | lidar matching against the start-point scan |
-| `navigation/homing.py` | homing |
-| `navigation/maneuver.py` | precise drive commands (`move`, `turn`); the lidar measures distance and angle |
-| `sensors/lidar.py` | reading the lidar (real and simulated) |
-| `sensors/camera.py` | camera (CSI, USB, test image) |
-| `drive/` | motor drivers (real and simulated) |
+| File                      | Content                                                                        |
+| ------------------------- | ------------------------------------------------------------------------------ |
+| `protocol.py`             | message format, `DriveCommand`                                                 |
+| `api/server.py`           | all endpoints, WebSocket handling, background loops                            |
+| `config.py`               | all limits and settings in one place                                           |
+| `safety/watchdog.py`      | limiting, dead man's switch and acceleration ramp                              |
+| `safety/collision.py`     | collision avoidance during manual driving (via the drive guard)                |
+| `safety/drive_guard.py`   | footprint-based collision check for all drives                                 |
+| `navigation/odometry.py`  | position estimation                                                            |
+| `navigation/localizer.py` | lidar matching against the start-point scan                                    |
+| `navigation/homing.py`    | homing                                                                         |
+| `navigation/maneuver.py`  | precise drive commands (`move`, `turn`); the lidar measures distance and angle |
+| `sensors/lidar.py`        | reading the lidar (real and simulated)                                         |
+| `sensors/camera.py`       | camera (CSI, USB, test image)                                                  |
+| `drive/`                  | motor drivers (real and simulated)                                             |
