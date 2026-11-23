@@ -268,8 +268,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     pose = PoseDetection(person_camera, mock=use_mock_camera)
     # person boxes come from the pose detection on the hailo when it works, hog is the fallback
     people = PersonDetection(person_camera, pose=pose)
-    # objects (chair, table, ...) on the hailo through the wide forward
-    # camera; they name the lidar obstacles and fill the object view
+    # objects (chair, table, ...) on the hailo through the c270
+    # (OBJECTS_CAMERA); they name the lidar obstacles and fill the object view
     objects = ObjectDetection(cameras.get(config.OBJECTS_CAMERA, camera), follow=people)
     detection.labels_source = objects.angle_labels
     explorer = Explorer(

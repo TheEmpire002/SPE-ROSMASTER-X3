@@ -1202,12 +1202,13 @@ PERSON_MIN_SCORE = 0.5
 PERSON_CAMERA = "personen"
 
 # --- Object detection (sensors/objects.py) -----------------------------------------
-# yolo with 80 coco classes on the hailo, through the wide forward camera;
+# yolo with 80 coco classes on the hailo, through the logitech c270 (it
+# sits on the tilt servo, so it can look down at things on the floor);
 # names lidar obstacles in their direction (chair, table, sofa, ...) and
 # draws boxes into the object view of the app (/objekte/stream)
 OBJECTS_ENABLED = True
 OBJECTS_HEF = "/usr/share/hailo-models/yolov8m_h10.hef"
-OBJECTS_CAMERA = "orientierung"
+OBJECTS_CAMERA = "personen"
 # detections per second while someone needs it, the pose detection shares the chip
 # (one detection takes about 27 ms on the hailo-10h)
 OBJECTS_HZ = 10.0

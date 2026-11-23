@@ -721,7 +721,7 @@ disabled (`CAMERA_ENABLED = False`), `stream` and `snapshot` respond with
     }
   ],
   "objekte": [
-    { "name": "objekte", "kamera": "Objekte (KI)", "basis": "/objekte", "quelle": "orientierung" }
+    { "name": "objekte", "kamera": "Objekte (KI)", "basis": "/objekte", "quelle": "personen" }
   ],
   "kameras": [
     {
@@ -881,7 +881,7 @@ detection and mounting pose while standing still.
 
 **Object detection** (new 23.11., `sensors/objects.py`): YOLOv8m with the
 80 COCO classes runs on the Hailo-10H (`OBJECTS_HEF`), through the forward
-camera `OBJECTS_CAMERA` (Orbbec color image), next to the pose detection
+camera `OBJECTS_CAMERA` (Logitech C270), next to the pose detection
 (shared chip, round robin). Not via hailo-apps: their GStreamer pipelines
 open the camera themselves, which already belongs to this server. It only
 computes while someone needs it: an open object view, or the person

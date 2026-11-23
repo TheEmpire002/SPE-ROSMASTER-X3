@@ -1201,3 +1201,8 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Why:** On the robot the detection itself worked well, but the object view was very slow: it only showed a new image when a detection had finished. The removed panels were rarely used and made the page long.
 - **Change:** The object view now draws the latest boxes onto the live camera image (`OBJECTS_STREAM_FPS` = 15) instead of the detection frame; the detection runs at 10 Hz instead of 5 (27 ms per frame on the Hailo), boxes count for 1 s.
 - **Result:** Pending the test on the robot.
+
+### 23.11.2026 – Object detection through the Logitech C270 (with Claude)
+- **What:** `OBJECTS_CAMERA` from the Orbbec colour image (`orientierung`) to the Logitech C270 (`personen`). The mode „Objekte (KI)“ now switches the C270 tile, the Orbbec keeps its colour image.
+- **Why:** Requested after the test on the robot: the detection should use the Logitech.
+- **Note:** The C270 has a narrower field of view (45° instead of 66°), so fewer lidar obstacles get a camera name; the angles use the camera's own `fov_deg`. When the tilt servo looks up or down, the left/right angles stay correct.
