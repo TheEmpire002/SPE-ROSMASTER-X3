@@ -966,6 +966,13 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Problems:** Robot not reachable from the PC on 23.11. (not on the 10.42.0.x network), so the yolov8s vs yolov8m benchmark could not run yet.
 - **Open:** Run `python3 scripts/bench_pose.py` on the robot (standing, server may keep running, Hailo is shared) and decide `POSE_HEF`; check lengthwise lying and the watch on the floor with a real person; check the CPU load on `/diagnose` with the explorer running (HOG should be idle, `verfahren: hailo`).
 
+### 23.11.2026 – Page "Zustandserkennung" (/zustand) for the condition detection (Marlon, with Claude)
+- **What:** New page `/zustand`, reached from the start page with the „Zustand“ button and with a link back to the controls. It shows live: whether a person is seen, lying yes/no with the reason (this frame and as a vote over the last 3 s), movement, shoulder/hip confidences, the watch with how long someone has been lying, the healthbot state and alarm; which detector delivers the person boxes (Hailo or HOG), model, fps and frame age; all people over the camera image with skeleton, the judged person green, others grey, lying red, keypoints coloured by confidence; and the yolov8s/yolov8m comparison. Backend `health/live.py` (`ConditionView`), endpoints `GET /zustand/status` and `POST /zustand/benchmark`, `Healthbot.watch_status()`, `scripts/bench_pose.py` now sends its results to the server.
+- **Why:** The improved detection could only be followed in the logs or during a healthbot run. The page shows on the robot why it judges "lying" or not, without starting a check, so thresholds can be checked with a real person on the floor.
+- **Design:** The page does not sit on the main panel to keep it uncluttered. The pose detection only computes while the page asks (lease of `CONDITION_VIEW_LEASE_S` = 5 s), so an open-and-forgotten tab does not keep the Hailo busy for ever. The benchmark goes to the server over HTTP because the server runs as root and the script as `pi` (different home folders).
+- **Result:** New `Marlon/health/test_condition_view.py` (lease, tracking, vote, frames counted once, reset after a gap, upload validation). Checked against the mock server: page and script load, pose switches on with the page and off about 6 s after it closes, smoke test 22/22. Full test suite on the PC: 27/27.
+- **Open:** Look at the page on the robot (real Hailo, real camera); run the benchmark so the comparison appears.
+
 ---
 
 ## 3. Results and measurements

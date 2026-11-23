@@ -1131,3 +1131,23 @@ a.einst-knopf { text-decoration: none; }
 .ts-warn { color: var(--warn); }
 .ts-error { color: var(--danger); }
 #ts-token summary { cursor: pointer; font-weight: 600; }
+
+/* --- Zustandserkennung (/zustand) --- */
+
+.zs-big { font-size: 1.25rem; font-weight: 600; margin: 0 0 0.6rem; }
+.zs-ok { color: var(--ok); }
+.zs-warn { color: var(--warn); }
+.zs-danger { color: var(--danger); }
+.zs-error { color: var(--danger); }
+.zs-checks { grid-template-columns: 1fr; margin-bottom: 0.6rem; }
+.zs-progress { height: 0.5rem; border-radius: 4px; background: var(--line); overflow: hidden; margin-top: 0.4rem; }
+.zs-progress div { height: 100%; width: 0; background: var(--danger); transition: width 0.3s; }
+.hb-legend .zs-lg-tracked, .hb-legend .zs-kp-high { background: var(--ok); }
+.hb-legend .zs-lg-other { background: #8a93a3; }
+.hb-legend .zs-lg-lying, .hb-legend .zs-kp-low { background: var(--danger); }
+.hb-legend .zs-kp-mid { background: var(--warn); }
+.zs-table-wrap { overflow-x: auto; }
+.zs-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.zs-table th, .zs-table td { padding: 0.35rem 0.6rem; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+.zs-table th:first-child, .zs-table td:first-child { text-align: left; }
+.zs-table th { color: var(--muted); font-weight: 500; }

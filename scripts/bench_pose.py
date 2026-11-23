@@ -3,6 +3,7 @@
     python scripts/bench_pose.py                          # snapshot from the running server
     python scripts/bench_pose.py --image person.jpg -n 100
     python scripts/bench_pose.py --hef /usr/share/hailo-models/yolov8m_pose_h10.hef
+    python scripts/bench_pose.py --no-upload              # print only
 
 Runs on the robot next to the running server: the Hailo is opened "SHARED"
 (as in ``sensors/pose.py``), so the server's pose detection keeps working,
@@ -14,11 +15,16 @@ Per model it measures the time per frame split into JPEG decode, letterbox,
 Hailo inference and decoding (all as in ``pose.py``), the CPU time of this
 process per frame, and the detections: number of people and the mean
 confidence of the shoulder/hip keypoints that the healthbot relies on.
+
+The results go to the server (``POST /zustand/benchmark``), which shows them
+on the page ``/zustand``; the server runs as root, so a shared file in the
+home folder would not work.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import pathlib
 import statistics
 import sys
@@ -43,6 +49,17 @@ def _image(args) -> bytes:
     url = f"{args.server}/camera/{config.PERSON_CAMERA}/snapshot"
     with urllib.request.urlopen(url, timeout=5) as r:
         return r.read()
+
+
+def _upload(server: str, image: str, models: list[dict]) -> None:
+    body = json.dumps({"bild": image, "modelle": models}).encode("utf-8")
+    request = urllib.request.Request(f"{server}/zustand/benchmark", data=body,
+                                     headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=5):
+            print(f"results shown at {server}/zustand")
+    except Exception as exc:  # the measurement itself is printed above, an upload error is not fatal
+        print(f"upload to the server failed: {exc}")
 
 
 def _bench(hef: str, jpeg: bytes, n: int, cv2, np) -> dict:
@@ -95,20 +112,29 @@ def main() -> None:
     parser.add_argument("--image", help="JPEG file instead of the server snapshot")
     parser.add_argument("--server", default="http://127.0.0.1:8000")
     parser.add_argument("-n", type=int, default=50, help="frames per model")
+    parser.add_argument("--no-upload", action="store_true", help="do not send the results to the server")
     args = parser.parse_args()
 
     import cv2
     import numpy as np
 
     jpeg = _image(args)
+    models = []
     for hef in args.hef or _DEFAULT_HEFS:
+        name = pathlib.Path(hef).name
         if not pathlib.Path(hef).exists():
             print(f"{hef}: missing")
             continue
         try:
-            print(pathlib.Path(hef).name, _bench(hef, jpeg, args.n, cv2, np), flush=True)
+            result = _bench(hef, jpeg, args.n, cv2, np)
         except Exception as exc:
             print(f"{hef}: {exc.__class__.__name__}: {exc}", flush=True)
+            models.append({"modell": name, "fehler": f"{exc.__class__.__name__}: {exc}"[:200]})
+            continue
+        print(name, result, flush=True)
+        models.append({"modell": name, "bilder": args.n, **result})
+    if models and not args.no_upload:
+        _upload(args.server, args.image or "Schnappschuss der Personenkamera", models)
 
 
 if __name__ == "__main__":

@@ -32,6 +32,7 @@ from .. import config, settings
 from ..recording import Recorder
 from ..diagnostics import Diagnostics, LogBuffer
 from ..health import Healthbot
+from ..health.live import ConditionView
 from ..health.simulation import SCENES, Simulation
 from ..test_runs import TestRuns
 from ..drive.base import DriveBase
@@ -306,6 +307,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         lidar=lidar, pose=pose, voice=voice, speech=speech, mukke=mukke,
         report=hub.broadcast, on_finished=test_runs.save_health_record,
     )
+    condition_view = ConditionView(pose, people, healthbot)
     # scenes (lying person) only exist in the simulation: pose and mock lidar
     # see the same imaginary person
     health_sim = None
@@ -435,6 +437,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             maneuver.cancel("Server wird beendet")
             interaction.cancel("Server wird beendet")
             healthbot.shutdown()
+            condition_view.release()
             test_runs.shutdown()
             await watchdog.shutdown()
             # Only after stopping: shutting down the container can take a
@@ -568,6 +571,29 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             "simulation": health_sim.status() if health_sim is not None else None,
             "szenen": list(SCENES) if health_sim is not None else [],
         }
+
+    # --- Page /zustand: live view of the condition detection ---
+
+    @app.get("/zustand/status")
+    async def condition_status() -> dict[str, Any]:
+        """What the condition detection sees right now; keeps the pose detection on."""
+        condition_view.touch()
+        # a little later than the lease, so a page that keeps asking always renews in time
+        asyncio.get_running_loop().call_later(
+            config.CONDITION_VIEW_LEASE_S + 0.5, condition_view.release_if_idle)
+        return condition_view.status()
+
+    @app.post("/zustand/benchmark")
+    async def condition_benchmark(request: Request) -> JSONResponse:
+        """Store a pose model comparison from scripts/bench_pose.py for the page."""
+        try:
+            data = await request.json()
+        except ValueError:
+            return JSONResponse({"fehler": "kein JSON"}, status_code=400)
+        error = condition_view.save_benchmark(data)
+        if error:
+            return JSONResponse({"fehler": error}, status_code=400)
+        return JSONResponse({"ok": True})
 
     @app.post("/healthbot/simulation")
     async def healthbot_simulation(request: Request) -> JSONResponse:
@@ -1414,6 +1440,10 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         @app.get("/tests")
         async def tests_page() -> HTMLResponse:
             return _page("tests.html")
+
+        @app.get("/zustand")
+        async def condition_page() -> HTMLResponse:
+            return _page("zustand.html")
     else:
         log.warning("webapp/ not found at %s -- only /ws available", WEBAPP_DIR)
 

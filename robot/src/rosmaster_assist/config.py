@@ -1977,6 +1977,15 @@ HEALTH_AUTO_S = 3.0
 # the pose detection misses a frame now and then.
 HEALTH_AUTO_GAP_S = 1.0
 
+# page /zustand keeps the pose detection on while it asks; without a request
+# for this long (s) it goes off again so the Hailo is free
+CONDITION_VIEW_LEASE_S = 5.0
+# vote and motion on the page over the last this many seconds (s); the
+# healthbot itself votes over its whole look
+CONDITION_VIEW_HISTORY_S = 3.0
+# last pose model comparison from scripts/bench_pose.py, shown on the page
+CONDITION_BENCHMARK_FILE = Path.home() / ".rosmaster" / "pose_benchmark.json"
+
 # Music when getting help (in the package under data/).
 HEALTH_MUSIC_FILE = "BeatboxJungs.m4a"
 HEALTH_MUSIC_TITLE = "Beatbox Jungs"

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ROSMASTER X3 — Zustandserkennung</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-start">
+    <a href="/" class="einst-knopf diag-zurueck" title="Zurück zur Steuerung">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="15 18 9 12 15 6"/>
+      </svg>
+      <span>Steuerung</span>
+    </a>
+    <h1>ROSMASTER X3 · Zustandserkennung</h1>
+  </div>
+  <div id="status" class="status offline">
+    <span class="dot"></span><span id="status-text">getrennt</span>
+  </div>
+</header>
+
+<main id="zustand">
+
+  <!-- big and red as long as the healthbot has called for help -->
+  <section id="zs-alarm" class="panel wide-panel hb-alarm" hidden>
+    <strong>⚠ NOTFALL</strong>
+    <span>Der Healthbot hat Hilfe gerufen. <a href="/healthbot">Zum Healthbot</a></span>
+  </section>
+
+  <!-- camera with all detected people, keypoints coloured by confidence -->
+  <section class="panel">
+    <h2>Blick der Kamera</h2>
+    <div class="hb-camera">
+      <img id="zs-image" alt="Kamerabild der Personenkamera">
+      <canvas id="zs-skeleton"></canvas>
+    </div>
+    <p class="hb-note">
+      <span class="hb-legend"><i class="zs-lg zs-lg-tracked"></i>beurteilte Person
+      <i class="zs-lg zs-lg-other"></i>weitere Personen <i class="zs-lg zs-lg-lying"></i>liegend</span><br>
+      Punkte nach Sicherheit:
+      <span class="hb-legend"><i class="zs-lg zs-kp-high"></i>hoch
+      <i class="zs-lg zs-kp-mid"></i>mittel <i class="zs-lg zs-kp-low"></i>unsicher (zählt nicht)</span>
+    </p>
+  </section>
+
+  <!-- the verdict on the tracked person -->
+  <section class="panel">
+    <h2>Zustand</h2>
+    <p id="zs-person" class="zs-big">lade …</p>
+    <div id="zs-checks" class="hb-checks zs-checks"></div>
+    <dl class="readout">
+      <dt>Rumpfwinkel</dt><dd id="zs-angle">–</dd>
+      <dt>Bilder im Zeitraum</dt><dd id="zs-frames">–</dd>
+      <dt>Schulter / Hüfte (Sicherheit)</dt><dd id="zs-torso">–</dd>
+    </dl>
+    <p class="hb-note" id="zs-thresholds"></p>
+  </section>
+
+  <!-- which detector delivers what -->
+  <section class="panel">
+    <h2>Erkennung</h2>
+    <dl class="readout">
+      <dt>Personenboxen</dt><dd id="zs-boxes">–</dd>
+      <dt>Skelett (Pose)</dt><dd id="zs-pose">–</dd>
+      <dt>Modell</dt><dd id="zs-model">–</dd>
+      <dt>Bilder pro Sekunde</dt><dd id="zs-fps">–</dd>
+      <dt>Alter des Bildes</dt><dd id="zs-age">–</dd>
+      <dt>Letzte Person vor</dt><dd id="zs-last">–</dd>
+      <dt>Kamera</dt><dd id="zs-camera">–</dd>
+    </dl>
+    <p id="zs-error" class="hb-note zs-error" hidden></p>
+    <p class="hb-note">
+      Solange diese Seite offen ist, rechnet die Pose-Erkennung (Hailo). Wird sie geschlossen,
+      schaltet der Roboter sie nach wenigen Sekunden wieder ab.
+    </p>
+  </section>
+
+  <!-- watch and healthbot -->
+  <section class="panel">
+    <h2>Wache &amp; Healthbot</h2>
+    <dl class="readout">
+      <dt>Wache</dt><dd id="zs-watch">–</dd>
+      <dt>Liegt seit</dt><dd id="zs-lying-since">–</dd>
+    </dl>
+    <div class="zs-progress" aria-hidden="true"><div id="zs-progress-bar"></div></div>
+    <p class="hb-note" id="zs-watch-note"></p>
+    <p class="hb-now"><span id="zs-hb-state" class="hb-badge">–</span> <span id="zs-hb-step"></span></p>
+    <p class="hb-note" id="zs-hb-verdict"></p>
+    <p class="hb-note"><a href="/healthbot">Zum Healthbot</a> – dort lässt sich die Wache
+      einschalten und eine Prüfung starten.</p>
+  </section>
+
+  <!-- yolov8s against yolov8m and others, from scripts/bench_pose.py -->
+  <section class="panel wide-panel">
+    <h2>Modellvergleich</h2>
+    <div id="zs-bench-empty">
+      <p class="diag-leer">Noch kein Vergleich gemessen.</p>
+      <p class="hb-note">Auf dem Roboter, während er steht und der Server läuft:
+        <code>python3 scripts/bench_pose.py</code> – das Ergebnis erscheint dann hier.</p>
+    </div>
+    <div id="zs-bench" hidden>
+      <div class="zs-table-wrap">
+        <table class="zs-table">
+          <thead>
+            <tr>
+              <th>Modell</th><th>Hailo</th><th>gesamt</th><th>max. Bilder/s</th>
+              <th>CPU je Bild</th><th>Personen</th><th>Rumpf-Sicherheit</th>
+            </tr>
+          </thead>
+          <tbody id="zs-bench-rows"></tbody>
+        </table>
+      </div>
+      <p class="hb-note" id="zs-bench-note"></p>
+    </div>
+  </section>
+
+</main>
+
+<script src="/static/zustand.js"></script>
+</body>
+</html>

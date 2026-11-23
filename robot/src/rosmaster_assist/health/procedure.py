@@ -118,6 +118,15 @@ class Healthbot:
     def watch(self) -> bool:
         return self._watch_task is not None and not self._watch_task.done()
 
+    def watch_status(self) -> dict:
+        """The watch for lying people: on, and since when someone lies."""
+        since = self._watch_since if self.watch else None
+        return {
+            "an": self.watch,
+            "liegt_seit_s": round(time.monotonic() - since, 1) if since is not None else None,
+            "noetig_s": config.HEALTH_AUTO_S,
+        }
+
     def status(self) -> dict:
         return {
             "aktiv": self.active,

@@ -803,3 +803,6 @@ Other options were not chosen:
   fallback stays as a safety net.
 - *Open:* Thresholds for lengthwise lying are from geometry, not yet
   measured on the floor; benchmark yolov8s vs yolov8m on the robot.
+- *Follow-up:* the page `/zustand` (`health/live.py`) shows the detection
+  live, including the reasons, so these thresholds can be checked on the
+  floor; it keeps the pose detection on only while it is open (lease).

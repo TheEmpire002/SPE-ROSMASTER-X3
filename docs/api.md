@@ -1237,6 +1237,28 @@ vote (`HEALTH_LYING_SHARE`); the `text` of the `liegend` sign then ends with
 the person in the image (`HEALTH_MOTIONLESS_REF_DIAG_PX`). The watch tolerates
 the person being lost for up to `HEALTH_AUTO_GAP_S`.
 
+### Condition detection (page `/zustand`)
+
+Live view of the condition detection, without starting a check (new 23.11.):
+which detector delivers the person boxes, all people with their keypoints,
+"lying" for the tracked person per frame and as a vote over the last
+`CONDITION_VIEW_HISTORY_S`, its movement, the watch, the healthbot state and
+the last pose model comparison. Reached from the start page with the
+„Zustand“ button.
+
+While the page asks, the pose detection runs (user `zustand-seite`, see
+`PoseDetection.activate`); without a request for `CONDITION_VIEW_LEASE_S`
+the server switches it off again, so the Hailo is free.
+
+| Endpoint | Returns |
+|---|---|
+| `GET /zustand` | the page |
+| `GET /zustand/status` | `seite_aktiv`; `erkennung` (`personenboxen` = `PersonDetection` status with `verfahren`, `pose` = pose status, `modell` = HEF file name); `skelett` (keypoint pairs); `personen` (each `{box, kp, score, winkel, verfolgt, liegend}`, `liegend` is a sign as in `checks`); `zustand` (`liegend` this frame, `liegend_ueber_zeit` vote, `bewegung`, each a sign; `rumpfwinkel`, `bilder`, `zeitraum_s`, `schwellen`); `wache` (`{an, liegt_seit_s, noetig_s}`); `healthbot` (`aktiv`, `zustand`, `schritt`, `alarm`, `urteil`); `modellvergleich` (see below or `null`) |
+| `POST /zustand/benchmark` | stores a pose model comparison, sent by `scripts/bench_pose.py`: `{"bild": "...", "modelle": [{"modell": "yolov8s_pose_h10.hef", "hailo_ms": 12.3, ...}]}`, 1 to 8 models, only numbers and texts as values. The server adds `zeit` (Unix time) and keeps it in `CONDITION_BENCHMARK_FILE`. 400 with `fehler` if invalid. |
+
+Keypoints and boxes are fractions of the image (0..1), as in
+`/interaktion/pose`.
+
 ### Test runs
 
 Reproducible measurements for camera, pose and microphone: the robot announces
@@ -1321,7 +1343,7 @@ run = json.load(urllib.request.urlopen(base + index["laeufe"][0]["pfad"] + "erge
 | `GET /` | the bundled web app |
 | `GET /einstellungen` | the web app's settings page |
 | `GET /diagnose`, `GET /logs` | the web app's diagnostics page |
-| `GET /tests`, `GET /healthbot` | test runs and healthbot pages (see above) |
+| `GET /tests`, `GET /healthbot`, `GET /zustand` | test runs, healthbot and condition detection pages (see above) |
 | `GET /static/...` | its files (`webapp/`) |
 | `GET /docs` | automatically generated HTTP overview (FastAPI) |
 
