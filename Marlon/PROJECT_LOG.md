@@ -933,6 +933,13 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Result:** Markdown is converted into Telegram entities; credentials are read from a Git-ignored Pi-local file or environment variables. Delivery runs outside the server event loop and errors are reported without revealing the token. Mocked sender and endpoint tests passed, as did the mock-server smoke test (22 checks); browser checks covered file loading, feedback and mobile layout.
 - **Problems:** Telegram delivery and credentials need a live Pi and a real bot for final verification. No automatic event trigger was configured.
 
+### 23.11.2026 – Virtual environment setup and map cleanup (Copilot)
+
+- **What:** Install project dependencies when creating a virtual environment, with a pending marker to retry interrupted setup. Ignore generated map archives and remove the accidentally tracked mock map from Git.
+- **Why:** Existing environments should not trigger package checks on every server start, and simulated maps must not replace the robot's map.
+- **Result:** Focused mocked checks cover existing environments, new setup and retries. The previously saved map on the Pi must be backed up before updating, because Git removes the tracked file during the update.
+- **Problems:** A new environment still needs package access for its initial setup; an existing environment needs a manual install when new dependencies are introduced.
+
 ## 3. Results and measurements
 
 | Topic                                                                | Result                                                                                                                                                                            | Source                                  |

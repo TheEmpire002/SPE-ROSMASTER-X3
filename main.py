@@ -41,6 +41,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 ROBOT_DIR = ROOT / "robot"
 VENV_DIR = ROBOT_DIR / ".venv"
+VENV_SETUP_PENDING = VENV_DIR / ".setup-pending"
 
 MIN_PYTHON = (3, 11)
 
@@ -98,6 +99,8 @@ def ensure_venv() -> Path:
         return py
 
     step("Lege virtuelle Umgebung an …")
+    VENV_DIR.mkdir(parents=True, exist_ok=True)
+    VENV_SETUP_PENDING.touch()
     # --system-site-packages matters on the robot: Yahboom's Rosmaster_Lib
     # is installed system-wide there and would not be visible in an
     # isolated environment.
@@ -119,13 +122,9 @@ def has_module(py: Path, module: str) -> bool:
 
 
 def ensure_dependencies(py: Path) -> None:
-    """Installs the package if it is not set up yet."""
-    # Check every package individually, not just the first: when a new
-    # dependency is added (most recently rplidar), an existing setup must
-    # install it on the next start -- otherwise it is silently missing.
-    modules = ("rosmaster_assist", "fastapi", "numpy", "rplidar", "telegramify_markdown")
-    if all(has_module(py, m) for m in modules):
-        info("Abhängigkeiten vorhanden")
+    """Install the project after creating a virtual environment."""
+    if not VENV_SETUP_PENDING.exists():
+        info("Virtuelle Umgebung vorhanden")
         return
 
     step("Installiere Abhängigkeiten (dauert beim ersten Mal etwas) …")
@@ -133,6 +132,7 @@ def ensure_dependencies(py: Path) -> None:
         [str(py), "-m", "pip", "install", "--quiet", "--editable", str(ROBOT_DIR)],
         check=True,
     )
+    VENV_SETUP_PENDING.unlink()
     info("fertig")
 
 

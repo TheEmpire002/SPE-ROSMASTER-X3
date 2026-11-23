@@ -1113,7 +1113,10 @@ Setup on the Pi:
 1. Create a bot with BotFather and start a private chat with it (or add it
    to the desired group). Obtain that chat's ID using Telegram's Bot API.
 2. Install the project dependencies, including `telegramify-markdown`, with
-   `robot/.venv/bin/pip install -e robot`.
+  `robot/.venv/bin/pip install -e robot`. A newly created virtual environment
+  installs these automatically on the next `python main.py` start. Existing
+  environments are not reinstalled automatically; use the command above
+  when adding Telegram to an older environment.
 3. Copy `robot/telegram-secrets.example.json` to
    `robot/telegram-secrets.json` **on the Pi** and fill in `bot_token` and
    `chat_id`. Restrict access with `chmod 600 robot/telegram-secrets.json`.
