@@ -221,9 +221,47 @@ class LiveMapper:
             index = np.concatenate((free, occupied))
             if len(index):
                 self._apply(index, delta)
+            self._clear_footprint(pose)
             self.scans_written += 1
             self.changed = True
         self._ms["eintragen"] = 1000.0 * (time.perf_counter() - started)
+
+    def _clear_footprint(self, pose) -> None:
+        """Cells under the robot are free, whatever the map said (lock held).
+
+        the strongest evidence there is: the robot stands there. without it a
+        door that was closed (or blocked by people) while mapping stays a wall
+        for good, because established walls only weaken to unknown per session
+        and the planner then takes any detour. the session-start value is reset
+        too, so the cap does not pull the cell back; a closed door becomes a
+        wall again after a few hits
+        """
+        radius = config.LIVE_MAP_FOOTPRINT_CLEAR_M
+        if radius <= 0:
+            return
+        res = self.resolution
+        h, w = self._lo.shape
+        cx = (pose[0] - self._origin[0]) / res
+        cy = (pose[1] - self._origin[1]) / res
+        r = int(math.ceil(radius / res)) + 1
+        ix0, iy0 = max(0, int(math.floor(cx)) - r), max(0, int(math.floor(cy)) - r)
+        ix1, iy1 = min(w, int(math.floor(cx)) + r + 1), min(h, int(math.floor(cy)) + r + 1)
+        if ix0 >= ix1 or iy0 >= iy1:
+            return
+        gy, gx = np.mgrid[iy0:iy1, ix0:ix1]
+        # cell centres inside the circle the robot body covers for sure
+        inside = (gx + 0.5 - cx) ** 2 + (gy + 0.5 - cy) ** 2 <= (radius / res) ** 2
+        if not inside.any():
+            return
+        lo = self._lo[iy0:iy1, ix0:ix1]
+        base = self._base[iy0:iy1, ix0:ix1]
+        target = np.float32(config.LIVE_MAP_FOOTPRINT_LO)
+        cleared = inside & (lo > target)
+        if not cleared.any():
+            return
+        lo[cleared] = target
+        base[cleared] = target
+        self._mark_dirty(ix0, iy0, ix1, iy1)
 
     def _apply(self, index, delta) -> None:
         """Add log-odds, established cells slower and capped per session (lock held)."""

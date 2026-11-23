@@ -683,6 +683,18 @@ as good when the new quality criteria say so.
    a session may change them, so a bad session can weaken a wall at most to
    unknown, never erase it. `OccupancyMap.derived` keeps the distance field up
    to date incrementally instead of recomputing it.
+   **Exception (23.11.): the robot's own footprint.** With every scan written,
+   the cells within `LIVE_MAP_FOOTPRINT_CLEAR_M` (half the robot width) of the
+   lidar become free (`LIVE_MAP_FOOTPRINT_LO`), session-start value included,
+   so the cap cannot pull them back. Reason: a door that was closed (or
+   blocked by people) while mapping stayed a wall for good, because seeing
+   through it only weakens it to unknown, and the planner never drives through
+   unknown while any detour exists. On the robot this made a goal 3 m away
+   behind a door a 21 m detour; after driving through the door by hand the
+   doorway still had wall cells right on the trail. Where the robot stands
+   there is no wall, and writes only happen behind the integrate gate, so a
+   wrong pose cannot use this to punch holes. A door closed later becomes a
+   wall again after a few hits (the cell is no longer established).
 5. **`LiveStore`:** npz (float16) plus pgm/yaml plus json, `_aktiv.json`, atomic
    writes, 3 backups; a broken npz is renamed `.broken` and the pgm is used
    instead.

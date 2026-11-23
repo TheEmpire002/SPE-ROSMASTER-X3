@@ -455,6 +455,12 @@ LIVE_MAP_FREE_MARGIN_M = 0.10
 LIVE_MAP_ESTABLISHED_LO = 2.5
 LIVE_MAP_ESTABLISHED_WEIGHT = 0.3
 LIVE_MAP_SESSION_CHANGE_MAX = 2.0
+# cells under the robot (within this radius of the lidar, m) become free on
+# every scan written: where it stands there is no wall. half the robot width,
+# so only cells the body surely covers; 0 = off
+LIVE_MAP_FOOTPRINT_CLEAR_M = 0.125  # = ROBOT_HALF_WIDTH_M, defined further down
+# ... to this log-odds value, clearly free
+LIVE_MAP_FOOTPRINT_LO = -1.5
 # a scan is only a candidate after this much motion since the last one written
 # (a robot standing in front of a person writes the person at most once)
 LIVE_MAP_MIN_MOVE_M = 0.10
