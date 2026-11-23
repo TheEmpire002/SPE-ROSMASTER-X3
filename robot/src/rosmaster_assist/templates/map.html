@@ -180,6 +180,7 @@
             </div>
             <label class="check"><input type="checkbox" id="fotoAuto" disabled> beim Fahren automatisch fotografieren</label>
             <div class="button-row" style="margin-top:9px">
+              <select id="panoKamera" aria-label="Kamera fürs Panorama" disabled></select>
               <button id="panoStart" type="button" disabled>🔄 Rundum-Panorama hier</button>
               <button id="panoStop" class="stop" type="button" disabled>■ Panorama abbrechen</button>
             </div>
@@ -631,36 +632,61 @@
       const panoCanvas = $('panoCanvas');
       const panoCtx = panoCanvas.getContext('2d');
 
-      function drawPano() {
+      // scaled once to the view height: dragging then only copies pixels
+      // instead of rescaling the whole panorama on every pointer move
+      function panoScaled(h) {
         const img = pano.img;
-        const w = panoCanvas.clientWidth * dpr;
-        const h = panoCanvas.clientHeight * dpr;
+        if (pano.scaled && pano.scaled.height === h) return pano.scaled;
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(img.naturalWidth * h / img.naturalHeight));
+        c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, c.width, h);
+        pano.scaled = c;
+        return c;
+      }
+
+      function drawPano() {
+        pano.frame = null;
+        const img = pano.img;
+        const w = Math.round(panoCanvas.clientWidth * dpr);
+        const h = Math.round(panoCanvas.clientHeight * dpr);
         if (panoCanvas.width !== w || panoCanvas.height !== h) { panoCanvas.width = w; panoCanvas.height = h; }
-        panoCtx.fillStyle = '#101720';
-        panoCtx.fillRect(0, 0, w, h);
-        if (!img || !img.complete || !img.naturalWidth) return;
-        const scale = h / img.naturalHeight;
-        const full = img.naturalWidth * scale;
+        if (!img || !img.complete || !img.naturalWidth || !h) {
+          panoCtx.fillStyle = '#101720';
+          panoCtx.fillRect(0, 0, w, h);
+          return;
+        }
+        const scaled = panoScaled(h);
+        const full = scaled.width;
         // offset = panorama x (scaled) at the left edge of the view
-        let x = -(((pano.offset % full) + full) % full);
+        let x = -Math.round(((pano.offset % full) + full) % full);
         while (x < w) {
-          panoCtx.drawImage(img, x, 0, full, h);
+          panoCtx.drawImage(scaled, x, 0);
           x += full;
         }
       }
 
+      // at most one redraw per screen frame, however many pointer events come
+      function schedulePano() {
+        if (!pano.frame) pano.frame = window.requestAnimationFrame(drawPano);
+      }
+
       function showPanorama(p) {
         openPhoto = p;
-        pano.img = new Image();
-        pano.img.onload = () => {
+        pano.scaled = null;
+        const img = new Image();
+        pano.img = img;
+        img.onload = () => {
+          // a panorama opened in the meantime keeps its own view
+          if (pano.img !== img) return;
           // start looking along the first shot (centre of the panorama)
           const scale = panoCanvas.clientHeight * dpr / pano.img.naturalHeight;
           pano.offset = pano.img.naturalWidth * scale / 2 - panoCanvas.clientWidth * dpr / 2;
           drawPano();
         };
-        pano.img.src = p.url;
+        img.src = p.url;
         const when = new Date(p.zeit * 1000).toLocaleString('de-DE');
-        $('panoInfo').textContent = `${when} · x ${p.x.toFixed(2)} m, y ${p.y.toFixed(2)} m · ${p.aufnahmen || '?'} Aufnahmen · ziehen zum Umschauen`;
+        $('panoInfo').textContent = `${when} · x ${p.x.toFixed(2)} m, y ${p.y.toFixed(2)} m · ${p.aufnahmen || '?'} Aufnahmen${p.kamera ? ` · ${p.kamera}` : ''} · ziehen zum Umschauen`;
         $('panoAnsicht').hidden = false;
         drawPano();
         draw();
@@ -669,6 +695,7 @@
       function closePanorama() {
         openPhoto = null;
         pano.img = null;
+        pano.scaled = null;
         $('panoAnsicht').hidden = true;
         draw();
       }
@@ -681,12 +708,12 @@
       panoCanvas.addEventListener('pointermove', (event) => {
         if (!pano.drag) return;
         pano.offset = pano.drag.offset - (event.clientX - pano.drag.x) * dpr;
-        drawPano();
+        schedulePano();
       });
       const endPanoDrag = () => { pano.drag = null; panoCanvas.classList.remove('dragging'); };
       panoCanvas.addEventListener('pointerup', endPanoDrag);
       panoCanvas.addEventListener('pointercancel', endPanoDrag);
-      window.addEventListener('resize', () => { if (!$('panoAnsicht').hidden) drawPano(); });
+      window.addEventListener('resize', () => { if (!$('panoAnsicht').hidden) schedulePano(); });
 
       function showPhoto(p) {
         if (p.art === 'panorama') return showPanorama(p);
@@ -733,6 +760,7 @@
 
       function draw() {
         if (!canvas.width || !canvas.height) return;
+        if (!$('panoAnsicht').hidden) return;
         ctx.fillStyle = '#101720';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         if (!mapPayload) return;
@@ -788,6 +816,15 @@
       }
 
       function syncPanorama(pn, o, canDrive) {
+        const choice = $('panoKamera');
+        const cams = (pn && pn.kameras) || [];
+        const known = Array.from(choice.options).map((o) => o.value).join('|');
+        if (known !== cams.map((c) => c.name).join('|')) {
+          const keep = choice.value;
+          choice.replaceChildren(...cams.map((c) => new Option(c.label, c.name)));
+          choice.value = cams.some((c) => c.name === keep) ? keep : (pn.kamera || '');
+        }
+        choice.disabled = !pn || !pn.verfuegbar || pn.aktiv || cams.length < 2;
         if (!pn || !pn.verfuegbar) {
           $('panoStart').disabled = true;
           $('panoStop').disabled = true;
@@ -1100,7 +1137,8 @@
       });
       $('panoStart').addEventListener('click', async () => {
         try {
-          setLocalization(await api('/api/mapping/panorama', { method: 'POST' }));
+          const kamera = $('panoKamera').value || null;
+          setLocalization(await api('/api/mapping/panorama', { method: 'POST', body: JSON.stringify({ kamera }) }));
           message('Panorama startet -- er dreht sich gleich einmal im Kreis.');
         } catch (error) { message(error.message, true); }
       });

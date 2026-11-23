@@ -1039,3 +1039,9 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Why:** The camera is not on the turning axis, so close objects shift between neighbouring shots (parallax); wide blending showed them twice. Each shot is exposed by itself.
 - **Result:** Tested on the robot at the same spot (first_big_map, x=3.31, y=0.99): no more ghosting on the chairs and the cupboard, seams hardly visible, brightness even. Stitching takes 0.5 s on the Pi.
 - **Open:** Stage 3 (3D offline) could use the stored single shots.
+
+### 23.11.2026 – Panorama: choose the camera, smooth dragging (with Claude)
+- **What:** On `/map` a selection field next to the panorama button now chooses the camera (Orbbec or Logitech C270). The C270 sits on the tilt servo, so it is levelled before the turn and its previous angle or auto mode is restored afterwards. The viewer's dragging is smooth again.
+- **Why:** The user wanted to choose the camera. The dragging stuttered because the whole panorama was rescaled on every pointer move and the hidden map behind the viewer kept redrawing on every pose update.
+- **Changes:** `Panorama` gets all cameras plus the tilt (`start(camera)`, state `kamera`/`kameras`), optional body `{"kamera": ...}` on `POST /api/mapping/panorama`, `PANORAMA_CAMERA`, `PANORAMA_TILT_WAIT_S`. Viewer: scaled once to the view height into a canvas, at most one redraw per screen frame (`requestAnimationFrame`), map drawing paused while the viewer is open.
+- **Result:** see the test on the robot below.

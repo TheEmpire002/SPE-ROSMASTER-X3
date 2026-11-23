@@ -176,7 +176,8 @@ class MapPhotos:
     def _count_photos(self) -> int:
         return sum(1 for p in self._photos if p.get("art", "foto") == "foto")
 
-    def add_panorama(self, current, pose, data: bytes, shots) -> dict[str, Any] | None:
+    def add_panorama(self, current, pose, data: bytes, shots,
+                     camera: str | None = None) -> dict[str, Any] | None:
         """Store a stitched panorama taken at ``pose`` (centre = its heading).
 
         ``shots``: the single photos as ``[(jpeg, heading_rad), ...]``; kept in
@@ -197,7 +198,7 @@ class MapPhotos:
             "winkel": round(math.degrees(pose[2]) % 360.0, 1),
             "zeit": round(time.time(), 1),
             "quelle": "hand",
-            "kamera": getattr(self._camera, "name", None),
+            "kamera": camera or getattr(self._camera, "name", None),
             "aufnahmen": len(shots),
             "einzelbilder": [
                 {"datei": f"{photo_id}/{k:02d}.jpg", "winkel": round(math.degrees(hd) % 360.0, 2)}

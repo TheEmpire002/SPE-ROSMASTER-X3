@@ -482,7 +482,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         return None
 
     map_control.panorama = Panorama(
-        map_control.photos, maneuver, localization, photo_camera, busy=_other_drive,
+        map_control.photos, maneuver, localization, cameras, busy=_other_drive,
+        tilt=camera_tilt, tilt_camera=config.PERSON_CAMERA,
     )
     app.state.map_control = map_control
     app.include_router(create_mapping_router(mapping_manager, map_control))

@@ -50,6 +50,11 @@ class ReturnRequest(BaseModel):
     ziel: str = Field(default="mission", pattern="^(mission|home)$")
 
 
+class PanoramaRequest(BaseModel):
+    # camera name from CAMERA_ROLES; missing = the last one used
+    kamera: str | None = None
+
+
 def create_mapping_router(manager: MappingManager | None = None, drive=None) -> APIRouter:
     """Create the mapping routes.
 
@@ -278,9 +283,9 @@ def create_mapping_router(manager: MappingManager | None = None, drive=None) -> 
         return {"geloescht": photo_id}
 
     @router.post("/api/mapping/panorama")
-    async def panorama_start() -> dict[str, Any]:
+    async def panorama_start(request: PanoramaRequest | None = None) -> dict[str, Any]:
         control = _control()
-        error = control.start_panorama()
+        error = control.start_panorama(request.kamera if request is not None else None)
         if error:
             raise HTTPException(status_code=409, detail=error)
         return control.display()

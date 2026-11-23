@@ -140,13 +140,20 @@ def _gains(layers) -> list[float]:
 class Panorama:
     """Turns, shoots, stitches. Used like ``Maneuver``: start, cancel, state."""
 
-    def __init__(self, photos, maneuver, localization, camera, busy=None) -> None:
+    def __init__(self, photos, maneuver, localization, cameras, busy=None,
+                 tilt=None, tilt_camera: str | None = None) -> None:
         # returns a reason (german) when another mode drives, else None
         self._busy = busy
         self._photos = photos
         self._maneuver = maneuver
         self._localization = localization
-        self._camera = camera
+        self._cameras = {name: cam for name, cam in (cameras or {}).items() if cam is not None}
+        # the camera on the tilt servo is levelled for the run
+        self._tilt = tilt
+        self._tilt_camera = tilt_camera
+        self.camera_name = (config.PANORAMA_CAMERA if config.PANORAMA_CAMERA in self._cameras
+                            else next(iter(self._cameras), None))
+        self._camera = self._cameras.get(self.camera_name)
         self._task: asyncio.Task[None] | None = None
         self._state = OFF
         self._text = ""
@@ -155,7 +162,7 @@ class Panorama:
 
     @property
     def available(self) -> bool:
-        return (self._camera is not None and self._maneuver is not None
+        return (bool(self._cameras) and self._maneuver is not None
                 and self._maneuver.available and self._photos is not None
                 and self._photos.available)
 
@@ -172,18 +179,25 @@ class Panorama:
             "schritt": self._step if active else None,
             "von": config.PANORAMA_SHOTS,
             "grund": self.reason,
+            "kamera": self.camera_name,
+            "kameras": [{"name": name, "label": cam.label} for name, cam in self._cameras.items()],
         }
 
-    def start(self) -> str | None:
-        """Start here; returns an error text (german)."""
+    def start(self, camera: str | None = None) -> str | None:
+        """Start here with ``camera`` (name, None = the last one); returns an error text (german)."""
         if not self.available:
             return "Panorama geht nur mit Kamera und Lidar"
         if self.active:
             return "Panorama läuft schon"
+        if camera is not None and camera not in self._cameras:
+            return f"Kamera '{camera}' gibt es nicht"
         if self._photos.map_here() is None:
             return "Keine Karte, in der er seine Lage kennt"
         if not self._localization.confident or self._localization.pose() is None:
             return "Lage in der Karte ist gerade unsicher"
+        # switched only once the start is sure, so a refused start keeps the old one
+        if camera is not None:
+            self.camera_name, self._camera = camera, self._cameras[camera]
         self.reason = None
         self._task = asyncio.create_task(self._run())
         return None
@@ -206,7 +220,11 @@ class Panorama:
         shots: list[tuple[bytes, float]] = []
         self._photos.paused = True
         self._maneuver.quiet = True
+        tilt_before = self._level_tilt()
         try:
+            if tilt_before is not None:
+                # servo needs time to reach level before the first shot
+                await asyncio.sleep(config.PANORAMA_TILT_WAIT_S)
             for i in range(shots_wanted):
                 self._step = i + 1
                 self._set(f"Foto {i + 1} von {shots_wanted}")
@@ -235,7 +253,7 @@ class Panorama:
             if jpeg is None:
                 return self._end("Panorama ließ sich nicht zusammensetzen")
             entry = await asyncio.to_thread(self._photos.add_panorama, current, start_pose,
-                                            jpeg, shots)
+                                            jpeg, shots, self.camera_name)
             if entry is None:
                 return self._end(self._photos.last_error or "Panorama nicht gespeichert")
             self.reason = "fertig"
@@ -249,7 +267,27 @@ class Panorama:
         finally:
             self._photos.paused = False
             self._maneuver.quiet = False
+            self._restore_tilt(tilt_before)
             self._state = OFF
+
+    def _level_tilt(self):
+        """Level the tilted camera; returns (auto, angle) to restore, or None."""
+        tilt = self._tilt
+        if tilt is None or self.camera_name != self._tilt_camera or not tilt.available:
+            return None
+        state = tilt.state()
+        # a tilted camera would bend the horizon into a wave around the cylinder
+        tilt.set(0.0)
+        return state["auto"], state["ziel"]
+
+    def _restore_tilt(self, before) -> None:
+        if before is None:
+            return
+        auto, angle = before
+        if auto:
+            self._tilt.set_auto(True)
+        else:
+            self._tilt.set(angle)
 
     def _set(self, text: str) -> None:
         self._state, self._text = RUNNING, text

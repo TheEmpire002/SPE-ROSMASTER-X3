@@ -1019,7 +1019,7 @@ User interface: `GET /map`.
 | `POST /api/mapping/hauptkarte/uebernehmen` | after SLAM: the SLAM map becomes the main map (old one to `backups/`), the pose stays |
 | `POST /api/mapping/hauptkarte/verwerfen` | after SLAM: back to the main map, the pose is searched where the odometry expects it |
 | `GET /api/mapping/fotos` | photos of the current map (new 18.11., see "Photos on the map"): `karte`, `auto`, `verfuegbar`, `fotos` (list of `id`, `datei`, `x`, `y` (m, map frame), `winkel` (heading in degrees, 0 = map x axis, counter-clockwise), `zeit` (unix seconds), `quelle` `"auto"`/`"hand"`, `kamera`, `url`) |
-| `POST /api/mapping/panorama` | turn on the spot and take an all-round panorama here (new 18.11., see "Panoramas"); cancels other drives; returns as `GET /api/mapping/ortung`; 409 with reason (no map, pose uncertain, no camera/lidar, already running) |
+| `POST /api/mapping/panorama` | turn on the spot and take an all-round panorama here (new 18.11., see "Panoramas"); optional body `{"kamera": "<name from CAMERA_ROLES>"}` (new 23.11., missing = the last one used); cancels other drives; returns as `GET /api/mapping/ortung`; 409 with reason (no map, pose uncertain, no camera/lidar, unknown camera, already running) |
 | `POST /api/mapping/panorama/stop` | cancel the panorama |
 | `GET /api/mapping/fotos/{karte}/{datei}` | the photo as JPEG; 404 if unknown |
 | `POST /api/mapping/fotos` | take a photo now ("Foto hier"); returns the entry; 409 with reason without a map, with an uncertain pose or without a fresh camera image |
@@ -1119,7 +1119,15 @@ from left to right, the centre looks along the first shot. The panorama is
 stored with the photos (`art: "panorama"`, `aufnahmen`, `winkel` = heading
 of the centre) and shown on `/map` as a light blue ring; a click opens a
 viewer you can drag around 360°. `GET /api/mapping/ortung` contains
-`panorama`: `verfuegbar`, `aktiv`, `text`, `schritt`, `von`, `grund`.
+`panorama`: `verfuegbar`, `aktiv`, `text`, `schritt`, `von`, `grund`,
+`kamera` (name of the selected camera) and `kameras` (`[{name, label}]`).
+
+**Choosing the camera (new 23.11.).** A selection field next to the
+panorama button on `/map` picks the camera; the default is
+`PANORAMA_CAMERA` (Orbbec, wider view). With the C270 on the tilt servo the
+camera is levelled first (`PANORAMA_TILT_WAIT_S`) and its previous angle or
+auto mode restored afterwards; a tilted camera would bend the horizon into
+a wave. The entry stores the camera in `kamera`.
 
 **Using the map (new 04.11.).** When a map exists, the robot knows where it
 is in it. During mapping this applies immediately; afterwards (mapping
