@@ -29,6 +29,7 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 
 from .. import config, settings
+from .. import telegram
 from ..recording import Recorder
 from ..diagnostics import Diagnostics, LogBuffer
 from ..health import Healthbot
@@ -43,6 +44,8 @@ from ..interaction.speech import SpeechRecognition
 from ..interaction.voice import Voice
 from ..mapping.live_mapper import LiveMapper
 from ..mapping.live_store import LiveStore
+from ..mapping.panorama import Panorama
+from ..mapping.photos import MapPhotos
 from ..mapping.manager import MappingManager
 from ..mapping.web import create_mapping_router
 from ..interaction.behavior import Interaction
@@ -504,6 +507,25 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     map_control.healthbot = healthbot
     # mapping drives take over the wheels; other test runs keep going
     map_control.also_cancel.append(lambda reason=None: test_runs.drives and test_runs.stop(reason))
+
+    photo_camera = cameras.get(config.MAP_PHOTO_CAMERA, camera)
+    map_control.photos = MapPhotos(
+        mapping_manager.map_service.storage_dir, localization, photo_camera, odometry=odometry,
+    )
+
+    def _other_drive() -> str | None:
+        if homing.active:
+            return "Heimfahrt oder Zielfahrt läuft"
+        if explorer.active:
+            return "autonomes Fahren läuft"
+        if interaction.active and interaction.mode not in (None, vh.READY):
+            return "Interaktion fährt"
+        return None
+
+    map_control.panorama = Panorama(
+        map_control.photos, maneuver, localization, cameras, busy=_other_drive,
+        tilt=camera_tilt, tilt_camera=config.PERSON_CAMERA,
+    )
     app.state.map_control = map_control
     app.include_router(create_mapping_router(mapping_manager, map_control))
 
@@ -1135,6 +1157,26 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         n = diagnostics.acknowledge(None if data.get("alle") else str(data["id"]))
         return {"quittiert": n}
 
+    @app.post("/telegram/send")
+    async def telegram_send(request: Request):
+        """Send text or Markdown to the configured Telegram chat."""
+        content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        if content_type != "application/json":
+            return JSONResponse({"fehler": "JSON erforderlich"}, status_code=415)
+        try:
+            data = await request.json()
+        except ValueError:
+            data = None
+        if (not isinstance(data, dict) or not isinstance(data.get("text"), str)
+                or not isinstance(data.get("markdown", False), bool)):
+            return JSONResponse({"fehler": "Ungültige Nachricht"}, status_code=400)
+        try:
+            await asyncio.to_thread(
+                telegram.send_message, data["text"], markdown=data.get("markdown", False))
+        except telegram.TelegramError as exc:
+            return JSONResponse({"fehler": str(exc)}, status_code=400)
+        return {"ok": True}
+
     # --- Music ("MUKKE") ---
     #
     # HTTP like the settings: changes via POST, so that foreign web pages
@@ -1564,6 +1606,9 @@ async def _handle(
             if cmd.is_stop():
                 return None
             maneuver.cancel("von Hand übersteuert")
+        # between two turns of a panorama no maneuver runs: end it as well
+        if map_control is not None and not cmd.is_stop():
+            map_control.cancel_panorama("von Hand übersteuert")
 
         # healthbot too, but a stop must not end a running alarm by accident
         if healthbot is not None and healthbot.active:
@@ -2174,7 +2219,7 @@ async def _status_loop(
             # faster than one tick of this loop.
             if maneuver is not None and maneuver.finished != last_maneuver:
                 last_maneuver = maneuver.finished
-                if maneuver.last_reason:
+                if maneuver.last_reason and not maneuver.quiet:
                     await hub.broadcast(alert_message(
                         "info" if maneuver.succeeded else "warning",
                         f"Fahrbefehl: {maneuver.last_reason}",

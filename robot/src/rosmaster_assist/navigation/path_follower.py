@@ -65,6 +65,11 @@ class PathFollower:
         self._page = 0.0
         self.rest_m = 0.0
 
+    @property
+    def remaining(self) -> list[tuple[float, float]]:
+        """Waypoints not reached yet."""
+        return self.points[self._i:]
+
     def _remainder(self, pose) -> float:
         p = self.points
         rest = math.hypot(p[self._i][0] - pose[0], p[self._i][1] - pose[1])

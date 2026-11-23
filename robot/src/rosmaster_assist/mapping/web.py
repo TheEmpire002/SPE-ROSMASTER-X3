@@ -42,8 +42,19 @@ class LiveRequest(BaseModel):
     aktiv: bool
 
 
+class PhotoAutoRequest(BaseModel):
+    aktiv: bool
+
+
 class ReturnRequest(BaseModel):
     ziel: str = Field(default="mission", pattern="^(mission|home)$")
+
+
+class PanoramaRequest(BaseModel):
+    # camera name from CAMERA_ROLES; missing = the last one used
+    kamera: str | None = None
+    # tilt (deg, + = up) for the camera on the servo; missing = the last one
+    neigung: float | None = Field(default=None, ge=-90.0, le=90.0)
 
 
 def create_mapping_router(manager: MappingManager | None = None, drive=None) -> APIRouter:
@@ -249,6 +260,61 @@ def create_mapping_router(manager: MappingManager | None = None, drive=None) -> 
         if error:
             raise HTTPException(status_code=409, detail=error)
         return control.display()
+
+    # --- Photos on the map -----------------------------------------------------------
+
+    def _photos():
+        photos = getattr(_control(), "photos", None)
+        if photos is None:
+            raise HTTPException(status_code=503, detail="Kartenfotos sind nicht eingerichtet.")
+        return photos
+
+    @router.get("/api/mapping/fotos")
+    async def photos_list() -> dict[str, Any]:
+        return await run_in_threadpool(_photos().listing)
+
+    @router.post("/api/mapping/fotos")
+    async def photos_take() -> dict[str, Any]:
+        result = _photos().take()
+        if isinstance(result, str):
+            raise HTTPException(status_code=409, detail=result)
+        return result
+
+    @router.post("/api/mapping/fotos/auto")
+    async def photos_auto(request: PhotoAutoRequest) -> dict[str, Any]:
+        photos = _photos()
+        photos.auto = request.aktiv
+        return photos.brief()
+
+    @router.delete("/api/mapping/fotos/{photo_id}")
+    async def photos_delete(photo_id: str) -> dict[str, Any]:
+        if not _photos().delete(photo_id):
+            raise HTTPException(status_code=404, detail="Foto nicht gefunden.")
+        return {"geloescht": photo_id}
+
+    @router.post("/api/mapping/panorama")
+    async def panorama_start(request: PanoramaRequest | None = None) -> dict[str, Any]:
+        control = _control()
+        error = control.start_panorama(
+            request.kamera if request is not None else None,
+            request.neigung if request is not None else None,
+        )
+        if error:
+            raise HTTPException(status_code=409, detail=error)
+        return control.display()
+
+    @router.post("/api/mapping/panorama/stop")
+    async def panorama_stop() -> dict[str, Any]:
+        control = _control()
+        control.cancel_panorama("vom Nutzer abgebrochen")
+        return control.display()
+
+    @router.get("/api/mapping/fotos/{name}/{filename}", include_in_schema=False)
+    async def photos_file(name: str, filename: str) -> FileResponse:
+        path = _photos().file(name, filename)
+        if path is None:
+            raise HTTPException(status_code=404, detail="Foto nicht gefunden.")
+        return FileResponse(path, media_type="image/jpeg")
 
     @router.websocket("/api/mapping/ws")
     async def mapping_websocket(websocket: WebSocket) -> None:

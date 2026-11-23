@@ -57,7 +57,6 @@ CANCELLED = "abgebrochen"
 _TICK_S = 0.1  # far below the watchdog's dead man time (0.5 s)
 _SCAN_MAX_AGE_S = 1.0
 _TURN_MAX_S = 10.0
-_APPROACH_MAX_S = 15.0
 _BACK_MAX_S = 4.0
 _REACTION_S = 2.5  # after each nudge, watch this long for movement or words
 _SPEAK_MAX_S = 15.0
@@ -710,6 +709,9 @@ class Healthbot:
     async def _nudge_all(self) -> bool:
         """Nudge up to HEALTH_NUDGE_COUNT times. True on a reaction."""
         self._note("fährt heran, um anzustupsen", NUDGE)
+        # say what is coming: a person lying there should not be startled by
+        # a silent robot touching them
+        await self._speak(config.HEALTH_NUDGE_ANNOUNCE)
         if not await self._approach():
             self._note("kommt nicht nah genug heran -- kein Stupsen möglich")
             return False
@@ -718,6 +720,9 @@ class Healthbot:
                 legs = await self._aim(am.LEG_POINTS, config.HEALTH_FACE_S)
                 self._note("zielt auf die Beine" if legs is not None
                            else "Beine nicht zu sehen -- stupst die Körpermitte an")
+            # call first, then nudge: the ear is deaf while the robot speaks,
+            # so only what comes after the call counts as an answer
+            await self._speak(config.HEALTH_NUDGE_CALL)
             since = time.time()
             result = await self._nudge(nr)
             await self._back_off()
@@ -742,9 +747,23 @@ class Healthbot:
 
     async def _approach(self) -> bool:
         """Slowly up to HEALTH_NUDGE_START_M (lidar) to the person, keeping
-        them centred. The normal drive guard stays on."""
-        deadline = time.monotonic() + _APPROACH_MAX_S
+        them centred. The normal drive guard stays on.
+
+        a person lying on the floor is below the lidar plane, so the lidar
+        distance is often the wall behind them: then only the drive guard
+        (depth camera, memory) or the wheels stopping at the body end the
+        approach. limited by distance and a generous time, not by a short
+        timeout (robot test: gave up after 15 s while still on its way)
+        """
+        deadline = time.monotonic() + config.HEALTH_APPROACH_MAX_S
+        start = self._odometry.pose()
+        began = time.monotonic()
+        still_since: float | None = None
         while time.monotonic() < deadline:
+            if self._travelled(start) > config.HEALTH_APPROACH_MAX_M:
+                self._watchdog.stop()
+                self._note(f"nach {config.HEALTH_APPROACH_MAX_M:.1f} m noch nicht bei der Person -- bricht ab")
+                return False
             p = self._seen()
             if p is not None:
                 self._person = p
@@ -774,6 +793,16 @@ class Healthbot:
                 self._watchdog.stop()
                 self._note("Fahrschutz hält knapp vor der Person (Tiefe/Gedächtnis) -- nah genug zum Stupsen")
                 return True
+            # wheels stand although it drives: it touches the person already
+            vx_actual = self._odometry.velocity()[0]
+            if time.monotonic() - began > 1.0 and driven.vx > 0.0 and vx_actual < config.HEALTH_NUDGE_STILL_MS:
+                still_since = still_since or time.monotonic()
+                if time.monotonic() - still_since >= config.HEALTH_NUDGE_CONTACT_S:
+                    self._watchdog.stop()
+                    self._note("Räder stehen an der Person -- nah genug zum Stupsen")
+                    return True
+            else:
+                still_since = None
             await asyncio.sleep(_TICK_S)
         self._watchdog.stop()
         return False

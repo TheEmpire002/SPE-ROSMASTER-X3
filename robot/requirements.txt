@@ -19,6 +19,8 @@ numpy
 # Fork), importiert wird es als `rplidar`.
 rplidar-roboticia
 
+telegramify-markdown>=1.4,<2
+
 # MUKKE: YouTube-Ton auf dem Lautsprecher. Bewusst ohne feste Version und
 # regelmäßig mit `pip install -U yt-dlp` erneuern -- YouTube ändert laufend
 # etwas. Braucht dazu mpv aus apt (sudo apt install mpv).

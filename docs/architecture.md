@@ -76,36 +76,39 @@ human. It does not assess a health condition.
 
 ## Modules in `robot/src/rosmaster_assist/`
 
-| Module         | Responsibility                                             |
-|----------------|------------------------------------------------------------|
-| `config.py`    | All settings in one place (speed, ports, timeouts)         |
-| `settings.py`  | Which of them the settings page may change at runtime; saves changes to `robot/settings.json` |
-| `audio/`       | Sound on the USB speaker: `mukke.py` plays YouTube links with mpv |
-| `protocol.py`  | Message format — the common language of all parties        |
-| `drive/`       | Driving. `base.py` = interface, plus real driver + mock    |
-| `safety/`      | Watchdog, emergency stop, speed limiting, drive guard based on the footprint (`drive_guard.py`) |
-| `sensors/`     | Lidar, camera, depth camera (`depth.py`, OpenNI2; display `depth_view.py`), person detection, body pose (Hailo), tilt servo of the person camera (`camera_tilt.py`) |
-| `navigation/`  | Odometry, lidar localization, homing (with a map also goal drive), explorer, mapping drive, avoidance (`avoidance.py`), obstacle naming, obstacle memory for depth points (`obstacle_memory.py`), progress watch against getting stuck (`progress.py`), pose in the map (`map_localization.py`), paths and frontiers (`path_planning.py`), path following (`path_follower.py`) |
-| `mapping/`     | Mapping: slam_toolbox in the container including the feed, save/load the map (`occ_map.py`), map in the simulation (`simulation.py`), `/map` page (`web.py`) |
+| Module           | Responsibility                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `config.py`      | All settings in one place (speed, ports, timeouts)                                                                                                                                                                                                                                                                                                                             |
+| `settings.py`    | Which of them the settings page may change at runtime; saves changes to `robot/settings.json`                                                                                                                                                                                                                                                                                  |
+| `audio/`         | Sound on the USB speaker: `mukke.py` plays YouTube links with mpv                                                                                                                                                                                                                                                                                                              |
+| `protocol.py`    | Message format — the common language of all parties                                                                                                                                                                                                                                                                                                                            |
+| `telegram.py`    | Sends text or Markdown to the configured Telegram chat                                                                                                                                                                                                                                                                                                                         |
+| `drive/`         | Driving. `base.py` = interface, plus real driver + mock                                                                                                                                                                                                                                                                                                                        |
+| `safety/`        | Watchdog, emergency stop, speed limiting, drive guard based on the footprint (`drive_guard.py`)                                                                                                                                                                                                                                                                                |
+| `sensors/`       | Lidar, camera, depth camera (`depth.py`, OpenNI2; display `depth_view.py`), person detection, body pose (Hailo), tilt servo of the person camera (`camera_tilt.py`)                                                                                                                                                                                                            |
+| `navigation/`    | Odometry, lidar localization, homing (with a map also goal drive), explorer, mapping drive, avoidance (`avoidance.py`), obstacle naming, obstacle memory for depth points (`obstacle_memory.py`), progress watch against getting stuck (`progress.py`), pose in the map (`map_localization.py`), paths and frontiers (`path_planning.py`), path following (`path_follower.py`) |
+| `mapping/`       | Mapping: slam_toolbox in the container including the feed, save/load the map (`occ_map.py`), map in the simulation (`simulation.py`), `/map` page (`web.py`)                                                                                                                                                                                                                   |
 | `interaction/` | Gestures, behavior (follow, come here, go away), voice (speech output) and speech commands with the wake word "Robi" (microphone cleaned by `audio_filter.py`); planned: mind ("Geist") — see [`interaction.md`](interaction.md) |
 | `health/` | Healthbot: drive to a person, overview from the camera pose, address by voice, nudge, call for help (`procedure.py`, state machine), the four signs as pure computation (`assessment.py`), a lying person in the mock (`simulation.py`), the live view for the page `/zustand` (`live.py`) |
 | `test_runs.py` | Guided, reproducible camera/pose/microphone test runs for the `/tests` page; stores each run under `~/.rosmaster/tests/<name>/` and uploads it to the `testdaten` branch |
-| `diagnostics.py`  | Collects failures (battery, USB, undervoltage, temperature, devices, log) and turns them into understandable problems for the `/diagnose` page |
-| `recording.py` | Recorder: last minute (scans, commands, odometry, states) in memory, saved to a file at the push of a button; plus loading and replaying for `scripts/replay.py` |
-| `box/`         | Motor/servo of the transport box *(still empty)*           |
-| `api/`         | WebSocket server, also serves the web app; `map_control.py` ties together mapping drive, localization and goal drive for `/map` and the app |
-| `main.py`      | Entry point, wires everything together                     |
+| `diagnostics.py` | Collects failures (battery, USB, undervoltage, temperature, devices, log) and turns them into understandable problems for the `/diagnose` page                                                                                                                                                                                                                                 |
+| `recording.py`   | Recorder: last minute (scans, commands, odometry, states) in memory, saved to a file at the push of a button; plus loading and replaying for `scripts/replay.py`                                                                                                                                                                                                               |
+| `box/`           | Motor/servo of the transport box _(still empty)_                                                                                                                                                                                                                                                                                                                               |
+| `api/`           | WebSocket server, also serves the web app; `map_control.py` ties together mapping drive, localization and goal drive for `/map` and the app                                                                                                                                                                                                                                    |
+| `main.py`        | Entry point, wires everything together                                                                                                                                                                                                                                                                                                                                         |
 
 ## Always-on mapping and localization (see E14)
 
 New modules:
 
-| Module | Responsibility |
-|--------|----------------|
-| `navigation/integrate_gate.py` | Decides per scan whether it may be written into the map (FROZEN → CONFIRMING → INTEGRATING, lag buffer of 2) |
-| `mapping/live_mapper.py` | Log-odds grid, the main map that grows during every drive |
-| `mapping/live_store.py` | Saves/loads the main map (npz, pgm/yaml, json, backups, atomic writes) |
-| `navigation/breadcrumbs.py` | Trail of driven poses for planning along it and the way back |
+| Module                         | Responsibility                                                                                                      |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `navigation/integrate_gate.py` | Decides per scan whether it may be written into the map (FROZEN → CONFIRMING → INTEGRATING, lag buffer of 2)        |
+| `mapping/live_mapper.py`       | Log-odds grid, the main map that grows during every drive                                                           |
+| `mapping/live_store.py`        | Saves/loads the main map (npz, pgm/yaml, json, backups, atomic writes)                                              |
+| `mapping/photos.py`            | Photos with position and heading per map (`<name>_bilder/`), taken automatically while driving or by hand on `/map` |
+| `mapping/panorama.py`          | All-round panorama: turns in steps (maneuver), shoots, stitches by measured heading onto a cylinder                 |
+| `navigation/breadcrumbs.py`    | Trail of driven poses for planning along it and the way back                                                        |
 
 Data flow: lidar → `ScanOdometry` (always on) → `MapControl.tick_loop` at 4 Hz:
 `match_scan` (`MapLocalization`) → `live_mapper.step` (only when the gate says
