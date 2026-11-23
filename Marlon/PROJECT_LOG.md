@@ -1186,3 +1186,10 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 
 - **What:** Upper tilt limit of the C270 raised from 30° to 60° (`CAMERA_TILT_MAX_DEG`, servo 150°) at the user's request; the sliders in the web app and on `/map` take the limits from the server.
 - **Open:** Check on the robot that the servo and the cable reach 60° without straining.
+
+### 23.11.2026 – Object detection on the Hailo with its own view (with Claude)
+- **What:** New branch `feat/object-detection`. The camera now recognises objects (80 COCO classes: person, chair, table, sofa, bottle, …) with YOLOv8m on the Hailo-10H. New window „Objekte (KI)“ in the app's camera switcher: the Orbbec colour image with a box and German name around each object. The lidar obstacles take the camera's name in their direction („Stuhl“, „Tisch“, „Sofa“, quelle „Kamera+Lidar“) instead of the shape rule of thumb.
+- **Why:** The previous "object detection" was only a rule of thumb on the lidar plane (leg widths and spacing) and often wrong; the camera sees what it is.
+- **Decision:** HailoRT directly (like the pose detection, shared chip with round robin), not hailo-apps: their GStreamer pipelines open the camera themselves, but the camera already belongs to the server (stream, people, map photos). The model with NMS on the chip (`yolov8m_h10.hef`) delivers finished boxes per class, so the CPU only scales the image. It only computes while the view is open or the person detection runs (driving).
+- **Changes:** `sensors/objects.py`, `pose._Hailo` takes the model as parameter, `PersonDetection.active`, `obstacles.classify(labels=...)` with `ObstacleDetection.labels_source`, endpoints `/objekte/stream|snapshot|status`, `objekte` in `/cameras`, `state.autonomie.objekterkennung`, `OBJECTS_*` in `config.py`, camera switcher in `app.js`.
+- **Result:** Decoding of the Hailo NMS output checked with a synthetic buffer. The robot was offline: run on the Pi still pending (output format of the real model, computing time, both models together on the chip).

@@ -1201,6 +1201,27 @@ PERSON_MIN_SCORE = 0.5
 # from CAMERA_ROLES, detection uses the default camera.
 PERSON_CAMERA = "personen"
 
+# --- Object detection (sensors/objects.py) -----------------------------------------
+# YOLO with 80 COCO classes on the Hailo, through the wide forward camera.
+# Names lidar obstacles in their direction (chair, table, sofa, ...) and
+# draws boxes into the object view of the app (/objekte/stream).
+OBJECTS_ENABLED = True
+OBJECTS_HEF = "/usr/share/hailo-models/yolov8m_h10.hef"
+OBJECTS_CAMERA = "orientierung"
+# detections per second while someone needs it; the pose detection shares the chip
+OBJECTS_HZ = 5.0
+# boxes below this confidence are dropped (0..1); low values bring ghosts,
+# high ones miss chairs seen from the side
+OBJECTS_MIN_SCORE = 0.4
+# images older than this (s) are not computed: the box would be off
+OBJECTS_MAX_FRAME_AGE_S = 0.5
+# keep the model open on the chip between uses (faster start, a bit of power)
+OBJECTS_KEEP_WARM = False
+# also run while the person detection runs (driving), to name obstacles
+OBJECTS_WITH_PEOPLE = True
+# a lidar obstacle takes the name of a box up to this far (deg) outside it
+OBJECTS_ANGLE_MARGIN_DEG = 3.0
+
 # Where the person boxes come from (sensors/people.py):
 # "auto" -- from the pose detection on the Hailo AI chip while it works,
 #           otherwise from HOG. Relieves the CPU, and YOLO also finds people

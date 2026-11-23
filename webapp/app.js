@@ -1216,7 +1216,9 @@ async function loadCameras() {
   camList = data.kameras || [];
   camDefault = data.standard;
   if (data.personen) personCamera = data.personen;
-  depthViews = data.tiefe || [];
+  // extra views beside the cameras: depth images and (new 23.11.) the
+  // object view with boxes and names, both with their own address
+  depthViews = [...(data.tiefe || []), ...(data.objekte || [])];
 
   // After a robot restart the selected camera may be missing.
   if (camView && camView !== ALL_VIEW && !camList.some((k) => k.name === camView)
@@ -1237,8 +1239,9 @@ async function loadCameras() {
       "Alle Kameras nebeneinander"));
   }
   for (const t of depthViews) {
-    buttons.push(selectButton(t.name, t.kamera,
-      "Was die Tiefenkamera misst: rot nah, blau fern, magenta Hindernis"));
+    buttons.push(selectButton(t.name, t.kamera, t.name === "objekte"
+      ? "Was die Kamera-KI erkennt: Rahmen und Namen um Stühle, Tische, Menschen …"
+      : "Was die Tiefenkamera misst: rot nah, blau fern, magenta Hindernis"));
   }
   ui.camSelect.replaceChildren(...buttons);
   ui.camSelect.hidden = camList.length + depthViews.length < 2;

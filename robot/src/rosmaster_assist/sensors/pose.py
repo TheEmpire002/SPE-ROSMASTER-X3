@@ -455,8 +455,11 @@ class _Hailo:
     zero points per output.
     """
 
-    def __init__(self, np) -> None:
+    def __init__(self, np, hef: str | None = None) -> None:
         from hailo_platform import HEF, FormatType, HailoSchedulingAlgorithm, VDevice
+
+        # the object detection (objects.py) opens its own model with the same code
+        hef = hef or config.POSE_HEF
 
         self._np = np
         params = VDevice.create_params()
@@ -467,9 +470,9 @@ class _Hailo:
         self._vdev = VDevice(params)
         self._ctx = None
         try:
-            model = self._vdev.create_infer_model(config.POSE_HEF)
+            model = self._vdev.create_infer_model(hef)
             model.set_batch_size(1)
-            names = [i.name for i in HEF(config.POSE_HEF).get_output_vstream_infos()]
+            names = [i.name for i in HEF(hef).get_output_vstream_infos()]
             for name in names:
                 model.output(name).set_format_type(FormatType.FLOAT32)
             self.size = int(model.input().shape[0])
@@ -499,6 +502,10 @@ class _Hailo:
             self._vdev.release()
         except Exception:
             log.debug("Releasing the Hailo failed", exc_info=True)
+
+
+#: public name for other modules (objects.py)
+HailoModel = _Hailo
 
 
 def decode_poses(np, outputs: list, size: int, min_score: float) -> list:

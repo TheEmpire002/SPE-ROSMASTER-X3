@@ -486,6 +486,7 @@ Since 23.11. the boxes come from the pose detection on the Hailo when it works
 | `hindernisse`                        | the 12 nearest obstacles, nearest first. `art` (kind), `winkel` in degrees as for the lidar, `abstand` (distance, m), `breite` (width, m), `x`/`y` center in robot coordinates (m), `quelle` (source)                                                                      |
 | `personen`                           | person boxes in the person camera image, relative to the image size (0..1)                                                                                                                                                                                                 |
 | `personenerkennung` | whether camera person detection works; `fehler` (error) e.g. „opencv fehlt“; `kamera`: which camera image the boxes refer to (name as in `/cameras`); `verfahren` (method, new 23.11.): `hailo` (pose boxes), `hog` (CPU fallback) or `null` (none available) |
+| `objekterkennung` | camera object detection (new 23.11.), see "Object detection": `verfuegbar`, `aktiv`, `fehler`, `kamera`, `modell`, `rechenzeit_ms`, `letzte_erkennung_vor_s`, `anzahl` |
 
 ### Interaction in detail
 
@@ -873,6 +874,28 @@ integrated via OpenNI2; for setup see [hardware.md](hardware.md#depth-camera-orb
 
 **`POST /tiefe/test`**: switches the camera on for 20 s to check floor
 detection and mounting pose while standing still.
+
+**Object detection** (new 23.11., `sensors/objects.py`): YOLOv8m with the
+80 COCO classes runs on the Hailo-10H (`OBJECTS_HEF`), through the forward
+camera `OBJECTS_CAMERA` (Orbbec color image), next to the pose detection
+(shared chip, round robin). Not via hailo-apps: their GStreamer pipelines
+open the camera themselves, which already belongs to this server. It only
+computes while someone needs it: an open object view, or the person
+detection running (driving, `OBJECTS_WITH_PEOPLE`).
+
+| Endpoint | Returns |
+|---|---|
+| `GET /objekte/stream` | MJPEG: camera image with a box and German name plus confidence around each detected object; without Hailo the plain image with the reason |
+| `GET /objekte/snapshot` | a single frame of it (JPEG) |
+| `GET /objekte/status` | `verfuegbar`, `aktiv`, `fehler`, `kamera`, `modell`, `rechenzeit_ms`, `letzte_erkennung_vor_s`, `anzahl`, and `objekte`: `[{klasse, score, box: [x1, y1, x2, y2] 0..1, winkel: [from, to] degrees, left +}]` |
+
+`GET /cameras` lists the view under `objekte` (`[{name, kamera, basis}]`,
+like `tiefe`); the app offers it as „Objekte (KI)“ in the camera switcher.
+Objects standing on the floor (person, chair, table, sofa, bed, plant, …)
+name the lidar obstacles in their direction: `state.autonomie.hindernisse[]`
+then has e.g. `art: "Stuhl"`, `quelle: "Kamera+Lidar"` instead of the shape
+guess; the narrowest box wins. `state.autonomie.objekterkennung` carries the
+status (as `/objekte/status` without the list).
 
 **Viewing the depth image** (new 04.11., needs OpenCV on the Pi):
 
