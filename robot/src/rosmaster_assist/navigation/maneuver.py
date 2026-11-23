@@ -113,6 +113,8 @@ class Maneuver:
         self.announcement: str | None = None  # what it says when it did not work
         self._turning_since: float | None = None  # since when it has been turning (from standstill)
         self.finished = 0  # counts every self-ended command (for the server's message)
+        # set by a sequence of turns (panorama) that reports by itself
+        self.quiet = False
 
         # Lidar localization during the command, relative to the pose at the start.
         self._pose = (0.0, 0.0, 0.0)

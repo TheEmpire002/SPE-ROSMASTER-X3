@@ -86,6 +86,15 @@
     details.erst > summary { cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 600; }
     details.erst[open] > summary { margin-bottom: 10px; }
     details.erst .erst-body { display: grid; gap: 14px; }
+    .foto-ansicht { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 16px; background: #000c; }
+    .foto-ansicht[hidden] { display: none; }
+    .foto-box { max-width: min(960px, 100%); display: grid; gap: 10px; }
+    .foto-box img { max-width: 100%; max-height: 75vh; border-radius: 10px; border: 1px solid var(--border); background: #101720; }
+    .foto-zeile { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 13px; }
+    .foto-zeile span { flex: 1; }
+    .pano-box { width: min(1100px, 100%); }
+    .pano-box canvas { width: 100%; height: min(55vh, 420px); border-radius: 10px; border: 1px solid var(--border); background: #101720; cursor: grab; touch-action: none; }
+    .pano-box canvas.dragging { cursor: grabbing; }
     @media (max-width: 900px) {
       .layout { grid-template-columns: 1fr; }
       .canvas-wrap { min-height: 420px; height: 58vh; }
@@ -162,6 +171,25 @@
             <div class="help" id="missionText" style="margin-top:7px">Missionsstart setzen, losfahren -- „Zurück“ fährt auf der gefahrenen Spur dorthin zurück.</div>
           </div>
 
+          <div class="full">
+            <label>Fotos</label>
+            <div class="help" id="fotoText">Keine Karte -- Fotos gehören immer zu einer Karte.</div>
+            <div class="button-row" style="margin-top:9px">
+              <button id="fotoHier" type="button" disabled>📷 Foto hier</button>
+              <button id="fotoZeigen" type="button">Fotos ausblenden</button>
+            </div>
+            <label class="check"><input type="checkbox" id="fotoAuto" disabled> beim Fahren automatisch fotografieren</label>
+            <div class="button-row" style="margin-top:9px">
+              <select id="panoKamera" aria-label="Kamera fürs Panorama" disabled></select>
+              <button id="panoStart" type="button" disabled>🔄 Rundum-Panorama hier</button>
+              <button id="panoStop" class="stop" type="button" disabled>■ Panorama abbrechen</button>
+            </div>
+            <label class="check" id="panoNeigungZeile" hidden style="margin-top:7px">Kamerawinkel
+              <input type="range" id="panoNeigung" min="-30" max="30" step="1" value="15" style="flex:1">
+              <span id="panoNeigungWert">15°</span></label>
+            <div class="help" id="panoText" style="margin-top:7px">Dreht sich einmal im Kreis und setzt die Fotos zu einem 360°-Bild zusammen. Braucht etwas Platz rundherum.</div>
+          </div>
+
           <details class="erst full" id="erstBox">
             <summary>Erstkartierung mit SLAM (optional)</summary>
             <div class="erst-body">
@@ -227,10 +255,32 @@
             <span><i style="background:#c792ea"></i>Ausgangspunkt</span>
             <span><i style="background:#3dd6c6"></i>Rückweg-Spur</span>
             <span><i style="background:#ff7ab6"></i>Missionsstart</span>
+            <span><i style="background:#ffd166;border-radius:2px"></i>Foto (antippen)</span>
+            <span><i style="background:#7ee0ff"></i>Panorama (antippen)</span>
           </div>
           <div class="help full">Mausrad: Zoom · Ziehen: Karte verschieben · Doppelklick: Ansicht einpassen · Mit „Hierhin fahren“ oder „Hier stehe ich“ auf die Karte tippen (beim Zeigen ziehen = Blickrichtung) · Ziele nur im schon gescannten Bereich</div>
         </div>
       </aside>
+    </div>
+    <div class="foto-ansicht" id="fotoAnsicht" hidden>
+      <div class="foto-box">
+        <img id="fotoBild" alt="Foto vom Roboter">
+        <div class="foto-zeile">
+          <span id="fotoInfo"></span>
+          <button id="fotoLoeschen" class="stop" type="button">Löschen</button>
+          <button id="fotoZu" type="button">Schließen</button>
+        </div>
+      </div>
+    </div>
+    <div class="foto-ansicht" id="panoAnsicht" hidden>
+      <div class="foto-box pano-box">
+        <canvas id="panoCanvas" aria-label="Rundum-Panorama"></canvas>
+        <div class="foto-zeile">
+          <span id="panoInfo"></span>
+          <button id="panoLoeschen" class="stop" type="button">Löschen</button>
+          <button id="panoZu" type="button">Schließen</button>
+        </div>
+      </div>
     </div>
   </main>
 
@@ -254,6 +304,12 @@
       let localization = null;
       // What a tap on the map means: null, 'ziel' or 'pose'.
       let mode = null;
+      // photos of the current map (GET /api/mapping/fotos), reloaded when "stand" moves
+      let photos = [];
+      let photoStand = null;
+      let photoMap = null;
+      let showPhotos = true;
+      let openPhoto = null;
 
       function setDriveState(f) {
         driveActive = !!f.aktiv;
@@ -527,13 +583,193 @@
         }
       }
 
+      // a small arrow per photo, pointing where the camera looked
+      function drawPhotos() {
+        if (!showPhotos || !mapPayload) return;
+        const r = 7 * dpr;
+        for (const p of photos) {
+          const [cx, cy] = worldToCanvas(p.x, p.y);
+          if (p.art === 'panorama') {
+            ctx.save();
+            ctx.strokeStyle = p === openPhoto ? '#ffffff' : '#7ee0ff';
+            ctx.fillStyle = '#7ee0ff44';
+            ctx.lineWidth = 2.5 * dpr;
+            ctx.beginPath();
+            ctx.arc(cx, cy, r * 1.3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+            continue;
+          }
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(-p.winkel * Math.PI / 180);
+          ctx.globalAlpha = 0.9;
+          ctx.fillStyle = p === openPhoto ? '#ffffff' : p.quelle === 'hand' ? '#ff9f43' : '#ffd166';
+          ctx.strokeStyle = '#101720';
+          ctx.lineWidth = 1 * dpr;
+          ctx.beginPath();
+          ctx.moveTo(r * 1.4, 0);
+          ctx.lineTo(-r * 0.7, r * 0.8);
+          ctx.lineTo(-r * 0.7, -r * 0.8);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      function photoAt(cx, cy) {
+        let best = null;
+        let bestD = 14 * dpr;
+        for (const p of photos) {
+          const [px, py] = worldToCanvas(p.x, p.y);
+          const d = Math.hypot(px - cx, py - cy);
+          if (d < bestD) { best = p; bestD = d; }
+        }
+        return best;
+      }
+
+      // --- panorama viewer: drag to look around, wraps at 360 degrees ---
+      const pano = { img: null, offset: 0, drag: null };
+      const panoCanvas = $('panoCanvas');
+      const panoCtx = panoCanvas.getContext('2d');
+
+      // scaled once to the view height: dragging then only copies pixels
+      // instead of rescaling the whole panorama on every pointer move
+      function panoScaled(h) {
+        const img = pano.img;
+        if (pano.scaled && pano.scaled.height === h) return pano.scaled;
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(img.naturalWidth * h / img.naturalHeight));
+        c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, c.width, h);
+        pano.scaled = c;
+        return c;
+      }
+
+      function drawPano() {
+        pano.frame = null;
+        const img = pano.img;
+        const w = Math.round(panoCanvas.clientWidth * dpr);
+        const h = Math.round(panoCanvas.clientHeight * dpr);
+        if (panoCanvas.width !== w || panoCanvas.height !== h) { panoCanvas.width = w; panoCanvas.height = h; }
+        if (!img || !img.complete || !img.naturalWidth || !h) {
+          panoCtx.fillStyle = '#101720';
+          panoCtx.fillRect(0, 0, w, h);
+          return;
+        }
+        const scaled = panoScaled(h);
+        const full = scaled.width;
+        // offset = panorama x (scaled) at the left edge of the view
+        let x = -Math.round(((pano.offset % full) + full) % full);
+        while (x < w) {
+          panoCtx.drawImage(scaled, x, 0);
+          x += full;
+        }
+      }
+
+      // at most one redraw per screen frame, however many pointer events come
+      function schedulePano() {
+        if (!pano.frame) pano.frame = window.requestAnimationFrame(drawPano);
+      }
+
+      function showPanorama(p) {
+        openPhoto = p;
+        pano.scaled = null;
+        const img = new Image();
+        pano.img = img;
+        img.onload = () => {
+          // a panorama opened in the meantime keeps its own view
+          if (pano.img !== img) return;
+          // start looking along the first shot (centre of the panorama)
+          const scale = panoCanvas.clientHeight * dpr / pano.img.naturalHeight;
+          pano.offset = pano.img.naturalWidth * scale / 2 - panoCanvas.clientWidth * dpr / 2;
+          drawPano();
+        };
+        img.src = p.url;
+        const when = new Date(p.zeit * 1000).toLocaleString('de-DE');
+        $('panoInfo').textContent = `${when} · x ${p.x.toFixed(2)} m, y ${p.y.toFixed(2)} m · ${p.aufnahmen || '?'} Aufnahmen${p.kamera ? ` · ${p.kamera}` : ''}${p.neigung ? ` · ${p.neigung}° geneigt` : ''} · ziehen zum Umschauen`;
+        $('panoAnsicht').hidden = false;
+        drawPano();
+        draw();
+      }
+
+      function closePanorama() {
+        openPhoto = null;
+        pano.img = null;
+        pano.scaled = null;
+        $('panoAnsicht').hidden = true;
+        draw();
+      }
+
+      panoCanvas.addEventListener('pointerdown', (event) => {
+        pano.drag = { x: event.clientX, offset: pano.offset };
+        panoCanvas.setPointerCapture(event.pointerId);
+        panoCanvas.classList.add('dragging');
+      });
+      panoCanvas.addEventListener('pointermove', (event) => {
+        if (!pano.drag) return;
+        pano.offset = pano.drag.offset - (event.clientX - pano.drag.x) * dpr;
+        schedulePano();
+      });
+      const endPanoDrag = () => { pano.drag = null; panoCanvas.classList.remove('dragging'); };
+      panoCanvas.addEventListener('pointerup', endPanoDrag);
+      panoCanvas.addEventListener('pointercancel', endPanoDrag);
+      window.addEventListener('resize', () => { if (!$('panoAnsicht').hidden) schedulePano(); });
+
+      function showPhoto(p) {
+        if (p.art === 'panorama') return showPanorama(p);
+        openPhoto = p;
+        $('fotoBild').src = p.url;
+        const when = new Date(p.zeit * 1000).toLocaleString('de-DE');
+        $('fotoInfo').textContent = `${when} · x ${p.x.toFixed(2)} m, y ${p.y.toFixed(2)} m, Blick ${Math.round(p.winkel)}°`
+          + (p.quelle === 'hand' ? ' · von Hand' : ' · automatisch');
+        $('fotoAnsicht').hidden = false;
+        draw();
+      }
+
+      function closePhoto() {
+        openPhoto = null;
+        $('fotoAnsicht').hidden = true;
+        $('fotoBild').removeAttribute('src');
+        draw();
+      }
+
+      async function syncPhotos(f) {
+        const o = (localization && localization.ortung) || {};
+        if (!f || !f.verfuegbar) {
+          photos = [];
+          $('fotoText').textContent = 'Fotos aus (keine Kamera oder in config.py abgeschaltet).';
+          $('fotoHier').disabled = true;
+          $('fotoAuto').disabled = true;
+          return;
+        }
+        $('fotoAuto').disabled = false;
+        $('fotoAuto').checked = !!f.auto;
+        $('fotoHier').disabled = !f.karte || !o.sicher;
+        $('fotoText').textContent = f.karte
+          ? `${f.anzahl} Fotos in „${f.karte}“` + (f.auto ? ' · fotografiert beim Fahren' : '')
+            + (f.fehler ? ` · ${f.fehler}` : '')
+          : 'Keine Karte, in der er seine Lage kennt -- Fotos gehören immer zu einer Karte.';
+        if (f.stand === photoStand && f.karte === photoMap) return;
+        photoStand = f.stand;
+        photoMap = f.karte;
+        try {
+          photos = (await api('/api/mapping/fotos')).fotos || [];
+          draw();
+        } catch (error) { message(`Fotos: ${error.message}`, true); }
+      }
+
       function draw() {
         if (!canvas.width || !canvas.height) return;
+        if (!$('panoAnsicht').hidden) return;
         ctx.fillStyle = '#101720';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         if (!mapPayload) return;
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(offscreen, view.x, view.y, offscreen.width * view.scale, offscreen.height * view.scale);
+        drawPhotos();
         drawLocalization();
       }
 
@@ -577,7 +813,46 @@
           : mission
             ? `Missionsstart gesetzt · ${(d.brotkrumen || []).length ? 'Spur wird aufgezeichnet' : 'noch keine Spur'}`
             : 'Missionsstart setzen, losfahren -- „Zurück“ fährt auf der gefahrenen Spur dorthin zurück.';
+        syncPhotos(d.fotos);
+        syncPanorama(d.panorama, o, canDrive);
         draw();
+      }
+
+      function syncPanorama(pn, o, canDrive) {
+        const choice = $('panoKamera');
+        const cams = (pn && pn.kameras) || [];
+        const known = Array.from(choice.options).map((o) => o.value).join('|');
+        if (known !== cams.map((c) => c.name).join('|')) {
+          const keep = choice.value;
+          choice.replaceChildren(...cams.map((c) => new Option(c.label, c.name)));
+          choice.value = cams.some((c) => c.name === keep) ? keep : (pn.kamera || '');
+        }
+        choice.disabled = !pn || !pn.verfuegbar || pn.aktiv || cams.length < 2;
+        const tilt = pn && pn.neigung;
+        const slider = $('panoNeigung');
+        $('panoNeigungZeile').hidden = !tilt || choice.value !== tilt.kamera;
+        $('panoNeigungZeile').dataset.kamera = tilt ? tilt.kamera : '';
+        if (tilt) {
+          slider.min = tilt.min;
+          slider.max = tilt.max;
+          // the server's value until the user moves the slider
+          if (!slider.dataset.touched) slider.value = tilt.winkel;
+          $('panoNeigungWert').textContent = `${slider.value}°`;
+        }
+        slider.disabled = !pn || pn.aktiv;
+        if (!pn || !pn.verfuegbar) {
+          $('panoStart').disabled = true;
+          $('panoStop').disabled = true;
+          $('panoText').textContent = 'Panorama geht nur mit Kamera und Lidar.';
+          return;
+        }
+        $('panoStart').disabled = pn.aktiv || !canDrive || !o.karte;
+        $('panoStop').disabled = !pn.aktiv;
+        $('panoText').textContent = pn.aktiv
+          ? `Panorama: ${pn.text || 'läuft'}`
+          : pn.grund
+            ? `Letztes Panorama: ${pn.grund}`
+            : 'Dreht sich einmal im Kreis und setzt die Fotos zu einem 360°-Bild zusammen. Braucht etwas Platz rundherum.';
       }
 
       // always-on mapping: what the integrate gate is doing, and why
@@ -691,6 +966,14 @@
         draw();
       });
       function endPointer(event) {
+        if (pointer && !mode && showPhotos && event && event.type === 'pointerup') {
+          // a click (no pan) on a photo arrow opens it
+          const moved = Math.hypot(event.clientX * dpr - pointer.x, event.clientY * dpr - pointer.y);
+          if (moved < 6 * dpr) {
+            const p = photoAt(pointer.lokalX, pointer.lokalY);
+            if (p) showPhoto(p);
+          }
+        }
         if (pointer && mode && mapPayload && event && event.type === 'pointerup') {
           const rect = canvas.getBoundingClientRect();
           mapTapped(
@@ -850,6 +1133,73 @@
           message('Fährt zurück zum Missionsstart.');
         } catch (error) { message(error.message, true); }
       });
+      $('fotoHier').addEventListener('click', async () => {
+        try {
+          const p = await api('/api/mapping/fotos', { method: 'POST' });
+          message(`Foto gemacht (x ${p.x.toFixed(2)}, y ${p.y.toFixed(2)}).`);
+          photoStand = null;
+        } catch (error) { message(error.message, true); }
+      });
+      $('fotoZeigen').addEventListener('click', () => {
+        showPhotos = !showPhotos;
+        $('fotoZeigen').textContent = showPhotos ? 'Fotos ausblenden' : 'Fotos zeigen';
+        draw();
+      });
+      $('fotoAuto').addEventListener('change', async (event) => {
+        try {
+          await api('/api/mapping/fotos/auto', { method: 'POST', body: JSON.stringify({ aktiv: event.target.checked }) });
+        } catch (error) { message(error.message, true); }
+      });
+      $('panoStart').addEventListener('click', async () => {
+        try {
+          const kamera = $('panoKamera').value || null;
+          const request = { kamera };
+          if (!$('panoNeigungZeile').hidden) request.neigung = Number($('panoNeigung').value);
+          setLocalization(await api('/api/mapping/panorama', { method: 'POST', body: JSON.stringify(request) }));
+          message('Panorama startet -- er dreht sich gleich einmal im Kreis.');
+        } catch (error) { message(error.message, true); }
+      });
+      $('panoStop').addEventListener('click', async () => {
+        try { setLocalization(await api('/api/mapping/panorama/stop', { method: 'POST' })); }
+        catch (error) { message(error.message, true); }
+      });
+      $('panoNeigung').addEventListener('input', () => {
+        $('panoNeigung').dataset.touched = '1';
+        $('panoNeigungWert').textContent = `${$('panoNeigung').value}°`;
+      });
+      $('panoKamera').addEventListener('change', () => {
+        const zeile = $('panoNeigungZeile');
+        zeile.hidden = !zeile.dataset.kamera || $('panoKamera').value !== zeile.dataset.kamera;
+      });
+      $('panoZu').addEventListener('click', closePanorama);
+      $('panoAnsicht').addEventListener('click', (event) => { if (event.target === $('panoAnsicht')) closePanorama(); });
+      $('panoLoeschen').addEventListener('click', async () => {
+        if (!openPhoto || !window.confirm('Dieses Panorama löschen?')) return;
+        try {
+          await api(`/api/mapping/fotos/${encodeURIComponent(openPhoto.id)}`, { method: 'DELETE' });
+          photos = photos.filter((p) => p !== openPhoto);
+          photoStand = null;
+          closePanorama();
+          message('Panorama gelöscht.');
+        } catch (error) { message(error.message, true); }
+      });
+      $('fotoZu').addEventListener('click', closePhoto);
+      $('fotoAnsicht').addEventListener('click', (event) => { if (event.target === $('fotoAnsicht')) closePhoto(); });
+      window.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape' || !openPhoto) return;
+        if (openPhoto.art === 'panorama') closePanorama(); else closePhoto();
+      });
+      $('fotoLoeschen').addEventListener('click', async () => {
+        if (!openPhoto || !window.confirm('Dieses Foto löschen?')) return;
+        try {
+          await api(`/api/mapping/fotos/${encodeURIComponent(openPhoto.id)}`, { method: 'DELETE' });
+          photos = photos.filter((p) => p !== openPhoto);
+          photoStand = null;
+          closePhoto();
+          message('Foto gelöscht.');
+        } catch (error) { message(error.message, true); }
+      });
+
       $('livePause').addEventListener('click', async () => {
         const resume = !!$('livePause').dataset.paused;
         try {

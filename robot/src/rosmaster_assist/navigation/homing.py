@@ -280,6 +280,10 @@ class Homing:
         resume_left = 0
         last_nr = None
         blocked_since: float | None = None
+        # look-ahead: something on the route the map does not know (a closed
+        # door), seen at the same spot on two checks in a row
+        check_time = 0.0
+        candidate: tuple[float, float] | None = None
         name = self.label
         try:
             path = await self._plan(target) or self._fallback_path()
@@ -371,6 +375,37 @@ class Homing:
                     return
 
                 points = self._memory.points(scan)
+                if now - check_time >= config.NAV_SCAN_CHECK_S:
+                    check_time = now
+                    seen = self._route_obstacle(pose, scan)
+                    if seen is None:
+                        candidate = None
+                    elif candidate is None or math.hypot(seen[0] - candidate[0],
+                                                         seen[1] - candidate[1]) > config.NAV_BLOCK_RADIUS_M:
+                        candidate = seen
+                    else:
+                        # stays there: not a person walking by but a closed door or
+                        # furniture; the map only learns it later, plan around now
+                        candidate = None
+                        replans += 1
+                        if replans > config.NAV_MAX_REPLANS:
+                            self._shutdown(
+                                f"Weg bleibt versperrt, noch {self._follower.rest_m:.2f} m",
+                                warning=True,
+                            )
+                            return
+                        self._blocks.append((seen[0], seen[1], now + config.NAV_BLOCK_S))
+                        log.info("%s: route blocked ahead at (%.2f, %.2f) -- planning around it",
+                                 name, seen[0], seen[1])
+                        self._watchdog.stop()
+                        path = await self._plan(target)
+                        if path is None:
+                            self._shutdown("kein Weg mehr frei", warning=True)
+                            return
+                        log.info("%s: new path %.1f m", name, path.length)
+                        self._set_path(path, angle)
+                        blocked_since = None
+                        continue
                 command, state = self._follower.step(pose, points)
                 if state == pf.ARRIVED:
                     rest = math.hypot(target[0] - pose[0], target[1] - pose[1])
@@ -480,6 +515,56 @@ class Homing:
         self._blocks = [s for s in self._blocks if s[2] > now]
         return self._planner.path(occ_map, (pose[0], pose[1]), target,
                                   [(s[0], s[1]) for s in self._blocks], self._corridor)
+
+    def _route_obstacle(self, pose, scan) -> tuple[float, float] | None:
+        """Nearest live lidar point on the route ahead (map frame), or None.
+
+        the route keeps NAV_SAFETY_M from every wall of the map, so a point
+        closer to it than the robot's half width plus margin is something the
+        map does not know. only the fresh scan, not the obstacle memory: a
+        remembered point would block the way back
+        """
+        import numpy as np
+
+        route = [(pose[0], pose[1])] + list(self._follower.remaining)
+        if len(route) < 2:
+            return None
+        pts = np.asarray(scan.points(), dtype=float).reshape(-1, 2)
+        if not len(pts):
+            return None
+        r = np.hypot(pts[:, 0], pts[:, 1])
+        pts = pts[(r >= config.LIDAR_MIN_M) & (r <= config.NAV_SCAN_CHECK_M + 0.5)]
+        if not len(pts):
+            return None
+        x, y, th = pose
+        c, s = math.cos(th), math.sin(th)
+        wx = x + c * pts[:, 0] - s * pts[:, 1]
+        wy = y + s * pts[:, 0] + c * pts[:, 1]
+        width = config.ROBOT_HALF_WIDTH_M + config.NAV_SCAN_CHECK_MARGIN_M
+        best = None
+        along = 0.0
+        for (ax, ay), (bx, by) in zip(route, route[1:]):
+            seg = math.hypot(bx - ax, by - ay)
+            if seg < 1e-6:
+                continue
+            ux, uy = (bx - ax) / seg, (by - ay) / seg
+            t = (wx - ax) * ux + (wy - ay) * uy
+            d = np.abs(-(wx - ax) * uy + (wy - ay) * ux)
+            # skip the robot's own body at the start of the route
+            on = (t >= 0) & (t <= seg) & (d < width) & (along + t > config.ROBOT_FRONT_M)
+            on &= along + t <= config.NAV_SCAN_CHECK_M
+            if on.any():
+                i = int(np.argmin(np.where(on, t, np.inf)))
+                best = (float(wx[i]), float(wy[i]))
+                break
+            along += seg
+            if along > config.NAV_SCAN_CHECK_M:
+                break
+        if best is None:
+            return None
+        # need a few points there, one stray reflection is not a door
+        near = np.hypot(wx - best[0], wy - best[1]) < config.NAV_BLOCK_RADIUS_M
+        return best if int(near.sum()) >= config.NAV_SCAN_CHECK_MIN_POINTS else None
 
     def _set_block(self, pose, points) -> None:
         """Enter the spot blocking the path as a wall for a while.

@@ -390,6 +390,16 @@ NAV_BLOCK_S = 60.0
 NAV_BLOCK_RADIUS_M = 0.3
 # Replan this many times in a row, then give up.
 NAV_MAX_REPLANS = 5
+# look-ahead while driving to a goal: every NAV_SCAN_CHECK_S the fresh scan
+# is checked for something on the next NAV_SCAN_CHECK_M of the route (within
+# half the robot width plus the margin) that the map does not know, e.g. a
+# closed door. seen at the same spot on two checks in a row (a person
+# walking by is gone by then) it counts as blocked for NAV_BLOCK_S and the
+# route is planned around it right away
+NAV_SCAN_CHECK_S = 1.0
+NAV_SCAN_CHECK_M = 2.5
+NAV_SCAN_CHECK_MARGIN_M = 0.05
+NAV_SCAN_CHECK_MIN_POINTS = 3
 # Maximum duration of a drive to a goal: this many seconds per meter of
 # path, but at least NAV_DRIVE_MIN_S.
 NAV_DRIVE_S_PER_M = 12.0
@@ -455,6 +465,12 @@ LIVE_MAP_FREE_MARGIN_M = 0.10
 LIVE_MAP_ESTABLISHED_LO = 2.5
 LIVE_MAP_ESTABLISHED_WEIGHT = 0.3
 LIVE_MAP_SESSION_CHANGE_MAX = 2.0
+# cells under the robot (within this radius of the lidar, m) become free on
+# every scan written: where it stands there is no wall. half the robot width,
+# so only cells the body surely covers; 0 = off
+LIVE_MAP_FOOTPRINT_CLEAR_M = 0.125  # = ROBOT_HALF_WIDTH_M, defined further down
+# ... to this log-odds value, clearly free
+LIVE_MAP_FOOTPRINT_LO = -1.5
 # a scan is only a candidate after this much motion since the last one written
 # (a robot standing in front of a person writes the person at most once)
 LIVE_MAP_MIN_MOVE_M = 0.10
@@ -1180,6 +1196,56 @@ PERSON_MIN_SCORE = 0.5
 # Which camera from CAMERA_ROLES looks for people. If the role is missing
 # from CAMERA_ROLES, detection uses the default camera.
 PERSON_CAMERA = "personen"
+
+# --- Photos on the map --------------------------------------------------------------
+# details in mapping/photos.py: while the pose in a map is confident the robot
+# takes photos and stores them with position and heading beside the map
+MAP_PHOTO_ENABLED = True
+# take photos by itself while driving (otherwise only "Foto hier" on /map)
+MAP_PHOTO_AUTO = True
+# forward camera with the wide view; falls back to the default camera
+MAP_PHOTO_CAMERA = "orientierung"
+# a new photo after moving this far (m) or turning this much (deg)
+MAP_PHOTO_EVERY_M = 1.0
+MAP_PHOTO_EVERY_DEG = 45.0
+# no photo if one exists this close (m) looking within this angle (deg)
+MAP_PHOTO_SIMILAR_M = 0.5
+MAP_PHOTO_SIMILAR_DEG = 30.0
+# turning faster than this (rad/s) blurs the picture: wait
+MAP_PHOTO_MAX_OMEGA = 0.4
+# camera images older than this (s) do not belong to the pose any more
+MAP_PHOTO_FRAME_MAX_AGE_S = 0.3
+MAP_PHOTO_MIN_INTERVAL_S = 1.0
+# auto photos per map at most (about 40 kB each)
+MAP_PHOTO_MAX = 500
+
+# all-round panorama at a point (mapping/panorama.py): shots per turn (the
+# orbbec sees 66 deg, so 12 shots of 30 deg overlap by a third), rest after
+# each turn before the photo (s), size relative to the camera image, quality
+PANORAMA_SHOTS = 12
+PANORAMA_SETTLE_S = 0.6
+PANORAMA_SCALE = 0.75
+PANORAMA_JPEG_QUALITY = 85
+# blending: weight (1 - angle off the shot's axis / half fov) ** power. 1 blends
+# across the whole overlap (close objects show twice), 8 only about +-3 deg
+# around the seam
+PANORAMA_BLEND_POWER = 8
+# brightness matching between shots: on/off, expected brightness noise in
+# the overlaps (0..255), how far factors may stray from 1, hard limits
+PANORAMA_GAIN = True
+PANORAMA_GAIN_NOISE = 10.0
+PANORAMA_GAIN_SPREAD = 0.1
+PANORAMA_GAIN_LIMITS = (0.6, 1.6)
+# keep the single shots with their headings beside the panorama
+PANORAMA_KEEP_SHOTS = False
+# camera from CAMERA_ROLES used until another is chosen on /map; the orbbec
+# sees wider (fewer, larger overlaps), the c270 sits on the tilt servo
+PANORAMA_CAMERA = "orientierung"
+# tilt of the servo camera during a panorama until another is chosen on /map
+# (deg, + = up); slightly up shows walls and furniture instead of floor
+PANORAMA_TILT_DEG = 15.0
+# time for the tilt servo to reach its angle before the first shot (s)
+PANORAMA_TILT_WAIT_S = 1.0
 
 # --- Camera tilt servo (person camera, up and down) ------------------------------
 # details in sensors/camera_tilt.py. servo on the expansion board, moved with

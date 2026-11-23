@@ -103,6 +103,8 @@ New modules:
 | `navigation/integrate_gate.py` | Decides per scan whether it may be written into the map (FROZEN → CONFIRMING → INTEGRATING, lag buffer of 2) |
 | `mapping/live_mapper.py` | Log-odds grid, the main map that grows during every drive |
 | `mapping/live_store.py` | Saves/loads the main map (npz, pgm/yaml, json, backups, atomic writes) |
+| `mapping/photos.py` | Photos with position and heading per map (`<name>_bilder/`), taken automatically while driving or by hand on `/map` |
+| `mapping/panorama.py` | All-round panorama: turns in steps (maneuver), shoots, stitches by measured heading onto a cylinder |
 | `navigation/breadcrumbs.py` | Trail of driven poses for planning along it and the way back |
 
 Data flow: lidar → `ScanOdometry` (always on) → `MapControl.tick_loop` at 4 Hz:

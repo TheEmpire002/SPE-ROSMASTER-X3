@@ -683,6 +683,29 @@ as good when the new quality criteria say so.
    a session may change them, so a bad session can weaken a wall at most to
    unknown, never erase it. `OccupancyMap.derived` keeps the distance field up
    to date incrementally instead of recomputing it.
+   **Exception (23.11.): the robot's own footprint.** With every scan written,
+   the cells within `LIVE_MAP_FOOTPRINT_CLEAR_M` (half the robot width) of the
+   lidar become free (`LIVE_MAP_FOOTPRINT_LO`), session-start value included,
+   so the cap cannot pull them back. Reason: a door that was closed (or
+   blocked by people) while mapping stayed a wall for good, because seeing
+   through it only weakens it to unknown, and the planner never drives through
+   unknown while any detour exists. On the robot this made a goal 3 m away
+   behind a door a 21 m detour; after driving through the door by hand the
+   doorway still had wall cells right on the trail. Where the robot stands
+   there is no wall, and writes only happen behind the integrate gate, so a
+   wrong pose cannot use this to punch holes. A door closed later becomes a
+   wall again after a few hits (the cell is no longer established).
+   **Look-ahead on goal drives (23.11.).** The map only learns a door that was
+   closed again after a few hits, and the robot in front of it can lose its
+   pose (the scene no longer fits), which restarted the 3 s "blocked" timer
+   every time; the drive ran into the closed door until it timed out. Now the
+   goal drive checks the fresh scan about once a second
+   (`NAV_SCAN_CHECK_*`): a cluster of points on the next 2.5 m of the route,
+   closer to it than half the robot width plus a margin, is something the map
+   does not know (the route keeps 0.25 m from all mapped walls). Seen at the
+   same spot twice in a row (a person walking by is gone), it becomes a block
+   for `NAV_BLOCK_S` and the route is replanned at once, e.g. through the
+   other door.
 5. **`LiveStore`:** npz (float16) plus pgm/yaml plus json, `_aktiv.json`, atomic
    writes, 3 backups; a broken npz is renamed `.broken` and the pgm is used
    instead.

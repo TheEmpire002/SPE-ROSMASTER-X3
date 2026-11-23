@@ -1018,6 +1018,13 @@ User interface: `GET /map`.
 | `POST /api/mapping/hauptkarte/neu` | begin a new main map (the old one goes to `backups/`); it starts at the next standstill; 409 during mapping |
 | `POST /api/mapping/hauptkarte/uebernehmen` | after SLAM: the SLAM map becomes the main map (old one to `backups/`), the pose stays |
 | `POST /api/mapping/hauptkarte/verwerfen` | after SLAM: back to the main map, the pose is searched where the odometry expects it |
+| `GET /api/mapping/fotos` | photos of the current map (new 18.11., see "Photos on the map"): `karte`, `auto`, `verfuegbar`, `fotos` (list of `id`, `datei`, `x`, `y` (m, map frame), `winkel` (heading in degrees, 0 = map x axis, counter-clockwise), `zeit` (unix seconds), `quelle` `"auto"`/`"hand"`, `kamera`, `url`) |
+| `POST /api/mapping/panorama` | turn on the spot and take an all-round panorama here (new 18.11., see "Panoramas"); optional body `{"kamera": "<name from CAMERA_ROLES>", "neigung": <deg, + = up>}` (new 23.11., missing = the last one used; `neigung` only applies to the camera on the tilt servo and is clamped to its limits); cancels other drives; returns as `GET /api/mapping/ortung`; 409 with reason (no map, pose uncertain, no camera/lidar, unknown camera, already running) |
+| `POST /api/mapping/panorama/stop` | cancel the panorama |
+| `GET /api/mapping/fotos/{karte}/{datei}` | the photo as JPEG; 404 if unknown |
+| `POST /api/mapping/fotos` | take a photo now ("Foto hier"); returns the entry; 409 with reason without a map, with an uncertain pose or without a fresh camera image |
+| `POST /api/mapping/fotos/auto` | body `{"aktiv": false}`: automatic photos off/on (until the server restarts) |
+| `DELETE /api/mapping/fotos/{id}` | delete a photo; 404 if unknown |
 | `WS /api/mapping/ws` | `{"type": "status"}` every 3 s, `{"type": "map"}` on every new map, `{"type": "fahrt"}` on changes of the mapping drive, `{"type": "ortung"}` on changes of the pose (content as `GET /api/mapping/ortung`) |
 
 `GET /api/mapping/map` and the `map` packets deliver the map **the robot is
@@ -1082,6 +1089,52 @@ beendet: Kartierfahrt fertig -- …“. What **no longer** ends it (new 04.11.):
   `true` during that time. A `stop` discards the resumption.
 - *Lidar briefly gone:* it waits up to `MAPPING_DRIVE_LIDAR_WAIT_S` (30 s);
   for random exploring it stays at 3 s.
+
+**Photos on the map (new 18.11.).** While the pose in the main map or a
+loaded map is confident, the robot takes a photo with `MAP_PHOTO_CAMERA`
+(the Orbbec, wide and fixed forward) every `MAP_PHOTO_EVERY_M` (1 m) or
+after turning `MAP_PHOTO_EVERY_DEG` (45°), not while turning faster than
+`MAP_PHOTO_MAX_OMEGA`, and not if a photo from almost the same spot and
+heading exists (`MAP_PHOTO_SIMILAR_M`, `MAP_PHOTO_SIMILAR_DEG`); at most
+`MAP_PHOTO_MAX` per map. "📷 Foto hier" on `/map` takes one by hand. They are
+stored beside the map in `<name>_bilder/` (JPEGs plus `index.json`). The
+index remembers the map's frame id; when the main map is replaced, the old
+folder is set aside as `<name>_bilder.<stamp>.alt`. On `/map` every photo
+is a small yellow arrow (orange: taken by hand) pointing where the camera
+looked; a click shows it. `GET /api/mapping/ortung` contains `fotos`:
+`verfuegbar`, `auto`, `karte`, `anzahl`, `stand` (counter, changes with every
+new or deleted photo), `fehler`.
+
+**Panoramas (new 18.11.).** „🔄 Rundum-Panorama hier“ on `/map` (or `POST
+/api/mapping/panorama`): the robot turns on the spot in `PANORAMA_SHOTS`
+(12) steps of 30°, rests `PANORAMA_SETTLE_S` and takes an Orbbec photo
+after each. The turns are precise drive commands (lidar-measured, watchdog,
+drive guard, room check); emergency stop, manual driving and every other
+drive end the panorama, also between two turns. While it runs no automatic
+photos are taken and the single turns are not reported as „Fahrbefehl“.
+The shots are not stitched by image features (they fail on white walls and
+cost CPU) but projected onto a cylinder at the heading the lidar measured
+for each (about 0.5 s on the Pi). Each column comes almost only from the shot that looked most directly at it (`PANORAMA_BLEND_POWER`, soft seam of about ±3°), so close objects do not show twice despite parallax; a brightness factor per shot (least squares over the overlaps, `PANORAMA_GAIN*`) evens out exposure jumps. With `PANORAMA_KEEP_SHOTS` (off since 23.11.) the 12 single shots are kept in `<id>/00.jpg …` beside the panorama, their headings in `einzelbilder` (`datei`, `winkel`, `neigung`) of the entry, for re-stitching or a 3D model later; otherwise `einzelbilder` is empty. Columns run clockwise
+from left to right, the centre looks along the first shot. The panorama is
+stored with the photos (`art: "panorama"`, `aufnahmen`, `winkel` = heading
+of the centre) and shown on `/map` as a light blue ring; a click opens a
+viewer you can drag around 360°. `GET /api/mapping/ortung` contains
+`panorama`: `verfuegbar`, `aktiv`, `text`, `schritt`, `von`, `grund`,
+`kamera` (name of the selected camera), `kameras` (`[{name, label}]`) and
+`neigung` (`{kamera, winkel, min, max}` for the camera on the tilt servo,
+`null` without servo).
+
+**Choosing the camera (new 23.11.).** A selection field next to the
+panorama button on `/map` picks the camera; the default is
+`PANORAMA_CAMERA` (Orbbec, wider view). For the C270 on the tilt servo a
+slider „Kamerawinkel“ sets its tilt for the turn (default
+`PANORAMA_TILT_DEG` = 15° up, shows walls and furniture instead of floor).
+The servo moves there first (`PANORAMA_TILT_WAIT_S`) and back to its
+previous angle or auto mode afterwards. Stitching turns every ray by the
+measured tilt of its shot, so vertical edges stay vertical and the seams
+show no saw-tooth; the panorama is then cropped to the rows every
+direction saw. The entry stores `kamera` and `neigung`, each single shot
+its `neigung` too.
 
 **Using the map (new 04.11.).** When a map exists, the robot knows where it
 is in it. During mapping this applies immediately; afterwards (mapping
