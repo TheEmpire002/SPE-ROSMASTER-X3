@@ -231,17 +231,36 @@ class ObjectDetection:
             image = image.copy()
             note = None
         h, w = image.shape[:2]
-        thick = max(2, w // 320)
-        scale = max(0.5, w / 1000)
+        thick = max(2, w // 400)
+        scale = max(0.45, w / 1800)
+        boxes = []
         for o in objects:
             x1, y1, x2, y2 = (int(round(v * s)) for v, s in zip(o["box"], (w, h, w, h)))
-            color = _color(o["klasse"])
-            cv2.rectangle(image, (x1, y1), (x2, y2), color, thick)
-            text = f"{o['klasse']} {o['score'] * 100:.0f}%"
+            boxes.append((o, x1, y1, x2, y2))
+            cv2.rectangle(image, (x1, y1), (x2, y2), _color(o["klasse"]), thick)
+        # labels after all boxes, best score first, each moved until it
+        # overlaps no earlier label: close objects otherwise hide each other
+        placed: list[tuple[int, int, int, int]] = []
+        for o, x1, y1, x2, y2 in sorted(boxes, key=lambda b: -b[0]["score"]):
+            text = _ascii(f"{o['klasse']} {o['score'] * 100:.0f}%")
             (tw, th), base = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, scale, 1)
-            ty = y1 - 4 if y1 - th - 8 > 0 else y1 + th + 6
-            cv2.rectangle(image, (x1, ty - th - 4), (x1 + tw + 6, ty + base - 2), color, -1)
-            cv2.putText(image, _ascii(text), (x1 + 3, ty - 2), cv2.FONT_HERSHEY_SIMPLEX, scale,
+            lw, lh = tw + 6, th + base + 4
+            lx = min(max(0, x1), max(0, w - lw))
+            # above the box, inside its top edge, below it, then stacked further down
+            candidates = [y1 - lh, y1, y2] + [y2 + k * lh for k in range(1, 6)]
+            ly = None
+            for cy in candidates:
+                if cy < 0 or cy + lh > h:
+                    continue
+                if not any(lx < px2 and px1 < lx + lw and cy < py2 and py1 < cy + lh
+                           for px1, py1, px2, py2 in placed):
+                    ly = cy
+                    break
+            if ly is None:
+                ly = min(max(0, y1), h - lh)
+            placed.append((lx, ly, lx + lw, ly + lh))
+            cv2.rectangle(image, (lx, ly), (lx + lw, ly + lh), _color(o["klasse"]), -1)
+            cv2.putText(image, text, (lx + 3, ly + th + 2), cv2.FONT_HERSHEY_SIMPLEX, scale,
                         (0, 0, 0), 1, cv2.LINE_AA)
         if note:
             cv2.putText(image, _ascii(note), (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2,
