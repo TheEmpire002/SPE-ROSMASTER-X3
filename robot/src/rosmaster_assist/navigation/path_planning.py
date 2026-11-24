@@ -170,12 +170,17 @@ class Grid:
         s = start[1] * w + start[0]
         z = target[1] * w + target[0] if target is not None else -1
         zx, zy = target if target is not None else (0, 0)
+        # the estimate must never exceed the true price, or a* settles for a
+        # worse path: trail cells cost less than 1 (BREADCRUMB_COST_FACTOR),
+        # so the octile distance is scaled by the cheapest drivable cell
+        reachable = self.cost[self.drivable]
+        cheapest = min(1.0, float(reachable.min())) if reachable.size else 1.0
 
         def h(i: int) -> float:
             if target is None:
                 return 0.0
             dx, dy = abs(i % w - zx), abs(i // w - zy)
-            return (dx + dy) + (_SQRT2 - 2.0) * min(dx, dy)
+            return cheapest * ((dx + dy) + (_SQRT2 - 2.0) * min(dx, dy))
 
         g = {s: 0.0}
         previous = {s: -1}
