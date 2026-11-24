@@ -182,7 +182,6 @@
               <button id="fotoHier" type="button" disabled>📷 Foto hier</button>
               <button id="fotoZeigen" type="button">Fotos ausblenden</button>
             </div>
-            <label class="check"><input type="checkbox" id="fotoAuto" disabled> beim Fahren automatisch fotografieren</label>
             <div class="button-row" style="margin-top:9px">
               <select id="panoKamera" aria-label="Kamera fürs Panorama" disabled></select>
               <button id="panoStart" type="button" disabled>🔄 Rundum-Panorama hier</button>
@@ -769,14 +768,11 @@
           photos = [];
           $('fotoText').textContent = 'Fotos aus (keine Kamera oder in config.py abgeschaltet).';
           $('fotoHier').disabled = true;
-          $('fotoAuto').disabled = true;
           return;
         }
-        $('fotoAuto').disabled = false;
-        $('fotoAuto').checked = !!f.auto;
         $('fotoHier').disabled = !f.karte || !o.sicher;
         $('fotoText').textContent = f.karte
-          ? `${f.anzahl} Fotos in „${f.karte}“` + (f.auto ? ' · fotografiert beim Fahren' : '')
+          ? `${f.anzahl} Fotos in „${f.karte}“`
             + (f.fehler ? ` · ${f.fehler}` : '')
           : 'Keine Karte, in der er seine Lage kennt -- Fotos gehören immer zu einer Karte.';
         if (f.stand === photoStand && f.karte === photoMap) return;
@@ -1172,11 +1168,6 @@
         showPhotos = !showPhotos;
         $('fotoZeigen').textContent = showPhotos ? 'Fotos ausblenden' : 'Fotos zeigen';
         draw();
-      });
-      $('fotoAuto').addEventListener('change', async (event) => {
-        try {
-          await api('/api/mapping/fotos/auto', { method: 'POST', body: JSON.stringify({ aktiv: event.target.checked }) });
-        } catch (error) { message(error.message, true); }
       });
       $('panoStart').addEventListener('click', async () => {
         try {

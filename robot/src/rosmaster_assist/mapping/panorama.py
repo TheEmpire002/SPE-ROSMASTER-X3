@@ -254,7 +254,6 @@ class Panorama:
         # turned so far, measured by the lidar during each turn
         turned = 0.0
         shots: list[tuple[bytes, float, float]] = []
-        self._photos.paused = True
         self._maneuver.quiet = True
         tilt_before = self._aim_tilt()
         try:
@@ -301,7 +300,6 @@ class Panorama:
             log.exception("Panorama failed")
             self.reason = "Fehler beim Panorama"
         finally:
-            self._photos.paused = False
             self._maneuver.quiet = False
             self._restore_tilt(tilt_before)
             self._state = OFF

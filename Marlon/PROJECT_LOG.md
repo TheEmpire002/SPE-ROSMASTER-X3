@@ -1226,3 +1226,8 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **How:** Depth pixels are placed in the colour image with the same geometry as the overlay view „Tiefe + Farbbild“ (moved into `depth_view.overlay_box`, used by both). So the existing correction `DEPTH_OVERLAY_SHIFT_PX`/`ZOOM` fixes both, and you can check the alignment in the app. Colour image at most 0.15 s apart from the depth image, else no colour. Per block a running average over about 8 images, which evens out changing light and auto exposure.
 - **Check:** On the Pi with a fake depth image (wall at 2 m) and a colour image half red, half blue: left in the image ends up left in the map (red), right blue; colours survive saving and loading.
 - **Result:** Pending the test on the robot. Not merged into main yet (on request).
+
+### 24.11.2026 – Automatic map photos removed (with Claude)
+- **What:** The robot no longer takes photos by itself while driving: `MapPhotos.tick`, the checkbox „beim Fahren automatisch fotografieren“ on `/map`, `POST /api/mapping/fotos/auto` and the settings `MAP_PHOTO_AUTO`, `MAP_PHOTO_EVERY_*`, `MAP_PHOTO_SIMILAR_*`, `MAP_PHOTO_MAX_OMEGA`, `MAP_PHOTO_MIN_INTERVAL_S`, `MAP_PHOTO_MAX` are gone. „Foto hier“ by hand and the panoramas stay. The field `auto` stays in the replies (always `false`) so clients do not break.
+- **Why:** Requested: not needed, they filled the map with arrows (157 photos in `first_big_map` after a few drives).
+- **Photos on the robot:** `hauptkarte_bilder` (1 photo) deleted. `first_big_map_bilder` (157 automatic photos, no panoramas) still to delete by hand, deleting was blocked by the permission check.

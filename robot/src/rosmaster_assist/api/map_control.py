@@ -575,8 +575,6 @@ class MapControl:
                 occ_map = self._localization.occ_map
                 if occ_map is not None:
                     await asyncio.to_thread(self._track)
-                    if self.photos is not None:
-                        self.photos.tick()
                     if self.room3d is not None:
                         await asyncio.to_thread(self.room3d.tick)
                     if self.pages > 0 and time.monotonic() - self._frontiers_time > 5.0:

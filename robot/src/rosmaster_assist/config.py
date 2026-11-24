@@ -1245,26 +1245,13 @@ OBJECTS_ANGLE_MARGIN_DEG = 3.0
 PERSON_DETECT_BACKEND = "auto"
 
 # --- Photos on the map --------------------------------------------------------------
-# details in mapping/photos.py: while the pose in a map is confident the robot
-# takes photos and stores them with position and heading beside the map
+# details in mapping/photos.py: "Foto hier" on /map stores a photo with position
+# and heading beside the map (no automatic photos any more, removed 24.11.2026)
 MAP_PHOTO_ENABLED = True
-# take photos by itself while driving (otherwise only "Foto hier" on /map)
-MAP_PHOTO_AUTO = True
 # forward camera with the wide view; falls back to the default camera
 MAP_PHOTO_CAMERA = "orientierung"
-# a new photo after moving this far (m) or turning this much (deg)
-MAP_PHOTO_EVERY_M = 1.0
-MAP_PHOTO_EVERY_DEG = 45.0
-# no photo if one exists this close (m) looking within this angle (deg)
-MAP_PHOTO_SIMILAR_M = 0.5
-MAP_PHOTO_SIMILAR_DEG = 30.0
-# turning faster than this (rad/s) blurs the picture: wait
-MAP_PHOTO_MAX_OMEGA = 0.4
 # camera images older than this (s) do not belong to the pose any more
 MAP_PHOTO_FRAME_MAX_AGE_S = 0.3
-MAP_PHOTO_MIN_INTERVAL_S = 1.0
-# auto photos per map at most (about 40 kB each)
-MAP_PHOTO_MAX = 500
 
 # all-round panorama at a point (mapping/panorama.py): shots per turn (the
 # orbbec sees 66 deg, so 12 shots of 30 deg overlap by a third), rest after

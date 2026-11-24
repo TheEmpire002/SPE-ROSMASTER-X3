@@ -1264,12 +1264,11 @@ User interface: `GET /map`.
 | `POST /api/mapping/hauptkarte/neu`         | begin a new main map (the old one goes to `backups/`); it starts at the next standstill; 409 during mapping                                                                                                                                                                                                                                                                                                                                                 |
 | `POST /api/mapping/hauptkarte/uebernehmen` | after SLAM: the SLAM map becomes the main map (old one to `backups/`), the pose stays                                                                                                                                                                                                                                                                                                                                                                       |
 | `POST /api/mapping/hauptkarte/verwerfen`   | after SLAM: back to the main map, the pose is searched where the odometry expects it                                                                                                                                                                                                                                                                                                                                                                        |
-| `GET /api/mapping/fotos`                   | photos of the current map (new 18.11., see "Photos on the map"): `karte`, `auto`, `verfuegbar`, `fotos` (list of `id`, `datei`, `x`, `y` (m, map frame), `winkel` (heading in degrees, 0 = map x axis, counter-clockwise), `zeit` (unix seconds), `quelle` `"auto"`/`"hand"`, `kamera`, `url`)                                                                                                                                                              |
+| `GET /api/mapping/fotos`                   | photos of the current map (new 18.11., see "Photos on the map"): `karte`, `auto` (always `false` since 24.11.), `verfuegbar`, `fotos` (list of `id`, `datei`, `x`, `y` (m, map frame), `winkel` (heading in degrees, 0 = map x axis, counter-clockwise), `zeit` (unix seconds), `quelle` `"auto"`/`"hand"`, `kamera`, `url`)                                                                                                                                                              |
 | `POST /api/mapping/panorama`               | turn on the spot and take an all-round panorama here (new 18.11., see "Panoramas"); optional body `{"kamera": "<name from CAMERA_ROLES>", "neigung": <deg, + = up>}` (new 23.11., missing = the last one used; `neigung` only applies to the camera on the tilt servo and is clamped to its limits); cancels other drives; returns as `GET /api/mapping/ortung`; 409 with reason (no map, pose uncertain, no camera/lidar, unknown camera, already running) |
 | `POST /api/mapping/panorama/stop`          | cancel the panorama                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `GET /api/mapping/fotos/{karte}/{datei}`   | the photo as JPEG; 404 if unknown                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `POST /api/mapping/fotos`                  | take a photo now ("Foto hier"); returns the entry; 409 with reason without a map, with an uncertain pose or without a fresh camera image                                                                                                                                                                                                                                                                                                                    |
-| `POST /api/mapping/fotos/auto`             | body `{"aktiv": false}`: automatic photos off/on (until the server restarts)                                                                                                                                                                                                                                                                                                                                                                                |
 | `DELETE /api/mapping/fotos/{id}`           | delete a photo; 404 if unknown                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `GET /api/mapping/raum3d` | 3D map of the current map (new 24.11., see "3D map"): `verfuegbar`, `aufnahme`, `karte`, `anzahl` (shown blocks), `bloecke_gesamt`, `mit_farbe` (blocks with a colour), `farbkamera`, `voll`, `voxel_m`, `stand`, `text`, `fehler` |
 | `GET /api/mapping/raum3d/bloecke` | the shown blocks, binary, 12 bytes each, little-endian: int16 `ix, iy, iz, 0`, then uint8 `r, g, b, a` (`a` = 255 with colour, 0 without); index times `voxel_m` = lower corner of the block in the map frame, z = height above the floor |
@@ -1349,20 +1348,18 @@ beendet: Kartierfahrt fertig -- …“. What **no longer** ends it (new 04.11.):
 - _Lidar briefly gone:_ it waits up to `MAPPING_DRIVE_LIDAR_WAIT_S` (30 s);
   for random exploring it stays at 3 s.
 
-**Photos on the map (new 18.11.).** While the pose in the main map or a
-loaded map is confident, the robot takes a photo with `MAP_PHOTO_CAMERA`
-(the Orbbec, wide and fixed forward) every `MAP_PHOTO_EVERY_M` (1 m) or
-after turning `MAP_PHOTO_EVERY_DEG` (45°), not while turning faster than
-`MAP_PHOTO_MAX_OMEGA`, and not if a photo from almost the same spot and
-heading exists (`MAP_PHOTO_SIMILAR_M`, `MAP_PHOTO_SIMILAR_DEG`); at most
-`MAP_PHOTO_MAX` per map. "📷 Foto hier" on `/map` takes one by hand. They are
+**Photos on the map (new 18.11.).** „📷 Foto hier“ on `/map` takes a photo
+with `MAP_PHOTO_CAMERA` (the Orbbec, wide and fixed forward) while the pose
+in the main map or a loaded map is confident. Automatic photos while driving
+were removed on 24.11. (not needed, they filled the map); `auto` stays in the
+replies as `false`, `POST /api/mapping/fotos/auto` is gone. Photos are
 stored beside the map in `<name>_bilder/` (JPEGs plus `index.json`). The
 index remembers the map's frame id; when the main map is replaced, the old
 folder is set aside as `<name>_bilder.<stamp>.alt`. On `/map` every photo
-is a small yellow arrow (orange: taken by hand) pointing where the camera
-looked; a click shows it. `GET /api/mapping/ortung` contains `fotos`:
-`verfuegbar`, `auto`, `karte`, `anzahl`, `stand` (counter, changes with every
-new or deleted photo), `fehler`.
+is a small yellow arrow pointing where the camera looked; a click shows it.
+`GET /api/mapping/ortung` contains `fotos`: `verfuegbar`, `auto`, `karte`,
+`anzahl`, `stand` (counter, changes with every new or deleted photo),
+`fehler`.
 
 **Panoramas (new 18.11.).** „🔄 Rundum-Panorama hier“ on `/map` (or `POST
 /api/mapping/panorama`): the robot turns on the spot in `PANORAMA_SHOTS`

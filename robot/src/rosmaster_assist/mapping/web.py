@@ -43,6 +43,7 @@ class LiveRequest(BaseModel):
 
 
 class PhotoAutoRequest(BaseModel):
+    # on/off body, used by /api/mapping/raum3d/aufnahme
     aktiv: bool
 
 
@@ -271,12 +272,6 @@ def create_mapping_router(manager: MappingManager | None = None, drive=None) -> 
         if isinstance(result, str):
             raise HTTPException(status_code=409, detail=result)
         return result
-
-    @router.post("/api/mapping/fotos/auto")
-    async def photos_auto(request: PhotoAutoRequest) -> dict[str, Any]:
-        photos = _photos()
-        photos.auto = request.aktiv
-        return photos.brief()
 
     @router.delete("/api/mapping/fotos/{photo_id}")
     async def photos_delete(photo_id: str) -> dict[str, Any]:

@@ -1,10 +1,9 @@
 """Photos on the map: what the robot saw, and from where.
 
-While the pose in a map is confident, the robot takes a photo with the
-forward camera (``MAP_PHOTO_CAMERA``) every ``MAP_PHOTO_EVERY_M`` or after
-turning ``MAP_PHOTO_EVERY_DEG`` -- not while turning fast (motion blur), and
-not when there is already one from almost the same spot looking the same
-way. "Foto hier" on the /map page takes one by hand.
+While the pose in a map is confident, "Foto hier" on the /map page takes a
+photo with the forward camera (``MAP_PHOTO_CAMERA``) and stores it with the
+pose; panoramas (mapping/panorama.py) are stored here too. Automatic photos
+while driving were removed on 24.11.2026 (not needed, they filled the map).
 
 Per map a folder ``<name>_bilder/`` beside the map files: the JPEGs as the
 camera delivers them, plus ``index.json`` with position (m, map frame),
@@ -14,8 +13,8 @@ The index also stores the map's frame id: when the main map is replaced
 set aside as ``<name>_bilder.<stamp>.alt`` instead of showing photos in the
 wrong places.
 
-Only the event loop calls ``tick``/``take``; the files are written in a
-thread, a slow sd card must not hold up localization.
+Only the event loop calls ``take``; the files are written in a thread, a
+slow sd card must not hold up localization.
 """
 
 from __future__ import annotations
@@ -40,10 +39,6 @@ _INDEX = "index.json"
 _SAFE = re.compile(r"^[A-Za-z0-9_.\-äöüÄÖÜß]+$")
 
 
-def _angle_diff(a: float, b: float) -> float:
-    return abs(math.degrees(math.atan2(math.sin(a - b), math.cos(a - b))))
-
-
 def safe_name(name: str) -> bool:
     return bool(_SAFE.match(name)) and ".." not in name
 
@@ -54,18 +49,13 @@ class MapPhotos:
         self._localization = localization
         self._camera = camera
         self._odometry = odometry
-        self.auto = bool(config.MAP_PHOTO_AUTO)
         self._lock = threading.Lock()
         self._map: tuple[str, str | None] | None = None   # (name, frame id) of the index
         self._photos: list[dict[str, Any]] = []
-        self._last_check: tuple[float, float, float] | None = None
-        self._last_time = 0.0
         self._counter = 0
         # bumped on every change; the /map page reloads the list when it moves
         self.stand = 0
         self.last_error: str | None = None
-        # no auto photos while a panorama turns the robot
-        self.paused = False
 
     @property
     def available(self) -> bool:
@@ -116,38 +106,9 @@ class MapPhotos:
         with self._lock:
             self._map = current
             self._photos = photos
-            self._last_check = None
             self.stand += 1
 
     # --- taking photos ---
-
-    def tick(self) -> None:
-        """Take a photo if the robot has moved on far enough (auto mode)."""
-        if not self.available or not self.auto or self.paused:
-            return
-        current = self._current_map()
-        if current is None or not self._localization.confident:
-            return
-        self._switch(current)
-        pose = self._localization.pose()
-        if pose is None:
-            return
-        now = time.monotonic()
-        if now - self._last_time < config.MAP_PHOTO_MIN_INTERVAL_S:
-            return
-        if self._odometry is not None:
-            if abs(self._odometry.velocity()[2]) > config.MAP_PHOTO_MAX_OMEGA:
-                return
-        last = self._last_check
-        if last is not None and (
-            math.hypot(pose[0] - last[0], pose[1] - last[1]) < config.MAP_PHOTO_EVERY_M
-            and _angle_diff(pose[2], last[2]) < config.MAP_PHOTO_EVERY_DEG
-        ):
-            return
-        self._last_check = tuple(pose)
-        if self._similar(pose) or self._count_photos() >= config.MAP_PHOTO_MAX:
-            return
-        self._capture(current, pose, "auto")
 
     def take(self) -> dict[str, Any] | str:
         """Photo right now (by hand). Returns the entry or an error text (german)."""
@@ -164,17 +125,6 @@ class MapPhotos:
         self._switch(current)
         entry = self._capture(current, pose, "hand")
         return entry if entry is not None else (self.last_error or "Kein Kamerabild")
-
-    def _similar(self, pose) -> bool:
-        return any(
-            p.get("art", "foto") == "foto"
-            and math.hypot(p["x"] - pose[0], p["y"] - pose[1]) < config.MAP_PHOTO_SIMILAR_M
-            and _angle_diff(math.radians(p["winkel"]), pose[2]) < config.MAP_PHOTO_SIMILAR_DEG
-            for p in self._photos
-        )
-
-    def _count_photos(self) -> int:
-        return sum(1 for p in self._photos if p.get("art", "foto") == "foto")
 
     def add_panorama(self, current, pose, data: bytes, shots,
                      camera: str | None = None) -> dict[str, Any] | None:
@@ -232,7 +182,6 @@ class MapPhotos:
         if "jpeg" not in str(mime):
             self.last_error = f"Kamera liefert {mime}, kein JPEG"
             return None
-        self._last_time = time.monotonic()
         self._counter += 1
         photo_id = f"{time.strftime('%Y%m%d-%H%M%S')}-{self._counter}"
         entry = {
@@ -310,7 +259,7 @@ class MapPhotos:
             photos = list(self._photos) if current is not None else []
         return {
             "karte": name,
-            "auto": self.auto,
+            "auto": False,  # automatic photos removed, field kept for clients
             "verfuegbar": self.available,
             "fotos": [dict(p, url=f"/api/mapping/fotos/{name}/{p['datei']}") for p in photos],
         }
@@ -322,7 +271,7 @@ class MapPhotos:
             self._switch(current)
         return {
             "verfuegbar": self.available,
-            "auto": self.auto,
+            "auto": False,  # automatic photos removed, field kept for clients
             "karte": current[0] if current is not None else None,
             "anzahl": len(self._photos) if current is not None else 0,
             "stand": self.stand,
