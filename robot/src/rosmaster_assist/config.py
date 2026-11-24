@@ -367,9 +367,12 @@ NAV_PLAN_RESOLUTION_M = 0.1
 # the robot diagonal (0.21 m) plus margin. A passage therefore needs 0.5 m.
 NAV_SAFETY_M = 0.25
 # Up to this distance (m) being close to a wall costs extra -- so paths run
-# through the middle of a door and not along its edge.
+# through the middle of a door and not along its edge. at most 1 + this times
+# the normal price per cell; 3 made doorways and spots among chair legs so dear
+# that the planner drove around (checked 24.11. on first_big_map: up to 40 %
+# longer routes); at 1.5 they take the short way and keep >= 0.32 m in 90 %
 NAV_PREFERRED_DISTANCE_M = 0.5
-NAV_WALL_COST = 3.0
+NAV_WALL_COST = 1.5
 # If the goal lies in a wall or too close to one, it is moved up to this far
 # (m) to the nearest drivable spot.
 NAV_GOAL_SNAP_M = 0.6

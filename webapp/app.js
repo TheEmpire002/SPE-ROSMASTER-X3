@@ -312,6 +312,9 @@ const KEYS_UP = {
 
 window.addEventListener("keydown", (e) => {
   if (e.repeat) return;
+  // shortcuts are not driving: alt+d (address bar), ctrl+s, ctrl+a and the
+  // like reach the page as d, s, a too
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
   // In an open dialog (settings, MUKKE) the user is typing -- an "e" in a
   // number field or a "w" in a YouTube link must not move the robot.
   // Same in text fields (except sliders, which you use to set the speed
@@ -335,23 +338,24 @@ window.addEventListener("keyup", (e) => {
   if (fn) fn();
 });
 
-// Leaving the window or switching tabs: stop. Otherwise the robot keeps
-// driving although nobody is watching anymore.
-//
-// Exception autonomous driving: nobody is steering by hand, and a stop
-// would end the drive as soon as you e.g. click into the terminal. The
-// manual input is cleared anyway. If the connection drops, the server
-// stops the robot regardless.
+// leaving the window or switching tabs ends manual input: a key held down
+// would never get its keyup and the robot would keep driving. only then a
+// stop goes out; a goal drive, 3d scan, homing or autonomous driving that
+// nobody steers by hand goes on (switching to /map must not end it). if the
+// connection drops, the server stops the robot regardless
+function manualInput() {
+  return dir.x !== 0 || dir.y !== 0 || dir.rot !== 0
+    || document.querySelector(".pad-btn.active") !== null;
+}
+
 function onWindowLeave() {
   stopTilt();
-  if (autonomyActive) {
-    dir.x = dir.y = dir.rot = 0;
-    document.querySelectorAll(".pad-btn.active").forEach((b) =>
-      b.classList.remove("active")
-    );
-    return;
-  }
-  stopAll();
+  const steering = manualInput();
+  dir.x = dir.y = dir.rot = 0;
+  document.querySelectorAll(".pad-btn.active").forEach((b) =>
+    b.classList.remove("active")
+  );
+  if (steering) send({ type: "stop" });
 }
 window.addEventListener("blur", onWindowLeave);
 document.addEventListener("visibilitychange", () => {
@@ -470,8 +474,8 @@ let personCamera = null;
 
 const PERSON_COLOR = "#f05d5d";
 
-// the panel is gone, but the window-leave rule and the person boxes over
-// the camera still need the autonomy state
+// the panel is gone, but the person boxes over the camera still need the
+// autonomy state
 function showAutonomy(a) {
   if (!a) return;
   autonomyActive = a.aktiv === true;
