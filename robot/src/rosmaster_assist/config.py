@@ -701,7 +701,9 @@ DEPTH_HZ = 8.0
 # camera above the floor, forward offset, downward tilt. Measure on the
 # robot -- the floor detection compensates for rough errors as long as it
 # sees the floor.
-DEPTH_CAMERA_HEIGHT_M = 0.22
+# measured 24.11.2026: 14 cm high, set level (was ~10 deg down before). the
+# dark floor in the lab returns no depth, so these values are what counts
+DEPTH_CAMERA_HEIGHT_M = 0.14
 DEPTH_CAMERA_FORWARD_M = 0.05
 DEPTH_CAMERA_TILT_DEG = 0.0
 # Only this range in front of the robot is evaluated (m). Below ~0.6 m the

@@ -1230,3 +1230,9 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Problem:** On main the app seemed to crash (noticed when entering a spoken sentence). The server kept running, but every status message failed with `NameError: name 'objects' is not defined`: `_status_loop` is a separate function and did not receive the object detection, so the app got no more state while connected.
 - **Fix:** `objects` is passed into `_status_loop` like the other services. Checked with an AST scan that no other top-level function in `server.py` uses it without receiving it.
 - **Also seen:** at the same moment the USB microphone (usb 1-1.1) dropped out and did not re-enumerate (error -71); that is the known USB dropout, not this bug.
+
+### 24.11.2026 – Depth camera mounting measured and set (with Claude)
+- **What:** `DEPTH_CAMERA_HEIGHT_M` 0.22 → 0.14 m (measured with a ruler), tilt stays 0°: the camera was set level by hand; before it pointed about 10° down while the config said 0°.
+- **Why:** Without a detected floor every height comes from these values. 10° of wrong tilt lifts a point 2 m away by about 35 cm, 8 cm of wrong height shifts everything; obstacle detection and the 3D map both suffer.
+- **Found on the way:** The depth image has no values on the lab floor at all (lower half of the image black, also with the camera level): the dark floor swallows the Astra's infrared pattern. So the floor detection cannot correct the mounting here; an early "floor found, 18.5 cm" was a fit on a few stray points.
+- **Result:** Pending: 3D maps recorded before this change have wrong heights and should be deleted and scanned again.
