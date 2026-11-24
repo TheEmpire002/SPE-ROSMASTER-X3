@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import logging
 import subprocess
 from pathlib import Path
@@ -11,6 +12,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
+from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 
 from .manager import MappingManager
@@ -322,6 +324,41 @@ def create_mapping_router(manager: MappingManager | None = None, drive=None) -> 
             raise HTTPException(status_code=409, detail="Keine Tiefenkamera -- 3D-Aufnahme geht nicht.")
         room.set_recording(request.aktiv)
         return room.brief()
+
+    @router.post("/api/mapping/raum3d/roh")
+    async def room3d_raw(request: PhotoAutoRequest) -> dict[str, Any]:
+        room = _room3d()
+        if request.aktiv:
+            error = room.start_raw()
+            if error:
+                raise HTTPException(status_code=409, detail=error)
+        else:
+            room.stop_raw()
+        return room.brief()
+
+    @router.get("/api/mapping/raum3d/roh")
+    async def room3d_raw_list() -> dict[str, Any]:
+        return await run_in_threadpool(_room3d().raw_sessions)
+
+    @router.get("/api/mapping/raum3d/roh/{session}.zip", include_in_schema=False)
+    async def room3d_raw_zip(session: str) -> FileResponse:
+        room = _room3d()
+        if room.raw_running(session):
+            raise HTTPException(status_code=409, detail="Rohaufnahme läuft noch -- erst stoppen.")
+        try:
+            path = await run_in_threadpool(room.raw_zip, session)
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"ZIP ging nicht: {exc}") from exc
+        if path is None:
+            raise HTTPException(status_code=404, detail="Rohaufnahme nicht gefunden.")
+        return FileResponse(path, media_type="application/zip", filename=f"rohaufnahme_{session}.zip",
+                            background=BackgroundTask(os.unlink, path))
+
+    @router.delete("/api/mapping/raum3d/roh/{session}")
+    async def room3d_raw_delete(session: str) -> dict[str, Any]:
+        if not await run_in_threadpool(_room3d().delete_raw, session):
+            raise HTTPException(status_code=404, detail="Rohaufnahme nicht gefunden.")
+        return {"geloescht": session}
 
     @router.delete("/api/mapping/raum3d")
     async def room3d_clear() -> dict[str, Any]:

@@ -1271,9 +1271,13 @@ User interface: `GET /map`.
 | `POST /api/mapping/fotos`                  | take a photo now ("Foto hier"); returns the entry; 409 with reason without a map, with an uncertain pose or without a fresh camera image                                                                                                                                                                                                                                                                                                                    |
 | `DELETE /api/mapping/fotos/{id}`           | delete a photo; 404 if unknown                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `GET /api/mapping/raum3d` | 3D map of the current map (new 24.11., see "3D map"): `verfuegbar`, `aufnahme`, `karte`, `anzahl` (shown blocks), `bloecke_gesamt`, `mit_farbe` (blocks with a colour), `farbkamera`, `voll`, `voxel_m`, `stand`, `text`, `fehler` |
-| `GET /api/mapping/raum3d/bloecke` | the shown blocks, binary, 12 bytes each, little-endian: int16 `ix, iy, iz, 0`, then uint8 `r, g, b, a` (`a` = 255 with colour, 0 without); index times `voxel_m` = lower corner of the block in the map frame, z = height above the floor |
+| `GET /api/mapping/raum3d/bloecke` | the shown blocks, binary, 16 bytes each, little-endian: int16 `ix, iy, iz, 0`, then uint8 `r, g, b, a` (`a` = 255 with colour, 0 without), then int8 `nx, ny, nz, n` (surface normal times 127, `n` = 127 with normal, 0 without; test branch `feat/3d-surfaces`, before 12 bytes without normal); index times `voxel_m` = lower corner of the block in the map frame, z = height above the floor |
 | `POST /api/mapping/raum3d/aufnahme` | body `{"aktiv": true}`: keep the depth camera on for the 3D map (until switched off or the server restarts); 409 without depth camera |
 | `DELETE /api/mapping/raum3d` | delete the 3D map of the current map |
+| `POST /api/mapping/raum3d/roh` | body `{"aktiv": true}`: raw recording for the surface model on/off (test branch `feat/3d-surfaces`, see "3D map"); 409 with reason without depth camera or map |
+| `GET /api/mapping/raum3d/roh` | raw recordings of the current map: `karte`, `laeuft` (running session or `null`), `sitzungen` (`[{name, bilder, mb}]`) |
+| `GET /api/mapping/raum3d/roh/{name}.zip` | one raw recording as ZIP (for `scripts/build_mesh.py`); 404 if unknown |
+| `DELETE /api/mapping/raum3d/roh/{name}` | delete a raw recording; 404 if unknown |
 | `WS /api/mapping/ws`                       | `{"type": "status"}` every 3 s, `{"type": "map"}` on every new map, `{"type": "fahrt"}` on changes of the mapping drive, `{"type": "ortung"}` on changes of the pose (content as `GET /api/mapping/ortung`)                                                                                                                                                                                                                                                 |
 
 `GET /api/mapping/map` and the `map` packets deliver the map **the robot is
@@ -1413,6 +1417,24 @@ those two values. Per block a running average over about
 `MAP3D_COLOR_AVG_N` images. The view shows the real colours („echte
 Farben“, switchable to height colours); blocks without colour (older
 recordings) keep the height colour.
+
+Surfaces and raw recording (test branch `feat/3d-surfaces`, 24.11.):
+blocks are 3 cm (`MAP3D_VOXEL_M`, shown from `MAP3D_MIN_HITS` = 3 images).
+Every point gets a surface normal from its neighbours in the depth image
+(none across depth jumps larger than `MAP3D_NORMAL_MAX_JUMP_M` per pixel
+step), averaged per block. The view draws each block as a round disc along
+the surface with light shading („Flächen“, off = cubes as before). „⏺
+Rohaufnahme fürs 3D-Modell“ additionally stores every image that goes into
+the blocks in `<name>_roh/<stamp>/`: `NNNNN_tiefe.png` (16-bit, mm),
+`NNNNN_farbe.jpg`, `frames.jsonl` (per image `i`, `t`, `pose` [x, y,
+heading rad] in the map frame at capture time, `boden` [a, b, c] floor
+plane, `farbe` {`box` [x0, y0, w, h] of the depth image in the colour
+image, `groesse`}) and `meta.json` (depth size, fields of view, camera
+mounting, range). At most `MAP3D_RAW_MAX_FRAMES` images. Download as ZIP
+on `/map`; `python scripts/build_mesh.py <zip>` on a pc (needs `pip install
+open3d opencv-python numpy`) fuses them into a coloured mesh (`.ply`, TSDF
+fusion with marching cubes; options `--voxel`, `--trunc`, `--every`,
+`--show`).
 
 **Choosing the camera (new 23.11.).** A selection field next to the
 panorama button on `/map` picks the camera; the default is

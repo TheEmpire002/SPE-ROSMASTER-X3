@@ -24,10 +24,26 @@ what lines up there lines up here, and ``DEPTH_OVERLAY_SHIFT_PX``/``ZOOM``
 correct both. Per block a running average over the last
 ``MAP3D_COLOR_AVG_N`` images, so changing light and auto exposure even out.
 
+Surface direction (test branch feat/3d-surfaces): every point gets a normal
+from its neighbours in the depth image (cross product of the steps to the
+right and down neighbour; none across depth jumps, ``MAP3D_NORMAL_MAX_JUMP_M``).
+Per block a running average like the colour. The viewer draws each block as
+a round disc facing that direction, which looks like a surface instead of
+cubes.
+
 Per map one file ``<name>_3d.npz`` beside the map files: packed block keys,
-hit counts, colours, block size and the map's frame id. Like the photos it is set
-aside as ``<name>_3d.<stamp>.alt.npz`` when the main map is replaced, the old
-blocks would sit in the wrong places.
+hit counts, colours, normals, block size and the map's frame id. Like the
+photos it is set aside as ``<name>_3d.<stamp>.alt.npz`` when the main map is
+replaced, the old blocks would sit in the wrong places.
+
+Raw recording (test branch feat/3d-surfaces): for a real surface model the
+blocks are too coarse. "Rohaufnahme" stores every image that goes into the
+blocks as it is, in ``<name>_roh/<stamp>/``: the depth image (16-bit png,
+mm), the colour image used (jpeg), and one line per image in
+``frames.jsonl`` with the map pose at capture time and the floor plane;
+``meta.json`` holds fields of view, mounting and the overlay box.
+``scripts/build_mesh.py`` on a pc fuses them into a coloured mesh (open3d
+tsdf). A writer thread does the files, the sd card must not hold up tick.
 
 ``tick`` runs in a worker thread (map_control's tick loop), the endpoints in
 the event loop; everything shared is behind ``_lock``. File access (load,
@@ -38,11 +54,16 @@ compressing 400k blocks must not hold up the localization.
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import os
+import queue
+import shutil
+import tempfile
 import threading
 import time
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -59,6 +80,8 @@ _MASK = (1 << _BITS) - 1
 _MAX_HITS = 65535
 # colour stored as 0x1RRGGBB: bit 24 marks "has a colour", 0 = none yet
 _HAS_COLOR = 1 << 24
+# normal stored the same way: three bytes (component * 127 + 128), bit 24 = has one
+_HAS_NORMAL = 1 << 24
 
 
 def pack(ix, iy, iz):
@@ -82,6 +105,27 @@ def _blend(old: int, new: int, n: int) -> int:
     return out
 
 
+def _pack_normal(n) -> int:
+    return _HAS_NORMAL | sum(int(round(max(-1.0, min(1.0, v)) * 127.0)) + 128 << s
+                             for v, s in zip(n, (16, 8, 0)))
+
+
+def _unpack_normal(v: int) -> tuple[float, float, float]:
+    return tuple(((v >> s) & 255) - 128 for s in (16, 8, 0))  # type: ignore[return-value]
+
+
+def _blend_normal(old: int, new: int, n: int) -> int:
+    """Running average of two packed normals, renormalized; new one with weight 1/n"""
+    if not old:
+        return new
+    a, b = _unpack_normal(old), _unpack_normal(new)
+    m = [x + (y - x) / n for x, y in zip(a, b)]
+    length = math.sqrt(sum(v * v for v in m))
+    if length < 1e-6:
+        return new
+    return _pack_normal([v / length for v in m])
+
+
 class Room3D:
     def __init__(self, storage_dir: Path, localization, depth, odometry=None,
                  color_camera=None) -> None:
@@ -96,6 +140,7 @@ class Room3D:
         self._map: tuple[str, str | None] | None = None
         self._hits: dict[int, int] = {}
         self._colors: dict[int, int] = {}
+        self._normals: dict[int, int] = {}
         self._shown = 0
         self._colored = 0           # images of the last minute that had a colour image
         self._last_frame = 0.0
@@ -108,6 +153,12 @@ class Room3D:
         self.text = "noch nichts aufgenommen"
         self.last_error: str | None = None
         self._full = False
+        # raw recording: session folder, frames written, and the writer
+        self._raw: dict[str, Any] | None = None
+        self._raw_queue: queue.Queue = queue.Queue(maxsize=config.MAP3D_RAW_QUEUE)
+        self._raw_thread: threading.Thread | None = None
+        # colour image the last integrated depth image used (jpeg, box, size)
+        self._last_color: tuple[bytes, tuple, tuple] | None = None
         if config.MAP3D_RECORD:
             self.set_recording(True)
 
@@ -126,6 +177,11 @@ class Room3D:
     def close(self) -> None:
         """Server shutdown: release the camera, write what is still open."""
         try:
+            self.stop_raw()
+            # let the writer finish what is queued (a few images)
+            deadline = time.monotonic() + config.MAP3D_RAW_DRAIN_S
+            while self._raw_queue.unfinished_tasks and time.monotonic() < deadline:
+                time.sleep(0.05)
             if self._depth is not None:
                 self._depth.activate("raum3d", False)
             saver = self._saver
@@ -141,6 +197,7 @@ class Room3D:
             with self._lock:
                 self._hits = {}
                 self._colors = {}
+                self._normals = {}
                 self._shown = 0
                 self._full = False
                 self._dirty = False
@@ -183,6 +240,7 @@ class Room3D:
         path = self._file(name)
         hits: dict[int, int] = {}
         colors: dict[int, int] = {}
+        normals: dict[int, int] = {}
         try:
             with np.load(path, allow_pickle=False) as data:
                 saved_frame = str(data["frame_id"]) if "frame_id" in data.files else ""
@@ -190,6 +248,7 @@ class Room3D:
                 keys, counts = data["keys"], data["hits"]
                 # files from before the colour have none
                 rgb = data["rgb"] if "rgb" in data.files else None
+                nor = data["normal"] if "normal" in data.files else None
             wrong_frame = bool(frame_id and saved_frame and saved_frame != frame_id)
             if wrong_frame or abs(voxel - config.MAP3D_VOXEL_M) > 1e-6:
                 aside = path.with_name(f"{name}_3d.{time.strftime('%Y%m%d-%H%M%S')}.alt.npz")
@@ -200,6 +259,8 @@ class Room3D:
                 hits = dict(zip(keys.tolist(), counts.tolist()))
                 if rgb is not None:
                     colors = {k: c for k, c in zip(keys.tolist(), rgb.tolist()) if c}
+                if nor is not None:
+                    normals = {k: c for k, c in zip(keys.tolist(), nor.tolist()) if c}
         except FileNotFoundError:
             pass
         except Exception:
@@ -208,6 +269,7 @@ class Room3D:
             self._map = current
             self._hits = hits
             self._colors = colors
+            self._normals = normals
             self._shown = sum(1 for h in hits.values() if h >= config.MAP3D_MIN_HITS)
             self._full = len(hits) >= config.MAP3D_MAX_VOXELS
             self._dirty = False
@@ -260,6 +322,7 @@ class Room3D:
             return
         self.last_error = None
         added, colored = added
+        self._raw_frame(frame, pose)
         self.text = ("Speicher voll -- ergänzt nur noch" if self._full
                      else f"nimmt auf ({added} Punkte im letzten Bild"
                           + ("" if colored or self._color_camera is None else ", ohne Farbbild") + ")")
@@ -299,6 +362,7 @@ class Room3D:
         H, W = image.shape[:2]
         h, w = frame.raw.shape
         x0, y0, bw, bh = overlay_box(w, h, W, H, self._depth.hfov, getattr(camera, "fov_deg", None))
+        self._last_color = (data[0], (x0, y0, bw, bh), (W, H))
         px = (x0 + (cols * step + 0.5) * bw / w).astype(np.int64)
         py = (y0 + (rows * step + 0.5) * bh / h).astype(np.int64)
         inside = (px >= 0) & (px < W) & (py >= 0) & (py < H)
@@ -316,9 +380,11 @@ class Room3D:
         if not hfov or not vfov:
             return 0, False
         step = config.MAP3D_PIXEL_STEP
+        self._last_color = None
         x, y, z, valid = robot_points(frame.raw, hfov, vfov, step=step)
         # same order as the boolean indexing in robot_points: row by row
         rows, cols = np.nonzero(valid)
+        normal = _normals(np, x, y, z, valid, step)
         try:
             color = self._point_colors(frame, rows, cols, step)
         except Exception:
@@ -331,12 +397,16 @@ class Room3D:
             a, b, c = frame.floor
             z = z - (a * x + b * y + c)
         keep &= (z >= config.MAP3D_MIN_HEIGHT_M) & (z <= config.MAP3D_MAX_HEIGHT_M)
-        x, y, z = x[keep], y[keep], z[keep]
+        x, y, z, normal = x[keep], y[keep], z[keep], normal[keep]
         if not len(x):
             return 0, color is not None
         c, s = math.cos(pose[2]), math.sin(pose[2])
         wx = c * x - s * y + pose[0]
         wy = s * x + c * y + pose[1]
+        # normals into the map frame: only the heading turns them
+        nx = c * normal[:, 0] - s * normal[:, 1]
+        ny = s * normal[:, 0] + c * normal[:, 1]
+        normal = np.column_stack((nx, ny, normal[:, 2]))
         v = config.MAP3D_VOXEL_M
         keys, inverse = np.unique(
             pack(np.floor(wx / v).astype(np.int64), np.floor(wy / v).astype(np.int64),
@@ -353,11 +423,24 @@ class Room3D:
                 mean = np.stack(sums, axis=1) / np.maximum(n, 1)[:, None]
                 new_color = np.where(n > 0, _HAS_COLOR | (mean[:, 0].astype(np.int64) << 16)
                                      | (mean[:, 1].astype(np.int64) << 8) | mean[:, 2].astype(np.int64), 0)
+        # mean normal per block in this image (sum of unit vectors, renormalized)
+        has_n = ~np.isnan(normal[:, 0])
+        normal_list = None
+        if has_n.any():
+            sums = np.stack([np.bincount(inverse[has_n], weights=normal[has_n, ch], minlength=len(keys))
+                             for ch in range(3)], axis=1)
+            length = np.linalg.norm(sums, axis=1)
+            good = length > 1e-6
+            unit = sums / np.maximum(length, 1e-6)[:, None]
+            packed = (_HAS_NORMAL | ((np.round(unit[:, 0] * 127) + 128).astype(np.int64) << 16)
+                      | ((np.round(unit[:, 1] * 127) + 128).astype(np.int64) << 8)
+                      | (np.round(unit[:, 2] * 127) + 128).astype(np.int64))
+            normal_list = np.where(good, packed, 0).tolist()
         threshold = config.MAP3D_MIN_HITS
         average_n = config.MAP3D_COLOR_AVG_N
         new_list = new_color.tolist() if new_color is not None else None
         with self._lock:
-            hits, colors = self._hits, self._colors
+            hits, colors, normals = self._hits, self._colors, self._normals
             for i, k in enumerate(keys.tolist()):
                 h = hits.get(k)
                 if h is None:
@@ -372,9 +455,173 @@ class Room3D:
                         self._shown += 1
                 if new_list is not None and new_list[i]:
                     colors[k] = _blend(colors.get(k, 0), new_list[i], min(h + 1, average_n))
+                if normal_list is not None and normal_list[i]:
+                    normals[k] = _blend_normal(normals.get(k, 0), normal_list[i], min(h + 1, average_n))
             self._dirty = True
             self.stand += 1
         return int(len(x)), color is not None
+
+    # --- raw recording (for the surface model on a pc) ---
+
+    def _raw_dir(self, name: str) -> Path:
+        return self._dir / f"{name}_roh"
+
+    def start_raw(self) -> str | None:
+        """Start a raw recording in the current map; error text (german) or None"""
+        if not self.available:
+            return "Keine Tiefenkamera"
+        current = self._current_map()
+        if current is None:
+            return "Keine Karte, in der er seine Lage kennt"
+        if self._raw is not None:
+            return None
+        folder = self._raw_dir(current[0]) / time.strftime("%Y%m%d-%H%M%S")
+        try:
+            folder.mkdir(parents=True, exist_ok=False)
+        except OSError as exc:
+            return f"Ordner geht nicht: {exc}"
+        self._raw = {"dir": folder, "map": current, "frames": 0, "meta": None}
+        if self._raw_thread is None or not self._raw_thread.is_alive():
+            self._raw_thread = threading.Thread(target=self._raw_writer, name="raum3d-roh", daemon=True)
+            self._raw_thread.start()
+        self.set_recording(True)
+        log.info("3D map: raw recording in %s", folder)
+        return None
+
+    def stop_raw(self) -> None:
+        if self._raw is None:
+            return
+        log.info("3D map: raw recording stopped after %d images", self._raw["frames"])
+        self._raw = None
+        # the writer finishes what is queued; nothing new comes in
+
+    def _raw_frame(self, frame, pose) -> None:
+        """Queue one integrated image for the raw recording (tick thread)"""
+        raw = self._raw
+        if raw is None:
+            return
+        if raw["map"] != self._map or raw["frames"] >= config.MAP3D_RAW_MAX_FRAMES:
+            # other map or full: positions would not fit / sd card
+            self.stop_raw()
+            return
+        if self._raw_thread is None or not self._raw_thread.is_alive():
+            self._raw_thread = threading.Thread(target=self._raw_writer, name="raum3d-roh", daemon=True)
+            self._raw_thread.start()
+        index = raw["frames"]
+        if not raw["meta"]:
+            h, w = frame.raw.shape
+            raw["meta"] = {
+                "karte": raw["map"][0], "frame_id": raw["map"][1],
+                "tiefe_breite": w, "tiefe_hoehe": h,
+                "hfov": self._depth.hfov, "vfov": self._depth.vfov,
+                "kamera_hoehe_m": config.DEPTH_CAMERA_HEIGHT_M,
+                "kamera_vorn_m": config.DEPTH_CAMERA_FORWARD_M,
+                "kamera_neigung_grad": config.DEPTH_CAMERA_TILT_DEG,
+                "min_m": config.MAP3D_MIN_M, "max_m": config.MAP3D_MAX_M,
+            }
+        item = {
+            "dir": raw["dir"], "index": index, "depth": frame.raw.copy(),
+            "color": self._last_color, "pose": pose, "floor": frame.floor,
+            "time": frame.timestamp, "meta": raw["meta"],
+        }
+        try:
+            self._raw_queue.put_nowait(item)
+        except queue.Full:
+            return  # sd card too slow: skip this image rather than stall
+        raw["frames"] = index + 1
+
+    def _raw_writer(self) -> None:
+        while True:
+            item = self._raw_queue.get()
+            try:
+                import cv2
+
+                folder: Path = item["dir"]
+                if not folder.is_dir():
+                    continue  # session deleted meanwhile
+                # until it is there: build_mesh needs it, one failed write must not lose it
+                meta_file = folder / "meta.json"
+                if not meta_file.exists():
+                    meta_file.write_text(json.dumps(item["meta"], indent=1), encoding="utf-8")
+                stem = f"{item['index']:05d}"
+                if not cv2.imwrite(str(folder / f"{stem}_tiefe.png"), item["depth"]):
+                    raise OSError("depth png not written (sd card full?)")
+                line = {"i": item["index"], "t": round(item["time"], 3),
+                        "pose": [round(v, 4) for v in item["pose"]],
+                        "boden": [round(v, 5) for v in item["floor"]] if item["floor"] else None,
+                        "farbe": None}
+                if item["color"] is not None:
+                    jpeg, box, size = item["color"]
+                    (folder / f"{stem}_farbe.jpg").write_bytes(jpeg)
+                    line["farbe"] = {"box": list(box), "groesse": list(size)}
+                with open(folder / "frames.jsonl", "a", encoding="utf-8") as f:
+                    f.write(json.dumps(line) + "\n")
+            except Exception as exc:
+                self.last_error = f"Rohaufnahme: {exc}"
+                log.warning("3D map: raw image not written: %s", exc)
+            finally:
+                self._raw_queue.task_done()
+
+    def raw_sessions(self) -> dict[str, Any]:
+        """Raw recordings of the current map: name, images, size"""
+        current = self._current_map()
+        out: list[dict[str, Any]] = []
+        if current is not None:
+            base = self._raw_dir(current[0])
+            for folder in sorted(base.glob("*"), reverse=True) if base.is_dir() else []:
+                if not folder.is_dir():
+                    continue
+                files = list(folder.iterdir())
+                out.append({
+                    "name": folder.name,
+                    "bilder": sum(1 for f in files if f.name.endswith("_tiefe.png")),
+                    "mb": round(sum(f.stat().st_size for f in files) / 1e6, 1),
+                })
+        raw = self._raw
+        return {"karte": current[0] if current else None, "sitzungen": out,
+                "laeuft": raw["dir"].name if raw is not None else None}
+
+    def _raw_session(self, session: str) -> Path | None:
+        current = self._current_map()
+        if current is None or not safe_name(session) or session.startswith("."):
+            return None
+        base = self._raw_dir(current[0])
+        folder = base / session
+        # only a session folder directly inside <name>_roh, never the folder itself
+        if folder.resolve().parent != base.resolve() or not folder.is_dir():
+            return None
+        return folder
+
+    def raw_zip(self, session: str) -> Path | None:
+        """The session as a zip in a temp file (caller deletes it); None if unknown"""
+        folder = self._raw_session(session)
+        if folder is None:
+            return None
+        fd, name = tempfile.mkstemp(suffix=".zip")
+        os.close(fd)
+        try:
+            # png and jpeg are compressed already: store, do not deflate again
+            with zipfile.ZipFile(name, "w", zipfile.ZIP_STORED) as z:
+                for f in sorted(folder.iterdir()):
+                    z.write(f, f"{session}/{f.name}")
+        except BaseException:
+            os.unlink(name)
+            raise
+        return Path(name)
+
+    def raw_running(self, session: str) -> bool:
+        raw = self._raw
+        return raw is not None and raw["dir"].name == session
+
+    def delete_raw(self, session: str) -> bool:
+        folder = self._raw_session(session)
+        if folder is None:
+            return False
+        raw = self._raw
+        if raw is not None and raw["dir"] == folder:
+            self.stop_raw()
+        shutil.rmtree(folder, ignore_errors=True)
+        return True
 
     # --- storing ---
 
@@ -387,6 +634,7 @@ class Room3D:
                 # dict copy is fast c code; the arrays are built outside the lock
                 snapshot = dict(self._hits)
                 color_snapshot = dict(self._colors)
+                normal_snapshot = dict(self._normals)
                 self._dirty = False
                 self._save_time = time.monotonic()
             import numpy as np
@@ -398,8 +646,10 @@ class Room3D:
                 hits = np.fromiter(snapshot.values(), dtype=np.uint16, count=len(snapshot))
                 rgb = np.fromiter((color_snapshot.get(k, 0) for k in snapshot), dtype=np.uint32,
                                   count=len(snapshot))
+                nor = np.fromiter((normal_snapshot.get(k, 0) for k in snapshot), dtype=np.uint32,
+                                  count=len(snapshot))
                 with open(tmp, "wb") as f:
-                    np.savez_compressed(f, keys=keys, hits=hits, rgb=rgb,
+                    np.savez_compressed(f, keys=keys, hits=hits, rgb=rgb, normal=nor,
                                         voxel_m=np.float64(config.MAP3D_VOXEL_M),
                                         frame_id=np.str_(frame_id or ""))
                 os.replace(tmp, path)
@@ -412,24 +662,33 @@ class Room3D:
     # --- output ---
 
     def blocks(self) -> bytes:
-        """Shown blocks, 12 bytes each, little-endian: int16 ix, iy, iz, 0, then
-        uint8 r, g, b, a (a = 255 with colour, 0 without). index times
+        """Shown blocks, 16 bytes each, little-endian: int16 ix, iy, iz, 0, then
+        uint8 r, g, b, a (a = 255 with colour, 0 without), then int8 nx, ny, nz
+        (normal * 127) and int8 n (127 with normal, 0 without). index times
         MAP3D_VOXEL_M = lower corner in the map frame (z = height above the floor)"""
         import numpy as np
 
         with self._lock:
             snapshot = dict(self._hits)
             color_snapshot = dict(self._colors)
+            normal_snapshot = dict(self._normals)
         keys = np.fromiter(snapshot.keys(), dtype=np.int64, count=len(snapshot))
         hits = np.fromiter(snapshot.values(), dtype=np.int64, count=len(snapshot))
         keys = keys[hits >= config.MAP3D_MIN_HITS]
         rgb = np.fromiter((color_snapshot.get(k, 0) for k in keys.tolist()), dtype=np.int64, count=len(keys))
+        nor = np.fromiter((normal_snapshot.get(k, 0) for k in keys.tolist()), dtype=np.int64,
+                          count=len(keys))
         ix, iy, iz = unpack(keys)
         out = np.zeros(len(keys), dtype=[("ix", "<i2"), ("iy", "<i2"), ("iz", "<i2"), ("pad", "<i2"),
-                                         ("r", "u1"), ("g", "u1"), ("b", "u1"), ("a", "u1")])
+                                         ("r", "u1"), ("g", "u1"), ("b", "u1"), ("a", "u1"),
+                                         ("nx", "i1"), ("ny", "i1"), ("nz", "i1"), ("n", "i1")])
         out["ix"], out["iy"], out["iz"] = (a.clip(-32768, 32767) for a in (ix, iy, iz))
         out["r"], out["g"], out["b"] = (rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255
         out["a"] = np.where(rgb & _HAS_COLOR, 255, 0)
+        out["nx"] = ((nor >> 16) & 255) - 128
+        out["ny"] = ((nor >> 8) & 255) - 128
+        out["nz"] = (nor & 255) - 128
+        out["n"] = np.where(nor & _HAS_NORMAL, 127, 0)
         return out.tobytes()
 
     def brief(self) -> dict[str, Any]:
@@ -447,4 +706,33 @@ class Room3D:
                 "stand": self.stand,
                 "text": self.text,
                 "fehler": self.last_error,
+                "roh": {"aktiv": self._raw is not None,
+                        "bilder": self._raw["frames"] if self._raw is not None else 0},
             }
+
+
+def _normals(np, x, y, z, valid, step):
+    """Unit normal per valid depth point (n x 3, nan where none), facing the
+    camera: cross product of the steps to the right and the lower neighbour
+    in the thinned image. none across depth jumps (edges, gaps)"""
+    shape = valid.shape
+    grid = np.full(shape + (3,), np.nan, dtype=np.float32)
+    grid[valid] = np.column_stack((x, y, z))
+    right = grid[:-1, 1:] - grid[:-1, :-1]
+    down = grid[1:, :-1] - grid[:-1, :-1]
+    n = np.cross(right, down)
+    jump = config.MAP3D_NORMAL_MAX_JUMP_M * step
+    bad = (np.linalg.norm(right, axis=2) > jump) | (np.linalg.norm(down, axis=2) > jump)
+    length = np.linalg.norm(n, axis=2)
+    bad |= ~(length > 1e-9)
+    n = n / np.where(bad, 1.0, length)[..., None]
+    n[bad] = np.nan
+    out = np.full(shape + (3,), np.nan, dtype=np.float32)
+    out[:-1, :-1] = n
+    out = out[valid]
+    # facing the camera: the side the measurement came from
+    cam = np.array([config.DEPTH_CAMERA_FORWARD_M, 0.0, config.DEPTH_CAMERA_HEIGHT_M], dtype=np.float32)
+    toward = cam - np.column_stack((x, y, z))
+    flip = np.einsum("ij,ij->i", out, toward) < 0
+    out[flip] *= -1.0
+    return out

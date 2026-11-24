@@ -1291,8 +1291,9 @@ MAP3D_RECORD = False
 # also grow while someone else has the depth camera on (autonomous driving,
 # mapping drive), without „3D aufnehmen“
 MAP3D_WHEN_DEPTH_ON = True
-# block edge (m); smaller = finer but more noise and memory
-MAP3D_VOXEL_M = 0.05
+# block edge (m); smaller = finer but more noise and memory (test branch: 3 cm,
+# drawn as round discs along the surface)
+MAP3D_VOXEL_M = 0.03
 # depth images per second that go into the map (> 0; the camera evaluates DEPTH_HZ)
 MAP3D_HZ = 2.0
 # use every n-th pixel of the depth image; 2 gives about 1 point per block at 3 m
@@ -1304,13 +1305,13 @@ MAP3D_MAX_M = 3.0
 MAP3D_MIN_HEIGHT_M = -0.03
 MAP3D_MAX_HEIGHT_M = 2.2
 # a block is shown once this many images saw it; filters single noisy pixels
-MAP3D_MIN_HITS = 2
+MAP3D_MIN_HITS = 3
 # no images while turning faster than this (rad/s): walls would smear
 MAP3D_MAX_OMEGA = 0.35
 # depth images older than this (s) are skipped, the pose no longer fits
 MAP3D_MAX_FRAME_AGE_S = 0.3
 # upper limit of blocks per map (memory on the pi, size of the download)
-MAP3D_MAX_VOXELS = 400_000
+MAP3D_MAX_VOXELS = 800_000
 # write the file at most this often while recording (s), and on shutdown
 MAP3D_SAVE_S = 30.0
 # colour for the blocks: the orbbec's own colour image, it is lined up with the
@@ -1320,6 +1321,15 @@ MAP3D_COLOR_CAMERA = "orientierung"
 MAP3D_COLOR_MAX_DT_S = 0.15
 # a block's colour averages over about this many images (light, auto exposure)
 MAP3D_COLOR_AVG_N = 8
+# no surface direction across depth jumps larger than this per pixel step (m):
+# that is an edge or a gap, not a surface
+MAP3D_NORMAL_MAX_JUMP_M = 0.04
+# raw recording for the surface model (scripts/build_mesh.py): images per
+# session at most (about 100 kB each with colour), and images waiting for the sd card
+MAP3D_RAW_MAX_FRAMES = 3000
+MAP3D_RAW_QUEUE = 20
+# on shutdown wait this long (s) for queued raw images to be written
+MAP3D_RAW_DRAIN_S = 3.0
 
 # --- Camera tilt servo (person camera, up and down) ------------------------------
 # details in sensors/camera_tilt.py. servo on the expansion board, moved with

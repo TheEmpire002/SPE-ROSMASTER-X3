@@ -200,7 +200,10 @@
               <button id="raumAufnahme" type="button" disabled>● 3D aufnehmen</button>
               <button id="raumZeigen" type="button" disabled>🧊 3D-Ansicht</button>
             </div>
-            <div class="help" style="margin-top:7px">Die Tiefenkamera misst beim Fahren den Raum in 5-cm-Blöcken mit, solange er weiß, wo er ist. Langsam fahren und drehen, bis etwa 3 m Abstand.</div>
+            <div class="help" style="margin-top:7px">Die Tiefenkamera misst beim Fahren den Raum in 3-cm-Blöcken mit, solange er weiß, wo er ist. Langsam fahren und drehen, bis etwa 3 m Abstand.</div>
+            <button id="raumRoh" class="secondary" type="button" style="margin-top:9px" disabled>⏺ Rohaufnahme fürs 3D-Modell</button>
+            <div id="raumRohListe" class="saved-list" style="margin-top:7px"></div>
+            <div class="help" style="margin-top:6px">Speichert Tiefen- und Farbbilder mit Position. Als ZIP herunterladen, dann am PC: <code>python scripts/build_mesh.py rohaufnahme_….zip</code> rechnet daraus ein farbiges 3D-Modell (.ply).</div>
           </div>
 
           <details class="erst full" id="erstBox">
@@ -291,11 +294,12 @@
         <div class="foto-zeile">
           <span id="raumInfo"></span>
           <label class="check"><input type="checkbox" id="raumFarbe" checked> echte Farben</label>
+          <label class="check"><input type="checkbox" id="raumFlaechen" checked> Flächen</label>
           <label class="check">Höhe bis <input type="range" id="raumHoehe" min="0.2" max="2.2" step="0.05" value="2.2" style="width:130px"> <span id="raumHoeheWert">2.20 m</span></label>
           <button id="raumLoeschen" class="stop" type="button">Löschen</button>
           <button id="raumZu" type="button">Schließen</button>
         </div>
-        <div class="help">Ziehen: drehen · Rechts ziehen oder Umschalt + Ziehen: verschieben · Mausrad / zwei Finger: Zoom · Doppelklick: einpassen · echte Farben aus dem Farbbild, sonst Farbe = Höhe (blau Boden, rot oben) · grün: Roboter</div>
+        <div class="help">Ziehen: drehen · Rechts ziehen oder Umschalt + Ziehen: verschieben · Mausrad / zwei Finger: Zoom · Doppelklick: einpassen · echte Farben aus dem Farbbild, sonst Farbe = Höhe (blau Boden, rot oben) · Flächen: runde Scheiben entlang der Oberfläche, sonst Würfel · grün: Roboter</div>
       </div>
     </div>
     <div class="foto-ansicht" id="panoAnsicht" hidden>
@@ -1277,12 +1281,58 @@
       // no library -- the robot's network has no internet for a CDN
       const room = {
         brief: null, loadedStand: null, loading: false, gl: null, prog: null, buf: null,
-        robotBuf: null, count: 0, voxel: 0.05, maxZ: 2.2, bounds: null, useColor: true,
+        robotBuf: null, count: 0, voxel: 0.05, maxZ: 2.2, bounds: null, useColor: true, surfaces: true,
         yaw: -2.3, pitch: 0.75, dist: 8, target: [0, 0, 0.5], frame: 0, refreshTimer: null,
       };
 
+      let rawKey = null;
+
+      async function loadRawList() {
+        try {
+          const d = await api('/api/mapping/raum3d/roh');
+          const list = $('raumRohListe');
+          if (!d.sitzungen.length) {
+            list.replaceChildren();
+            return;
+          }
+          list.replaceChildren(...d.sitzungen.map((s) => {
+            const item = document.createElement('div');
+            item.className = 'saved-item';
+            const text = document.createElement('span');
+            text.textContent = `${s.name} · ${s.bilder} Bilder · ${s.mb} MB` + (s.name === d.laeuft ? ' · läuft' : '');
+            const zip = document.createElement('a');
+            zip.href = `/api/mapping/raum3d/roh/${encodeURIComponent(s.name)}.zip`;
+            zip.textContent = 'ZIP';
+            zip.style.color = 'var(--blue)';
+            const del = document.createElement('button');
+            del.type = 'button';
+            del.textContent = 'Löschen';
+            del.addEventListener('click', async () => {
+              if (!window.confirm(`Rohaufnahme ${s.name} löschen?`)) return;
+              try {
+                await api(`/api/mapping/raum3d/roh/${encodeURIComponent(s.name)}`, { method: 'DELETE' });
+                loadRawList();
+              } catch (error) { message(error.message, true); }
+            });
+            item.append(text, zip, del);
+            return item;
+          }));
+        } catch (error) { message(`Rohaufnahmen: ${error.message}`, true); }
+      }
+
       function syncRoom3d(r, o) {
         room.brief = r;
+        const roh = (r && r.roh) || { aktiv: false, bilder: 0 };
+        $('raumRoh').disabled = !r || !r.verfuegbar;
+        $('raumRoh').textContent = roh.aktiv ? `■ Rohaufnahme stoppen (${roh.bilder} Bilder)` : '⏺ Rohaufnahme fürs 3D-Modell';
+        $('raumRoh').classList.toggle('stop', !!roh.aktiv);
+        // reload the list when the recording starts/stops or the map changes, and
+        // every 25 images while it runs
+        const key = `${r && r.karte}|${roh.aktiv}|${Math.floor(roh.bilder / 25)}`;
+        if (key !== rawKey) {
+          rawKey = key;
+          loadRawList();
+        }
         const text = $('raumText');
         if (!r || !r.verfuegbar) {
           text.textContent = '3D aus (keine Tiefenkamera oder in config.py abgeschaltet).';
@@ -1303,20 +1353,27 @@
       const ROOM_VS = `
         attribute vec3 aPos;
         attribute vec4 aCol;
-        uniform mat4 uMvp; uniform float uVoxel; uniform float uScale; uniform float uMaxZ;
-        varying float vH; varying float vCut; varying vec4 vCol;
+        attribute vec4 aNor;
+        uniform mat4 uMvp; uniform mat4 uView; uniform float uVoxel; uniform float uScale; uniform float uMaxZ;
+        uniform float uSurfaces;
+        varying float vH; varying float vCut; varying vec4 vCol; varying vec3 vNv; varying float vHasN;
         void main() {
           vec3 p = (aPos + 0.5) * uVoxel;
           vH = p.z;
           vCol = aCol;
           vCut = p.z > uMaxZ ? 1.0 : 0.0;
+          // normal in view space: the disc is squashed along it on screen
+          vHasN = (uSurfaces > 0.5 && aNor.w > 0.5) ? 1.0 : 0.0;
+          vNv = normalize(mat3(uView) * (aNor.xyz + vec3(0.0, 0.0, 1e-4)));
           gl_Position = uMvp * vec4(p, 1.0);
-          gl_PointSize = clamp(uVoxel * uScale / gl_Position.w * 1.2, 1.5, 64.0);
+          // discs a bit larger than the block, so neighbours close the surface
+          float grow = uSurfaces > 0.5 ? 1.7 : 1.2;
+          gl_PointSize = clamp(uVoxel * uScale / gl_Position.w * grow, 1.5, 64.0);
         }`;
       const ROOM_FS = `
         precision mediump float;
-        varying float vH; varying float vCut; varying vec4 vCol;
-        uniform vec4 uFixed; uniform float uUseColor;
+        varying float vH; varying float vCut; varying vec4 vCol; varying vec3 vNv; varying float vHasN;
+        uniform vec4 uFixed; uniform float uUseColor; uniform float uSurfaces;
         vec3 heightColor(float t) {
           t = clamp(t, 0.0, 1.0);
           vec3 a = vec3(0.16, 0.30, 0.75), b = vec3(0.15, 0.75, 0.85), c = vec3(0.35, 0.85, 0.35);
@@ -1328,12 +1385,32 @@
         }
         void main() {
           if (vCut > 0.5) discard;
-          vec2 q = abs(gl_PointCoord - 0.5);
           bool real = uUseColor > 0.5 && vCol.a > 0.5;
-          // a darker rim keeps single blocks readable; softer on real colours
-          float rim = max(q.x, q.y) > 0.40 ? (real ? 0.8 : 0.62) : 1.0;
           vec3 col = uFixed.a > 0.0 ? uFixed.rgb : (real ? vCol.rgb : heightColor(vH / 2.0));
-          gl_FragColor = vec4(col * rim, 1.0);
+          float shade = 1.0;
+          if (uSurfaces > 0.5) {
+            // round disc; with a normal an ellipse: seen from the side it gets thin
+            vec2 d = gl_PointCoord * 2.0 - 1.0;
+            d.y = -d.y;
+            if (vHasN > 0.5) {
+              vec2 m = vNv.xy;
+              float l = length(m);
+              float squash = max(abs(vNv.z), 0.25);
+              if (l > 1e-3) {
+                m /= l;
+                float a = dot(d, m) / squash;
+                float b = dot(d, vec2(-m.y, m.x));
+                if (a * a + b * b > 1.0) discard;
+              } else if (dot(d, d) > 1.0) discard;
+              // light from above the viewer: surfaces facing it brighter
+              shade = 0.55 + 0.45 * abs(dot(vNv, normalize(vec3(0.3, 0.6, 0.75))));
+            } else if (dot(d, d) > 1.0) discard;
+          } else {
+            vec2 q = abs(gl_PointCoord - 0.5);
+            // a darker rim keeps single blocks readable; softer on real colours
+            shade = max(q.x, q.y) > 0.40 ? (real ? 0.8 : 0.62) : 1.0;
+          }
+          gl_FragColor = vec4(col * shade, 1.0);
         }`;
 
       function roomGl() {
@@ -1394,18 +1471,18 @@
           const stand = room.brief ? room.brief.stand : null;
           const response = await fetch('/api/mapping/raum3d/bloecke', { cache: 'no-store' });
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          // 12 bytes per block: int16 ix, iy, iz, 0 and uint8 r, g, b, a
+          // 16 bytes per block: int16 ix, iy, iz, 0, uint8 r, g, b, a, int8 nx, ny, nz, n
           const raw = await response.arrayBuffer();
           const data = new Int16Array(raw);
           const gl = roomGl();
           gl.bindBuffer(gl.ARRAY_BUFFER, room.buf);
           gl.bufferData(gl.ARRAY_BUFFER, raw, gl.STATIC_DRAW);
-          room.count = raw.byteLength / 12;
+          room.count = raw.byteLength / 16;
           room.voxel = (room.brief && room.brief.voxel_m) || 0.05;
           const first = room.bounds === null;
           if (room.count) {
             const b = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
-            for (let i = 0; i < data.length; i += 6) {
+            for (let i = 0; i < data.length; i += 8) {
               for (let k = 0; k < 3; k++) {
                 const v = data[i + k] * room.voxel;
                 if (v < b[k]) b[k] = v;
@@ -1449,26 +1526,35 @@
           room.target[1] + room.dist * Math.cos(room.pitch) * Math.sin(room.yaw),
           room.target[2] + room.dist * Math.sin(room.pitch),
         ];
-        const mvp = multiply(perspective(fovy, w / h, 0.05, 200), lookAt(eye, room.target, [0, 0, 1]));
+        const viewM = lookAt(eye, room.target, [0, 0, 1]);
+        const mvp = multiply(perspective(fovy, w / h, 0.05, 200), viewM);
         const u = (n) => gl.getUniformLocation(room.prog, n);
         gl.uniformMatrix4fv(u('uMvp'), false, new Float32Array(mvp));
+        gl.uniformMatrix4fv(u('uView'), false, new Float32Array(viewM));
+        gl.uniform1f(u('uSurfaces'), room.surfaces ? 1 : 0);
         gl.uniform1f(u('uScale'), h / (2 * Math.tan(fovy / 2)));
         gl.uniform1f(u('uMaxZ'), room.maxZ);
         const pos = gl.getAttribLocation(room.prog, 'aPos');
         const col = gl.getAttribLocation(room.prog, 'aCol');
+        const nor = gl.getAttribLocation(room.prog, 'aNor');
         gl.enableVertexAttribArray(pos);
         gl.enableVertexAttribArray(col);
+        gl.enableVertexAttribArray(nor);
         // the blocks: int16 indices straight from the server, scaled in the shader
         gl.uniform1f(u('uVoxel'), room.voxel);
         gl.uniform4f(u('uFixed'), 0, 0, 0, 0);
         gl.uniform1f(u('uUseColor'), room.useColor ? 1 : 0);
         gl.bindBuffer(gl.ARRAY_BUFFER, room.buf);
-        gl.vertexAttribPointer(pos, 3, gl.SHORT, false, 12, 0);
-        gl.vertexAttribPointer(col, 4, gl.UNSIGNED_BYTE, true, 12, 8);
+        gl.vertexAttribPointer(pos, 3, gl.SHORT, false, 16, 0);
+        gl.vertexAttribPointer(col, 4, gl.UNSIGNED_BYTE, true, 16, 8);
+        // nx, ny, nz and has-normal as signed normalized bytes (has = 127 -> 1.0)
+        gl.vertexAttribPointer(nor, 4, gl.BYTE, true, 16, 12);
         if (room.count) gl.drawArrays(gl.POINTS, 0, room.count);
-        // the robot has no colour attribute: a constant instead
+        // the robot has no colour or normal attribute: constants instead
         gl.disableVertexAttribArray(col);
         gl.vertexAttrib4f(col, 0, 0, 0, 0);
+        gl.disableVertexAttribArray(nor);
+        gl.vertexAttrib4f(nor, 0, 0, 0, 0);
         // the robot: a green column plus a short row towards its heading
         const p = localization && localization.ortung && localization.ortung.pose;
         if (p) {
@@ -1566,6 +1652,10 @@
       $('raumZu').addEventListener('click', closeRoom);
       $('raumAnsicht').addEventListener('click', (event) => { if (event.target === $('raumAnsicht')) closeRoom(); });
       window.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !$('raumAnsicht').hidden) closeRoom(); });
+      $('raumFlaechen').addEventListener('change', () => {
+        room.surfaces = $('raumFlaechen').checked;
+        drawRoom();
+      });
       $('raumFarbe').addEventListener('change', () => {
         room.useColor = $('raumFarbe').checked;
         drawRoom();
@@ -1574,6 +1664,14 @@
         room.maxZ = Number($('raumHoehe').value);
         $('raumHoeheWert').textContent = `${room.maxZ.toFixed(2)} m`;
         drawRoom();
+      });
+      $('raumRoh').addEventListener('click', async () => {
+        const on = !(room.brief && room.brief.roh && room.brief.roh.aktiv);
+        try {
+          syncRoom3d(await api('/api/mapping/raum3d/roh', { method: 'POST', body: JSON.stringify({ aktiv: on }) }));
+          message(on ? 'Rohaufnahme läuft: langsam durch den Raum fahren und drehen, alles einmal aus 1-3 m ansehen.'
+            : 'Rohaufnahme gestoppt -- unten als ZIP herunterladen.');
+        } catch (error) { message(error.message, true); }
       });
       $('raumAufnahme').addEventListener('click', async () => {
         const on = !(room.brief && room.brief.aufnahme);

@@ -40,7 +40,7 @@ _SAFE = re.compile(r"^[A-Za-z0-9_.\-äöüÄÖÜß]+$")
 
 
 def safe_name(name: str) -> bool:
-    return bool(_SAFE.match(name)) and ".." not in name
+    return bool(_SAFE.match(name)) and ".." not in name and not name.startswith(".")
 
 
 class MapPhotos:
