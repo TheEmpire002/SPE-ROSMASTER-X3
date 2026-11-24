@@ -1269,3 +1269,15 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Why:** In the second robot test the robot took the lying person (the tester) as the helper and then did nothing, did not nudge (the approach ended at the first missing scan, 0.7 m before the person), map drives ended early, and the robot drove at half speed because one voltage dip below 11.1 V at start-up switched on the battery throttle.
 - **Result:** New tests for all points (ghost helper where the victim lies, lidar gaps while nudging, search points away from the victim, goal snap behind a wall, battery dip). Healthbot, map, odometry and detour tests pass; full suite as before except test_telegram (local markdown package missing).
 - **Open:** Try it on the robot. Making the map page more interactive is the next step.
+
+### 24.11.2026 – Interactive map page (Marlon, with Claude)
+
+- **What:**
+  - **Tap menu:** a tap on the map opens a small menu at that spot: „Hierhin fahren“, „Person hier prüfen“, „Hier stehe ich“. No need to pick a mode on the right first; the buttons there still work.
+  - **Aiming preview:** while placing a goal, pose or check point, a ghost (circle and, when dragged, a direction arrow) shows where it lands and which way the robot will face.
+  - **Zoom and pan:** pinch zoom with two fingers, buttons + / − / centre on the robot / „Folgen“ (the map keeps the robot in the middle) / fit the whole map. Panning by hand ends „Folgen“.
+  - **Live healthbot overlay:** during a check the map shows viewpoints (violet, filled once reached), helper search points (numbered yellow squares, the current one highlighted), the person on the floor (red X) and the people the camera sees (red lying, blue upright, with the posture). New `healthbot` fields in the `ortung` packet: `opfer`, `suchpunkte`, `suchpunkt`, `blickpunkte`, `personen`.
+  - **Legend** with the colours and a short hint on how to use the map.
+- **Why:** After the second robot test: „Map muss interaktiver werden“; using the map was clumsy and one could not see what the healthbot was doing.
+- **Result:** Healthbot tests pass, including a new check that the map view places the person seen near the spot. Checked in headless Chrome against the mock server: tap menu, person check from the menu, overlay with the person seen, zoom and „Folgen“, no script errors.
+- **Open:** Try it on a tablet on the robot (pinch zoom only tested by code, not by hand).

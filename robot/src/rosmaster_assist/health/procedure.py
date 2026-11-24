@@ -175,8 +175,11 @@ class Healthbot:
         }
 
     def map_view(self) -> dict:
-        """For the /map page: the point under check, its area and the drive there."""
+        """For the /map page: the point under check, its area and the drive
+        there; the person on the floor, viewpoints, helper search points and
+        the people the camera sees, all in the map frame."""
         by_map = self._by_map()
+        helper = self._helper if by_map and self._helper is not None else {}
         return {
             "aktiv": self.active,
             "zustand": self._state,
@@ -184,7 +187,27 @@ class Healthbot:
             "ziel": [self._target["x"], self._target["y"]] if by_map else None,
             "radius_m": config.HEALTH_AREA_RADIUS_M,
             "fahrt": self._homing.state() if by_map and self.active else None,
+            "opfer": helper.get("opfer"),
+            "suchpunkte": list(helper.get("suchpunkte", [])),
+            "suchpunkt": helper.get("punkt"),
+            "blickpunkte": [[v["x"], v["y"], v["erreicht"]] for v in self._viewpoints] if by_map else [],
+            "personen": self._people_on_map() if by_map else [],
         }
+
+    def _people_on_map(self) -> list[dict]:
+        """People the camera sees, placed by camera direction and lidar distance."""
+        if not (self.active and self._pose_on and self._pose is not None):
+            return []
+        out = []
+        try:
+            for person in self._pose.people()[:6]:
+                place = self._place_of(person)
+                if place is not None:
+                    out.append({"x": round(place[0], 2), "y": round(place[1], 2),
+                                "haltung": am.posture(person), "liegt": bool(am.down(person))})
+        except Exception:  # noqa: BLE001 -- the map view must never break the status
+            log.debug("people on the map failed", exc_info=True)
+        return out
 
     @property
     def tracked_person(self) -> dict | None:
@@ -1340,11 +1363,13 @@ class Healthbot:
         if stops[0] is not None:
             self._note("fährt erst von der Person weg und sucht dann")
         points = [s for s in stops if s is not None]
+        self._helper["suchpunkte"] = [[round(x, 2), round(y, 2)] for x, y in points]
         for stop in stops:
             if self._now() >= until:
                 break
             if stop is not None:
                 x, y = stop
+                self._helper["punkt"] = points.index(stop)
                 self._note(f"sucht Helfer: Punkt {points.index(stop) + 1}/{len(points)} ({x:.2f}, {y:.2f})")
                 await self._homing_drive(self._drive_to(x, y, "Suchpunkt"))
             helper = await self._look_for_helper(victim, max(0.0, min(config.HEALTH_HELPER_LOOK_S, until - self._now())))

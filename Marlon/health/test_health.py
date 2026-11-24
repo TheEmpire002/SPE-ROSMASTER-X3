@@ -965,6 +965,17 @@ async def case_map_frame() -> None:
     view = a.hb.map_view()
     check("map view shows the point and area", view["aktiv"] and view["ziel"] == list(sim.STANDARD_LOCATION)
           and view["radius_m"] == config.HEALTH_AREA_RADIUS_M, str(view))
+    check("map view has victim, points and people",
+          all(k in view for k in ("opfer", "suchpunkte", "suchpunkt", "blickpunkte", "personen")), str(view))
+    people = []
+    for _ in range(400):
+        people = a.hb.map_view()["personen"]
+        if people or not a.hb.active:
+            break
+        await asyncio.sleep(0.02)
+    check("map view places the person seen near the spot",
+          people and min(math.dist((p["x"], p["y"]), sim.STANDARD_LOCATION) for p in people) < 1.0,
+          str(people))
     seen = await until_done_watching(a)
     s = a.hb.status()
     check("state hilfe", s["zustand"] == pr.HELP, s["zustand"] + " / " + s["schritt"])

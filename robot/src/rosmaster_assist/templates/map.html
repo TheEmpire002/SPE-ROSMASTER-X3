@@ -81,6 +81,14 @@
     .legende { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--muted); font-size: 11px; }
     .legende i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
     .overlay { position: absolute; top: 12px; left: 12px; right: 12px; padding: 9px 12px; border-radius: 9px; border: 1px solid #2f5f9e; background: #13233aee; color: #cfe0fb; font-size: 13px; pointer-events: none; }
+    .map-tools { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 6px; }
+    .map-tools button { padding: 7px 10px; min-width: 38px; background: #202a37ee; }
+    .map-tools button.aktiv { background: #1d4f8aee; }
+    .legend { position: absolute; left: 12px; bottom: 12px; display: flex; flex-wrap: wrap; gap: 4px 10px; max-width: calc(100% - 260px); padding: 6px 9px; border-radius: 9px; background: #101720cc; color: var(--muted); font-size: 11px; pointer-events: none; }
+    .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+    .tap-menu { position: absolute; z-index: 5; display: grid; gap: 5px; min-width: 190px; padding: 8px; border-radius: 10px; border: 1px solid var(--border); background: #18212ccc; backdrop-filter: blur(4px); box-shadow: 0 6px 18px #0008; }
+    .tap-menu[hidden] { display: none; }
+    .tap-menu button { text-align: left; padding: 8px 10px; }
     .overlay.frozen { border-color: #9a6a1f; background: #2b2213ee; color: #f5d9a8; }
     details.erst { border: 1px solid var(--border); border-radius: 9px; padding: 10px; }
     details.erst > summary { cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 600; }
@@ -133,6 +141,30 @@
             <span>Die Karte beginnt, sobald der Roboter kurz stillsteht, und wächst bei jeder Fahrt.</span>
           </div>
           <div class="overlay" id="liveOverlay" hidden></div>
+          <div class="legend" id="legende">
+            <span><i style="background:#25b879"></i>Roboter</span>
+            <span><i style="background:#9be15d"></i>Ziel und Weg</span>
+            <span><i style="background:#ff6b8a"></i>Prüfstelle</span>
+            <span><i style="background:#ff4d6d"></i>Person am Boden</span>
+            <span><i style="background:#5ab0ff"></i>Person aufrecht</span>
+            <span><i style="background:#ffd166"></i>Helfer-Suchpunkt</span>
+            <span><i style="background:#c38bff"></i>Blickpunkt</span>
+            <span>Tippen: Menü · Ziehen: verschieben · Mausrad / zwei Finger: zoomen</span>
+          </div>
+          <div class="map-tools">
+            <button id="zoomRein" type="button" title="Vergrößern">+</button>
+            <button id="zoomRaus" type="button" title="Verkleinern">−</button>
+            <button id="zentrieren" type="button" title="Auf den Roboter zentrieren">◎</button>
+            <button id="folgen" type="button" title="Karte folgt dem Roboter">Folgen</button>
+            <button id="einpassen" type="button" title="Ganze Karte zeigen">⤢</button>
+          </div>
+          <div class="tap-menu" id="tapMenu" hidden>
+            <div class="help" id="tapOrt"></div>
+            <button type="button" data-aktion="ziel">➜ Hierhin fahren</button>
+            <button type="button" data-aktion="person">🧍 Person hier prüfen</button>
+            <button type="button" data-aktion="pose">⌖ Hier stehe ich</button>
+            <button type="button" data-aktion="zu">Abbrechen</button>
+          </div>
         </div>
       </section>
 
@@ -294,6 +326,13 @@
       let ws = null;
       let reconnectTimer = null;
       let pointer = null;
+      // all pointers on the canvas (two of them: pinch zoom)
+      const touches = new Map();
+      let pinch = null;
+      // the map keeps the robot in the middle
+      let follow = false;
+      // where the tap menu was opened (canvas pixels)
+      let menuAt = null;
       let problemShown = false;
       let mappingActive = false;
       let driveActive = false;
@@ -567,6 +606,7 @@
             drawLine([[o.pose.x, o.pose.y], ...hd.weg], '#ff6b8a', 2.5, [7, 5]);
           }
         }
+        if (health.aktiv) drawHealthOverlay(health);
         const drive = localization.fahrt || {};
         const mappingDrive = localization.kartierfahrt || {};
         const route = drive.aktiv ? drive.weg : mappingDrive.weg;
@@ -599,6 +639,63 @@
       }
 
       // a small arrow per photo, pointing where the camera looked
+      // healthbot live: viewpoints, helper search points, the person on the floor, people seen
+      function drawHealthOverlay(health) {
+        for (const [x, y, reached] of health.blickpunkte || []) {
+          const [cx, cy] = worldToCanvas(x, y);
+          ctx.strokeStyle = '#c38bff';
+          ctx.fillStyle = reached ? '#c38bff' : '#c38bff33';
+          ctx.lineWidth = 2 * dpr;
+          ctx.beginPath();
+          ctx.arc(cx, cy, 5 * dpr, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
+        const points = health.suchpunkte || [];
+        ctx.font = `${10 * dpr}px system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        points.forEach(([x, y], i) => {
+          const [cx, cy] = worldToCanvas(x, y);
+          const current = i === health.suchpunkt;
+          const done = health.suchpunkt != null && i < health.suchpunkt;
+          const s = (current ? 9 : 7) * dpr;
+          ctx.fillStyle = current ? '#ffd166' : done ? '#ffd16655' : '#ffd16622';
+          ctx.strokeStyle = '#ffd166';
+          ctx.lineWidth = (current ? 2.5 : 1.5) * dpr;
+          ctx.fillRect(cx - s, cy - s, 2 * s, 2 * s);
+          ctx.strokeRect(cx - s, cy - s, 2 * s, 2 * s);
+          ctx.fillStyle = current ? '#101720' : '#ffd166';
+          ctx.fillText(String(i + 1), cx, cy);
+        });
+        if (health.opfer) {
+          const [vx, vy] = worldToCanvas(health.opfer[0], health.opfer[1]);
+          const s = 8 * dpr;
+          ctx.strokeStyle = '#ff4d6d';
+          ctx.lineWidth = 3 * dpr;
+          ctx.beginPath();
+          ctx.moveTo(vx - s, vy - s); ctx.lineTo(vx + s, vy + s);
+          ctx.moveTo(vx + s, vy - s); ctx.lineTo(vx - s, vy + s);
+          ctx.stroke();
+        }
+        for (const p of health.personen || []) {
+          const [px, py] = worldToCanvas(p.x, p.y);
+          const upright = ['sitzt', 'steht', 'aufrecht'].includes(p.haltung);
+          const color = p.liegt ? '#ff4d6d' : upright ? '#5ab0ff' : '#c0c8d4';
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.arc(px, py - 7 * dpr, 4 * dpr, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(px, py + 4 * dpr, 7 * dpr, Math.PI, 0);
+          ctx.fill();
+          if (p.haltung) {
+            ctx.fillStyle = '#e8eef6';
+            ctx.fillText(p.haltung, px, py + 16 * dpr);
+          }
+        }
+      }
+
       function drawPhotos() {
         if (!showPhotos || !mapPayload) return;
         const r = 7 * dpr;
@@ -782,10 +879,101 @@
         ctx.fillStyle = '#101720';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         if (!mapPayload) return;
+        const robot = ((localization || {}).ortung || {}).pose;
+        if (follow && robot) {
+          const [cx, cy] = worldToCanvas(robot.x, robot.y);
+          view.x += canvas.width / 2 - cx;
+          view.y += canvas.height / 2 - cy;
+        }
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(offscreen, view.x, view.y, offscreen.width * view.scale, offscreen.height * view.scale);
         drawPhotos();
         drawLocalization();
+        drawAim();
+        if (menuAt) drawDot(menuAt.x, menuAt.y, '#ffffff', 4);
+      }
+
+      // while aiming: where the tap lands and, when dragged, the direction
+      function drawAim() {
+        if (!pointer || !mode || pointer.curX == null || !mapPayload) return;
+        const sx = pointer.lokalX, sy = pointer.lokalY;
+        const dx = pointer.curX - sx, dy = pointer.curY - sy;
+        const dragged = Math.hypot(dx, dy) > 15 * dpr;
+        const color = mode === 'ziel' ? '#9be15d' : mode === 'person' ? '#ff6b8a' : '#25b879';
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color + '44';
+        ctx.lineWidth = 2 * dpr;
+        ctx.beginPath();
+        const health = (localization || {}).healthbot || {};
+        const r = mode === 'person' ? metersToPixels(health.radius_m || 1.5)
+          : Math.max(7 * dpr, metersToPixels(0.17));
+        ctx.arc(sx, sy, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        if (dragged) {
+          const a = Math.atan2(dy, dx);
+          const len = Math.max(r * 1.8, 30 * dpr);
+          const ex = sx + Math.cos(a) * len, ey = sy + Math.sin(a) * len;
+          ctx.beginPath();
+          ctx.moveTo(sx, sy);
+          ctx.lineTo(ex, ey);
+          ctx.lineTo(ex - Math.cos(a - 0.45) * 10 * dpr, ey - Math.sin(a - 0.45) * 10 * dpr);
+          ctx.moveTo(ex, ey);
+          ctx.lineTo(ex - Math.cos(a + 0.45) * 10 * dpr, ey - Math.sin(a + 0.45) * 10 * dpr);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      function zoomAt(px, py, factor) {
+        const next = Math.min(30, Math.max(0.02, view.scale * factor));
+        const ratio = next / view.scale;
+        view.x = px - (px - view.x) * ratio;
+        view.y = py - (py - view.y) * ratio;
+        view.scale = next;
+      }
+
+      function setFollow(on) {
+        follow = on;
+        $('folgen').classList.toggle('aktiv', follow);
+      }
+
+      function centreRobot() {
+        const robot = ((localization || {}).ortung || {}).pose;
+        if (!robot || !mapPayload) { message('Keine Position des Roboters auf der Karte.', true); return; }
+        const [cx, cy] = worldToCanvas(robot.x, robot.y);
+        view.x += canvas.width / 2 - cx;
+        view.y += canvas.height / 2 - cy;
+        draw();
+      }
+
+      // tap menu: the same actions as the buttons on the right, at the tapped spot
+      function openTapMenu(cx, cy) {
+        const actions = { ziel: $('zielModus'), person: $('personModus'), pose: $('poseModus') };
+        if (Object.values(actions).every((b) => b.disabled)) return false;
+        const menu = $('tapMenu');
+        for (const b of menu.querySelectorAll('button[data-aktion]')) {
+          const source = actions[b.dataset.aktion];
+          if (source) b.disabled = source.disabled;
+        }
+        const [x, y] = canvasToWorld(cx, cy);
+        $('tapOrt').textContent = `Stelle (${x.toFixed(2)}, ${y.toFixed(2)})`;
+        menuAt = { x, y };
+        menu.hidden = false;
+        const wrap = $('canvasWrap').getBoundingClientRect();
+        const left = Math.min(cx / dpr + 10, wrap.width - menu.offsetWidth - 8);
+        const top = Math.min(cy / dpr + 10, wrap.height - menu.offsetHeight - 8);
+        menu.style.left = `${Math.max(8, left)}px`;
+        menu.style.top = `${Math.max(8, top)}px`;
+        draw();
+        return true;
+      }
+      function closeTapMenu() {
+        if ($('tapMenu').hidden) return;
+        $('tapMenu').hidden = true;
+        menuAt = null;
+        draw();
       }
 
       function setLocalization(d) {
@@ -979,30 +1167,70 @@
         setMode(null);
       }
 
-      canvas.addEventListener('pointerdown', (event) => {
+      function localPoint(event) {
         const rect = canvas.getBoundingClientRect();
+        return { x: (event.clientX - rect.left) * dpr, y: (event.clientY - rect.top) * dpr };
+      }
+      function pinchState() {
+        const [a, b] = [...touches.values()];
+        return { d: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+      }
+      canvas.addEventListener('pointerdown', (event) => {
+        closeTapMenu();
+        const local = localPoint(event);
+        touches.set(event.pointerId, local);
+        canvas.setPointerCapture(event.pointerId);
+        if (touches.size >= 2) {
+          // second finger: pinch zoom instead of a tap or pan
+          pinch = touches.size === 2 ? pinchState() : null;
+          pointer = null;
+          canvas.classList.remove('dragging');
+          draw();
+          return;
+        }
         pointer = {
           id: event.pointerId, x: event.clientX * dpr, y: event.clientY * dpr,
           originX: view.x, originY: view.y,
-          lokalX: (event.clientX - rect.left) * dpr, lokalY: (event.clientY - rect.top) * dpr,
+          lokalX: local.x, lokalY: local.y, curX: local.x, curY: local.y,
         };
-        canvas.setPointerCapture(event.pointerId);
         if (!mode) canvas.classList.add('dragging');
       });
       canvas.addEventListener('pointermove', (event) => {
+        if (touches.has(event.pointerId)) touches.set(event.pointerId, localPoint(event));
+        if (pinch && touches.size === 2) {
+          const p = pinchState();
+          zoomAt(p.mx, p.my, p.d / pinch.d);
+          if (!follow) {
+            view.x += p.mx - pinch.mx;
+            view.y += p.my - pinch.my;
+          }
+          pinch = p;
+          draw();
+          return;
+        }
         if (!pointer || pointer.id !== event.pointerId) return;
-        if (mode) return;  // do not pan while aiming
+        const local = localPoint(event);
+        pointer.curX = local.x;
+        pointer.curY = local.y;
+        if (mode) { draw(); return; }  // aiming: show the arrow, do not pan
+        const moved = Math.hypot(event.clientX * dpr - pointer.x, event.clientY * dpr - pointer.y);
+        if (moved < 6 * dpr) return;
+        if (follow) setFollow(false);
         view.x = pointer.originX + event.clientX * dpr - pointer.x;
         view.y = pointer.originY + event.clientY * dpr - pointer.y;
         draw();
       });
       function endPointer(event) {
-        if (pointer && !mode && showPhotos && event && event.type === 'pointerup') {
-          // a click (no pan) on a photo arrow opens it
+        if (event) touches.delete(event.pointerId);
+        if (touches.size < 2) pinch = null;
+        if (!pointer || (event && pointer.id !== event.pointerId)) return;
+        if (pointer && !mode && event && event.type === 'pointerup') {
+          // a click (no pan): a photo arrow opens the photo, elsewhere the tap menu
           const moved = Math.hypot(event.clientX * dpr - pointer.x, event.clientY * dpr - pointer.y);
-          if (moved < 6 * dpr) {
-            const p = photoAt(pointer.lokalX, pointer.lokalY);
+          if (moved < 6 * dpr && mapPayload) {
+            const p = showPhotos ? photoAt(pointer.lokalX, pointer.lokalY) : null;
             if (p) showPhoto(p);
+            else openTapMenu(pointer.lokalX, pointer.lokalY);
           }
         }
         if (pointer && mode && mapPayload && event && event.type === 'pointerup') {
@@ -1014,6 +1242,7 @@
         }
         pointer = null;
         canvas.classList.remove('dragging');
+        draw();  // clears the aiming preview
       }
       canvas.addEventListener('pointerup', endPointer);
       canvas.addEventListener('pointercancel', endPointer);
@@ -1023,15 +1252,31 @@
         const rect = canvas.getBoundingClientRect();
         const px = (event.clientX - rect.left) * dpr;
         const py = (event.clientY - rect.top) * dpr;
-        const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
-        const next = Math.min(30, Math.max(0.02, view.scale * factor));
-        const ratio = next / view.scale;
-        view.x = px - (px - view.x) * ratio;
-        view.y = py - (py - view.y) * ratio;
-        view.scale = next;
+        closeTapMenu();
+        zoomAt(px, py, event.deltaY < 0 ? 1.12 : 1 / 1.12);
         draw();
       }, { passive: false });
-      canvas.addEventListener('dblclick', fitMap);
+      canvas.addEventListener('dblclick', () => { closeTapMenu(); setFollow(false); fitMap(); });
+      $('zoomRein').addEventListener('click', () => { zoomAt(canvas.width / 2, canvas.height / 2, 1.4); draw(); });
+      $('zoomRaus').addEventListener('click', () => { zoomAt(canvas.width / 2, canvas.height / 2, 1 / 1.4); draw(); });
+      $('zentrieren').addEventListener('click', centreRobot);
+      $('folgen').addEventListener('click', () => {
+        setFollow(!follow);
+        if (follow) centreRobot();
+      });
+      $('einpassen').addEventListener('click', () => { setFollow(false); fitMap(); });
+      $('tapMenu').addEventListener('click', (event) => {
+        const button = event.target.closest('button[data-aktion]');
+        if (!button || button.disabled) return;
+        const at = menuAt;
+        closeTapMenu();
+        if (button.dataset.aktion === 'zu' || !at) return;
+        // the tap menu sends the spot like a tap in the matching mode
+        mode = button.dataset.aktion;
+        const [cx, cy] = worldToCanvas(at.x, at.y);
+        mapTapped({ x: cx, y: cy }, { x: cx, y: cy });
+      });
+      window.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeTapMenu(); });
       window.addEventListener('resize', resizeCanvas);
 
       async function refreshStatus() {

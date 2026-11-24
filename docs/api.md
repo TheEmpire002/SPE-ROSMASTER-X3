@@ -1440,9 +1440,19 @@ same rotated by 180°); then it asks.
   "kartierfahrt": { "weg": [], "ziel": null },
   "luecken": [[1.4, 1.85]],
   "healthbot": {"aktiv": true, "zustand": "anfahrt", "schritt": "fährt zur gemeldeten Stelle",
-                "ziel": [2.5, -1.0], "radius_m": 1.5, "fahrt": {"aktiv": true, "weg": ["..."]}}
+                "ziel": [2.5, -1.0], "radius_m": 1.5, "fahrt": {"aktiv": true, "weg": ["..."]},
+                "opfer": null, "suchpunkte": [], "suchpunkt": null,
+                "blickpunkte": [[2.5, 0.0, true]],
+                "personen": [{"x": 2.4, "y": -0.9, "haltung": "liegt", "liegt": true}]}
 }
 ```
+
+`healthbot` (since 24.11., all in the map frame, empty without a map
+check): `opfer` where the person on the floor lies once help is fetched,
+`suchpunkte` the helper search points and `suchpunkt` the index of the one
+it drives to, `blickpunkte` viewpoints around the spot as `[x, y, reached]`,
+`personen` the people the camera currently sees, placed by camera direction
+and lidar distance, with `haltung` (posture) and `liegt` (on the floor).
 
 `anteil` (share) is the fraction of lidar points that hit a wall of the
 map; below `NAV_MIN_SHARE` (0.45) a match does not count. `sicher`
