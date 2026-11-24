@@ -1271,6 +1271,10 @@ User interface: `GET /map`.
 | `POST /api/mapping/fotos`                  | take a photo now ("Foto hier"); returns the entry; 409 with reason without a map, with an uncertain pose or without a fresh camera image                                                                                                                                                                                                                                                                                                                    |
 | `POST /api/mapping/fotos/auto`             | body `{"aktiv": false}`: automatic photos off/on (until the server restarts)                                                                                                                                                                                                                                                                                                                                                                                |
 | `DELETE /api/mapping/fotos/{id}`           | delete a photo; 404 if unknown                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `GET /api/mapping/raum3d` | 3D map of the current map (new 24.11., see "3D map"): `verfuegbar`, `aufnahme`, `karte`, `anzahl` (shown blocks), `bloecke_gesamt`, `voll`, `voxel_m`, `stand`, `text`, `fehler` |
+| `GET /api/mapping/raum3d/bloecke` | the shown blocks, binary: little-endian int16 triplets `ix, iy, iz`; times `voxel_m` = lower corner of the block in the map frame, z = height above the floor |
+| `POST /api/mapping/raum3d/aufnahme` | body `{"aktiv": true}`: keep the depth camera on for the 3D map (until switched off or the server restarts); 409 without depth camera |
+| `DELETE /api/mapping/raum3d` | delete the 3D map of the current map |
 | `WS /api/mapping/ws`                       | `{"type": "status"}` every 3 s, `{"type": "map"}` on every new map, `{"type": "fahrt"}` on changes of the mapping drive, `{"type": "ortung"}` on changes of the pose (content as `GET /api/mapping/ortung`)                                                                                                                                                                                                                                                 |
 
 `GET /api/mapping/map` and the `map` packets deliver the map **the robot is
@@ -1378,6 +1382,29 @@ viewer you can drag around 360°. `GET /api/mapping/ortung` contains
 `kamera` (name of the selected camera), `kameras` (`[{name, label}]`) and
 `neigung` (`{kamera, winkel, min, max}` for the camera on the tilt servo,
 `null` without servo).
+
+**3D map (new 24.11., `mapping/room3d.py`).** While the pose in the main
+map or a loaded map is confident, the depth images of the Orbbec go into a
+3D map of blocks (`MAP3D_VOXEL_M`, 5 cm) in the map frame: each image
+(`MAP3D_HZ`, 2 per second) is turned into points in the robot frame, the
+height is taken above the floor plane the depth camera sees, and the points
+are moved to the map pose at the image's capture time (pose now, moved back
+by the wheel odometry). Only points between `MAP3D_MIN_M` and `MAP3D_MAX_M`
+(0.5–3 m) and up to `MAP3D_MAX_HEIGHT_M` count; no images while turning
+faster than `MAP3D_MAX_OMEGA`. A block is shown once `MAP3D_MIN_HITS`
+images saw it. The depth camera only runs while someone needs it: „● 3D
+aufnehmen“ on `/map` keeps it on; with `MAP3D_WHEN_DEPTH_ON` the map also
+grows whenever autonomous driving or the mapping drive has it on anyway.
+Stored beside the map as `<name>_3d.npz` (every `MAP3D_SAVE_S` and on
+shutdown); set aside as `<name>_3d.<stamp>.alt.npz` when the main map is
+replaced or the block size changed. At most `MAP3D_MAX_VOXELS` blocks per
+map, then only existing ones are strengthened. „🧊 3D-Ansicht“ opens a
+WebGL view (no library): drag to rotate, right-drag or shift-drag to pan,
+wheel or pinch to zoom, double click to fit; colour = height, a slider cuts
+off everything above a height to look into rooms, the robot is a green
+column. While open it reloads when `stand` moves. `GET /api/mapping/ortung`
+contains `raum3d` (as `GET /api/mapping/raum3d`). Not removed yet: people
+or doors that moved stay in the map until it is deleted.
 
 **Choosing the camera (new 23.11.).** A selection field next to the
 panorama button on `/map` picks the camera; the default is

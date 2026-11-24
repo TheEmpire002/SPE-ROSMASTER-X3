@@ -1294,6 +1294,39 @@ PANORAMA_TILT_DEG = 15.0
 # time for the tilt servo to reach its angle before the first shot (s)
 PANORAMA_TILT_WAIT_S = 1.0
 
+# --- 3D map (mapping/room3d.py) ----------------------------------------------------
+# depth images counted into blocks in the map frame while the pose is confident;
+# shown on /map as a 3d view, stored per map as <name>_3d.npz
+MAP3D_ENABLED = True
+# record from the start (keeps the depth camera on, its projector draws current
+# on the usb hub); otherwise switched on with „3D aufnehmen“ on /map
+MAP3D_RECORD = False
+# also grow while someone else has the depth camera on (autonomous driving,
+# mapping drive), without „3D aufnehmen“
+MAP3D_WHEN_DEPTH_ON = True
+# block edge (m); smaller = finer but more noise and memory
+MAP3D_VOXEL_M = 0.05
+# depth images per second that go into the map (> 0; the camera evaluates DEPTH_HZ)
+MAP3D_HZ = 2.0
+# use every n-th pixel of the depth image; 2 gives about 1 point per block at 3 m
+MAP3D_PIXEL_STEP = 2
+# measuring range used (m): closer the astra sees nothing, farther it gets noisy
+MAP3D_MIN_M = 0.5
+MAP3D_MAX_M = 3.0
+# heights kept (m above the floor): the floor itself, up to below the ceiling
+MAP3D_MIN_HEIGHT_M = -0.03
+MAP3D_MAX_HEIGHT_M = 2.2
+# a block is shown once this many images saw it; filters single noisy pixels
+MAP3D_MIN_HITS = 2
+# no images while turning faster than this (rad/s): walls would smear
+MAP3D_MAX_OMEGA = 0.35
+# depth images older than this (s) are skipped, the pose no longer fits
+MAP3D_MAX_FRAME_AGE_S = 0.3
+# upper limit of blocks per map (memory on the pi, size of the download)
+MAP3D_MAX_VOXELS = 400_000
+# write the file at most this often while recording (s), and on shutdown
+MAP3D_SAVE_S = 30.0
+
 # --- Camera tilt servo (person camera, up and down) ------------------------------
 # details in sensors/camera_tilt.py. servo on the expansion board, moved with
 # rosmaster_lib's set_pwm_servo (ports s1..s4)

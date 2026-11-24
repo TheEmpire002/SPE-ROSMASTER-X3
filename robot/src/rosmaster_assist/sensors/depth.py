@@ -178,18 +178,15 @@ class DepthFrame(NamedTuple):
     mask: object = None
 
 
-def evaluate(depth_mm, hfov: float, vfov: float, prev_floor=None):
-    """Depth image -> (obstacle points, free cells, floor plane, newly detected?,
-    obstacle mask).
+def robot_points(depth_mm, hfov: float, vfov: float, step: int = 2):
+    """Depth image -> (x, y, z, valid) in the robot frame, every ``step``-th pixel.
 
-    Pure computation, testable without a camera. ``prev_floor`` is the most
-    recently detected plane; if none is found this time, it stays valid
-    (then the fourth value is False). The mask has half the image resolution
-    and marks every pixel that counted as obstacle -- for the display only.
+    x forward, y left, z up from the floor at the mounting values; ``valid``
+    marks which thinned pixels had a measurement (for the obstacle mask).
+    shared by the obstacle evaluation and the 3d map (mapping/room3d.py)
     """
     import numpy as np
 
-    step = 2  # every second pixel is enough for 5 cm cells
     t = depth_mm[::step, ::step].astype(np.float32) / 1000.0
     h_px, w_px = depth_mm.shape
     v, u = np.mgrid[0:h_px:step, 0:w_px:step]
@@ -207,6 +204,22 @@ def evaluate(depth_mm, hfov: float, vfov: float, prev_floor=None):
     x = xr * math.cos(p) + zr * math.sin(p) + config.DEPTH_CAMERA_FORWARD_M
     y = -x_c
     z = -xr * math.sin(p) + zr * math.cos(p) + config.DEPTH_CAMERA_HEIGHT_M
+    return x, y, z, valid
+
+
+def evaluate(depth_mm, hfov: float, vfov: float, prev_floor=None):
+    """Depth image -> (obstacle points, free cells, floor plane, newly detected?,
+    obstacle mask).
+
+    Pure computation, testable without a camera. ``prev_floor`` is the most
+    recently detected plane; if none is found this time, it stays valid
+    (then the fourth value is False). The mask has half the image resolution
+    and marks every pixel that counted as obstacle -- for the display only.
+    """
+    import numpy as np
+
+    # every second pixel is enough for 5 cm cells
+    x, y, z, valid = robot_points(depth_mm, hfov, vfov, step=2)
 
     in_range = (x >= config.DEPTH_MIN_M) & (x <= config.DEPTH_MAX_M + 0.5)
     x, y, z = x[in_range], y[in_range], z[in_range]
@@ -257,7 +270,7 @@ def evaluate(depth_mm, hfov: float, vfov: float, prev_floor=None):
 
     obstacle = close & (height >= min_height) & (height <= config.DEPTH_MAX_HEIGHT_M)
     obstacles, occupied = cells(obstacle)
-    mask = np.zeros(t.shape, dtype=bool)
+    mask = np.zeros(valid.shape, dtype=bool)
     mask.flat[position[obstacle]] = True
     free, free_cells = cells(close & (np.abs(height) < 0.02))
     if len(free) and occupied:
@@ -300,6 +313,11 @@ class DepthCamera:
     def hfov(self) -> float:
         """Horizontal field of view (radians), 0 as long as never connected."""
         return self._hfov
+
+    @property
+    def vfov(self) -> float:
+        """Vertical field of view (radians), 0 as long as never connected."""
+        return self._vfov
 
     def start(self) -> None:
         if self._thread is not None or not self.available:

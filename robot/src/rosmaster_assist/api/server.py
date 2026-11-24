@@ -46,6 +46,7 @@ from ..mapping.live_mapper import LiveMapper
 from ..mapping.live_store import LiveStore
 from ..mapping.panorama import Panorama
 from ..mapping.photos import MapPhotos
+from ..mapping.room3d import Room3D
 from ..mapping.manager import MappingManager
 from ..mapping.web import create_mapping_router
 from ..interaction.behavior import Interaction
@@ -464,6 +465,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             people.stop()
             pose.stop()
             objects.stop()
+            map_control.room3d.close()
             camera_tilt.stop()
             mukke.stop()
             speech.stop()
@@ -525,6 +527,10 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             return "Interaktion fährt"
         return None
 
+    # 3d map from the depth camera at the map pose (mapping/room3d.py)
+    map_control.room3d = Room3D(
+        mapping_manager.map_service.storage_dir, localization, depth, odometry=odometry,
+    )
     map_control.panorama = Panorama(
         map_control.photos, maneuver, localization, cameras, busy=_other_drive,
         tilt=camera_tilt, tilt_camera=config.PERSON_CAMERA,

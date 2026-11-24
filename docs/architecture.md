@@ -108,6 +108,7 @@ New modules:
 | `mapping/live_store.py`        | Saves/loads the main map (npz, pgm/yaml, json, backups, atomic writes)                                              |
 | `mapping/photos.py`            | Photos with position and heading per map (`<name>_bilder/`), taken automatically while driving or by hand on `/map` |
 | `mapping/panorama.py`          | All-round panorama: turns in steps (maneuver), shoots, stitches by measured heading onto a cylinder                 |
+| `mapping/room3d.py`            | 3D map: depth images as 5 cm blocks in the map frame at the confident pose (`<name>_3d.npz`), 3D view on `/map`      |
 | `navigation/breadcrumbs.py`    | Trail of driven poses for planning along it and the way back                                                        |
 
 Data flow: lidar → `ScanOdometry` (always on) → `MapControl.tick_loop` at 4 Hz:

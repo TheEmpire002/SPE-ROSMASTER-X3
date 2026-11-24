@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
@@ -300,6 +300,39 @@ def create_mapping_router(manager: MappingManager | None = None, drive=None) -> 
         control = _control()
         control.cancel_panorama("vom Nutzer abgebrochen")
         return control.display()
+
+    # --- 3d map (mapping/room3d.py) ---
+
+    def _room3d():
+        room = getattr(_control(), "room3d", None)
+        if room is None:
+            raise HTTPException(status_code=503, detail="3D-Karte ist nicht eingerichtet.")
+        return room
+
+    @router.get("/api/mapping/raum3d")
+    async def room3d_status() -> dict[str, Any]:
+        return _room3d().brief()
+
+    @router.get("/api/mapping/raum3d/bloecke", include_in_schema=False)
+    async def room3d_blocks() -> Response:
+        # binary: int16 triplets (ix, iy, iz), json would be ten times larger
+        data = await run_in_threadpool(_room3d().blocks)
+        return Response(data, media_type="application/octet-stream",
+                        headers={"Cache-Control": "no-store"})
+
+    @router.post("/api/mapping/raum3d/aufnahme")
+    async def room3d_recording(request: PhotoAutoRequest) -> dict[str, Any]:
+        room = _room3d()
+        if request.aktiv and not room.available:
+            raise HTTPException(status_code=409, detail="Keine Tiefenkamera -- 3D-Aufnahme geht nicht.")
+        room.set_recording(request.aktiv)
+        return room.brief()
+
+    @router.delete("/api/mapping/raum3d")
+    async def room3d_clear() -> dict[str, Any]:
+        room = _room3d()
+        await run_in_threadpool(room.clear)
+        return room.brief()
 
     @router.get("/api/mapping/fotos/{name}/{filename}", include_in_schema=False)
     async def photos_file(name: str, filename: str) -> FileResponse:

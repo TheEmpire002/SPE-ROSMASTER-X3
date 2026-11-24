@@ -95,6 +95,10 @@
     .pano-box { width: min(1100px, 100%); }
     .pano-box canvas { width: 100%; height: min(55vh, 420px); border-radius: 10px; border: 1px solid var(--border); background: #101720; cursor: grab; touch-action: none; }
     .pano-box canvas.dragging { cursor: grabbing; }
+    .raum-box { width: min(1300px, 100%); }
+    .raum-box canvas { width: 100%; height: min(74vh, 760px); border-radius: 10px; border: 1px solid var(--border); background: #0b1016; cursor: grab; touch-action: none; display: block; }
+    .raum-box canvas.dragging { cursor: grabbing; }
+    .raum-box .check { margin: 0; white-space: nowrap; }
     @media (max-width: 900px) {
       .layout { grid-template-columns: 1fr; }
       .canvas-wrap { min-height: 420px; height: 58vh; }
@@ -190,6 +194,16 @@
             <div class="help" id="panoText" style="margin-top:7px">Dreht sich einmal im Kreis und setzt die Fotos zu einem 360°-Bild zusammen. Braucht etwas Platz rundherum.</div>
           </div>
 
+          <div class="full">
+            <label>3D-Karte</label>
+            <div class="help" id="raumText">3D-Karte: keine Angaben.</div>
+            <div class="button-row" style="margin-top:9px">
+              <button id="raumAufnahme" type="button" disabled>● 3D aufnehmen</button>
+              <button id="raumZeigen" type="button" disabled>🧊 3D-Ansicht</button>
+            </div>
+            <div class="help" style="margin-top:7px">Die Tiefenkamera misst beim Fahren den Raum in 5-cm-Blöcken mit, solange er weiß, wo er ist. Langsam fahren und drehen, bis etwa 3 m Abstand.</div>
+          </div>
+
           <details class="erst full" id="erstBox">
             <summary>Erstkartierung mit SLAM (optional)</summary>
             <div class="erst-body">
@@ -270,6 +284,18 @@
           <button id="fotoLoeschen" class="stop" type="button">Löschen</button>
           <button id="fotoZu" type="button">Schließen</button>
         </div>
+      </div>
+    </div>
+    <div class="foto-ansicht" id="raumAnsicht" hidden>
+      <div class="foto-box raum-box">
+        <canvas id="raumCanvas" aria-label="3D-Karte"></canvas>
+        <div class="foto-zeile">
+          <span id="raumInfo"></span>
+          <label class="check">Höhe bis <input type="range" id="raumHoehe" min="0.2" max="2.2" step="0.05" value="2.2" style="width:130px"> <span id="raumHoeheWert">2.20 m</span></label>
+          <button id="raumLoeschen" class="stop" type="button">Löschen</button>
+          <button id="raumZu" type="button">Schließen</button>
+        </div>
+        <div class="help">Ziehen: drehen · Rechts ziehen oder Umschalt + Ziehen: verschieben · Mausrad / zwei Finger: Zoom · Doppelklick: einpassen · Farbe = Höhe (blau Boden, rot oben) · grün: Roboter</div>
       </div>
     </div>
     <div class="foto-ansicht" id="panoAnsicht" hidden>
@@ -814,6 +840,7 @@
             ? `Missionsstart gesetzt · ${(d.brotkrumen || []).length ? 'Spur wird aufgezeichnet' : 'noch keine Spur'}`
             : 'Missionsstart setzen, losfahren -- „Zurück“ fährt auf der gefahrenen Spur dorthin zurück.';
         syncPhotos(d.fotos);
+        syncRoom3d(d.raum3d, o);
         syncPanorama(d.panorama, o, canDrive);
         draw();
       }
@@ -1251,6 +1278,308 @@
           });
           message(`Karte „${result.name}“ gespeichert (${result.width} × ${result.height}).`);
           refreshSavedMaps();
+        } catch (error) { message(error.message, true); }
+      });
+
+      // --- 3D map (mapping/room3d.py): blocks drawn as square points with WebGL,
+      // no library -- the robot's network has no internet for a CDN
+      const room = {
+        brief: null, loadedStand: null, loading: false, gl: null, prog: null, buf: null,
+        robotBuf: null, count: 0, voxel: 0.05, maxZ: 2.2, bounds: null,
+        yaw: -2.3, pitch: 0.75, dist: 8, target: [0, 0, 0.5], frame: 0, refreshTimer: null,
+      };
+
+      function syncRoom3d(r, o) {
+        room.brief = r;
+        const text = $('raumText');
+        if (!r || !r.verfuegbar) {
+          text.textContent = '3D aus (keine Tiefenkamera oder in config.py abgeschaltet).';
+          $('raumAufnahme').disabled = true;
+          $('raumZeigen').disabled = !r || !r.anzahl;
+          return;
+        }
+        $('raumAufnahme').disabled = false;
+        $('raumAufnahme').textContent = r.aufnahme ? '■ 3D-Aufnahme stoppen' : '● 3D aufnehmen';
+        $('raumAufnahme').classList.toggle('stop', !!r.aufnahme);
+        $('raumZeigen').disabled = !r.anzahl;
+        text.textContent = r.karte
+          ? `${r.anzahl.toLocaleString('de-DE')} Blöcke in „${r.karte}“ · ${r.text}` + (r.fehler ? ` · ${r.fehler}` : '')
+          : `Keine Karte, in der er seine Lage kennt -- ${r.text}`;
+        if (!$('raumAnsicht').hidden) drawRoom();
+      }
+
+      const ROOM_VS = `
+        attribute vec3 aPos;
+        uniform mat4 uMvp; uniform float uVoxel; uniform float uScale; uniform float uMaxZ;
+        varying float vH; varying float vCut;
+        void main() {
+          vec3 p = (aPos + 0.5) * uVoxel;
+          vH = p.z;
+          vCut = p.z > uMaxZ ? 1.0 : 0.0;
+          gl_Position = uMvp * vec4(p, 1.0);
+          gl_PointSize = clamp(uVoxel * uScale / gl_Position.w * 1.2, 1.5, 64.0);
+        }`;
+      const ROOM_FS = `
+        precision mediump float;
+        varying float vH; varying float vCut;
+        uniform vec4 uFixed;
+        vec3 heightColor(float t) {
+          t = clamp(t, 0.0, 1.0);
+          vec3 a = vec3(0.16, 0.30, 0.75), b = vec3(0.15, 0.75, 0.85), c = vec3(0.35, 0.85, 0.35);
+          vec3 d = vec3(0.95, 0.85, 0.25), e = vec3(0.92, 0.35, 0.30);
+          if (t < 0.25) return mix(a, b, t / 0.25);
+          if (t < 0.5) return mix(b, c, (t - 0.25) / 0.25);
+          if (t < 0.75) return mix(c, d, (t - 0.5) / 0.25);
+          return mix(d, e, (t - 0.75) / 0.25);
+        }
+        void main() {
+          if (vCut > 0.5) discard;
+          vec2 q = abs(gl_PointCoord - 0.5);
+          float rim = max(q.x, q.y) > 0.40 ? 0.62 : 1.0;
+          vec3 col = uFixed.a > 0.0 ? uFixed.rgb : heightColor(vH / 2.0);
+          gl_FragColor = vec4(col * rim, 1.0);
+        }`;
+
+      function roomGl() {
+        if (room.gl) return room.gl;
+        const gl = $('raumCanvas').getContext('webgl', { antialias: false });
+        if (!gl) throw new Error('Der Browser kann kein WebGL');
+        const shader = (type, src) => {
+          const s = gl.createShader(type);
+          gl.shaderSource(s, src);
+          gl.compileShader(s);
+          if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+          return s;
+        };
+        const prog = gl.createProgram();
+        gl.attachShader(prog, shader(gl.VERTEX_SHADER, ROOM_VS));
+        gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, ROOM_FS));
+        gl.linkProgram(prog);
+        if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+        room.gl = gl;
+        room.prog = prog;
+        room.buf = gl.createBuffer();
+        room.robotBuf = gl.createBuffer();
+        return gl;
+      }
+
+      // column-major 4x4 helpers, enough for one orbit camera
+      function perspective(fovy, aspect, near, far) {
+        const f = 1 / Math.tan(fovy / 2), nf = 1 / (near - far);
+        return [f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) * nf, -1, 0, 0, 2 * far * near * nf, 0];
+      }
+      function lookAt(eye, at, up) {
+        const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+        const norm = (a) => { const l = Math.hypot(...a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+        const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+        const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+        const z = norm(sub(eye, at)), x = norm(cross(up, z)), y = cross(z, x);
+        return [x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0, -dot(x, eye), -dot(y, eye), -dot(z, eye), 1];
+      }
+      function multiply(a, b) {
+        const out = new Array(16).fill(0);
+        for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) {
+          for (let k = 0; k < 4; k++) out[c * 4 + r] += a[k * 4 + r] * b[c * 4 + k];
+        }
+        return out;
+      }
+
+      function fitRoom() {
+        const b = room.bounds;
+        if (!b) return;
+        room.target = [(b[0] + b[3]) / 2, (b[1] + b[4]) / 2, 0.6];
+        room.dist = Math.max(3, Math.hypot(b[3] - b[0], b[4] - b[1]) * 0.9);
+      }
+
+      async function loadRoom() {
+        if (room.loading) return;
+        room.loading = true;
+        try {
+          const stand = room.brief ? room.brief.stand : null;
+          const response = await fetch('/api/mapping/raum3d/bloecke', { cache: 'no-store' });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const data = new Int16Array(await response.arrayBuffer());
+          const gl = roomGl();
+          gl.bindBuffer(gl.ARRAY_BUFFER, room.buf);
+          gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+          room.count = data.length / 3;
+          room.voxel = (room.brief && room.brief.voxel_m) || 0.05;
+          const first = room.bounds === null;
+          if (room.count) {
+            const b = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+            for (let i = 0; i < data.length; i += 3) {
+              for (let k = 0; k < 3; k++) {
+                const v = data[i + k] * room.voxel;
+                if (v < b[k]) b[k] = v;
+                if (v > b[k + 3]) b[k + 3] = v;
+              }
+            }
+            room.bounds = b;
+            if (first) fitRoom();
+          }
+          room.loadedStand = stand;
+          drawRoom();
+        } catch (error) {
+          message(`3D-Karte: ${error.message}`, true);
+        } finally {
+          room.loading = false;
+        }
+      }
+
+      function drawRoom() {
+        if (room.frame) return;
+        room.frame = requestAnimationFrame(() => {
+          room.frame = 0;
+          renderRoom();
+        });
+      }
+
+      function renderRoom() {
+        if (!room.gl || $('raumAnsicht').hidden) return;
+        const gl = room.gl, c = $('raumCanvas');
+        const ratio = window.devicePixelRatio || 1;
+        const w = Math.round(c.clientWidth * ratio), h = Math.round(c.clientHeight * ratio);
+        if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+        gl.viewport(0, 0, w, h);
+        gl.clearColor(0.043, 0.063, 0.086, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.enable(gl.DEPTH_TEST);
+        gl.useProgram(room.prog);
+        const fovy = 50 * Math.PI / 180;
+        const eye = [
+          room.target[0] + room.dist * Math.cos(room.pitch) * Math.cos(room.yaw),
+          room.target[1] + room.dist * Math.cos(room.pitch) * Math.sin(room.yaw),
+          room.target[2] + room.dist * Math.sin(room.pitch),
+        ];
+        const mvp = multiply(perspective(fovy, w / h, 0.05, 200), lookAt(eye, room.target, [0, 0, 1]));
+        const u = (n) => gl.getUniformLocation(room.prog, n);
+        gl.uniformMatrix4fv(u('uMvp'), false, new Float32Array(mvp));
+        gl.uniform1f(u('uScale'), h / (2 * Math.tan(fovy / 2)));
+        gl.uniform1f(u('uMaxZ'), room.maxZ);
+        const pos = gl.getAttribLocation(room.prog, 'aPos');
+        gl.enableVertexAttribArray(pos);
+        // the blocks: int16 indices straight from the server, scaled in the shader
+        gl.uniform1f(u('uVoxel'), room.voxel);
+        gl.uniform4f(u('uFixed'), 0, 0, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, room.buf);
+        gl.vertexAttribPointer(pos, 3, gl.SHORT, false, 6, 0);
+        if (room.count) gl.drawArrays(gl.POINTS, 0, room.count);
+        // the robot: a green column plus a short row towards its heading
+        const p = localization && localization.ortung && localization.ortung.pose;
+        if (p) {
+          const a = p.winkel * Math.PI / 180, step = 0.05, pts = [];
+          for (let z = 0; z <= 0.3; z += step) pts.push(p.x / step - 0.5, p.y / step - 0.5, z / step);
+          for (let d = step; d <= 0.3; d += step) {
+            pts.push((p.x + d * Math.cos(a)) / step - 0.5, (p.y + d * Math.sin(a)) / step - 0.5, 0.3 / step);
+          }
+          gl.uniform1f(u('uVoxel'), step);
+          gl.uniform4f(u('uFixed'), 0.15, 0.85, 0.47, 1);
+          gl.bindBuffer(gl.ARRAY_BUFFER, room.robotBuf);
+          gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pts), gl.DYNAMIC_DRAW);
+          gl.vertexAttribPointer(pos, 3, gl.FLOAT, false, 0, 0);
+          gl.drawArrays(gl.POINTS, 0, pts.length / 3);
+        }
+        const r = room.brief;
+        $('raumInfo').textContent = `${room.count.toLocaleString('de-DE')} Blöcke à ${Math.round(room.voxel * 100)} cm`
+          + (r && r.karte ? ` · Karte „${r.karte}“` : '') + (r && r.aufnahme ? ' · nimmt auf' : '');
+      }
+
+      function openRoom() {
+        $('raumAnsicht').hidden = false;
+        try { roomGl(); } catch (error) { message(`3D-Ansicht: ${error.message}`, true); closeRoom(); return; }
+        loadRoom();
+        // while open: fetch again when new blocks came in, at most every few seconds
+        clearInterval(room.refreshTimer);
+        room.refreshTimer = setInterval(() => {
+          if (room.brief && room.brief.stand !== room.loadedStand) loadRoom();
+        }, 4000);
+      }
+
+      function closeRoom() {
+        $('raumAnsicht').hidden = true;
+        clearInterval(room.refreshTimer);
+        room.refreshTimer = null;
+      }
+
+      (() => {
+        const c = $('raumCanvas');
+        const pointers = new Map();
+        let last = null, pinch = null;
+        c.addEventListener('contextmenu', (e) => e.preventDefault());
+        c.addEventListener('pointerdown', (e) => {
+          c.setPointerCapture(e.pointerId);
+          pointers.set(e.pointerId, [e.clientX, e.clientY]);
+          last = { x: e.clientX, y: e.clientY, pan: e.button === 2 || e.shiftKey };
+          c.classList.add('dragging');
+        });
+        c.addEventListener('pointermove', (e) => {
+          if (!pointers.has(e.pointerId)) return;
+          pointers.set(e.pointerId, [e.clientX, e.clientY]);
+          if (pointers.size === 2) {
+            const [a, b] = [...pointers.values()];
+            const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+            if (pinch) room.dist = Math.min(150, Math.max(0.5, room.dist * pinch / d));
+            pinch = d;
+            drawRoom();
+            return;
+          }
+          if (!last) return;
+          const dx = e.clientX - last.x, dy = e.clientY - last.y;
+          last.x = e.clientX;
+          last.y = e.clientY;
+          if (last.pan) {
+            // move the target in the ground plane, scaled with the distance
+            const k = room.dist / c.clientHeight;
+            const sx = -Math.sin(room.yaw), sy = Math.cos(room.yaw);
+            const fx = -Math.cos(room.yaw), fy = -Math.sin(room.yaw);
+            room.target[0] -= (dx * sx - dy * fx) * k;
+            room.target[1] -= (dx * sy - dy * fy) * k;
+          } else {
+            room.yaw -= dx * 0.008;
+            room.pitch = Math.min(1.55, Math.max(0.05, room.pitch + dy * 0.008));
+          }
+          drawRoom();
+        });
+        const up = (e) => {
+          pointers.delete(e.pointerId);
+          if (pointers.size < 2) pinch = null;
+          if (!pointers.size) { last = null; c.classList.remove('dragging'); }
+        };
+        c.addEventListener('pointerup', up);
+        c.addEventListener('pointercancel', up);
+        c.addEventListener('wheel', (e) => {
+          e.preventDefault();
+          room.dist = Math.min(150, Math.max(0.5, room.dist * Math.exp(e.deltaY * 0.0015)));
+          drawRoom();
+        }, { passive: false });
+        c.addEventListener('dblclick', () => { fitRoom(); drawRoom(); });
+        window.addEventListener('resize', drawRoom);
+      })();
+
+      $('raumZeigen').addEventListener('click', openRoom);
+      $('raumZu').addEventListener('click', closeRoom);
+      $('raumAnsicht').addEventListener('click', (event) => { if (event.target === $('raumAnsicht')) closeRoom(); });
+      window.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !$('raumAnsicht').hidden) closeRoom(); });
+      $('raumHoehe').addEventListener('input', () => {
+        room.maxZ = Number($('raumHoehe').value);
+        $('raumHoeheWert').textContent = `${room.maxZ.toFixed(2)} m`;
+        drawRoom();
+      });
+      $('raumAufnahme').addEventListener('click', async () => {
+        const on = !(room.brief && room.brief.aufnahme);
+        try {
+          syncRoom3d(await api('/api/mapping/raum3d/aufnahme', { method: 'POST', body: JSON.stringify({ aktiv: on }) }));
+          message(on ? '3D-Aufnahme läuft: die Tiefenkamera ist an. Langsam fahren und drehen.'
+            : '3D-Aufnahme gestoppt -- die Tiefenkamera geht aus, wenn sie sonst niemand braucht.');
+        } catch (error) { message(error.message, true); }
+      });
+      $('raumLoeschen').addEventListener('click', async () => {
+        if (!window.confirm('Die 3D-Karte dieser Karte löschen?')) return;
+        try {
+          syncRoom3d(await api('/api/mapping/raum3d', { method: 'DELETE' }));
+          room.bounds = null;
+          await loadRoom();
+          message('3D-Karte gelöscht.');
         } catch (error) { message(error.message, true); }
       });
 

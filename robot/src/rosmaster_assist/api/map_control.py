@@ -91,6 +91,8 @@ class MapControl:
         # photos with position (mapping/photos.py) and panoramas, set by the server
         self.photos = None
         self.panorama = None
+        # depth blocks in the map frame (mapping/room3d.py), set by the server
+        self.room3d = None
 
     # --- 1. Mapping drive (interface as before for mapping/web.py) --------------------
 
@@ -524,6 +526,7 @@ class MapControl:
             "anker": {k: [round(v, 3) for v in a["pose"]] for k, a in self.crumbs.anchors.items()},
             "fotos": self.photos.brief() if self.photos is not None else None,
             "panorama": self.panorama.state() if self.panorama is not None else None,
+            "raum3d": self.room3d.brief() if self.room3d is not None else None,
         }
 
     def state_brief(self) -> dict[str, Any] | None:
@@ -574,6 +577,8 @@ class MapControl:
                     await asyncio.to_thread(self._track)
                     if self.photos is not None:
                         self.photos.tick()
+                    if self.room3d is not None:
+                        await asyncio.to_thread(self.room3d.tick)
                     if self.pages > 0 and time.monotonic() - self._frontiers_time > 5.0:
                         self._frontiers_time = time.monotonic()
                         self._frontiers = await asyncio.to_thread(frontiers_for_display, occ_map)
