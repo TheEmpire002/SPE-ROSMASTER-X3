@@ -17,8 +17,15 @@ of current on the usb hub, docs/hardware.md). "3D aufnehmen" on /map switches
 it on for this module; with ``MAP3D_WHEN_DEPTH_ON`` the map also grows
 whenever another user (autonomous driving, mapping drive) has it on anyway.
 
+Colour (new 24.11.): the colour image of the same Orbbec (``MAP3D_COLOR_CAMERA``)
+taken at about the same moment gives every point a colour, with the same
+geometry as the overlay view /tiefe/ueberlagert (``depth_view.overlay_box``):
+what lines up there lines up here, and ``DEPTH_OVERLAY_SHIFT_PX``/``ZOOM``
+correct both. Per block a running average over the last
+``MAP3D_COLOR_AVG_N`` images, so changing light and auto exposure even out.
+
 Per map one file ``<name>_3d.npz`` beside the map files: packed block keys,
-hit counts, block size and the map's frame id. Like the photos it is set
+hit counts, colours, block size and the map's frame id. Like the photos it is set
 aside as ``<name>_3d.<stamp>.alt.npz`` when the main map is replaced, the old
 blocks would sit in the wrong places.
 
@@ -50,6 +57,8 @@ _BITS = 21
 _OFF = 1 << (_BITS - 1)
 _MASK = (1 << _BITS) - 1
 _MAX_HITS = 65535
+# colour stored as 0x1RRGGBB: bit 24 marks "has a colour", 0 = none yet
+_HAS_COLOR = 1 << 24
 
 
 def pack(ix, iy, iz):
@@ -62,18 +71,33 @@ def unpack(keys):
     return ((keys >> (2 * _BITS)) & _MASK) - _OFF, ((keys >> _BITS) & _MASK) - _OFF, (keys & _MASK) - _OFF
 
 
+def _blend(old: int, new: int, n: int) -> int:
+    """Running average of two 0x1RRGGBB colours, the new one with weight 1/n"""
+    if not old:
+        return new
+    out = _HAS_COLOR
+    for shift in (16, 8, 0):
+        a, b = (old >> shift) & 255, (new >> shift) & 255
+        out |= int(round(a + (b - a) / n)) << shift
+    return out
+
+
 class Room3D:
-    def __init__(self, storage_dir: Path, localization, depth, odometry=None) -> None:
+    def __init__(self, storage_dir: Path, localization, depth, odometry=None,
+                 color_camera=None) -> None:
         self._dir = Path(storage_dir)
         self._localization = localization
         self._depth = depth
         self._odometry = odometry
+        self._color_camera = color_camera
         self._lock = threading.Lock()
         self._io_lock = threading.Lock()
         self._saver: threading.Thread | None = None
         self._map: tuple[str, str | None] | None = None
         self._hits: dict[int, int] = {}
+        self._colors: dict[int, int] = {}
         self._shown = 0
+        self._colored = 0           # images of the last minute that had a colour image
         self._last_frame = 0.0
         self._last_time = 0.0
         self._dirty = False
@@ -116,6 +140,7 @@ class Room3D:
         with self._io_lock:
             with self._lock:
                 self._hits = {}
+                self._colors = {}
                 self._shown = 0
                 self._full = False
                 self._dirty = False
@@ -157,11 +182,14 @@ class Room3D:
         name, frame_id = current
         path = self._file(name)
         hits: dict[int, int] = {}
+        colors: dict[int, int] = {}
         try:
             with np.load(path, allow_pickle=False) as data:
                 saved_frame = str(data["frame_id"]) if "frame_id" in data.files else ""
                 voxel = float(data["voxel_m"])
                 keys, counts = data["keys"], data["hits"]
+                # files from before the colour have none
+                rgb = data["rgb"] if "rgb" in data.files else None
             wrong_frame = bool(frame_id and saved_frame and saved_frame != frame_id)
             if wrong_frame or abs(voxel - config.MAP3D_VOXEL_M) > 1e-6:
                 aside = path.with_name(f"{name}_3d.{time.strftime('%Y%m%d-%H%M%S')}.alt.npz")
@@ -170,6 +198,8 @@ class Room3D:
                             name, aside.name)
             else:
                 hits = dict(zip(keys.tolist(), counts.tolist()))
+                if rgb is not None:
+                    colors = {k: c for k, c in zip(keys.tolist(), rgb.tolist()) if c}
         except FileNotFoundError:
             pass
         except Exception:
@@ -177,6 +207,7 @@ class Room3D:
         with self._lock:
             self._map = current
             self._hits = hits
+            self._colors = colors
             self._shown = sum(1 for h in hits.values() if h >= config.MAP3D_MIN_HITS)
             self._full = len(hits) >= config.MAP3D_MAX_VOXELS
             self._dirty = False
@@ -228,8 +259,10 @@ class Room3D:
             log.warning("3D map: evaluation failed", exc_info=True)
             return
         self.last_error = None
+        added, colored = added
         self.text = ("Speicher voll -- ergänzt nur noch" if self._full
-                     else f"nimmt auf ({added} Punkte im letzten Bild)")
+                     else f"nimmt auf ({added} Punkte im letzten Bild"
+                          + ("" if colored or self._color_camera is None else ", ohne Farbbild") + ")")
 
     def _pose_at(self, instant: float) -> tuple[float, float, float] | None:
         """Map pose at the image's capture time: the pose now, moved back by
@@ -244,36 +277,88 @@ class Room3D:
         delta = compose(invert((x, y, math.radians(deg))), then)
         return compose(pose, delta)
 
-    def _integrate(self, frame, pose) -> int:
+    def _point_colors(self, frame, rows, cols, step):
+        """Colour (n x 3 rgb uint8) and has-colour mask for depth pixels at
+        (rows, cols) of the thinned grid, or None without a matching colour image"""
+        import numpy as np
+
+        camera = self._color_camera
+        if camera is None:
+            return None
+        data, taken = camera.latest_with_time()
+        # the robot moves: a colour image from another moment paints the wrong things
+        if data is None or not taken or abs(taken - frame.timestamp) > config.MAP3D_COLOR_MAX_DT_S:
+            return None
+        import cv2
+
+        from ..sensors.depth_view import overlay_box
+
+        image = cv2.imdecode(np.frombuffer(data[0], dtype=np.uint8), cv2.IMREAD_COLOR)
+        if image is None:
+            return None
+        H, W = image.shape[:2]
+        h, w = frame.raw.shape
+        x0, y0, bw, bh = overlay_box(w, h, W, H, self._depth.hfov, getattr(camera, "fov_deg", None))
+        px = (x0 + (cols * step + 0.5) * bw / w).astype(np.int64)
+        py = (y0 + (rows * step + 0.5) * bh / h).astype(np.int64)
+        inside = (px >= 0) & (px < W) & (py >= 0) & (py < H)
+        rgb = np.zeros((len(px), 3), dtype=np.uint8)
+        rgb[inside] = image[py[inside], px[inside], ::-1]
+        return rgb, inside
+
+    def _integrate(self, frame, pose) -> tuple[int, bool]:
+        """Count one depth image into the blocks; (points used, had colour)"""
         import numpy as np
 
         from ..sensors.depth import robot_points
 
         hfov, vfov = self._depth.hfov, self._depth.vfov
         if not hfov or not vfov:
-            return 0
-        x, y, z, _ = robot_points(frame.raw, hfov, vfov, step=config.MAP3D_PIXEL_STEP)
+            return 0, False
+        step = config.MAP3D_PIXEL_STEP
+        x, y, z, valid = robot_points(frame.raw, hfov, vfov, step=step)
+        # same order as the boolean indexing in robot_points: row by row
+        rows, cols = np.nonzero(valid)
+        try:
+            color = self._point_colors(frame, rows, cols, step)
+        except Exception:
+            log.debug("3D map: colour image unusable", exc_info=True)
+            color = None
         keep = (x >= config.MAP3D_MIN_M) & (np.hypot(x, y) <= config.MAP3D_MAX_M)
-        x, y, z = x[keep], y[keep], z[keep]
         # height above the floor the camera sees, not above the mounting
         # guess: the robot tips a little while driving
         if frame.floor is not None:
             a, b, c = frame.floor
             z = z - (a * x + b * y + c)
-        keep = (z >= config.MAP3D_MIN_HEIGHT_M) & (z <= config.MAP3D_MAX_HEIGHT_M)
+        keep &= (z >= config.MAP3D_MIN_HEIGHT_M) & (z <= config.MAP3D_MAX_HEIGHT_M)
         x, y, z = x[keep], y[keep], z[keep]
         if not len(x):
-            return 0
+            return 0, color is not None
         c, s = math.cos(pose[2]), math.sin(pose[2])
         wx = c * x - s * y + pose[0]
         wy = s * x + c * y + pose[1]
         v = config.MAP3D_VOXEL_M
-        keys = np.unique(pack(np.floor(wx / v).astype(np.int64), np.floor(wy / v).astype(np.int64),
-                              np.floor(z / v).astype(np.int64)))
+        keys, inverse = np.unique(
+            pack(np.floor(wx / v).astype(np.int64), np.floor(wy / v).astype(np.int64),
+                 np.floor(z / v).astype(np.int64)),
+            return_inverse=True)
+        inverse = inverse.ravel()
+        # mean colour of the points per block in this image
+        new_color = None
+        if color is not None:
+            rgb, has = color[0][keep], color[1][keep]
+            n = np.bincount(inverse[has], minlength=len(keys))
+            if n.any():
+                sums = [np.bincount(inverse[has], weights=rgb[has, ch], minlength=len(keys)) for ch in range(3)]
+                mean = np.stack(sums, axis=1) / np.maximum(n, 1)[:, None]
+                new_color = np.where(n > 0, _HAS_COLOR | (mean[:, 0].astype(np.int64) << 16)
+                                     | (mean[:, 1].astype(np.int64) << 8) | mean[:, 2].astype(np.int64), 0)
         threshold = config.MAP3D_MIN_HITS
+        average_n = config.MAP3D_COLOR_AVG_N
+        new_list = new_color.tolist() if new_color is not None else None
         with self._lock:
-            hits = self._hits
-            for k in keys.tolist():
+            hits, colors = self._hits, self._colors
+            for i, k in enumerate(keys.tolist()):
                 h = hits.get(k)
                 if h is None:
                     # full: only strengthen what is there, no new blocks
@@ -285,9 +370,11 @@ class Room3D:
                     hits[k] = h + 1
                     if h + 1 == threshold:
                         self._shown += 1
+                if new_list is not None and new_list[i]:
+                    colors[k] = _blend(colors.get(k, 0), new_list[i], min(h + 1, average_n))
             self._dirty = True
             self.stand += 1
-        return int(len(x))
+        return int(len(x)), color is not None
 
     # --- storing ---
 
@@ -299,6 +386,7 @@ class Room3D:
                 name, frame_id = self._map
                 # dict copy is fast c code; the arrays are built outside the lock
                 snapshot = dict(self._hits)
+                color_snapshot = dict(self._colors)
                 self._dirty = False
                 self._save_time = time.monotonic()
             import numpy as np
@@ -308,8 +396,11 @@ class Room3D:
             try:
                 keys = np.fromiter(snapshot.keys(), dtype=np.int64, count=len(snapshot))
                 hits = np.fromiter(snapshot.values(), dtype=np.uint16, count=len(snapshot))
+                rgb = np.fromiter((color_snapshot.get(k, 0) for k in snapshot), dtype=np.uint32,
+                                  count=len(snapshot))
                 with open(tmp, "wb") as f:
-                    np.savez_compressed(f, keys=keys, hits=hits, voxel_m=np.float64(config.MAP3D_VOXEL_M),
+                    np.savez_compressed(f, keys=keys, hits=hits, rgb=rgb,
+                                        voxel_m=np.float64(config.MAP3D_VOXEL_M),
                                         frame_id=np.str_(frame_id or ""))
                 os.replace(tmp, path)
             except Exception as exc:
@@ -321,16 +412,24 @@ class Room3D:
     # --- output ---
 
     def blocks(self) -> bytes:
-        """Shown blocks as little-endian int16 triplets (ix, iy, iz), times
+        """Shown blocks, 12 bytes each, little-endian: int16 ix, iy, iz, 0, then
+        uint8 r, g, b, a (a = 255 with colour, 0 without). index times
         MAP3D_VOXEL_M = lower corner in the map frame (z = height above the floor)"""
         import numpy as np
 
         with self._lock:
             snapshot = dict(self._hits)
+            color_snapshot = dict(self._colors)
         keys = np.fromiter(snapshot.keys(), dtype=np.int64, count=len(snapshot))
         hits = np.fromiter(snapshot.values(), dtype=np.int64, count=len(snapshot))
-        ix, iy, iz = unpack(keys[hits >= config.MAP3D_MIN_HITS])
-        out = np.column_stack((ix, iy, iz)).clip(-32768, 32767).astype("<i2")
+        keys = keys[hits >= config.MAP3D_MIN_HITS]
+        rgb = np.fromiter((color_snapshot.get(k, 0) for k in keys.tolist()), dtype=np.int64, count=len(keys))
+        ix, iy, iz = unpack(keys)
+        out = np.zeros(len(keys), dtype=[("ix", "<i2"), ("iy", "<i2"), ("iz", "<i2"), ("pad", "<i2"),
+                                         ("r", "u1"), ("g", "u1"), ("b", "u1"), ("a", "u1")])
+        out["ix"], out["iy"], out["iz"] = (a.clip(-32768, 32767) for a in (ix, iy, iz))
+        out["r"], out["g"], out["b"] = (rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255
+        out["a"] = np.where(rgb & _HAS_COLOR, 255, 0)
         return out.tobytes()
 
     def brief(self) -> dict[str, Any]:
@@ -341,6 +440,8 @@ class Room3D:
                 "karte": self._map[0] if self._map else None,
                 "anzahl": self._shown,
                 "bloecke_gesamt": len(self._hits),
+                "mit_farbe": len(self._colors),
+                "farbkamera": getattr(self._color_camera, "name", None),
                 "voll": self._full,
                 "voxel_m": config.MAP3D_VOXEL_M,
                 "stand": self.stand,

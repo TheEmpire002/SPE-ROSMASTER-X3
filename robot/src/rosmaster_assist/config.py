@@ -1326,6 +1326,13 @@ MAP3D_MAX_FRAME_AGE_S = 0.3
 MAP3D_MAX_VOXELS = 400_000
 # write the file at most this often while recording (s), and on shutdown
 MAP3D_SAVE_S = 30.0
+# colour for the blocks: the orbbec's own colour image, it is lined up with the
+# depth image like the overlay view (DEPTH_OVERLAY_SHIFT_PX / ZOOM); None = no colour
+MAP3D_COLOR_CAMERA = "orientierung"
+# colour and depth image at most this far apart in time (s), else no colour
+MAP3D_COLOR_MAX_DT_S = 0.15
+# a block's colour averages over about this many images (light, auto exposure)
+MAP3D_COLOR_AVG_N = 8
 
 # --- Camera tilt servo (person camera, up and down) ------------------------------
 # details in sensors/camera_tilt.py. servo on the expansion board, moved with

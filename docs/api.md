@@ -1271,8 +1271,8 @@ User interface: `GET /map`.
 | `POST /api/mapping/fotos`                  | take a photo now ("Foto hier"); returns the entry; 409 with reason without a map, with an uncertain pose or without a fresh camera image                                                                                                                                                                                                                                                                                                                    |
 | `POST /api/mapping/fotos/auto`             | body `{"aktiv": false}`: automatic photos off/on (until the server restarts)                                                                                                                                                                                                                                                                                                                                                                                |
 | `DELETE /api/mapping/fotos/{id}`           | delete a photo; 404 if unknown                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `GET /api/mapping/raum3d` | 3D map of the current map (new 24.11., see "3D map"): `verfuegbar`, `aufnahme`, `karte`, `anzahl` (shown blocks), `bloecke_gesamt`, `voll`, `voxel_m`, `stand`, `text`, `fehler` |
-| `GET /api/mapping/raum3d/bloecke` | the shown blocks, binary: little-endian int16 triplets `ix, iy, iz`; times `voxel_m` = lower corner of the block in the map frame, z = height above the floor |
+| `GET /api/mapping/raum3d` | 3D map of the current map (new 24.11., see "3D map"): `verfuegbar`, `aufnahme`, `karte`, `anzahl` (shown blocks), `bloecke_gesamt`, `mit_farbe` (blocks with a colour), `farbkamera`, `voll`, `voxel_m`, `stand`, `text`, `fehler` |
+| `GET /api/mapping/raum3d/bloecke` | the shown blocks, binary, 12 bytes each, little-endian: int16 `ix, iy, iz, 0`, then uint8 `r, g, b, a` (`a` = 255 with colour, 0 without); index times `voxel_m` = lower corner of the block in the map frame, z = height above the floor |
 | `POST /api/mapping/raum3d/aufnahme` | body `{"aktiv": true}`: keep the depth camera on for the 3D map (until switched off or the server restarts); 409 without depth camera |
 | `DELETE /api/mapping/raum3d` | delete the 3D map of the current map |
 | `WS /api/mapping/ws`                       | `{"type": "status"}` every 3 s, `{"type": "map"}` on every new map, `{"type": "fahrt"}` on changes of the mapping drive, `{"type": "ortung"}` on changes of the pose (content as `GET /api/mapping/ortung`)                                                                                                                                                                                                                                                 |
@@ -1405,6 +1405,17 @@ off everything above a height to look into rooms, the robot is a green
 column. While open it reloads when `stand` moves. `GET /api/mapping/ortung`
 contains `raum3d` (as `GET /api/mapping/raum3d`). Not removed yet: people
 or doors that moved stay in the map until it is deleted.
+
+Colour (new 24.11.): the colour image of `MAP3D_COLOR_CAMERA` (the Orbbec's
+own) gives every point its colour if it was taken at most
+`MAP3D_COLOR_MAX_DT_S` from the depth image. Depth pixels are placed in the
+colour image with the same box as the overlay view `/tiefe/ueberlagert`
+(fields of view plus `DEPTH_OVERLAY_SHIFT_PX` / `DEPTH_OVERLAY_ZOOM`): if the
+overlay lines up, the colours do too; if colours sit beside the edges, adjust
+those two values. Per block a running average over about
+`MAP3D_COLOR_AVG_N` images. The view shows the real colours („echte
+Farben“, switchable to height colours); blocks without colour (older
+recordings) keep the height colour.
 
 **Choosing the camera (new 23.11.).** A selection field next to the
 panorama button on `/map` picks the camera; the default is

@@ -530,6 +530,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     # 3d map from the depth camera at the map pose (mapping/room3d.py)
     map_control.room3d = Room3D(
         mapping_manager.map_service.storage_dir, localization, depth, odometry=odometry,
+        color_camera=cameras.get(config.MAP3D_COLOR_CAMERA) if config.MAP3D_COLOR_CAMERA else None,
     )
     map_control.panorama = Panorama(
         map_control.photos, maneuver, localization, cameras, busy=_other_drive,

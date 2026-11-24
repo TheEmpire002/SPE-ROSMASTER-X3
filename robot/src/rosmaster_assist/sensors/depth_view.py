@@ -24,6 +24,21 @@ from .. import config
 _MAGENTA = (255, 0, 255)  # BGR
 
 
+def overlay_box(w: int, h: int, W: int, H: int, hfov_depth: float,
+                hfov_color_deg: float | None) -> tuple[int, int, int, int]:
+    """Where the depth image (w x h) lies in the colour image (W x H): x0, y0,
+    width, height. size from the fields of view, the rest from
+    DEPTH_OVERLAY_SHIFT_PX/ZOOM; the 3d map colours its blocks with the same
+    box, so what lines up in the overlay view also lines up there"""
+    ratio = 1.0
+    if hfov_depth and hfov_color_deg:
+        ratio = math.tan(hfov_depth / 2.0) / math.tan(math.radians(hfov_color_deg) / 2.0)
+    bw = max(1, int(W * ratio * config.DEPTH_OVERLAY_ZOOM))
+    bh = max(1, int(bw * h / w))
+    dx, dy = config.DEPTH_OVERLAY_SHIFT_PX
+    return (W - bw) // 2 + int(dx), (H - bh) // 2 + int(dy), bw, bh
+
+
 def _text(cv2, image, text: str, x: int, y: int, size: float = 0.5) -> None:
     """White with a black outline -- readable on any background."""
     cv2.putText(image, text, (x, y), cv2.FONT_HERSHEY_SIMPLEX, size, (0, 0, 0), 3, cv2.LINE_AA)
@@ -71,14 +86,7 @@ def draw(image, hfov_depth: float, background: bytes | None = None,
     else:
         output = color_image
         H, W = output.shape[:2]
-        # Width of the depth image within the colour image, from the ratio of the fields of view.
-        ratio = 1.0
-        if hfov_depth and hfov_color_deg:
-            ratio = math.tan(hfov_depth / 2.0) / math.tan(math.radians(hfov_color_deg) / 2.0)
-        bw = max(1, int(W * ratio * config.DEPTH_OVERLAY_ZOOM))
-        bh = max(1, int(bw * h / w))
-        dx, dy = config.DEPTH_OVERLAY_SHIFT_PX
-        x0, y0 = (W - bw) // 2 + int(dx), (H - bh) // 2 + int(dy)
+        x0, y0, bw, bh = overlay_box(w, h, W, H, hfov_depth, hfov_color_deg)
         pose = (x0, y0, bw, bh)
         large = cv2.resize(colors, (bw, bh), interpolation=cv2.INTER_NEAREST)
         g_valid = cv2.resize(valid.astype(np.uint8), (bw, bh), interpolation=cv2.INTER_NEAREST) > 0

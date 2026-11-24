@@ -1219,3 +1219,10 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Risk:** The depth projector draws current on the USB hub; long recordings may bring the known USB dropouts. The camera only runs while recording or while autonomous driving needs it anyway.
 - **Result:** Pending the test on the robot.
 - **Open:** colour from the colour image (stage 2); clearing blocks of things that moved (people, doors).
+
+### 24.11.2026 – 3D map in real colours (with Claude)
+- **Result of the first test:** The 3D map from the depth camera already looked good on the robot (walls and furniture recognisable).
+- **What:** The blocks now get their colour from the Orbbec colour image taken at about the same moment. In the 3D view „echte Farben“ (on by default) shows them, otherwise the height colours as before. Stored with the blocks in `<name>_3d.npz`; the block download grew from 6 to 12 bytes per block (colour plus alignment).
+- **How:** Depth pixels are placed in the colour image with the same geometry as the overlay view „Tiefe + Farbbild“ (moved into `depth_view.overlay_box`, used by both). So the existing correction `DEPTH_OVERLAY_SHIFT_PX`/`ZOOM` fixes both, and you can check the alignment in the app. Colour image at most 0.15 s apart from the depth image, else no colour. Per block a running average over about 8 images, which evens out changing light and auto exposure.
+- **Check:** On the Pi with a fake depth image (wall at 2 m) and a colour image half red, half blue: left in the image ends up left in the map (red), right blue; colours survive saving and loading.
+- **Result:** Pending the test on the robot. Not merged into main yet (on request).
