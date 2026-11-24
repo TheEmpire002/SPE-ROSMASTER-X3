@@ -1373,9 +1373,13 @@ COVERAGE_VISITED_M = 0.6
 # closer than this (m) it looks around without driving
 COVERAGE_ARRIVE_M = 0.3
 # turning around in steps (deg) with a pause (s) after each: the 3d map takes
-# no images while turning fast and needs MAP3D_MIN_HITS images per block
-COVERAGE_TURN_STEP_DEG = 40.0
-COVERAGE_DWELL_S = 2.0
+# no images while turning fast and needs MAP3D_MIN_HITS images per block. steps
+# a bit below the depth camera's 58 deg so neighbouring views overlap
+COVERAGE_TURN_STEP_DEG = 50.0
+COVERAGE_DWELL_S = 1.0
+# images per second for the 3d map while scanning (MAP3D_HZ otherwise): one per
+# localization tick (NAV_LOCALIZATION_HZ), so a pause yields enough images
+COVERAGE_MAP3D_HZ = 4.0
 # wait for the depth camera at the start (s), and for the pose when it got unsure
 COVERAGE_WARMUP_S = 2.0
 COVERAGE_LOST_WAIT_S = 10.0

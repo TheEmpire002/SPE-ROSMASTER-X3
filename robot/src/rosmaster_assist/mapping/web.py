@@ -67,6 +67,8 @@ class ScanRequest(BaseModel):
     # missing = COVERAGE_DEFAULT_PCT, COVERAGE_MAX_MIN
     ziel_prozent: float | None = Field(default=None, ge=1.0, le=100.0)
     max_minuten: float | None = Field(default=None, ge=1.0, le=600.0)
+    # also a raw recording for the pc mesh (scripts/build_mesh.py), stopped at the end
+    roh: bool = False
 
 
 def create_mapping_router(manager: MappingManager | None = None, drive=None) -> APIRouter:
@@ -373,7 +375,7 @@ def create_mapping_router(manager: MappingManager | None = None, drive=None) -> 
     async def room3d_scan_start(request: ScanRequest) -> dict[str, Any]:
         control = _control()
         goal = config.COVERAGE_DEFAULT_PCT if request.ziel_prozent is None else request.ziel_prozent
-        error = control.start_scan(goal, request.max_minuten)
+        error = control.start_scan(goal, request.max_minuten, request.roh)
         if error:
             raise HTTPException(status_code=409, detail=error)
         return control.display()

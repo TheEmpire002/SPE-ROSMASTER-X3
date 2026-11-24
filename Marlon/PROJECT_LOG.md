@@ -1278,3 +1278,9 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Why:** Without a detected floor every height comes from these values. 10° of wrong tilt lifts a point 2 m away by about 35 cm, 8 cm of wrong height shifts everything; obstacle detection and the 3D map both suffer.
 - **Found on the way:** The depth image has no values on the lab floor at all (lower half of the image black, also with the camera level): the dark floor swallows the Astra's infrared pattern. So the floor detection cannot correct the mounting here; an early "floor found, 18.5 cm" was a fit on a few stray points.
 - **Result:** Pending: 3D maps recorded before this change have wrong heights and should be deleted and scanned again.
+
+### 24.11.2026 – 3D scan faster, raw recording for the mesh along (test, with Claude)
+- **What:** Checkbox „dabei Rohaufnahme fürs 3D-Modell“ (on by default): the scan starts a raw recording itself and stops it at the end, so the images for the pc mesh are always there; with `build_mesh.py --live` the mesh grows on the pc during the scan anyway. Looking around per spot: 7 steps of 51° with 1 s standing still instead of 9 × 40° with 2 s; during the scan the 3D map takes an image on every localization tick (4 per second instead of 2).
+- **Why:** Requested: build the mesh at the same time and scan faster. Looking around took about 36 s per spot, now about 22 s.
+- **Decisions:** The localization ticks at 4 Hz, so only 4 or 2 images per second are possible; 4 only during the scan, because every image costs computing time in the tick. The status shows the computing time per image (`rechenzeit_ms`) to watch the load on the Pi. Steps stay below the camera's 58° so neighbouring views overlap and blocks still get 3 images.
+- **Result:** Pending the test on the robot.

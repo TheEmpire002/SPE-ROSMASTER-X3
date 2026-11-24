@@ -207,6 +207,7 @@
             <div class="button-row" style="margin-top:7px">
               <button id="raumScanStart" type="button" disabled>🤖 3D-Scan starten</button>
             </div>
+            <label class="check"><input type="checkbox" id="raumScanRoh" checked> dabei Rohaufnahme fürs 3D-Modell (Mesh am PC)</label>
             <label class="check"><input type="checkbox" id="raumAbdeckung"> erfasste (grün) und fehlende (rot) Wände auf der Karte zeigen</label>
             <div class="help" id="raumScanText" style="margin-top:6px">Fährt in der geladenen Karte von selbst zu den Stellen, von denen er die meisten noch fehlenden Wände sieht, und dreht sich dort langsam einmal um sich selbst. Braucht eine sichere Lage in der Karte. Jede Eingabe von Hand stoppt ihn.</div>
             <button id="raumRoh" class="secondary" type="button" style="margin-top:9px" disabled>⏺ Rohaufnahme fürs 3D-Modell</button>
@@ -1353,7 +1354,8 @@
           const min = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
           text.textContent = `${sc.text || 'läuft'} · Ziel ${Math.round(sc.ziel_prozent)} %`
             + (sc.prozent != null ? ` · jetzt ${sc.prozent.toFixed(0)} %` : '')
-            + ` · ${sc.stellen} Stellen · ${min(sc.dauer_s || 0)} (noch ${min(sc.rest_s || 0)})`;
+            + ` · ${sc.stellen} Stellen · ${min(sc.dauer_s || 0)} (noch ${min(sc.rest_s || 0)})`
+            + (sc.roh ? ' · Rohaufnahme läuft mit' : '');
         } else if (!sc.verfuegbar) {
           text.textContent = '3D-Scan geht nur mit Tiefenkamera und Lidar.';
         } else if (sc.grund) {
@@ -1402,6 +1404,7 @@
         text.textContent = r.karte
           ? `${r.anzahl.toLocaleString('de-DE')} Blöcke in „${r.karte}“ · ${r.text}` + (r.fehler ? ` · ${r.fehler}` : '')
             + (r.live ? ` · ${r.live === 1 ? 'ein PC baut' : `${r.live} PCs bauen`} live mit` : '')
+            + (r.aufnahme && r.rechenzeit_ms != null ? ` · ${r.bilder_pro_s} Bilder/s, ${r.rechenzeit_ms} ms je Bild` : '')
           : `Keine Karte, in der er seine Lage kennt -- ${r.text}`;
         if (!$('raumAnsicht').hidden) drawRoom();
       }
@@ -1736,7 +1739,8 @@
           catch (error) { message(error.message, true); }
           return;
         }
-        const request = { ziel_prozent: Number($('raumScanZiel').value), max_minuten: Number($('raumScanMin').value) };
+        const request = { ziel_prozent: Number($('raumScanZiel').value), max_minuten: Number($('raumScanMin').value),
+                          roh: $('raumScanRoh').checked };
         try {
           setLocalization(await api('/api/mapping/raum3d/scan', { method: 'POST', body: JSON.stringify(request) }));
           message(`3D-Scan startet: er fährt selbst, bis ${request.ziel_prozent} % der Wände erfasst sind. Platz lassen!`);

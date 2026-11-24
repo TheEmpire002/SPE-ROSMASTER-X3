@@ -170,6 +170,8 @@ class CoverageScan:
         self._spots: list[tuple[float, float]] = []
         self._started = 0.0
         self._deadline = 0.0
+        # raw recording for the pc mesh while scanning (started and stopped by the scan)
+        self.raw = False
 
     @property
     def available(self) -> bool:
@@ -197,10 +199,12 @@ class CoverageScan:
             "dauer_s": round(time.monotonic() - self._started) if active else None,
             "rest_s": max(0, round(self._deadline - time.monotonic())) if active else None,
             "grund": None if active else self.reason,
+            "roh": self.raw,
         }
 
-    def start(self, goal_pct: float, max_minutes: float | None = None) -> str | None:
-        """Start from here; returns an error text (german)"""
+    def start(self, goal_pct: float, max_minutes: float | None = None, raw: bool = False) -> str | None:
+        """Start from here, with ``raw`` also a raw recording for the pc mesh;
+        returns an error text (german)"""
         if not self.available:
             return "Der 3D-Scan braucht Tiefenkamera und Lidar"
         if self.active:
@@ -219,6 +223,7 @@ class CoverageScan:
         if not self._localization.confident or self._localization.pose() is None:
             return "Lage in der Karte unsicher -- erst auf der Karte zeigen, wo er steht"
         self.goal_pct = goal_pct
+        self.raw = bool(raw)
         self.reason = None
         self._spots = []
         self._next = None
@@ -299,7 +304,16 @@ class CoverageScan:
     async def _run(self) -> None:
         was_recording = self._room.recording
         self._room.set_recording(True)
+        # every localization tick an image: shorter pauses at each turning step
+        self._room.rate_hz = float(config.COVERAGE_MAP3D_HZ)
         self._maneuver.quiet = True
+        own_raw = False
+        if self.raw and not self._room.brief()["roh"]["aktiv"]:
+            error = self._room.start_raw()
+            if error:
+                log.warning("3D scan: raw recording not started (%s)", error)
+            else:
+                own_raw = True
         failed: list[tuple[float, float]] = []
         failures = 0
         try:
@@ -356,6 +370,9 @@ class CoverageScan:
             self.reason = "Fehler beim 3D-Scan"
         finally:
             self._maneuver.quiet = False
+            self._room.rate_hz = float(config.MAP3D_HZ)
+            if own_raw:
+                self._room.stop_raw()
             self._room.set_recording(was_recording)
             self._next = None
 

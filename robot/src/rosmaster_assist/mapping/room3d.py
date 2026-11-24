@@ -153,6 +153,10 @@ class Room3D:
         self._dirty = False
         self._save_time = time.monotonic()
         self.recording = False
+        # images per second taken; the 3d scan raises it while it stands and looks
+        self.rate_hz = float(config.MAP3D_HZ)
+        # computing time of the last image (ms), to watch the load on the pi
+        self.compute_ms: float | None = None
         # bumped when the shown blocks change; the viewer reloads when it moves
         self.stand = 0
         self.text = "noch nichts aufgenommen"
@@ -308,7 +312,7 @@ class Room3D:
         if frame is None or frame.raw is None:
             self.text = "wartet auf die Tiefenkamera" if self.recording else "Aufnahme aus"
             return
-        if frame.timestamp == self._last_frame or now - self._last_time < 1.0 / config.MAP3D_HZ:
+        if frame.timestamp == self._last_frame or now - self._last_time < 1.0 / max(0.1, self.rate_hz):
             return
         self._last_frame = frame.timestamp
         if now - frame.timestamp > config.MAP3D_MAX_FRAME_AGE_S:
@@ -324,7 +328,9 @@ class Room3D:
             return
         self._last_time = now
         try:
+            started = time.perf_counter()
             added = self._integrate(frame, pose)
+            self.compute_ms = round((time.perf_counter() - started) * 1000.0, 1)
         except Exception as exc:
             self.last_error = f"Auswertung: {exc}"
             log.warning("3D map: evaluation failed", exc_info=True)
@@ -796,6 +802,8 @@ class Room3D:
                 "stand": self.stand,
                 "text": self.text,
                 "fehler": self.last_error,
+                "bilder_pro_s": self.rate_hz,
+                "rechenzeit_ms": self.compute_ms,
                 "live": self.live_count,
                 "roh": {"aktiv": self._raw is not None,
                         "bilder": self._raw["frames"] if self._raw is not None else 0},

@@ -142,7 +142,8 @@ class MapControl:
         if self.scan is not None:
             self.scan.cancel(reason)
 
-    def start_scan(self, goal_pct: float, max_minutes: float | None = None) -> str | None:
+    def start_scan(self, goal_pct: float, max_minutes: float | None = None,
+                   raw: bool = False) -> str | None:
         """Scan the map in 3d by itself until ``goal_pct`` of the walls are seen."""
         if self.scan is None:
             return "3D-Scan ist nicht eingerichtet"
@@ -152,7 +153,7 @@ class MapControl:
             return "Keine Verbindung zum Antrieb"
         self._cancel_others("3D-Scan gestartet")
         self.stop("3D-Scan gestartet")
-        error = self.scan.start(goal_pct, max_minutes)
+        error = self.scan.start(goal_pct, max_minutes, raw)
         if error is None:
             self._report("info", f"3D-Scan gestartet: bis {goal_pct:.0f} % der Wände")
         return error

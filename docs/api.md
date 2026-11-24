@@ -1270,7 +1270,7 @@ User interface: `GET /map`.
 | `GET /api/mapping/fotos/{karte}/{datei}`   | the photo as JPEG; 404 if unknown                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `POST /api/mapping/fotos`                  | take a photo now ("Foto hier"); returns the entry; 409 with reason without a map, with an uncertain pose or without a fresh camera image                                                                                                                                                                                                                                                                                                                    |
 | `DELETE /api/mapping/fotos/{id}`           | delete a photo; 404 if unknown                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `GET /api/mapping/raum3d` | 3D map of the current map (new 24.11., see "3D map"): `verfuegbar`, `aufnahme`, `karte`, `anzahl` (shown blocks), `bloecke_gesamt`, `mit_farbe` (blocks with a colour), `farbkamera`, `live` (pcs on the live stream), `roh` (`{aktiv, bilder}`), `voll`, `voxel_m`, `stand`, `text`, `fehler` |
+| `GET /api/mapping/raum3d` | 3D map of the current map (new 24.11., see "3D map"): `verfuegbar`, `aufnahme`, `karte`, `anzahl` (shown blocks), `bloecke_gesamt`, `mit_farbe` (blocks with a colour), `farbkamera`, `live` (pcs on the live stream), `roh` (`{aktiv, bilder}`), `voll`, `voxel_m`, `stand`, `text`, `fehler`, `bilder_pro_s` (images per second taken, raised during a 3D scan), `rechenzeit_ms` (computing time of the last image) |
 | `GET /api/mapping/raum3d/bloecke` | the shown blocks, binary, 16 bytes each, little-endian: int16 `ix, iy, iz, 0`, then uint8 `r, g, b, a` (`a` = 255 with colour, 0 without), then int8 `nx, ny, nz, n` (surface normal times 127, `n` = 127 with normal, 0 without; test branch `feat/3d-surfaces`, before 12 bytes without normal); index times `voxel_m` = lower corner of the block in the map frame, z = height above the floor |
 | `POST /api/mapping/raum3d/aufnahme` | body `{"aktiv": true}`: keep the depth camera on for the 3D map (until switched off or the server restarts); 409 without depth camera |
 | `DELETE /api/mapping/raum3d` | delete the 3D map of the current map |
@@ -1278,7 +1278,7 @@ User interface: `GET /map`.
 | `GET /api/mapping/raum3d/roh` | raw recordings of the current map: `karte`, `laeuft` (running session or `null`), `sitzungen` (`[{name, bilder, mb}]`) |
 | `GET /api/mapping/raum3d/roh/{name}.zip` | one raw recording as ZIP (for `scripts/build_mesh.py`); 404 if unknown |
 | `DELETE /api/mapping/raum3d/roh/{name}` | delete a raw recording; 404 if unknown |
-| `POST /api/mapping/raum3d/scan` | 3D scan (test branch `feat/3d-surfaces`, see "3D scan"): body `{"ziel_prozent": 80, "max_minuten": 20}` (both optional, defaults `COVERAGE_DEFAULT_PCT`, `COVERAGE_MAX_MIN`); the robot drives through the loaded map by itself until that share of the walls is in the 3D map. Returns the display state; 409 with reason without depth camera, map, confident pose or drive |
+| `POST /api/mapping/raum3d/scan` | 3D scan (test branch `feat/3d-surfaces`, see "3D scan"): body `{"ziel_prozent": 80, "max_minuten": 20, "roh": true}` (all optional, defaults `COVERAGE_DEFAULT_PCT`, `COVERAGE_MAX_MIN`, `false`; `roh` = also a raw recording for the pc mesh, started and stopped by the scan); the robot drives through the loaded map by itself until that share of the walls is in the 3D map. Returns the display state; 409 with reason without depth camera, map, confident pose or drive |
 | `POST /api/mapping/raum3d/scan/stop` | end the 3D scan (also: "Fahrt abbrechen", emergency stop, any manual drive input, starting another drive mode) |
 | `GET /api/mapping/raum3d/abdeckung` | coverage now: `prozent`, `gesamt` (wall cells counted), `gesehen` and `fehlt` (`[[x, y], ...]` wall cell centres, at most `COVERAGE_DRAW_MAX` each), `text` (reason when not computable) |
 | `WS /api/mapping/raum3d/live` | live images for building the mesh on a pc (test branch `feat/3d-surfaces`): text `{"type": "meta", ...}` (as `meta.json`, again when the map changes), `{"type": "status", "text", "karte"}` every `MAP3D_LIVE_STATUS_S` while no image comes, `{"type": "fehler", "text"}` then close without depth camera; binary = one image: uint32 LE header length, json header (as a `frames.jsonl` line plus `tiefe_bytes`, `farbe_bytes`), depth png, colour jpeg. The depth camera stays on while a client is connected |
@@ -1289,7 +1289,7 @@ The display packet (`GET /api/mapping/ortung`, `/api/mapping/ws`) has
 `raumscan`: `verfuegbar`, `aktiv`, `text`, `ziel_prozent`, `prozent`,
 `gesehen`/`gesamt` (wall cells), `stellen` (spots looked around at),
 `naechste` ([x, y] while driving there), `besucht`, `dauer_s`, `rest_s`,
-`grund` (why the last scan ended). *Coverage:* the walls of the 2D map that
+`grund` (why the last scan ended), `roh` (raw recording runs along). *Coverage:* the walls of the 2D map that
 border the free area the robot can reach from where it stands (passages
 narrower than `COVERAGE_OPEN_M` cut off, which removes lidar streaks through
 doors); a wall cell is seen when the 3D map has blocks within
@@ -1302,7 +1302,10 @@ it hits is unseen and between `MAP3D_MIN_M` and `COVERAGE_RANGE_M` away
 *Drive:* the goal drive (`Homing`) to the spot, then once around in
 `COVERAGE_TURN_STEP_DEG` maneuver turns with `COVERAGE_DWELL_S` standing
 still after each (the 3D map takes no images while turning faster than
-`MAP3D_MAX_OMEGA`, a block needs `MAP3D_MIN_HITS` images). Ends when the
+`MAP3D_MAX_OMEGA`, a block needs `MAP3D_MIN_HITS` images); while the scan runs
+the 3D map takes `COVERAGE_MAP3D_HZ` images per second instead of `MAP3D_HZ`.
+With `PC` live stream (`scripts/build_mesh.py --live`) the mesh grows during
+the scan. Ends when the
 share is reached, after the time limit, when no spot sees at least
 `COVERAGE_MIN_GAIN` rays of unseen wall, after `COVERAGE_MAX_FAILURES` spots
 in a row not reached, or when the pose stays unsure for
