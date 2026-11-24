@@ -904,12 +904,14 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Right room not reachable (05.11.):** on the robot's map `first_big_map` the planner found no path into the room on the right, not even a guess. Diagnosed on the Pi with the saved map: the trail goes through the door at x 4.4–5.6 m, y 5.0 m, but the map has wall cells 2–12 cm next to where the robot drove (door leaf or noise from mapping), so the doorway was too narrow. Now a guessed path may follow the trail itself (`BREADCRUMB_CORE_M` = 0.1 m) even over such wall cells; the lidar checks on site. On the real map: about 17 m via that door, planned in 0.1–0.6 s.
 
 ### 05.11.2026 – Health check and test runs moved onto the English main (with Claude)
+
 - **What:** The health check (healthbot) and the test runs from the `tests-panel` branch are being ported to the English code base on branch `test-runs`. First step (groundwork): `HEALTH_*` and `TESTS_*` settings in `config.py`; new commands `health_check`, `health_stop`, `health_wache` and the state field `healthbot` in `protocol.py`; `SafetyWatchdog.submit()` accepts a `margin_m` for the drive guard (nudging); the mock lidar can place extra obstacles; person and pose detection can be switched on by several users at once; pose detection skips images it has already seen and reports none when the camera image is older than `POSE_MAX_FRAME_AGE_S` (still-image problem of the C270).
 - **Why:** `tests-panel` was based on the old German names; main has been translated and now has the depth camera and room mapping, which the lying detection should use.
 - **Result:** All 16 test scripts pass on the groundwork. Server wiring, health package, test runner, web pages and docs follow in the next steps.
 - **Open:** Check on the robot: depth camera setup (`/tiefe/status`), depth at a lying person (only measures from ~0.6 m), camera tilt/height values, two pose instances on the Hailo at once.
 
 ### 05.11.2026 – Healthbot and test runs on the English code base, results on GitHub (with Claude)
+
 - **What:** Ported the healthbot (`health/`: drive to a person, overview from the camera pose, address by voice, nudge, call for help; watch mode) and the test-run store (`test_runs.py`: guided reproducible camera/pose/microphone tests, each run stored as `~/.rosmaster/tests/<name>/` with `ergebnis.json` including meta data -- code commit, config snapshot, test definition -- plus images and a WAV file) from the old German branch to the English code base, and wired both into `api/server.py` (`/healthbot*`, `/tests*` endpoints, `health_check`/`health_stop`/`health_wache` commands). Map control now also cancels the healthbot when another mode starts.
 - **Why:** Test results must be reachable later (report, comparison) without the robot being on; a separate data branch keeps binary test data out of `main` and feature branches and needs nothing but git and a token.
 - **Result:** After every run the robot pushes all not yet uploaded runs to the git branch `testdaten` (`tests/<name>/`, `index.json`, `README.md` table). Uses a separate git index and `commit-tree` so the Pi's working tree and branch stay untouched; the token from `~/.rosmaster/github_token` travels as an HTTP header via `GIT_CONFIG_*` environment variables, never in the URL, log or config; the upload retries once if the remote moved. Pending runs go with the next upload; no auto upload in `--mock`. New settings: `TESTS_FOLDER`, `TESTS_GIT_*` (decision E15 in `docs/decisions.md`). All 17 test scripts pass, smoke test 18/19 (only the known flaky homing check).
@@ -917,12 +919,14 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** Not yet tested on the robot (robot paused). The `testdaten` branch does not exist on GitHub yet; the first upload creates it.
 
 ### 05.11.2026 – Tests and healthbot pages in the web app (with Claude)
+
 - **What:** Ported the pages `/tests` (`webapp/tests.html`, `tests.js`) and `/healthbot` (`webapp/healthbot.html`, `healthbot.js`) from the old German branch onto the English code base; links in `index.html`, styles in `style.css`. The tests page guides through a test run, shows live readings and what the microphone heard, lists all runs with note, ZIP and upload state (pending, last upload, error). The healthbot page shows the steps with reasons, the four signs as traffic lights, the camera image with the person and a map to pick the target.
 - **Why:** The server endpoints were ported in the previous step; without the pages nobody can start a test or follow a check.
 - **Result:** All test scripts pass, smoke test 26/26 with both pages and scripts, rule check clean (no `innerHTML`, all field names match the server, user text German). Also fixed the docs: `health_check` `x`/`y` are in the odometry frame like homing, not in the map frame.
 - **Open:** Try both pages on the robot once it runs again.
 
 ### 05.11.2026 – New microphone test "mikro_fahrt": speech commands over motor noise (with Claude)
+
 - **What:** New microphone test `mikro_fahrt` (Mikrofon bei drehenden Rädern) on branch `test-runs`. The robot stands on its stand with the wheels in the air; four wheel conditions (aus, langsam vx 0.15 m/s, schnell vx 0.35 m/s = autonomous top speed, drehen omega 1.0 rad/s), each 5 s silence then "Robi, stopp" and "Robi, folge mir" (12 phases, ~3.5 min). The verdict breaks down per condition, e.g. "aus 2/2, langsam 1/2"; every sample records the wheel condition (`motor`), so the level can be compared with the motor noise.
 - **Why:** The user reported that motor noise while driving is so loud that speech commands are not understood; this test measures from which speed recognition breaks down, as the basis for fixes (e.g. noise gate, lower speed while listening, mic placement).
 - **Changes:** Drives only via `SafetyWatchdog.submit(source="hand")` from a keepalive thread at 10 Hz (`TESTS_MOTOR_KEEPALIVE_HZ`, dead man's switch 0.5 s), marshalled onto the asyncio loop because the watchdog has no lock. `source="hand"` deliberately, because the autonomous drive guard would block with the test person standing in front; acceptable only because the wheels are in the air. Starting requires confirming the stand (web app confirm, field `podest: true`; the server refuses otherwise) and is refused while homing/explorer/interaction/maneuver/healthbot runs. The wheels stop at the end of the last phase, on cancel, on WebSocket disconnect, on any other drive command (`drive` ≠ 0, `stop`, move/turn, explore, home, goto, `health_check`, ...), and when mapping or a goal drive starts. Forward and turning only, never backwards. Spoken "Robi, stopp" does not stop the wheels during the test (commands are only recorded in mic tests) — use the stop button. New settings `TESTS_MOTOR_SLOW_MS`/`FAST_MS`/`OMEGA`/`KEEPALIVE_HZ`; `TESTS_WAV_MAX_S` raised to 240 s.
@@ -931,6 +935,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** Run on the robot on its stand, then evaluate the results on the `testdaten` branch.
 
 ### 05.11.2026 – Delete stored test runs from the web page (with Claude)
+
 - **What:** Stored test runs can now be deleted from the tests web page: a per-run "Löschen" button, "Ausgewählte löschen" and "Alle löschen" with a confirmation. Backend: `TestRuns.delete()` in `robot/src/rosmaster_assist/test_runs.py` and a new endpoint `POST /tests/loeschen` (`{"namen": [...]}` or `{"alle": true}`; an empty body is rejected so nothing gets wiped by accident).
 - **Why:** Old test runs from development piled up in `~/.rosmaster/tests` on the robot; the user wants to clear them without SSH.
 - **Changes:** Deletion is local on the robot only, copies already uploaded to the `testdaten` branch stay. Refused while a test is running or an upload holds the lock.
@@ -939,6 +944,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** Not yet deployed to the robot (robot paused).
 
 ### 05.11.2026 – Live camera images during every test (with Claude)
+
 - **What:** While a test runs, the tests web page shows live tiles of all color cameras from `GET /cameras` (orientierung and personen) below the measured values. MJPEG first, snapshots at 5 fps if the browser decodes nothing; streams are closed when the test ends. Only `webapp/tests.html`, `tests.js`, `style.css`; no server or protocol change.
 - **Why:** The tester wants visual feedback during a test, e.g. whether the person is in the picture, without switching to the main page.
 - **Changes:** Depth views are left out on purpose: they switch on the projector, which draws a lot of USB current (over-current resets on the X3). A generation counter drops stale `/cameras` answers when a test stops and restarts quickly.
@@ -947,6 +953,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** Check on the robot whether two streams during a pose test cost noticeable CPU.
 
 ### 05.11.2026 – Speech filter against hum and motor noise (with Claude)
+
 - **What:** New `robot/src/rosmaster_assist/interaction/audio_filter.py` (`SpeechFilter`): STFT with sqrt-Hann window, 50 % overlap; band-pass 200–4500 Hz; minimum-statistics noise estimate with a decision-directed Wiener gain and a floor; AGC only on voiced frames to -20 dBFS, max +24 dB gain; soft tanh limiter. Applied in `SpeechRecognition._listen_until_error` to every mic block before Vosk, after the existing dead-stream zero check; any exception falls back to the raw audio. New settings `SPEECH_FILTER_*` in `config.py`, switch `SPEECH_FILTER_ENABLED`. `/sprache/status` gets a new key `filter` with `aktiv`, `verstaerkung_db`, `snr_db`, `uebersteuert`. Test `Marlon/interaction/test_audio_filter.py` (11 checks). Cost about 2 ms per 250 ms block on the laptop.
 - **Why:** The user wants the microphone only for speech commands, with noise gone and the voice loud and clear. Analysis of the mic test runs from 05.11. (`mikro_pegel`, `mikro_befehle`, `mikro_fahrt`) showed a constant hum at 46/52 Hz and harmonics around -19 dBFS, louder than the voice (-28 to -35 dBFS in the speech band), plus motor noise while driving.
 - **Result:** Offline replay of the recordings through Vosk (small German model, robot grammar), 18 command phases, hit = confidence >= 0.7: raw audio 0 hits (1 weak); band-pass + AGC only 0 hits; filter with floor 0.1 and noise factor 2.5 gave 1 hit; the chosen settings (floor 0.3, factor 2.0) gave 3–4 hits plus 6 weak ones. 0 false triggers in 7 non-command phases for all variants. Silence dropped from about -19 to about -48 dBFS; speech peaks stayed around -20 dBFS. Run-to-run variance about ±1 dB.
@@ -954,6 +961,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** Not yet tested live on the robot (robot paused).
 
 ### 05.11.2026 – Raw recording alongside the filtered one in microphone tests (with Claude)
+
 - **What:** Microphone test runs (`mikro_pegel`, `mikro_befehle`, `mikro_fahrt`) now save two recordings: `ton.wav` (what Vosk hears, after the `SpeechFilter`) and `ton_roh.wav` (unfiltered input). Each microphone sample stores `filter` (`aktiv`, `verstaerkung_db`, `snr_db`, `uebersteuert` from `/sprache/status`), and each phase summary adds `uebersteuert_max` and a `verstaerkung_db` distribution. `SpeechRecognition.sound_subscribe(raw=False)` gained the `raw` option, plus a new `filter_stats()` method; the `/sprache/ton` listen-in now plays filtered audio by default.
 - **Why:** Since the filter commit the test recording only held filtered audio; for the driving test (wheels spinning on the stand) the raw signal is needed to see input clipping (remedy: lower the ALSA capture gain until `uebersteuert` stays 0) and to replay runs offline with other filter settings.
 - **Changes:** `robot/src/rosmaster_assist/test_runs.py` opens one subscription and one WAV file per recording (list instead of single variables); `robot/src/rosmaster_assist/interaction/speech.py` carries a `(queue, wants_raw)` pair per subscription and keeps both the filtered and unfiltered block through `_distribute_audio()`.
@@ -962,6 +970,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** Rerun the three microphone tests on the robot with the filter, compare with the 04.11. runs (offline: raw 0/18 commands, filtered 3–4/18).
 
 ### 23.11.2026 – Condition detection: main merged, person boxes from the Hailo, more reliable "lying" (Marlon, with Claude)
+
 - **What:** On branch `zustandserkennung` (not on `main`): merged `test-runs` and the current `main` (decision on test data renumbered to E15). `PersonDetection` now takes its boxes from the YOLOv8s-Pose detection on the Hailo, HOG on the CPU is only the fallback (`PERSON_DETECT_BACKEND`, status field `verfahren`). The healthbot tracks the person under check, lets all observed frames vote on "lying", detects a body lying lengthwise to the camera (hips above the shoulders, shortened torso), scales the motion threshold with the body size, and its watch tolerates short misses. New `scripts/bench_pose.py` compares pose models on the Hailo (time, CPU, keypoint confidence). Decision E16.
 - **Why:** HOG cost CPU (CPU spikes → USB resets on the X3) and finds sitting/lying people poorly while the Hailo already ran the pose model. The healthbot decided from a single frame and always took the largest person: a second person walking by counted as movement, one frame with swapped keypoints decided, and a body lying head-towards-camera looked upright.
 - **Changes:** `sensors/people.py`, `sensors/pose.py` (`healthy`), `api/server.py` (pose created before the person detection), `health/assessment.py` (`pick`, `lying_over`, `_lying_lengthwise`, `motionless_limit_px`, `LyingWatch`), `health/procedure.py`, `test_runs.py` (HOG kept for comparison, new sample field `liegend_text`), `config.py` (`PERSON_DETECT_BACKEND`, `HEALTH_FORESHORTEN_RATIO`, `HEALTH_LYING_SHARE`, `HEALTH_MOTIONLESS_REF_DIAG_PX`, `HEALTH_AUTO_GAP_S`).
@@ -970,6 +979,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** Run `python3 scripts/bench_pose.py` on the robot (standing, server may keep running, Hailo is shared) and decide `POSE_HEF`; check lengthwise lying and the watch on the floor with a real person; check the CPU load on `/diagnose` with the explorer running (HOG should be idle, `verfahren: hailo`).
 
 ### 23.11.2026 – Page "Zustandserkennung" (/zustand) for the condition detection (Marlon, with Claude)
+
 - **What:** New page `/zustand`, reached from the start page with the „Zustand“ button and with a link back to the controls. It shows live: whether a person is seen, lying yes/no with the reason (this frame and as a vote over the last 3 s), movement, shoulder/hip confidences, the watch with how long someone has been lying, the healthbot state and alarm; which detector delivers the person boxes (Hailo or HOG), model, fps and frame age; all people over the camera image with skeleton, the judged person green, others grey, lying red, keypoints coloured by confidence; and the yolov8s/yolov8m comparison. Backend `health/live.py` (`ConditionView`), endpoints `GET /zustand/status` and `POST /zustand/benchmark`, `Healthbot.watch_status()`, `scripts/bench_pose.py` now sends its results to the server.
 - **Why:** The improved detection could only be followed in the logs or during a healthbot run. The page shows on the robot why it judges "lying" or not, without starting a check, so thresholds can be checked with a real person on the floor.
 - **Design:** The page does not sit on the main panel to keep it uncluttered. The pose detection only computes while the page asks (lease of `CONDITION_VIEW_LEASE_S` = 5 s), so an open-and-forgotten tab does not keep the Hailo busy for ever. The benchmark goes to the server over HTTP because the server runs as root and the script as `pi` (different home folders).
@@ -977,6 +987,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Open:** Look at the page on the robot (real Hailo, real camera); run the benchmark so the comparison appears.
 
 ### 23.11.2026 – Healthbot page: skeleton beside the person, skeleton stayed after the check (Marlon, with Claude)
+
 - **What:** On the robot, during a healthbot run, the skeleton of the person on the floor sat beside the person in the camera image, and it stayed on the page after the check.
 - **Why:** The healthbot page showed `/camera/stream`, the default camera `orientierung`, while the pose detection looks through the camera `personen`; the keypoints of one camera were drawn over the image of the other. After the check the page kept drawing the last stored person (a frozen frame), and the pose detection kept computing on the way home although nothing needs it there.
 - **Change:** `GET /healthbot/status` now also sends `kamera` (camera of the keypoints), the page shows that camera's stream. `person` is the current frame of the tracked person and only while the check looks at the person; the pose detection is switched off when the robot heads home. New property `PoseDetection.camera_name`.
@@ -1019,6 +1030,13 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Why:** Existing environments should not trigger package checks on every server start, and simulated maps must not replace the robot's map.
 - **Result:** Focused mocked checks cover existing environments, new setup and retries. The previously saved map on the Pi must be backed up before updating, because Git removes the tracked file during the update.
 - **Problems:** A new environment still needs package access for its initial setup; an existing environment needs a manual install when new dependencies are introduced.
+
+### 23.11.2026 – Telegram pause commands (Copilot)
+
+- **What:** Added `/pause`, `/resume` and `/status` for the configured Telegram chat, protected by an explicit user-ID allowlist.
+- **Why:** A trusted user should be able to stop and resume outgoing messages without accessing the robot.
+- **Result:** A background receiver persists the pause state and update offset; command confirmations still work while paused. Mock mode does not poll Telegram and robot driving remains independent.
+- **Problems:** Requires an internet connection and exclusive use of Telegram `getUpdates`; real bot and Pi verification remain open.
 
 ## 3. Results and measurements
 
@@ -1135,6 +1153,7 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 9. **Outlook.**
 
 ### 23.11.2026 – Healthbot: drive all the way to the person to nudge, and say so (with Claude)
+
 - **What:** In the test the robot did not reach the lying person to nudge them and said nothing while doing so.
 - **Analysis (log 12:49):** Closing in drove at 0.12 m/s for the full 15 s and gave up („kommt nicht nah genug heran“), then went straight to calling for help. The person lies below the lidar plane, so the lidar distance at their bearing was the wall behind (3.25 m) and never reached 0.30 m; 15 s × 0.12 m/s is at most 1.8 m. The nudge step had no speech at all.
 - **Fix:** Closing in is limited by `HEALTH_APPROACH_MAX_S` (40 s) and `HEALTH_APPROACH_MAX_M` (4 m) instead of a fixed 15 s; besides the lidar distance and the drive guard holding close, wheels standing although driving now also counts as "at the person". Speech: `HEALTH_NUDGE_ANNOUNCE` before closing in, `HEALTH_NUDGE_CALL` before each nudge; only words after the call count as an answer.

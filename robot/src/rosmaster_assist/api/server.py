@@ -340,6 +340,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         }
         watchdog.recording = recording
 
+    telegram_commands = telegram.CommandService()
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         try:
@@ -384,6 +386,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             log.exception("Main map could not be loaded -- always-on mapping stays off")
         diagnostics.start()
         asyncio.get_running_loop().set_exception_handler(diagnostics.loop_error)
+        if not use_mock_camera:
+            telegram_commands.start()
 
         status_task = asyncio.create_task(
             _status_loop(
@@ -443,6 +447,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             condition_view.release()
             test_runs.shutdown()
             await watchdog.shutdown()
+            await asyncio.to_thread(telegram_commands.stop)
             # Only after stopping: shutting down the container can take a
             # while, and an error in it (Docker already gone, or not present
             # at all on the laptop) must not prevent disconnecting the

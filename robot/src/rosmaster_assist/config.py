@@ -11,6 +11,11 @@ from pathlib import Path
 TELEGRAM_SECRETS_PATH = Path(__file__).resolve().parents[2] / "telegram-secrets.json"
 TELEGRAM_TIMEOUT_S = 5.0
 TELEGRAM_MAX_MESSAGE_UTF16 = 4096
+TELEGRAM_STATE_PATH = Path.home() / ".rosmaster" / "telegram-state.json"
+TELEGRAM_COMMAND_POLL_S = 2.0
+TELEGRAM_PAUSE_COMMAND = "/pause"
+TELEGRAM_RESUME_COMMAND = "/resume"
+TELEGRAM_STATUS_COMMAND = "/status"
 
 # --- Serial connection to the expansion board --------------------------------
 

@@ -6,6 +6,7 @@ import json
 import pathlib
 import sys
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
@@ -17,6 +18,11 @@ from rosmaster_assist import telegram  # noqa: E402
 
 class TelegramTests(unittest.TestCase):
     def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        state = patch.object(telegram.config, "TELEGRAM_STATE_PATH", pathlib.Path(self.directory.name) / "state.json")
+        state.start()
+        self.addCleanup(state.stop)
         self.environment = patch.dict("os.environ", {"TELEGRAM_BOT_TOKEN": "123:secret", "TELEGRAM_CHAT_ID": "-42"})
         self.environment.start()
         self.addCleanup(self.environment.stop)
@@ -60,6 +66,30 @@ class TelegramTests(unittest.TestCase):
         with patch.dict("os.environ", {}, clear=True), self.assertRaises(telegram.TelegramError):
             telegram.send_message("Hallo")
 
+    def test_allowed_users_are_explicit_and_validated(self):
+        with patch.dict("os.environ", {"TELEGRAM_ALLOWED_USER_IDS": "123, 456"}):
+            self.assertEqual(telegram._allowed_users(), {123, 456})
+        with patch.dict("os.environ", {"TELEGRAM_ALLOWED_USER_IDS": ""}):
+            self.assertEqual(telegram._allowed_users(), set())
+        with patch.dict("os.environ", {"TELEGRAM_ALLOWED_USER_IDS": "123,invalid"}):
+            with self.assertRaises(telegram.TelegramError):
+                telegram._allowed_users()
+
+    @patch("rosmaster_assist.telegram.urlopen")
+    def test_paused_messages_are_not_sent(self, open_url):
+        telegram._write_state({"paused": True, "offset": 12})
+        with self.assertRaisesRegex(telegram.TelegramError, "pausiert"):
+            telegram.send_message("Hallo")
+        open_url.assert_not_called()
+        self.assertEqual(telegram._read_state(), {"paused": True, "offset": 12})
+
+    @patch("rosmaster_assist.telegram.urlopen")
+    def test_invalid_state_does_not_send(self, open_url):
+        telegram.config.TELEGRAM_STATE_PATH.write_text("invalid", encoding="utf-8")
+        with self.assertRaises(telegram.TelegramError):
+            telegram.send_message("Hallo")
+        open_url.assert_not_called()
+
     def test_credentials_file_and_environment_override(self):
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / "secrets.json"
@@ -68,6 +98,84 @@ class TelegramTests(unittest.TestCase):
                 with patch.dict("os.environ", {}, clear=True):
                     self.assertEqual(telegram._credentials(), ("123:file", "-99"))
                 self.assertEqual(telegram._credentials(), ("123:secret", "-42"))
+
+
+class TelegramCommandTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        state = patch.object(telegram.config, "TELEGRAM_STATE_PATH", pathlib.Path(self.directory.name) / "state.json")
+        state.start()
+        self.addCleanup(state.stop)
+        self.service = telegram.CommandService()
+        self.service._username = "testbot"
+
+    @staticmethod
+    def update(number, text, chat=-42, user=123, is_bot=False):
+        return {"update_id": number, "message": {
+            "chat": {"id": chat}, "from": {"id": user, "is_bot": is_bot}, "text": text,
+        }}
+
+    @patch("rosmaster_assist.telegram._send_message")
+    def test_authorized_commands_persist_and_reply_while_paused(self, send):
+        self.service._handle_update(self.update(1, "/pause@testbot"), "555", "-42", {123})
+        self.assertTrue(telegram._read_state()["paused"])
+        with self.assertRaisesRegex(telegram.TelegramError, "pausiert"):
+            telegram.send_message("Hallo")
+        self.service._handle_update(self.update(2, "/status"), "555", "-42", {123})
+        self.assertIn("pausiert", send.call_args.args[0])
+        self.service._handle_update(self.update(3, "/resume"), "555", "-42", {123})
+        self.assertFalse(telegram._read_state()["paused"])
+        self.assertEqual(telegram._read_state()["offset"], 4)
+        self.assertEqual(send.call_count, 3)
+        self.service._handle_update(self.update(1, "/pause"), "555", "-42", {123})
+        self.assertFalse(telegram._read_state()["paused"])
+
+    @patch("rosmaster_assist.telegram._send_message")
+    def test_other_users_chats_bots_and_bot_mentions_are_ignored(self, send):
+        updates = [self.update(1, "/pause", user=456), self.update(2, "/pause", chat=-99),
+                   self.update(3, "/pause@otherbot"), self.update(4, "/pause", is_bot=True)]
+        for update in updates:
+            self.service._handle_update(update, "555", "-42", {123})
+        self.assertFalse(telegram._read_state()["paused"])
+        self.assertEqual(telegram._read_state()["offset"], 5)
+        send.assert_not_called()
+
+    @patch("rosmaster_assist.telegram._send_message")
+    @patch("rosmaster_assist.telegram._request")
+    def test_poll_uses_allowlist_and_persists_offset(self, request, send):
+        request.side_effect = [
+            {"result": {"username": "TestBot"}},
+            {"result": [self.update(23, "/pause")]},
+            {"result": []},
+        ]
+        with patch("rosmaster_assist.telegram._credentials", return_value=("555:secret", "-42")):
+            with patch("rosmaster_assist.telegram._allowed_users", return_value={123}):
+                self.service._poll()
+                self.service._poll()
+        self.assertEqual(request.call_args.args, ("getUpdates", {
+            "offset": 24, "timeout": 0, "allowed_updates": ["message"],
+        }))
+        self.assertTrue(telegram._read_state()["paused"])
+        send.assert_called_once()
+
+    @patch("rosmaster_assist.telegram._request")
+    def test_no_allowed_users_does_not_consume_updates(self, request):
+        with patch("rosmaster_assist.telegram._credentials", return_value=("555:secret", "-42")):
+            with patch("rosmaster_assist.telegram._allowed_users", return_value=set()):
+                self.service._poll()
+        request.assert_not_called()
+
+    def test_receiver_runs_and_stops_in_background(self):
+        polled = threading.Event()
+        with patch("rosmaster_assist.telegram._allowed_users", return_value={123}):
+            with patch.object(self.service, "_poll", side_effect=polled.set):
+                self.service.start()
+                try:
+                    self.assertTrue(polled.wait(2.0))
+                finally:
+                    self.service.stop()
+        self.assertIsNone(self.service._thread)
 
 
 class TelegramEndpointTests(unittest.TestCase):
