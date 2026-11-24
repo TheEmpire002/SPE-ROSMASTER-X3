@@ -98,6 +98,8 @@
     .raum-box { width: min(1300px, 100%); }
     .raum-box canvas { width: 100%; height: min(74vh, 760px); border-radius: 10px; border: 1px solid var(--border); background: #0b1016; cursor: grab; touch-action: none; display: block; }
     .raum-box canvas.dragging { cursor: grabbing; }
+    .raum-box canvas.ziel { cursor: crosshair; }
+    #raumZiel.aktiv { background: var(--accent, #3ec46d); color: #08110c; }
     .raum-box .check { margin: 0; white-space: nowrap; }
     @media (max-width: 900px) {
       .layout { grid-template-columns: 1fr; }
@@ -305,10 +307,12 @@
           <label class="check"><input type="checkbox" id="raumFarbe" checked> echte Farben</label>
           <label class="check"><input type="checkbox" id="raumFlaechen" checked> Flächen</label>
           <label class="check">Höhe bis <input type="range" id="raumHoehe" min="0.2" max="2.2" step="0.05" value="2.2" style="width:130px"> <span id="raumHoeheWert">2.20 m</span></label>
+          <button id="raumZiel" type="button" disabled>➜ Hierhin fahren</button>
+          <button id="raumZielStop" class="stop" type="button" disabled>■ Fahrt abbrechen</button>
           <button id="raumLoeschen" class="stop" type="button">Löschen</button>
           <button id="raumZu" type="button">Schließen</button>
         </div>
-        <div class="help">Ziehen: drehen · Rechts ziehen oder Umschalt + Ziehen: verschieben · Mausrad / zwei Finger: Zoom · Doppelklick: einpassen · echte Farben aus dem Farbbild, sonst Farbe = Höhe (blau Boden, rot oben) · Flächen: runde Scheiben entlang der Oberfläche, sonst Würfel · grün: Roboter</div>
+        <div class="help">Ziehen: drehen · Rechts ziehen oder Umschalt + Ziehen: verschieben · Mausrad / zwei Finger: Zoom · Doppelklick: einpassen · echte Farben aus dem Farbbild, sonst Farbe = Höhe (blau Boden, rot oben) · Flächen: runde Scheiben entlang der Oberfläche, sonst Würfel · „➜ Hierhin fahren“, dann auf den Boden tippen: er fährt dorthin (orange: Ziel und geplanter Weg)</div>
       </div>
     </div>
     <div class="foto-ansicht" id="panoAnsicht" hidden>
@@ -842,6 +846,10 @@
         field.classList.toggle('unsicher', !!o.karte && !o.sicher);
         // Driving only with a confident pose; "Hier stehe ich" works with any map.
         const canDrive = !!o.karte && !!o.sicher && !driveActive;
+        room.canDrive = canDrive;
+        $('raumZiel').disabled = !canDrive;
+        $('raumZielStop').disabled = !drive.aktiv;
+        if (!canDrive && room.goalMode) setRoomGoal(false);
         $('zielModus').disabled = !canDrive;
         $('heimButton').disabled = !canDrive;
         $('poseModus').disabled = !o.karte;
@@ -1302,6 +1310,8 @@
         brief: null, loadedStand: null, loading: false, gl: null, prog: null, buf: null,
         robotBuf: null, count: 0, voxel: 0.05, maxZ: 2.2, bounds: null, useColor: true, surfaces: true,
         yaw: -2.3, pitch: 0.75, dist: 8, target: [0, 0, 0.5], frame: 0, refreshTimer: null,
+        // robot model and goal: a second program for lit triangles
+        meshProg: null, meshBuf: null, goalMode: false, canDrive: false, cam: null,
       };
 
       let rawKey = null;
@@ -1473,6 +1483,128 @@
           gl_FragColor = vec4(col * shade, 1.0);
         }`;
 
+      const MESH_VS = `
+        attribute vec3 aPos; attribute vec3 aNor; attribute vec3 aCol;
+        uniform mat4 uMvp;
+        varying vec3 vCol;
+        void main() {
+          vec3 light = normalize(vec3(0.35, 0.5, 0.8));
+          float shade = 0.45 + 0.55 * max(dot(normalize(aNor), light), 0.0);
+          vCol = aCol * shade;
+          gl_Position = uMvp * vec4(aPos, 1.0);
+        }`;
+      const MESH_FS = `
+        precision mediump float;
+        varying vec3 vCol;
+        void main() { gl_FragColor = vec4(vCol, 1.0); }`;
+
+      // --- schematic robot model (yahboom x3 proportions), goal and path ---
+      // every vertex: x, y, z, nx, ny, nz, r, g, b (robot frame: x forward, y left)
+      function meshBox(out, x0, x1, y0, y1, z0, z1, col) {
+        const faces = [
+          [[1, 0, 0], [[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]]],
+          [[-1, 0, 0], [[x0, y1, z0], [x0, y0, z0], [x0, y0, z1], [x0, y1, z1]]],
+          [[0, 1, 0], [[x1, y1, z0], [x0, y1, z0], [x0, y1, z1], [x1, y1, z1]]],
+          [[0, -1, 0], [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]]],
+          [[0, 0, 1], [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]]],
+          [[0, 0, -1], [[x0, y1, z0], [x1, y1, z0], [x1, y0, z0], [x0, y0, z0]]],
+        ];
+        for (const [n, q] of faces) {
+          for (const i of [0, 1, 2, 0, 2, 3]) out.push(...q[i], ...n, ...col);
+        }
+      }
+      // cylinder along z (axis 'z') or along y (axis 'y', wheels)
+      function meshCylinder(out, cx, cy, cz, r, h, axis, col, seg = 16) {
+        const at = (a, s) => axis === 'z'
+          ? [cx + r * Math.cos(a), cy + r * Math.sin(a), cz + s * h / 2]
+          : [cx + r * Math.cos(a), cy + s * h / 2, cz + r * Math.sin(a)];
+        const nAt = (a) => axis === 'z' ? [Math.cos(a), Math.sin(a), 0] : [Math.cos(a), 0, Math.sin(a)];
+        const cap = (s) => axis === 'z' ? [0, 0, s] : [0, s, 0];
+        const mid = (s) => axis === 'z' ? [cx, cy, cz + s * h / 2] : [cx, cy + s * h / 2, cz];
+        for (let i = 0; i < seg; i++) {
+          const a0 = i / seg * Math.PI * 2, a1 = (i + 1) / seg * Math.PI * 2;
+          const p = [at(a0, -1), at(a1, -1), at(a1, 1), at(a0, 1)];
+          for (const [k, a] of [[0, a0], [1, a1], [2, a1], [0, a0], [2, a1], [3, a0]]) out.push(...p[k], ...nAt(a), ...col);
+          out.push(...mid(1), ...cap(1), ...col, ...at(a0, 1), ...cap(1), ...col, ...at(a1, 1), ...cap(1), ...col);
+          out.push(...mid(-1), ...cap(-1), ...col, ...at(a1, -1), ...cap(-1), ...col, ...at(a0, -1), ...cap(-1), ...col);
+        }
+      }
+      let robotModel = null;
+      function robotModelVertices() {
+        if (robotModel) return robotModel;
+        const v = [];
+        const body = [0.16, 0.2, 0.26], deck = [0.15, 0.85, 0.47], tyre = [0.08, 0.08, 0.09];
+        const rim = [0.55, 0.58, 0.62], dark = [0.05, 0.05, 0.06], lens = [0.25, 0.55, 1.0];
+        meshBox(v, -0.15, 0.15, -0.085, 0.085, 0.045, 0.085, body);       // chassis
+        meshBox(v, -0.13, 0.13, -0.095, 0.095, 0.085, 0.1, deck);          // top deck
+        for (const wx of [-0.1, 0.1]) {
+          for (const wy of [-0.115, 0.115]) {
+            meshCylinder(v, wx, wy, 0.04, 0.04, 0.04, 'y', tyre);          // mecanum wheels
+            meshCylinder(v, wx, wy + Math.sign(wy) * 0.021, 0.04, 0.022, 0.003, 'y', rim);
+          }
+        }
+        meshBox(v, -0.03, 0.03, -0.03, 0.03, 0.1, 0.115, body);            // lidar base
+        meshCylinder(v, -0.0, 0.0, 0.13, 0.035, 0.03, 'z', dark);          // rplidar
+        meshCylinder(v, -0.0, 0.0, 0.15, 0.02, 0.012, 'z', [0.85, 0.2, 0.2]);
+        meshBox(v, 0.115, 0.15, -0.07, 0.07, 0.115, 0.15, dark);           // depth camera
+        for (const ly of [-0.045, 0.0, 0.045]) meshBox(v, 0.15, 0.153, ly - 0.008, ly + 0.008, 0.125, 0.14, lens);
+        // heading arrow on the floor
+        const a = [0.75, 1.0, 0.8];
+        for (const p of [[0.2, 0.06], [0.2, -0.06], [0.33, 0]]) v.push(p[0], p[1], 0.006, 0, 0, 1, ...a);
+        robotModel = v;
+        return v;
+      }
+      // robot model at the map pose (x, y, heading rad)
+      function placedRobot(px, py, heading) {
+        const src = robotModelVertices(), out = new Array(src.length);
+        const c = Math.cos(heading), s = Math.sin(heading);
+        for (let i = 0; i < src.length; i += 9) {
+          out[i] = px + c * src[i] - s * src[i + 1];
+          out[i + 1] = py + s * src[i] + c * src[i + 1];
+          out[i + 2] = src[i + 2];
+          out[i + 3] = c * src[i + 3] - s * src[i + 4];
+          out[i + 4] = s * src[i + 3] + c * src[i + 4];
+          out[i + 5] = src[i + 5];
+          for (let k = 6; k < 9; k++) out[i + k] = src[i + k];
+        }
+        return out;
+      }
+      // planned path as a flat ribbon, goal as a pin
+      function goalVertices(drive) {
+        const v = [];
+        const orange = [1.0, 0.6, 0.15];
+        const path = (drive && drive.aktiv && drive.weg) || [];
+        for (let i = 0; i + 1 < path.length; i++) {
+          const [x0, y0] = path[i], [x1, y1] = path[i + 1];
+          const len = Math.hypot(x1 - x0, y1 - y0) || 1;
+          const nx = -(y1 - y0) / len * 0.025, ny = (x1 - x0) / len * 0.025;
+          const q = [[x0 + nx, y0 + ny], [x0 - nx, y0 - ny], [x1 - nx, y1 - ny], [x1 + nx, y1 + ny]];
+          for (const k of [0, 1, 2, 0, 2, 3]) v.push(q[k][0], q[k][1], 0.012, 0, 0, 1, ...orange);
+        }
+        const goal = drive && drive.aktiv && drive.ziel;
+        if (goal) {
+          meshCylinder(v, goal[0], goal[1], 0.006, 0.12, 0.01, 'z', orange, 24);
+          meshCylinder(v, goal[0], goal[1], 0.2, 0.008, 0.4, 'z', [0.95, 0.95, 0.95], 8);
+          meshCylinder(v, goal[0], goal[1], 0.42, 0.04, 0.04, 'z', orange, 12);
+        }
+        return v;
+      }
+      function drawMesh(gl, vertices, mvp) {
+        if (!vertices.length) return;
+        gl.useProgram(room.meshProg);
+        gl.uniformMatrix4fv(gl.getUniformLocation(room.meshProg, 'uMvp'), false, new Float32Array(mvp));
+        gl.bindBuffer(gl.ARRAY_BUFFER, room.meshBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.DYNAMIC_DRAW);
+        const loc = (n) => gl.getAttribLocation(room.meshProg, n);
+        const attrs = [[loc('aPos'), 0], [loc('aNor'), 12], [loc('aCol'), 24]];
+        for (const [l, off] of attrs) {
+          gl.enableVertexAttribArray(l);
+          gl.vertexAttribPointer(l, 3, gl.FLOAT, false, 36, off);
+        }
+        gl.drawArrays(gl.TRIANGLES, 0, vertices.length / 9);
+        for (const [l] of attrs) gl.disableVertexAttribArray(l);
+      }
+
       function roomGl() {
         if (room.gl) return room.gl;
         const gl = $('raumCanvas').getContext('webgl', { antialias: false });
@@ -1493,6 +1625,15 @@
         room.prog = prog;
         room.buf = gl.createBuffer();
         room.robotBuf = gl.createBuffer();
+        // lit triangles for the robot model, the goal and the path; shading in the
+        // vertex shader, so the two shaders share no uniform
+        const meshProg = gl.createProgram();
+        gl.attachShader(meshProg, shader(gl.VERTEX_SHADER, MESH_VS));
+        gl.attachShader(meshProg, shader(gl.FRAGMENT_SHADER, MESH_FS));
+        gl.linkProgram(meshProg);
+        if (!gl.getProgramParameter(meshProg, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(meshProg));
+        room.meshProg = meshProg;
+        room.meshBuf = gl.createBuffer();
         return gl;
       }
 
@@ -1615,25 +1756,53 @@
         gl.vertexAttrib4f(col, 0, 0, 0, 0);
         gl.disableVertexAttribArray(nor);
         gl.vertexAttrib4f(nor, 0, 0, 0, 0);
-        // the robot: a green column plus a short row towards its heading
+        gl.disableVertexAttribArray(pos);
+        // the robot as a small model, plus goal and planned path of a running drive
         const p = localization && localization.ortung && localization.ortung.pose;
-        if (p) {
-          const a = p.winkel * Math.PI / 180, step = 0.05, pts = [];
-          for (let z = 0; z <= 0.3; z += step) pts.push(p.x / step - 0.5, p.y / step - 0.5, z / step);
-          for (let d = step; d <= 0.3; d += step) {
-            pts.push((p.x + d * Math.cos(a)) / step - 0.5, (p.y + d * Math.sin(a)) / step - 0.5, 0.3 / step);
-          }
-          gl.uniform1f(u('uVoxel'), step);
-          gl.uniform4f(u('uFixed'), 0.15, 0.85, 0.47, 1);
-          gl.bindBuffer(gl.ARRAY_BUFFER, room.robotBuf);
-          gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pts), gl.DYNAMIC_DRAW);
-          gl.vertexAttribPointer(pos, 3, gl.FLOAT, false, 0, 0);
-          gl.drawArrays(gl.POINTS, 0, pts.length / 3);
-        }
+        const meshVerts = goalVertices(localization && localization.fahrt);
+        if (p) meshVerts.push(...placedRobot(p.x, p.y, p.winkel * Math.PI / 180));
+        drawMesh(gl, meshVerts, mvp);
+        room.cam = { eye, target: room.target.slice(), fovy, aspect: w / h };
         const r = room.brief;
         $('raumInfo').textContent = `${room.count.toLocaleString('de-DE')} Blöcke à ${Math.round(room.voxel * 100)} cm`
           + (r && r.bloecke_gesamt ? ` · ${Math.round(100 * r.mit_farbe / r.bloecke_gesamt)} % mit Farbe` : '')
           + (r && r.karte ? ` · Karte „${r.karte}“` : '') + (r && r.aufnahme ? ' · nimmt auf' : '');
+      }
+
+      // point on the floor (z = 0) under a tap on the 3d canvas, or null
+      function floorPoint(clientX, clientY) {
+        const cam = room.cam, c = $('raumCanvas');
+        if (!cam) return null;
+        const r = c.getBoundingClientRect();
+        const nx = ((clientX - r.left) / r.width) * 2 - 1, ny = 1 - ((clientY - r.top) / r.height) * 2;
+        const norm = (a) => { const l = Math.hypot(...a) || 1; return a.map((v) => v / l); };
+        const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+        const f = norm([cam.target[0] - cam.eye[0], cam.target[1] - cam.eye[1], cam.target[2] - cam.eye[2]]);
+        const right = norm(cross(f, [0, 0, 1]));
+        const up = cross(right, f);
+        const t = Math.tan(cam.fovy / 2);
+        const d = [0, 1, 2].map((k) => f[k] + nx * t * cam.aspect * right[k] + ny * t * up[k]);
+        if (d[2] > -1e-4) return null;  // looking above the horizon
+        const s = -cam.eye[2] / d[2];
+        return [cam.eye[0] + s * d[0], cam.eye[1] + s * d[1]];
+      }
+
+      function setRoomGoal(on) {
+        room.goalMode = !!on && room.canDrive;
+        $('raumZiel').classList.toggle('aktiv', room.goalMode);
+        $('raumCanvas').classList.toggle('ziel', room.goalMode);
+        if (room.goalMode) message('Auf den Boden tippen, wohin er fahren soll (Ziehen dreht weiter die Ansicht).');
+      }
+
+      async function driveToRoomPoint(clientX, clientY) {
+        const point = floorPoint(clientX, clientY);
+        if (!point) { message('Bitte auf den Boden tippen, nicht in den Himmel.', true); return; }
+        setRoomGoal(false);
+        const [x, y] = point;
+        try {
+          setLocalization(await api('/api/mapping/ziel', { method: 'POST', body: JSON.stringify({ x, y }) }));
+          message(`Fahrt zu (${x.toFixed(2)}, ${y.toFixed(2)}) gestartet.`);
+        } catch (error) { message(error.message, true); }
       }
 
       function openRoom() {
@@ -1656,11 +1825,13 @@
       (() => {
         const c = $('raumCanvas');
         const pointers = new Map();
-        let last = null, pinch = null;
+        let last = null, pinch = null, tap = null;
         c.addEventListener('contextmenu', (e) => e.preventDefault());
         c.addEventListener('pointerdown', (e) => {
           c.setPointerCapture(e.pointerId);
           pointers.set(e.pointerId, [e.clientX, e.clientY]);
+          // a tap (no drag, one finger, left button) can set a goal
+          tap = pointers.size === 1 && e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
           last = { x: e.clientX, y: e.clientY, pan: e.button === 2 || e.shiftKey };
           c.classList.add('dragging');
         });
@@ -1693,6 +1864,11 @@
           drawRoom();
         });
         const up = (e) => {
+          if (e.type === 'pointerup' && tap && pointers.size === 1 && room.goalMode
+              && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 8) {
+            driveToRoomPoint(e.clientX, e.clientY);
+          }
+          if (pointers.size > 1) tap = null;
           pointers.delete(e.pointerId);
           if (pointers.size < 2) pinch = null;
           if (!pointers.size) { last = null; c.classList.remove('dragging'); }
@@ -1709,6 +1885,11 @@
       })();
 
       $('raumZeigen').addEventListener('click', openRoom);
+      $('raumZiel').addEventListener('click', () => setRoomGoal(!room.goalMode));
+      $('raumZielStop').addEventListener('click', async () => {
+        try { setLocalization(await api('/api/mapping/ziel/stop', { method: 'POST' })); }
+        catch (error) { message(error.message, true); }
+      });
       $('raumZu').addEventListener('click', closeRoom);
       $('raumAnsicht').addEventListener('click', (event) => { if (event.target === $('raumAnsicht')) closeRoom(); });
       window.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !$('raumAnsicht').hidden) closeRoom(); });
