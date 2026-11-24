@@ -1270,7 +1270,7 @@ User interface: `GET /map`.
 | `GET /api/mapping/fotos/{karte}/{datei}`   | the photo as JPEG; 404 if unknown                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `POST /api/mapping/fotos`                  | take a photo now ("Foto hier"); returns the entry; 409 with reason without a map, with an uncertain pose or without a fresh camera image                                                                                                                                                                                                                                                                                                                    |
 | `DELETE /api/mapping/fotos/{id}`           | delete a photo; 404 if unknown                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `GET /api/mapping/raum3d` | 3D map of the current map (new 24.11., see "3D map"): `verfuegbar`, `aufnahme`, `karte`, `anzahl` (shown blocks), `bloecke_gesamt`, `mit_farbe` (blocks with a colour), `farbkamera`, `voll`, `voxel_m`, `stand`, `text`, `fehler` |
+| `GET /api/mapping/raum3d` | 3D map of the current map (new 24.11., see "3D map"): `verfuegbar`, `aufnahme`, `karte`, `anzahl` (shown blocks), `bloecke_gesamt`, `mit_farbe` (blocks with a colour), `farbkamera`, `live` (pcs on the live stream), `roh` (`{aktiv, bilder}`), `voll`, `voxel_m`, `stand`, `text`, `fehler` |
 | `GET /api/mapping/raum3d/bloecke` | the shown blocks, binary, 16 bytes each, little-endian: int16 `ix, iy, iz, 0`, then uint8 `r, g, b, a` (`a` = 255 with colour, 0 without), then int8 `nx, ny, nz, n` (surface normal times 127, `n` = 127 with normal, 0 without; test branch `feat/3d-surfaces`, before 12 bytes without normal); index times `voxel_m` = lower corner of the block in the map frame, z = height above the floor |
 | `POST /api/mapping/raum3d/aufnahme` | body `{"aktiv": true}`: keep the depth camera on for the 3D map (until switched off or the server restarts); 409 without depth camera |
 | `DELETE /api/mapping/raum3d` | delete the 3D map of the current map |
@@ -1278,6 +1278,7 @@ User interface: `GET /map`.
 | `GET /api/mapping/raum3d/roh` | raw recordings of the current map: `karte`, `laeuft` (running session or `null`), `sitzungen` (`[{name, bilder, mb}]`) |
 | `GET /api/mapping/raum3d/roh/{name}.zip` | one raw recording as ZIP (for `scripts/build_mesh.py`); 404 if unknown |
 | `DELETE /api/mapping/raum3d/roh/{name}` | delete a raw recording; 404 if unknown |
+| `WS /api/mapping/raum3d/live` | live images for building the mesh on a pc (test branch `feat/3d-surfaces`): text `{"type": "meta", ...}` (as `meta.json`, again when the map changes), `{"type": "status", "text", "karte"}` every `MAP3D_LIVE_STATUS_S` while no image comes, `{"type": "fehler", "text"}` then close without depth camera; binary = one image: uint32 LE header length, json header (as a `frames.jsonl` line plus `tiefe_bytes`, `farbe_bytes`), depth png, colour jpeg. The depth camera stays on while a client is connected |
 | `WS /api/mapping/ws`                       | `{"type": "status"}` every 3 s, `{"type": "map"}` on every new map, `{"type": "fahrt"}` on changes of the mapping drive, `{"type": "ortung"}` on changes of the pose (content as `GET /api/mapping/ortung`)                                                                                                                                                                                                                                                 |
 
 `GET /api/mapping/map` and the `map` packets deliver the map **the robot is
@@ -1434,7 +1435,15 @@ mounting, range). At most `MAP3D_RAW_MAX_FRAMES` images. Download as ZIP
 on `/map`; `python scripts/build_mesh.py <zip>` on a pc (needs `pip install
 open3d opencv-python numpy`) fuses them into a coloured mesh (`.ply`, TSDF
 fusion with marching cubes; options `--voxel`, `--trunc`, `--every`,
-`--show`).
+`--show`). Live: `python scripts/build_mesh.py --live 10.42.0.62` (also
+`pip install websockets`) connects to `WS /api/mapping/raum3d/live`, fuses
+every image as it arrives and shows the growing model in a window (surface
+refreshed every `--refresh` s, robot as a small coordinate cross); the
+received images are kept in `live_<time>/` in the raw recording format, the
+mesh goes to `live_<time>.ply` when the window is closed or on Ctrl+C. Each
+client has its own queue of `MAP3D_LIVE_QUEUE` images: a slow pc misses
+images, the robot never waits. `GET /api/mapping/raum3d` contains `live`
+(number of connected clients).
 
 **Choosing the camera (new 23.11.).** A selection field next to the
 panorama button on `/map` picks the camera; the default is

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import logging
+import os
+import queue
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 
+from .. import config
 from .manager import MappingManager
 
 log = logging.getLogger(__name__)
@@ -372,6 +374,66 @@ def create_mapping_router(manager: MappingManager | None = None, drive=None) -> 
         if path is None:
             raise HTTPException(status_code=404, detail="Foto nicht gefunden.")
         return FileResponse(path, media_type="image/jpeg")
+
+    @router.websocket("/api/mapping/raum3d/live")
+    async def room3d_live(websocket: WebSocket) -> None:
+        """Live images for building the mesh on a pc (scripts/build_mesh.py --live):
+        text json {"type": "meta"|"status", ...}, binary = one image (room3d.encode_live)"""
+        from .room3d import encode_live
+
+        room = getattr(drive, "room3d", None) if drive is not None else None
+        await websocket.accept()
+        if room is None or not room.available:
+            await websocket.send_json({"type": "fehler", "text": "Keine Tiefenkamera oder 3D-Karte aus"})
+            await websocket.close()
+            return
+        q = room.add_live()
+        sent_meta = None
+        index = 0
+        last_status = 0.0
+        gone = asyncio.Event()
+
+        async def watch() -> None:
+            # the client sends nothing; receive() only returns when it leaves
+            try:
+                while True:
+                    message = await websocket.receive()
+                    if message.get("type") == "websocket.disconnect":
+                        break
+            except Exception:
+                pass
+            gone.set()
+
+        watcher = asyncio.create_task(watch())
+        try:
+            while not gone.is_set():
+                try:
+                    item = await asyncio.to_thread(q.get, True, config.MAP3D_LIVE_WAIT_S)
+                except queue.Empty:
+                    item = None  # nothing new: a status line now and then
+                if gone.is_set():
+                    break
+                loop_time = asyncio.get_running_loop().time()
+                if item is None:
+                    if loop_time - last_status >= config.MAP3D_LIVE_STATUS_S:
+                        last_status = loop_time
+                        brief = room.brief()
+                        await websocket.send_json({"type": "status", "text": brief["text"],
+                                                   "karte": brief["karte"]})
+                    continue
+                if item["meta"] is not sent_meta:
+                    sent_meta = item["meta"]
+                    await websocket.send_json({"type": "meta", **sent_meta})
+                data = await asyncio.to_thread(encode_live, item, index)
+                index += 1
+                await websocket.send_bytes(data)
+        except (WebSocketDisconnect, RuntimeError):
+            pass
+        except Exception:
+            log.warning("3D live stream ended with an error", exc_info=True)
+        finally:
+            watcher.cancel()
+            room.remove_live(q)
 
     @router.websocket("/api/mapping/ws")
     async def mapping_websocket(websocket: WebSocket) -> None:

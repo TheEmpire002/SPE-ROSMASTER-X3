@@ -1330,6 +1330,12 @@ MAP3D_RAW_MAX_FRAMES = 3000
 MAP3D_RAW_QUEUE = 20
 # on shutdown wait this long (s) for queued raw images to be written
 MAP3D_RAW_DRAIN_S = 3.0
+# live stream to a pc (scripts/build_mesh.py --live): images waiting per pc,
+# and how often (s) a status line is sent while no image comes
+MAP3D_LIVE_QUEUE = 8
+MAP3D_LIVE_STATUS_S = 2.0
+# the stream waits at most this long (s) for an image before looking again
+MAP3D_LIVE_WAIT_S = 0.5
 
 # --- Camera tilt servo (person camera, up and down) ------------------------------
 # details in sensors/camera_tilt.py. servo on the expansion board, moved with

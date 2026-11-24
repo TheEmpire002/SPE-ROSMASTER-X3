@@ -203,7 +203,7 @@
             <div class="help" style="margin-top:7px">Die Tiefenkamera misst beim Fahren den Raum in 3-cm-Blöcken mit, solange er weiß, wo er ist. Langsam fahren und drehen, bis etwa 3 m Abstand.</div>
             <button id="raumRoh" class="secondary" type="button" style="margin-top:9px" disabled>⏺ Rohaufnahme fürs 3D-Modell</button>
             <div id="raumRohListe" class="saved-list" style="margin-top:7px"></div>
-            <div class="help" style="margin-top:6px">Speichert Tiefen- und Farbbilder mit Position. Als ZIP herunterladen, dann am PC: <code>python scripts/build_mesh.py rohaufnahme_….zip</code> rechnet daraus ein farbiges 3D-Modell (.ply).</div>
+            <div class="help" style="margin-top:6px">Speichert Tiefen- und Farbbilder mit Position. Als ZIP herunterladen, dann am PC: <code>python scripts/build_mesh.py rohaufnahme_….zip</code> rechnet daraus ein farbiges 3D-Modell (.ply). Live beim Fahren: <code>python scripts/build_mesh.py --live 10.42.0.62</code></div>
           </div>
 
           <details class="erst full" id="erstBox">
@@ -1346,6 +1346,7 @@
         $('raumZeigen').disabled = !r.anzahl;
         text.textContent = r.karte
           ? `${r.anzahl.toLocaleString('de-DE')} Blöcke in „${r.karte}“ · ${r.text}` + (r.fehler ? ` · ${r.fehler}` : '')
+            + (r.live ? ` · ${r.live === 1 ? 'ein PC baut' : `${r.live} PCs bauen`} live mit` : '')
           : `Keine Karte, in der er seine Lage kennt -- ${r.text}`;
         if (!$('raumAnsicht').hidden) drawRoom();
       }

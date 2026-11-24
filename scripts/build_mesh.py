@@ -1,14 +1,22 @@
-"""Coloured 3D model (mesh) from a raw recording of the robot -- runs on a pc.
+"""Coloured 3D model (mesh) from the robot's depth images -- runs on a pc.
 
-On /map: „Rohaufnahme fürs 3D-Modell“, drive slowly through the room, stop,
-download the ZIP. Then:
+Offline, from a raw recording (/map: „Rohaufnahme fürs 3D-Modell“, then ZIP):
 
     pip install open3d opencv-python numpy
     python scripts/build_mesh.py rohaufnahme_20261124-153000.zip
     python scripts/build_mesh.py rohaufnahme_....zip --show        # look at it right away
 
-Writes ``<recording>.ply`` (vertices with colour and normals), opens in
-MeshLab, Blender, Windows 3D Viewer or PowerPoint (3D models).
+Live, while the robot drives (also needs ``pip install websockets``):
+
+    python scripts/build_mesh.py --live 10.42.0.62
+
+The model grows in a window while the robot drives; close the window or press
+Ctrl+C to stop. The received images are kept in ``live_<time>/`` (same format
+as a raw recording, so it can be rebuilt offline with other settings) and the
+mesh is written to ``live_<time>.ply``.
+
+Writes ``.ply`` (vertices with colour and normals), opens in MeshLab,
+Blender, Windows 3D Viewer or PowerPoint (3D models).
 
 How: every depth image is fused into a truncated signed distance volume
 (open3d's ScalableTSDFVolume, the method behind KinectFusion) at the pose the
@@ -29,6 +37,7 @@ import json
 import math
 import sys
 import tempfile
+import time
 import zipfile
 from pathlib import Path
 
@@ -65,10 +74,9 @@ def camera_to_world(meta: dict, pose, floor) -> "np.ndarray":
     return world @ level @ robot
 
 
-def color_on_depth(cv2, np, path: Path, box, w: int, h: int):
-    """Cut the colour image to the box where the depth image lies, scale it to
-    the depth size; parts outside the colour image stay grey"""
-    image = cv2.imread(str(path), cv2.IMREAD_COLOR)
+def color_on_depth(cv2, np, image, box, w: int, h: int):
+    """Cut the colour image (bgr) to the box where the depth image lies, scale
+    it to the depth size; parts outside the colour image stay grey. rgb out"""
     x0, y0, bw, bh = box
     H, W = image.shape[:2]
     canvas = np.full((bh, bw, 3), 128, dtype=np.uint8)
@@ -79,27 +87,53 @@ def color_on_depth(cv2, np, path: Path, box, w: int, h: int):
     return cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("recording", help="ZIP from /map or the unpacked folder")
-    parser.add_argument("--out", help="output .ply (default: beside the recording)")
-    parser.add_argument("--voxel", type=float, default=0.02, help="volume cell (m), smaller = finer and slower")
-    parser.add_argument("--trunc", type=float, default=0.08, help="truncation distance (m), about 3-4 cells")
-    parser.add_argument("--every", type=int, default=1, help="use every n-th image")
-    parser.add_argument("--max-range", type=float, help="ignore depth beyond this (m), default from the robot")
-    parser.add_argument("--min-cluster", type=int, default=500,
-                        help="drop loose pieces with fewer triangles (noise); 0 = keep all")
-    parser.add_argument("--show", action="store_true", help="open a viewer at the end")
-    args = parser.parse_args()
+class Fusion:
+    """The tsdf volume plus what is needed to add one image to it"""
 
-    try:
-        import cv2
-        import numpy as np
-        import open3d as o3d
-    except ImportError as exc:
-        print(f"missing package ({exc.name}): pip install open3d opencv-python numpy", file=sys.stderr)
-        return 1
+    def __init__(self, o3d, np, cv2, meta: dict, args) -> None:
+        self.o3d, self.np, self.cv2 = o3d, np, cv2
+        self.meta = meta
+        self.args = args
+        self.w, self.h = meta["tiefe_breite"], meta["tiefe_hoehe"]
+        fx = (self.w / 2.0) / math.tan(meta["hfov"] / 2.0)
+        fy = (self.h / 2.0) / math.tan(meta["vfov"] / 2.0)
+        self.intrinsic = o3d.camera.PinholeCameraIntrinsic(self.w, self.h, fx, fy, self.w / 2.0, self.h / 2.0)
+        self.max_range = args.max_range or meta.get("max_m", 3.0)
+        self.min_mm = int(meta.get("min_m", 0.5) * 1000)
+        self.volume = o3d.pipelines.integration.ScalableTSDFVolume(
+            voxel_length=args.voxel, sdf_trunc=args.trunc,
+            color_type=o3d.pipelines.integration.TSDFVolumeColorType.RGB8)
+        self.grey = np.full((self.h, self.w, 3), 128, dtype=np.uint8)
+        self.count = 0
 
+    def add(self, line: dict, depth, color_bgr) -> None:
+        """One image: depth (uint16 mm), colour (bgr or None), its frames.jsonl line"""
+        np, o3d = self.np, self.o3d
+        depth = depth.astype(np.uint16)
+        depth[depth < self.min_mm] = 0  # the astra measures nothing useful that close
+        color = self.grey
+        if color_bgr is not None and line.get("farbe"):
+            color = color_on_depth(self.cv2, np, color_bgr, line["farbe"]["box"], self.w, self.h)
+        rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
+            o3d.geometry.Image(np.ascontiguousarray(color)), o3d.geometry.Image(np.ascontiguousarray(depth)),
+            depth_scale=1000.0, depth_trunc=self.max_range, convert_rgb_to_intensity=False)
+        extrinsic = np.linalg.inv(camera_to_world(self.meta, line["pose"], line.get("boden")))
+        self.volume.integrate(rgbd, self.intrinsic, extrinsic)
+        self.count += 1
+
+    def mesh(self, clean: bool = True):
+        np = self.np
+        mesh = self.volume.extract_triangle_mesh()
+        if clean and self.args.min_cluster > 0 and len(mesh.triangles):
+            clusters, sizes, _ = mesh.cluster_connected_triangles()
+            clusters, sizes = np.asarray(clusters), np.asarray(sizes)
+            mesh.remove_triangles_by_mask(sizes[clusters] < self.args.min_cluster)
+            mesh.remove_unreferenced_vertices()
+        mesh.compute_vertex_normals()
+        return mesh
+
+
+def offline(o3d, np, cv2, args) -> int:
     source = Path(args.recording)
     temp = None
     if source.suffix.lower() == ".zip":
@@ -117,44 +151,21 @@ def main() -> int:
     frames = [json.loads(line) for line in (folder / "frames.jsonl").read_text(encoding="utf-8").splitlines()
               if line.strip()]
     frames = frames[::max(1, args.every)]
-    w, h = meta["tiefe_breite"], meta["tiefe_hoehe"]
-    fx = (w / 2.0) / math.tan(meta["hfov"] / 2.0)
-    fy = (h / 2.0) / math.tan(meta["vfov"] / 2.0)
-    intrinsic = o3d.camera.PinholeCameraIntrinsic(w, h, fx, fy, w / 2.0, h / 2.0)
-    max_range = args.max_range or meta.get("max_m", 3.0)
-    min_mm = int(meta.get("min_m", 0.5) * 1000)
-
-    volume = o3d.pipelines.integration.ScalableTSDFVolume(
-        voxel_length=args.voxel, sdf_trunc=args.trunc,
-        color_type=o3d.pipelines.integration.TSDFVolumeColorType.RGB8)
-    grey = np.full((h, w, 3), 128, dtype=np.uint8)
-    print(f"{len(frames)} images, {w}x{h}, map '{meta.get('karte')}'")
+    fusion = Fusion(o3d, np, cv2, meta, args)
+    print(f"{len(frames)} images, {fusion.w}x{fusion.h}, map '{meta.get('karte')}'")
     for k, fr in enumerate(frames):
         stem = f"{fr['i']:05d}"
         depth = cv2.imread(str(folder / f"{stem}_tiefe.png"), cv2.IMREAD_UNCHANGED)
         if depth is None:
             continue
-        depth = depth.astype(np.uint16)
-        depth[depth < min_mm] = 0  # the astra measures nothing useful that close
-        color = grey
+        color = None
         if fr.get("farbe") and (folder / f"{stem}_farbe.jpg").exists():
-            color = color_on_depth(cv2, np, folder / f"{stem}_farbe.jpg", fr["farbe"]["box"], w, h)
-        rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
-            o3d.geometry.Image(np.ascontiguousarray(color)), o3d.geometry.Image(depth),
-            depth_scale=1000.0, depth_trunc=max_range, convert_rgb_to_intensity=False)
-        extrinsic = np.linalg.inv(camera_to_world(meta, fr["pose"], fr.get("boden")))
-        volume.integrate(rgbd, intrinsic, extrinsic)
+            color = cv2.imread(str(folder / f"{stem}_farbe.jpg"), cv2.IMREAD_COLOR)
+        fusion.add(fr, depth, color)
         if (k + 1) % 50 == 0:
             print(f"  {k + 1}/{len(frames)}")
-
     print("extracting the surface ...")
-    mesh = volume.extract_triangle_mesh()
-    if args.min_cluster > 0 and len(mesh.triangles):
-        clusters, sizes, _ = mesh.cluster_connected_triangles()
-        clusters, sizes = np.asarray(clusters), np.asarray(sizes)
-        mesh.remove_triangles_by_mask(sizes[clusters] < args.min_cluster)
-        mesh.remove_unreferenced_vertices()
-    mesh.compute_vertex_normals()
+    mesh = fusion.mesh()
     out = Path(args.out) if args.out else source.with_suffix(".ply")
     o3d.io.write_triangle_mesh(str(out), mesh)
     print(f"{len(mesh.vertices)} vertices, {len(mesh.triangles)} triangles -> {out}")
@@ -163,6 +174,157 @@ def main() -> int:
     if temp is not None:
         temp.cleanup()
     return 0
+
+
+def robot_marker(o3d, pose):
+    """Small coordinate cross where the robot is (red = forward)"""
+    marker = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
+    marker.rotate(o3d.geometry.get_rotation_matrix_from_xyz((0.0, 0.0, pose[2])), center=(0, 0, 0))
+    marker.translate((pose[0], pose[1], 0.0))
+    return marker
+
+
+def live(o3d, np, cv2, args) -> int:
+    try:
+        from websockets.exceptions import WebSocketException
+        from websockets.sync.client import connect
+    except ImportError:
+        print("missing package: pip install websockets", file=sys.stderr)
+        return 1
+    host = args.live if ":" in args.live else f"{args.live}:8000"
+    url = f"ws://{host}/api/mapping/raum3d/live"
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    out = Path(args.out) if args.out else Path(f"live_{stamp}.ply")
+    folder = out.parent / (out.stem if out.suffix.lower() == ".ply" else out.name)
+    if out.suffix.lower() != ".ply":
+        out = out.parent / f"{out.name}.ply"
+    folder.mkdir(parents=True, exist_ok=True)
+    print(f"connecting to {url} ... images go to {folder}/")
+
+    vis = o3d.visualization.Visualizer()
+    vis.create_window(window_name=f"Roboter live -- {folder.name}", width=1280, height=800)
+    vis.get_render_option().mesh_show_back_face = True
+    shown: list = []
+    fusion: Fusion | None = None
+    last_mesh = 0.0
+    last_pose = None
+    first_view = True
+    running = True
+    received = 0
+
+    def refresh() -> None:
+        nonlocal shown, first_view
+        if fusion is None or not fusion.count:
+            return
+        geometries = [fusion.mesh(clean=False)]
+        if last_pose is not None:
+            geometries.append(robot_marker(o3d, last_pose))
+        for g in shown:
+            vis.remove_geometry(g, reset_bounding_box=False)
+        for g in geometries:
+            vis.add_geometry(g, reset_bounding_box=first_view)
+        shown = geometries
+        first_view = False
+
+    try:
+        with connect(url, max_size=None, open_timeout=10) as ws:
+            while running:
+                try:
+                    message = ws.recv(timeout=0.05)
+                except TimeoutError:
+                    message = None
+                if isinstance(message, str):
+                    data = json.loads(message)
+                    if data.get("type") == "meta":
+                        if fusion is not None and (fusion.meta.get("karte"), fusion.meta.get("frame_id")) != (
+                                data.get("karte"), data.get("frame_id")):
+                            print("the robot switched maps -- stopping, positions would no longer fit")
+                            break
+                        meta = {k: v for k, v in data.items() if k != "type"}
+                        if fusion is None:
+                            fusion = Fusion(o3d, np, cv2, meta, args)
+                            (folder / "meta.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
+                            print(f"map '{meta.get('karte')}', depth {fusion.w}x{fusion.h} -- drive slowly")
+                    elif data.get("type") == "status":
+                        print(f"\r  robot: {data.get('text')}" + " " * 20, end="", flush=True)
+                    elif data.get("type") == "fehler":
+                        print(f"robot: {data.get('text')}", file=sys.stderr)
+                        break
+                elif isinstance(message, bytes) and fusion is not None:
+                    n = int.from_bytes(message[:4], "little")
+                    line = json.loads(message[4:4 + n])
+                    start = 4 + n
+                    png = message[start:start + line["tiefe_bytes"]]
+                    jpeg = message[start + line["tiefe_bytes"]:start + line["tiefe_bytes"] + line["farbe_bytes"]]
+                    depth = cv2.imdecode(np.frombuffer(png, np.uint8), cv2.IMREAD_UNCHANGED)
+                    color = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR) if jpeg else None
+                    # keep it like a raw recording: rebuild offline with other settings later
+                    line = {k: v for k, v in line.items() if k not in ("tiefe_bytes", "farbe_bytes")}
+                    line["i"] = received
+                    stem = f"{received:05d}"
+                    (folder / f"{stem}_tiefe.png").write_bytes(png)
+                    if jpeg:
+                        (folder / f"{stem}_farbe.jpg").write_bytes(jpeg)
+                    else:
+                        line["farbe"] = None
+                    with open(folder / "frames.jsonl", "a", encoding="utf-8") as f:
+                        f.write(json.dumps(line) + "\n")
+                    received += 1
+                    if depth is not None:
+                        fusion.add(line, depth, color)
+                        last_pose = line["pose"]
+                    print(f"\r  {received} images" + " " * 30, end="", flush=True)
+                # the surface every few seconds: extracting it costs more than adding an image
+                if time.monotonic() - last_mesh > args.refresh:
+                    last_mesh = time.monotonic()
+                    refresh()
+                if not vis.poll_events():
+                    running = False  # window closed
+                vis.update_renderer()
+    except KeyboardInterrupt:
+        pass
+    except (OSError, WebSocketException) as exc:
+        # robot stopped, wifi gone: keep what came, the mesh is still written
+        print(f"\nconnection ended: {exc}", file=sys.stderr)
+    print()
+    vis.destroy_window()
+    if fusion is None or not fusion.count:
+        print("no images received -- is the robot localized in a map and the depth camera available?")
+        return 1
+    print("extracting the surface ...")
+    mesh = fusion.mesh()
+    o3d.io.write_triangle_mesh(str(out), mesh)
+    print(f"{fusion.count} images, {len(mesh.vertices)} vertices, {len(mesh.triangles)} triangles -> {out}")
+    if args.show:
+        o3d.visualization.draw_geometries([mesh], window_name=out.name, mesh_show_back_face=True)
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("recording", nargs="?", help="ZIP from /map or the unpacked folder")
+    parser.add_argument("--live", metavar="HOST", help="build live from the robot (ip, optionally :port)")
+    parser.add_argument("--out", help="output .ply (live: also the folder name for the images)")
+    parser.add_argument("--voxel", type=float, default=0.02, help="volume cell (m), smaller = finer and slower")
+    parser.add_argument("--trunc", type=float, default=0.08, help="truncation distance (m), about 3-4 cells")
+    parser.add_argument("--every", type=int, default=1, help="offline: use every n-th image")
+    parser.add_argument("--max-range", type=float, help="ignore depth beyond this (m), default from the robot")
+    parser.add_argument("--min-cluster", type=int, default=500,
+                        help="drop loose pieces with fewer triangles (noise); 0 = keep all")
+    parser.add_argument("--refresh", type=float, default=3.0, help="live: rebuild the shown surface every n s")
+    parser.add_argument("--show", action="store_true", help="open a viewer at the end")
+    args = parser.parse_args()
+    if not args.recording and not args.live:
+        parser.error("give a recording (ZIP or folder) or --live HOST")
+
+    try:
+        import cv2
+        import numpy as np
+        import open3d as o3d
+    except ImportError as exc:
+        print(f"missing package ({exc.name}): pip install open3d opencv-python numpy", file=sys.stderr)
+        return 1
+    return live(o3d, np, cv2, args) if args.live else offline(o3d, np, cv2, args)
 
 
 if __name__ == "__main__":

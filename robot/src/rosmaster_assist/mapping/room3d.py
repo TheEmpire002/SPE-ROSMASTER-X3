@@ -45,6 +45,11 @@ mm), the colour image used (jpeg), and one line per image in
 ``scripts/build_mesh.py`` on a pc fuses them into a coloured mesh (open3d
 tsdf). A writer thread does the files, the sd card must not hold up tick.
 
+Live stream (test branch feat/3d-surfaces): the same images also go to every
+pc connected to the websocket /api/mapping/raum3d/live, which builds the mesh
+while the robot drives (``scripts/build_mesh.py --live``). One small queue per
+listener; a slow pc loses images, the robot never waits for it.
+
 ``tick`` runs in a worker thread (map_control's tick loop), the endpoints in
 the event loop; everything shared is behind ``_lock``. File access (load,
 save, delete) is serialized by ``_io_lock``, so a delete cannot be undone by
@@ -159,6 +164,10 @@ class Room3D:
         self._raw_thread: threading.Thread | None = None
         # colour image the last integrated depth image used (jpeg, box, size)
         self._last_color: tuple[bytes, tuple, tuple] | None = None
+        # live listeners (websocket clients), one queue each
+        self._live: list[queue.Queue] = []
+        self._live_lock = threading.Lock()
+        self._live_meta: tuple[Any, dict] | None = None    # (map, meta) sent with the images
         if config.MAP3D_RECORD:
             self.set_recording(True)
 
@@ -323,6 +332,7 @@ class Room3D:
         self.last_error = None
         added, colored = added
         self._raw_frame(frame, pose)
+        self._live_frame(frame, pose)
         self.text = ("Speicher voll -- ergänzt nur noch" if self._full
                      else f"nimmt auf ({added} Punkte im letzten Bild"
                           + ("" if colored or self._color_camera is None else ", ohne Farbbild") + ")")
@@ -509,16 +519,7 @@ class Room3D:
             self._raw_thread.start()
         index = raw["frames"]
         if not raw["meta"]:
-            h, w = frame.raw.shape
-            raw["meta"] = {
-                "karte": raw["map"][0], "frame_id": raw["map"][1],
-                "tiefe_breite": w, "tiefe_hoehe": h,
-                "hfov": self._depth.hfov, "vfov": self._depth.vfov,
-                "kamera_hoehe_m": config.DEPTH_CAMERA_HEIGHT_M,
-                "kamera_vorn_m": config.DEPTH_CAMERA_FORWARD_M,
-                "kamera_neigung_grad": config.DEPTH_CAMERA_TILT_DEG,
-                "min_m": config.MAP3D_MIN_M, "max_m": config.MAP3D_MAX_M,
-            }
+            raw["meta"] = self._meta(frame, raw["map"])
         item = {
             "dir": raw["dir"], "index": index, "depth": frame.raw.copy(),
             "color": self._last_color, "pose": pose, "floor": frame.floor,
@@ -529,6 +530,60 @@ class Room3D:
         except queue.Full:
             return  # sd card too slow: skip this image rather than stall
         raw["frames"] = index + 1
+
+    def _meta(self, frame, current) -> dict[str, Any]:
+        """What a pc needs to place the images: sizes, fields of view, mounting"""
+        h, w = frame.raw.shape
+        return {
+            "karte": current[0], "frame_id": current[1],
+            "tiefe_breite": w, "tiefe_hoehe": h,
+            "hfov": self._depth.hfov, "vfov": self._depth.vfov,
+            "kamera_hoehe_m": config.DEPTH_CAMERA_HEIGHT_M,
+            "kamera_vorn_m": config.DEPTH_CAMERA_FORWARD_M,
+            "kamera_neigung_grad": config.DEPTH_CAMERA_TILT_DEG,
+            "min_m": config.MAP3D_MIN_M, "max_m": config.MAP3D_MAX_M,
+        }
+
+    # --- live stream to a pc ---
+
+    def add_live(self) -> queue.Queue:
+        """Register a listener; the depth camera stays on while anyone listens"""
+        q: queue.Queue = queue.Queue(maxsize=config.MAP3D_LIVE_QUEUE)
+        # camera switch under the lock: a leaving client must not switch it off
+        # right after a new one switched it on
+        with self._live_lock:
+            self._live.append(q)
+            if self._depth is not None:
+                self._depth.activate("raum3d-live", True)
+        return q
+
+    def remove_live(self, q: queue.Queue) -> None:
+        with self._live_lock:
+            if q in self._live:
+                self._live.remove(q)
+            if not self._live and self._depth is not None:
+                self._depth.activate("raum3d-live", False)
+
+    @property
+    def live_count(self) -> int:
+        with self._live_lock:
+            return len(self._live)
+
+    def _live_frame(self, frame, pose) -> None:
+        """Hand one integrated image to every listener (tick thread)"""
+        with self._live_lock:
+            listeners = list(self._live)
+        if not listeners or self._map is None:
+            return
+        if self._live_meta is None or self._live_meta[0] != self._map:
+            self._live_meta = (self._map, self._meta(frame, self._map))
+        item = {"depth": frame.raw.copy(), "color": self._last_color, "pose": pose,
+                "floor": frame.floor, "time": frame.timestamp, "meta": self._live_meta[1]}
+        for q in listeners:
+            try:
+                q.put_nowait(item)
+            except queue.Full:
+                pass  # this pc is behind: it misses the image, the robot goes on
 
     def _raw_writer(self) -> None:
         while True:
@@ -706,6 +761,7 @@ class Room3D:
                 "stand": self.stand,
                 "text": self.text,
                 "fehler": self.last_error,
+                "live": self.live_count,
                 "roh": {"aktiv": self._raw is not None,
                         "bilder": self._raw["frames"] if self._raw is not None else 0},
             }
@@ -736,3 +792,28 @@ def _normals(np, x, y, z, valid, step):
     flip = np.einsum("ij,ij->i", out, toward) < 0
     out[flip] *= -1.0
     return out
+
+
+def encode_live(item: dict, index: int) -> bytes:
+    """One live image as a binary websocket message: uint32 (little-endian)
+    length of a json header, the header (i, t, pose, boden, farbe as in
+    frames.jsonl, plus tiefe_bytes and farbe_bytes), the depth png (16-bit,
+    mm), then the colour jpeg if any"""
+    import cv2
+
+    ok, png = cv2.imencode(".png", item["depth"])
+    if not ok:
+        raise OSError("depth png not encoded")
+    png = png.tobytes()
+    jpeg = b""
+    farbe = None
+    if item["color"] is not None:
+        jpeg, box, size = item["color"]
+        farbe = {"box": list(box), "groesse": list(size)}
+    header = json.dumps({
+        "i": index, "t": round(item["time"], 3),
+        "pose": [round(v, 4) for v in item["pose"]],
+        "boden": [round(v, 5) for v in item["floor"]] if item["floor"] else None,
+        "farbe": farbe, "tiefe_bytes": len(png), "farbe_bytes": len(jpeg),
+    }).encode("utf-8")
+    return len(header).to_bytes(4, "little") + header + png + jpeg
