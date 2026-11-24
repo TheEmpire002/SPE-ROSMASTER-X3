@@ -503,7 +503,8 @@ class Healthbot:
         """Run a homing drive begun by ``start()``; after a drive loss it starts
         again. False if it does not start (the reason is in last_reason).
 
-        ``watch()`` is asked during the drive; True cancels it (``watch_reason``).
+        ``watch()`` is asked during the drive; a true answer cancels it, with
+        the answer as reason if it is a text, otherwise ``watch_reason``.
         """
         while True:
             await self._wait_drive()
@@ -512,8 +513,9 @@ class Healthbot:
                 return False
             while self._homing.active:
                 await asyncio.sleep(0.2)
-                if watch is not None and self._homing.active and watch():
-                    self._homing.cancel(watch_reason)
+                said = watch() if watch is not None and self._homing.active else None
+                if said:
+                    self._homing.cancel(said if isinstance(said, str) else watch_reason)
                     while self._homing.active:
                         await asyncio.sleep(0.05)
                     return True
@@ -528,6 +530,27 @@ class Healthbot:
         if scan is None or time.monotonic() - scan.timestamp > _SCAN_MAX_AGE_S:
             return None
         return scan.points()
+
+    def _front_x(self) -> float | None:
+        """Median distance straight ahead (lidar, robot frame x), None
+        without a scan or with too few points."""
+        points = self._points()
+        if points is None:
+            return None
+        p = np.asarray(points, dtype=float)
+        if p.ndim != 2 or len(p) == 0:
+            return None
+        p = p[np.all(np.isfinite(p), axis=1)]
+        r = np.hypot(p[:, 0], p[:, 1])
+        w = np.degrees(np.arctan2(p[:, 1], p[:, 0]))
+        ahead = p[(np.abs(w) <= config.HEALTH_SLIP_HALF_DEG) & (r >= 0.15) & (r <= config.HEALTH_SLIP_MAX_RANGE_M)]
+        if len(ahead) < config.HEALTH_SLIP_MIN_POINTS:
+            return None
+        return float(np.median(ahead[:, 0]))
+
+    def _slipping(self, slip: "_SlipCheck", start) -> bool:
+        """One step of the slip check while driving forward."""
+        return slip.update(self._now(), self._travelled(start), self._front_x(), self._odometry.pose()[2])
 
     def _seen(self) -> dict | None:
         """The person under check: tracked from frame to frame, so a second
@@ -799,6 +822,30 @@ class Healthbot:
             bearing = math.atan2(self._target["y"] - pose[1], self._target["x"] - pose[0])
             await self._turn_by((math.degrees(bearing - pose[2]) + 180.0) % 360.0 - 180.0)
 
+    def _spot_watch(self):
+        """Watch for the drive to the reported spot: ends it
+        HEALTH_SPOT_STANDOFF_M before the spot, or once someone lying in its
+        area is confirmed within HEALTH_SPOT_WATCH_M. The spot is where the
+        person lies; driving onto it runs into them."""
+        tx, ty = self._target["x"], self._target["y"]
+        seen = {"good": 0}
+
+        def watch() -> str | None:
+            pose = self._frame_pose()
+            if pose is None:
+                return None
+            left = math.hypot(tx - pose[0], ty - pose[1])
+            if left <= config.HEALTH_SPOT_STANDOFF_M:
+                return "kurz vor der Stelle"
+            people = self._pose.people() if self._pose is not None and left <= config.HEALTH_SPOT_WATCH_M else []
+            if any(am.down(q) and self._in_area(q) for q in people):
+                seen["good"] += 1
+            else:
+                seen["good"] = 0
+            return "liegende Person in Sicht" if seen["good"] >= config.HEALTH_SPOT_CONFIRM_FRAMES else None
+
+        return watch
+
     def _drive_to(self, x: float, y: float, name: str, angle: float | None = None,
                   speed: float | None = None, blocked_enough_m: float = 0.0):
         """A start function for ``_homing_drive`` in the frame of the check."""
@@ -904,7 +951,7 @@ class Healthbot:
             await self._send("info", "Healthbot: fahre zur gemeldeten Stelle")
             started = await self._homing_drive(self._drive_to(
                 self._target["x"], self._target["y"], "gemeldete Stelle",
-                blocked_enough_m=config.HEALTH_BLOCKED_ENOUGH_M))
+                blocked_enough_m=config.HEALTH_BLOCKED_ENOUGH_M), watch=self._spot_watch())
             if not started:
                 self._note(f"Anfahrt startet nicht: {self._homing.last_reason or 'läuft schon eine Fahrt?'}")
             else:
@@ -1015,6 +1062,7 @@ class Healthbot:
         await self._speak(config.HEALTH_NUDGE_ANNOUNCE)
         if not await self._approach():
             self._note("kommt nicht nah genug heran -- kein Stupsen möglich")
+            await self._make_room()
             return False
         for nr in range(1, config.HEALTH_NUDGE_COUNT + 1):
             if config.HEALTH_NUDGE_AT_LEGS:
@@ -1044,7 +1092,14 @@ class Healthbot:
                     self._check(am.answer(heard))
                 return True
             self._note(f"Stups {nr}: keine Reaktion")
+        await self._make_room()
         return False
+
+    async def _make_room(self) -> None:
+        """Back off from the person before turning to look for help: pressed
+        against them it has no room to turn (robot test: got stuck)."""
+        self._note(f"setzt {config.HEALTH_HELP_BACK_M:.1f} m zurück")
+        await self._back_off(config.HEALTH_HELP_BACK_M)
 
     async def _approach(self) -> bool:
         """Slowly up to HEALTH_NUDGE_START_M (lidar) to the person, keeping
@@ -1060,6 +1115,7 @@ class Healthbot:
         start = self._odometry.pose()
         began = self._now()
         still_since: float | None = None
+        slip = _SlipCheck()
         # last lidar distance: (distance, travelled then, time)
         last: tuple[float, float, float] | None = None
         blind_since: float | None = None
@@ -1111,6 +1167,14 @@ class Healthbot:
                 self._watchdog.stop()
                 self._note("Fahrschutz hält knapp vor der Person (Tiefe/Gedächtnis) -- nah genug zum Stupsen")
                 return True
+            # wheels turn but the scene ahead does not come closer: it pushes
+            # against the person (robot test: odometry counted on to 4 m)
+            if driven.vx > 0.0 and self._slipping(slip, start):
+                self._watchdog.stop()
+                self._note("Räder drehen durch -- steht an der Person")
+                return True
+            if driven.vx <= 0.0:
+                slip.reset()
             # wheels stand although it drives: it touches the person already
             vx_actual = self._odometry.velocity()[0]
             if self._now() - began > 1.0 and driven.vx > 0.0 and vx_actual < config.HEALTH_NUDGE_STILL_MS:
@@ -1154,6 +1218,7 @@ class Healthbot:
         still_since: float | None = None
         # (time, way) samples: contact is little gain over HEALTH_NUDGE_CONTACT_S
         gains: list[tuple[float, float]] = []
+        slip = _SlipCheck()
         reason = "Zeitgrenze"
         while self._now() - began < config.HEALTH_NUDGE_MAX_S:
             now = self._now()
@@ -1178,6 +1243,13 @@ class Healthbot:
             if now - began > 0.6 and pushing and window_full and way - gains[0][1] < config.HEALTH_NUDGE_STALL_M:
                 reason = "Kontakt"
                 break
+            # the wheels turn on against the body: contact as well (robot
+            # test: it pushed against a leg and did not stop)
+            if pushing and self._slipping(slip, start):
+                reason = "Kontakt"
+                break
+            if not pushing:
+                slip.reset()
             if now - began > 0.6 and not pushing:
                 still_since = still_since or now
                 if now - still_since >= config.HEALTH_NUDGE_CONTACT_S:
@@ -1196,11 +1268,12 @@ class Healthbot:
         self._note(f"Stups {nr}: {reason} nach {distance:.2f} m")
         return {"nr": nr, "grund": reason, "weg_m": round(distance, 3), "zeit": time.time()}
 
-    async def _back_off(self) -> None:
+    async def _back_off(self, distance: float | None = None) -> None:
         """Back off at once so the person has room (rear has a drive guard too)."""
+        distance = config.HEALTH_NUDGE_BACK_M if distance is None else distance
         start = self._odometry.pose()
         deadline = self._now() + _BACK_MAX_S
-        while self._now() < deadline and self._travelled(start) < config.HEALTH_NUDGE_BACK_M:
+        while self._now() < deadline and self._travelled(start) < distance:
             self._drive(vx=-config.HEALTH_APPROACH_MIN_SPEED * 2.0)
             await self._tick()
         self._watchdog.stop()
@@ -1436,6 +1509,26 @@ class Healthbot:
             self._note("fährt erst von der Person weg und sucht dann")
         points = [s for s in stops if s is not None]
         self._helper["suchpunkte"] = [[round(x, 2), round(y, 2)] for x, y in points]
+        # the points again and again until the search time is up (robot test:
+        # one round, then it gave up after 18 s)
+        rounds = 0
+        while self._now() < until:
+            rounds += 1
+            self._helper["runden"] = rounds
+            if rounds > 1:
+                self._note(f"sucht weiter: Runde {rounds}")
+                self._call_out(config.HEALTH_HELPER_ROUND_CALL)
+            found = await self._search_round(victim, stops, points, until)
+            if found is not None:
+                return found
+            await self._tick()
+        self._note("niemanden zum Helfen gefunden")
+        await self._speak(config.HEALTH_HELPER_NONE, priority=True)
+        return None
+
+    async def _search_round(self, victim, stops, points, until: float) -> bool | None:
+        """One round over the search points; None if nobody was found,
+        otherwise the result of leading the helper."""
         for stop in stops:
             if self._now() >= until:
                 break
@@ -1459,8 +1552,6 @@ class Healthbot:
             self._helper["gefunden"] = True
             await self._speak(config.HEALTH_HELPER_CALL, priority=True)
             return await self._lead(victim)
-        self._note("niemanden zum Helfen gefunden")
-        await self._speak(config.HEALTH_HELPER_NONE, priority=True)
         return None
 
     def _followed(self) -> bool:
@@ -1619,9 +1710,41 @@ def _thresholds() -> dict:
         "HEALTH_WORDS_UNWELL", "HEALTH_FETCH_HELP", "HEALTH_HELPER_MIN_FROM_VICTIM_M",
         "HEALTH_HELPER_SEARCH_S", "HEALTH_HELPER_POINT_SPACING_M", "HEALTH_HELPER_AWAY_M",
         "HEALTH_HELPER_CHASE_SPEED", "HEALTH_LEAD_SPEED", "HEALTH_FOLLOW_MAX_M", "HEALTH_FOLLOW_HALF_DEG",
-        "HEALTH_FOLLOW_LOST_S", "HEALTH_LEAD_TRIES",
+        "HEALTH_FOLLOW_LOST_S", "HEALTH_LEAD_TRIES", "HEALTH_HELP_BACK_M", "HEALTH_SLIP_WINDOW_S",
+        "HEALTH_SLIP_MIN_WAY_M", "HEALTH_SLIP_RATIO", "HEALTH_SPOT_STANDOFF_M", "HEALTH_SPOT_WATCH_M",
     )
     return {n: getattr(config, n, None) for n in names}
+
+
+class _SlipCheck:
+    """Wheels turn but the scene ahead does not come closer: the robot
+    pushes against something. Wheel slip fools odometry, the lidar does
+    not slip."""
+
+    def __init__(self) -> None:
+        # (time, wheel way, distance ahead, heading in degrees)
+        self._samples: list[tuple[float, float, float, float]] = []
+
+    def reset(self) -> None:
+        self._samples.clear()
+
+    def update(self, now: float, way: float, ahead: float | None, heading: float) -> bool:
+        if ahead is None:
+            self.reset()
+            return False
+        self._samples.append((now, way, ahead, heading))
+        while len(self._samples) > 1 and now - self._samples[1][0] >= config.HEALTH_SLIP_WINDOW_S:
+            self._samples.pop(0)
+        t0, w0, a0, h0 = self._samples[0]
+        if now - t0 < config.HEALTH_SLIP_WINDOW_S:
+            return False
+        # turning shifts the points ahead, that says nothing about slip
+        if abs((heading - h0 + 180.0) % 360.0 - 180.0) > config.HEALTH_SLIP_MAX_TURN_DEG:
+            return False
+        wheels = way - w0
+        if wheels < config.HEALTH_SLIP_MIN_WAY_M:
+            return False
+        return a0 - ahead < config.HEALTH_SLIP_RATIO * wheels
 
 
 def _log_callback_error(future: asyncio.Future) -> None:

@@ -1291,3 +1291,14 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Why:** Third robot test: locating the person worked much better, but the robot nudged without touching and the helper search failed. Record analysis: at 0.05 m/s (below the 0.07 m/s the motors need) the wheels crept and stalled, and the stall was taken for contact after 10–13 cm. With 1.5 m spacing there were 12 search points; after 120 s the robot had only reached point 5 and gave up. The drive guard was not the cause: with margin 0 it does not hold during the nudge.
 - **Result:** New tests: wheels that do not turn below the motor minimum (nudge still reaches the person, no false contact), wheels blocked by the person (contact), a person seen on the way to a search point, a person walking away (stop call, then follows).
 - **Open:** Try it on the robot. The robot still runs the branch feat/3d-surfaces, which does not have these changes; it needs zustandserkennung. The third test had no microphone.
+
+### 24.11.2026 – Healthbot after the fourth robot test: stop before the person, wheel slip, search rounds (Marlon, with Claude)
+
+- **What:**
+  - **Approach:** the drive to the reported spot now ends 1.2 m before it, or earlier as soon as the camera sees someone lying there (three frames in a row, within 2.5 m of the spot).
+  - **Wheel slip:** while closing in and nudging, the lidar checks whether the robot really moves: if the wheels turn but the distance ahead does not shrink, it is pressed against something. Closing in ends there and a nudge counts as contact.
+  - **Room to turn:** after nudges without a reaction (or when it could not get close) it backs off 0.3 m before looking for help.
+  - **Search rounds:** the helper search repeats its points until the search time (180 s) is up and calls „Hallo! Ist hier jemand? Hier braucht jemand Hilfe!“ at the start of each further round.
+- **Why:** Fourth robot test: the reported spot lay just behind the person; the robot tried to drive there and ran into them. During the nudge it pressed against a leg and did not stop, because the wheels spun on and odometry counted 4 m („nach 4.0 m noch nicht bei der Person“). Pressed against the leg it had no room to turn, looked around twice, said „Ich finde niemanden“ after 18 s and gave up although the search time was 180 s.
+- **Result:** New tests: wheels spinning against a person neither lidar nor drive guard see (stops, nudges end with contact, backs off), drive to the spot ending for a person in sight and short of the spot when nobody is in sight, a second search round. All healthbot tests and the map test pass.
+- **Open:** Try it on the robot (needs `git pull` and a server restart). The slip threshold (30 % of the wheel way within 1 s) is a guess; check it on carpet.

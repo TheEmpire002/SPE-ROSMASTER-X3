@@ -89,6 +89,12 @@ class World:
         self.following = False
         # the wheels do not turn below this speed (m/s), like the real motors
         self.motor_min = 0.0
+        # true while the wheels spin on the spot: odometry counts on, the
+        # robot stays (``odo_dx``/``odo_dy`` is what odometry counted extra)
+        self.slipping = None
+        self.odo_dx = self.odo_dy = 0.0
+        # true: the drive guard does not see the person on the floor
+        self.guard_blind = False
         # where the person on the floor can be seen from, None: everywhere
         self.visible_from = None
         self.x = self.y = self.th = 0.0
@@ -114,8 +120,12 @@ class World:
         self.last = now
         self.th += self.omega * dt
         v = self.speed()
-        self.x += v * math.cos(self.th) * dt
-        self.y += v * math.sin(self.th) * dt
+        if v > 0.0 and self.slipping is not None and self.slipping():
+            self.odo_dx += v * math.cos(self.th) * dt
+            self.odo_dy += v * math.sin(self.th) * dt
+        else:
+            self.x += v * math.cos(self.th) * dt
+            self.y += v * math.sin(self.th) * dt
         if now - self.last_command > 0.5:  # dead man's switch
             self.vx = self.omega = 0.0
         for e in self.extras:
@@ -149,7 +159,7 @@ class World:
         """Smallest distance lidar -> body edge in front of the robot (±35°)."""
         self.update()
         smallest = math.inf
-        for cx, cy, r in self.all_circles():
+        for cx, cy, r in (self.extra_circles() if self.guard_blind else self.all_circles()):
             dx, dy = cx - self.x, cy - self.y
             w = math.degrees(math.atan2(dy, dx) - self.th)
             w = (w + 180.0) % 360.0 - 180.0
@@ -217,8 +227,9 @@ class Odometry:
         self.world = world
 
     def pose(self):
-        self.world.update()
-        return self.world.x, self.world.y, math.degrees(self.world.th)
+        w = self.world
+        w.update()
+        return w.x + w.odo_dx, w.y + w.odo_dy, math.degrees(w.th)
 
     def velocity(self):
         self.world.update()
@@ -1324,7 +1335,8 @@ async def case_ghost_helper() -> None:
     old = {n: getattr(config, n) for n in ("HEALTH_HELPER_LOOK_S", "HEALTH_HELPER_SEARCH_S")}
     config.HEALTH_FETCH_HELP = True
     config.HEALTH_HELPER_LOOK_S = 2.0 * math.pi / config.HEALTH_SEARCH_OMEGA + 1.0
-    config.HEALTH_HELPER_SEARCH_S = 40.0
+    # a second round starts, but the case stays short
+    config.HEALTH_HELPER_SEARCH_S = 2.0 * config.HEALTH_HELPER_LOOK_S + 1.0
     try:
         ox, oy = sim.STANDARD_LOCATION
         # what the camera sees while searching: an upright body where the
@@ -1335,7 +1347,11 @@ async def case_ghost_helper() -> None:
         await a.until_done(120.0)
         check("never asked the person on the floor to follow", config.HEALTH_HELPER_CALL not in a.voice.said,
               str(a.voice.said))
+        check("searched a second round", config.HEALTH_HELPER_ROUND_CALL in a.voice.said, str(a.voice.said))
         check("says it finds nobody", config.HEALTH_HELPER_NONE in a.voice.said, str(a.voice.said))
+        check("gave up only after the search time", config.HEALTH_HELPER_ROUND_CALL in a.voice.said
+              and a.voice.said.index(config.HEALTH_HELPER_ROUND_CALL) < a.voice.said.index(config.HEALTH_HELPER_NONE),
+              str(a.voice.said))
         check("home and music", a.homing.goals[-1][:2] == (0.0, 0.0) and len(a.mukke.played) == 1,
               str(a.homing.goals))
     finally:
@@ -1368,6 +1384,69 @@ async def case_nudge_motor_min() -> None:
     await b.until_done()
     s = b.hb.status()
     check("contact felt", any(st["grund"] == "Kontakt" for st in s["stupser"]), str(s["stupser"]))
+
+
+async def case_wheels_slip() -> None:
+    print("Pushes against the person and the wheels spin: stops, nudges with contact, backs off")
+    # neither lidar nor drive guard see the person: only the slip tells
+    a = Setup("liegend", lidar_sees=False)
+    w = a.world
+    w.guard_blind = True
+    w.slipping = lambda: min(math.hypot(cx - w.x, cy - w.y) - r for cx, cy, r in w.circles) <= config.ROBOT_FRONT_M + 0.03
+    a.hb.start(*sim.STANDARD_LOCATION)
+    await a.until_done()
+    s = a.hb.status()
+    texts = " | ".join(e["text"] for e in s["timeline"])
+    check("noticed the wheels spinning", "Räder drehen durch" in texts, texts)
+    check("did not push on for metres", math.hypot(w.odo_dx, w.odo_dy) < 0.6,
+          f"{math.hypot(w.odo_dx, w.odo_dy):.2f} m")
+    check("nudged twice", len(s["stupser"]) == config.HEALTH_NUDGE_COUNT, str(s["stupser"]))
+    check("nudges end with contact", all(st["grund"] == "Kontakt" for st in s["stupser"]), str(s["stupser"]))
+    check("backed off before getting help", f"setzt {config.HEALTH_HELP_BACK_M:.1f} m zurück" in texts, texts)
+    check("state hilfe", s["zustand"] == pr.HELP, s["zustand"] + " / " + s["schritt"])
+
+
+def _spot_drive(a: "Setup") -> list[tuple[str, float]]:
+    """Start far from the spot and glide there; returns (reason, distance to
+    the spot) of each cancelled drive."""
+    ox, oy = sim.STANDARD_LOCATION
+    a.world.place(-1.5, 0.5, 0.0)
+    a.homing.glide = True
+    a.homing.durations = {"gemeldete Stelle": 6.0}
+    spots: list[tuple[str, float]] = []
+    cancel = a.homing.cancel
+
+    def watched(reason: str = "abgebrochen") -> None:
+        spots.append((reason, math.hypot(ox - a.world.x, oy - a.world.y)))
+        cancel(reason)
+
+    a.homing.cancel = watched
+    return spots
+
+
+async def case_spot_standoff() -> None:
+    print("Drive to the reported spot ends when the person on the floor is in sight")
+    a = Setup("liegend")
+    spots = _spot_drive(a)
+    a.hb.start(*sim.STANDARD_LOCATION)
+    await a.until_done()
+    s = a.hb.status()
+    check("stopped for the person in sight", bool(spots) and spots[0][0] == "liegende Person in Sicht", str(spots))
+    check("well before the spot", bool(spots) and spots[0][1] > config.HEALTH_SPOT_STANDOFF_M, str(spots))
+    check("then nudged", len(s["stupser"]) == config.HEALTH_NUDGE_COUNT, str(s["stupser"]))
+
+    print("Drive to the reported spot ends short of it when nobody is in sight")
+    b = Setup("liegend")
+    spots = _spot_drive(b)
+    # hidden during the drive, seen once it stops
+    b.world.visible_from = lambda x, y: not (b.homing._name == "gemeldete Stelle" and b.homing._goal is not None)
+    b.hb.start(*sim.STANDARD_LOCATION)
+    await b.until_done()
+    s = b.hb.status()
+    check("stopped short of the spot", bool(spots) and spots[0][0] == "kurz vor der Stelle", str(spots))
+    check("about the standoff away", bool(spots) and config.HEALTH_SPOT_STANDOFF_M - 0.25 <= spots[0][1]
+          <= config.HEALTH_SPOT_STANDOFF_M + 0.05, str(spots))
+    check("found the person after all", len(s["stupser"]) == config.HEALTH_NUDGE_COUNT, str(s["stupser"]))
 
 
 def _helper_search(extras, glide_s: float = 6.0) -> "Setup":
@@ -1476,6 +1555,8 @@ async def run_all() -> None:
     await case_lidar_gaps()
     await case_nudge_motor_min()
     await case_helper_on_the_way()
+    await case_wheels_slip()
+    await case_spot_standoff()
 
 
 def main() -> None:

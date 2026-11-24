@@ -1677,6 +1677,29 @@ check started.
   from where the check started (someone reported it from there). The
   record has `helper` (`opfer`, `gefunden`, `gefolgt`).
 
+**Fourth robot test of 24.11.** Follow-up fixes:
+
+- **Stops before the reported spot.** The spot is where the person lies, so
+  the drive there is watched: it ends `HEALTH_SPOT_STANDOFF_M` (1.2 m) before
+  the spot (homing `last_reason` „kurz vor der Stelle“), or as soon as someone
+  lying in the spot's area is confirmed over `HEALTH_SPOT_CONFIRM_FRAMES`
+  frames within `HEALTH_SPOT_WATCH_M` of it („liegende Person in Sicht“).
+  Before, it drove onto the spot; when that lay just behind the person it
+  drove round them and into their legs.
+- **Wheel slip.** Odometry counts on when the wheels spin against a body. Now
+  the lidar checks it: if the wheels gained at least `HEALTH_SLIP_MIN_WAY_M`
+  within `HEALTH_SLIP_WINDOW_S` while the median distance ahead (points within
+  ±`HEALTH_SLIP_HALF_DEG`) shrank by less than `HEALTH_SLIP_RATIO` of that,
+  the robot is blocked. Closing in then ends („Räder drehen durch -- steht an
+  der Person“) and a nudge ends with `Kontakt`. Windows turning more than
+  `HEALTH_SLIP_MAX_TURN_DEG` do not count.
+- **Room to turn.** When no nudge brought a reaction, or it could not get
+  close, it backs off `HEALTH_HELP_BACK_M` (0.3 m) before looking for help.
+- **Search rounds.** The helper search repeats its points until
+  `HEALTH_HELPER_SEARCH_S` is up and calls `HEALTH_HELPER_ROUND_CALL` at the
+  start of each further round; the record's `helper` gets `runden`. Before,
+  it gave up after one round (18 s in the test).
+
 **Third robot test of 24.11.** Follow-up fixes:
 
 - **Nudge reaches the person.** `HEALTH_NUDGE_SPEED` is 0.09 m/s, above the

@@ -2010,6 +2010,24 @@ HEALTH_NUDGE_DEPTH_M = 0.10
 HEALTH_NUDGE_COUNT = 2
 # Distance (m) back after each nudge.
 HEALTH_NUDGE_BACK_M = 0.08
+# Distance (m) back when no nudge helped or it could not get close, before
+# it turns to look for a helper: pressed against a leg it had no room to
+# turn and got stuck (fourth robot test 24.11.)
+HEALTH_HELP_BACK_M = 0.3
+# Wheels slipping: they turn, but the lidar does not see the scene ahead come
+# closer. Blocked when the wheels gained at least HEALTH_SLIP_MIN_WAY_M within
+# HEALTH_SLIP_WINDOW_S (s) while the median distance ahead (lidar points
+# within ±HEALTH_SLIP_HALF_DEG, up to HEALTH_SLIP_MAX_RANGE_M, at least
+# HEALTH_SLIP_MIN_POINTS of them) shrank by less than HEALTH_SLIP_RATIO of
+# that way; windows turning more than HEALTH_SLIP_MAX_TURN_DEG do not count.
+# Robot test: it drove into a leg and kept pushing, odometry counted 4 m.
+HEALTH_SLIP_WINDOW_S = 1.0
+HEALTH_SLIP_MIN_WAY_M = 0.05
+HEALTH_SLIP_RATIO = 0.3
+HEALTH_SLIP_HALF_DEG = 30.0
+HEALTH_SLIP_MAX_RANGE_M = 6.0
+HEALTH_SLIP_MIN_POINTS = 8
+HEALTH_SLIP_MAX_TURN_DEG = 10.0
 # Margin for the drive guard while nudging. 0 means contact is allowed --
 # otherwise it would stop 4 cm short of the person as intended. Speed,
 # distance and the dead man's switch still limit it (docs/decisions.md).
@@ -2064,6 +2082,14 @@ HEALTH_BLOCKED_ENOUGH_M = 1.2
 # search point) moves up to this far (m) to the nearest drivable spot, also
 # across the wall; NAV_GOAL_SNAP_M only searches through free space
 HEALTH_GOAL_SNAP_M = 1.5
+# The reported spot is where the person lies, so the drive there ends
+# HEALTH_SPOT_STANDOFF_M (m) before it, or as soon as someone lying in its
+# area is seen over HEALTH_SPOT_CONFIRM_FRAMES frames within
+# HEALTH_SPOT_WATCH_M (m) of it. Robot test: the spot lay just behind the
+# person, it drove round them and into their legs.
+HEALTH_SPOT_STANDOFF_M = 1.2
+HEALTH_SPOT_WATCH_M = 2.5
+HEALTH_SPOT_CONFIRM_FRAMES = 3
 
 # Overall picture: observe this long (s) how much the person moves.
 HEALTH_OBSERVE_S = 5.0
@@ -2221,6 +2247,9 @@ HEALTH_HELPER_STOP_CALLS = (
 )
 HEALTH_HELPER_ARRIVED = "Hier liegt die Person. Bitte helfen Sie ihr."
 HEALTH_HELPER_NONE = "Ich finde niemanden. Ich rufe weiter um Hilfe."
+# Called out at the start of every further search round; the search repeats
+# its points until HEALTH_HELPER_SEARCH_S is up (robot test: one round of 18 s)
+HEALTH_HELPER_ROUND_CALL = "Hallo! Ist hier jemand? Hier braucht jemand Hilfe!"
 
 # Detect on its own: if pose detection sees a lying person continuously
 # for this long (s), it starts the check by itself.
