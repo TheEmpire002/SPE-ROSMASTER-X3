@@ -1337,6 +1337,53 @@ MAP3D_LIVE_STATUS_S = 2.0
 # the stream waits at most this long (s) for an image before looking again
 MAP3D_LIVE_WAIT_S = 0.5
 
+# --- 3D scan: drives through a known map until a share of its walls is in the
+# 3d map (mapping/coverage_scan.py) ---
+# share (%) the /map page suggests, and the time limit (min): default and most
+COVERAGE_DEFAULT_PCT = 80.0
+COVERAGE_MAX_MIN = 20.0
+COVERAGE_MAX_MIN_LIMIT = 120.0
+# free passages narrower than this (m) are cut off: lidar streaks through doors
+# and windows, gaps the robot does not fit through anyway
+COVERAGE_OPEN_M = 0.25
+# wall cells within this distance (m) of the reachable free area are scan targets
+COVERAGE_WALL_REACH_M = 0.15
+# a wall cell counts as seen with 3d blocks this close (m) above the floor
+# plane at least COVERAGE_MIN_Z_M high (the floor itself does not count)
+COVERAGE_SEEN_TOL_M = 0.10
+COVERAGE_MIN_Z_M = 0.15
+# candidate spots: grid step (m), room to the nearest wall (m), at most this many
+COVERAGE_CANDIDATE_STEP_M = 0.4
+COVERAGE_CLEARANCE_M = 0.35
+COVERAGE_MAX_CANDIDATES = 400
+# rays per spot and how far they count (m): within MAP3D_MAX_M, where the depth
+# camera is still accurate; samples along a ray in map cells (below 1 so no
+# thin wall is jumped over)
+COVERAGE_RAYS = 90
+COVERAGE_RANGE_M = 2.5
+COVERAGE_RAY_STEP = 0.7
+# a spot is worth driving to if at least this many rays hit unseen walls; the
+# score halves at this distance (m)
+COVERAGE_MIN_GAIN = 4
+COVERAGE_DISTANCE_SCALE_M = 2.0
+# no new spot this close (m) to one already scanned or not reached
+COVERAGE_VISITED_M = 0.6
+# closer than this (m) it looks around without driving
+COVERAGE_ARRIVE_M = 0.3
+# turning around in steps (deg) with a pause (s) after each: the 3d map takes
+# no images while turning fast and needs MAP3D_MIN_HITS images per block
+COVERAGE_TURN_STEP_DEG = 40.0
+COVERAGE_DWELL_S = 2.0
+# wait for the depth camera at the start (s), and for the pose when it got unsure
+COVERAGE_WARMUP_S = 2.0
+COVERAGE_LOST_WAIT_S = 10.0
+# give up after this many spots in a row that were not reached
+COVERAGE_MAX_FAILURES = 3
+# how often (s) it looks whether a drive or turn is done
+COVERAGE_POLL_S = 0.1
+# wall points sent to /map for drawing, at most
+COVERAGE_DRAW_MAX = 3000
+
 # --- Camera tilt servo (person camera, up and down) ------------------------------
 # details in sensors/camera_tilt.py. servo on the expansion board, moved with
 # rosmaster_lib's set_pwm_servo (ports s1..s4)

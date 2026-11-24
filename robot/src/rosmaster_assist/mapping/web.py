@@ -62,6 +62,13 @@ class PanoramaRequest(BaseModel):
     neigung: float | None = Field(default=None, ge=-90.0, le=90.0)
 
 
+class ScanRequest(BaseModel):
+    # share of the walls (%) to see in 3d, and the time limit (min)
+    # missing = COVERAGE_DEFAULT_PCT, COVERAGE_MAX_MIN
+    ziel_prozent: float | None = Field(default=None, ge=1.0, le=100.0)
+    max_minuten: float | None = Field(default=None, ge=1.0, le=600.0)
+
+
 def create_mapping_router(manager: MappingManager | None = None, drive=None) -> APIRouter:
     """Create the mapping routes.
 
@@ -361,6 +368,28 @@ def create_mapping_router(manager: MappingManager | None = None, drive=None) -> 
         if not await run_in_threadpool(_room3d().delete_raw, session):
             raise HTTPException(status_code=404, detail="Rohaufnahme nicht gefunden.")
         return {"geloescht": session}
+
+    @router.post("/api/mapping/raum3d/scan")
+    async def room3d_scan_start(request: ScanRequest) -> dict[str, Any]:
+        control = _control()
+        goal = config.COVERAGE_DEFAULT_PCT if request.ziel_prozent is None else request.ziel_prozent
+        error = control.start_scan(goal, request.max_minuten)
+        if error:
+            raise HTTPException(status_code=409, detail=error)
+        return control.display()
+
+    @router.post("/api/mapping/raum3d/scan/stop")
+    async def room3d_scan_stop() -> dict[str, Any]:
+        control = _control()
+        control.cancel_scan("vom Nutzer abgebrochen")
+        return control.display()
+
+    @router.get("/api/mapping/raum3d/abdeckung")
+    async def room3d_coverage() -> dict[str, Any]:
+        scan = getattr(_control(), "scan", None)
+        if scan is None:
+            raise HTTPException(status_code=503, detail="3D-Scan ist nicht eingerichtet.")
+        return await run_in_threadpool(scan.coverage)
 
     @router.delete("/api/mapping/raum3d")
     async def room3d_clear() -> dict[str, Any]:

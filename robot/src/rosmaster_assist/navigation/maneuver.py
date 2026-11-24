@@ -110,6 +110,8 @@ class Maneuver:
         self._value = 0.0
         self._text = ""
         self.succeeded = False
+        # the last command was ended by cancel() (a person, another mode), not by itself
+        self.cancelled = False
         self.announcement: str | None = None  # what it says when it did not work
         self._turning_since: float | None = None  # since when it has been turning (from standstill)
         self.finished = 0  # counts every self-ended command (for the server's message)
@@ -163,6 +165,7 @@ class Maneuver:
         self._kind, self._value = category, value
         self._reason = None
         self.succeeded = False
+        self.cancelled = False
         self.announcement = None
         self._text = f"{describe(category, value)}: startet"
         self._task = asyncio.create_task(self._drive(category, value))
@@ -172,6 +175,7 @@ class Maneuver:
         if self._task is not None and not self._task.done():
             self._task.cancel()
             self._reason = reason
+            self.cancelled = True
             log.info("Drive command %s", reason)
         self._task = None
 

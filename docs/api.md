@@ -1278,8 +1278,35 @@ User interface: `GET /map`.
 | `GET /api/mapping/raum3d/roh` | raw recordings of the current map: `karte`, `laeuft` (running session or `null`), `sitzungen` (`[{name, bilder, mb}]`) |
 | `GET /api/mapping/raum3d/roh/{name}.zip` | one raw recording as ZIP (for `scripts/build_mesh.py`); 404 if unknown |
 | `DELETE /api/mapping/raum3d/roh/{name}` | delete a raw recording; 404 if unknown |
+| `POST /api/mapping/raum3d/scan` | 3D scan (test branch `feat/3d-surfaces`, see "3D scan"): body `{"ziel_prozent": 80, "max_minuten": 20}` (both optional, defaults `COVERAGE_DEFAULT_PCT`, `COVERAGE_MAX_MIN`); the robot drives through the loaded map by itself until that share of the walls is in the 3D map. Returns the display state; 409 with reason without depth camera, map, confident pose or drive |
+| `POST /api/mapping/raum3d/scan/stop` | end the 3D scan (also: "Fahrt abbrechen", emergency stop, any manual drive input, starting another drive mode) |
+| `GET /api/mapping/raum3d/abdeckung` | coverage now: `prozent`, `gesamt` (wall cells counted), `gesehen` and `fehlt` (`[[x, y], ...]` wall cell centres, at most `COVERAGE_DRAW_MAX` each), `text` (reason when not computable) |
 | `WS /api/mapping/raum3d/live` | live images for building the mesh on a pc (test branch `feat/3d-surfaces`): text `{"type": "meta", ...}` (as `meta.json`, again when the map changes), `{"type": "status", "text", "karte"}` every `MAP3D_LIVE_STATUS_S` while no image comes, `{"type": "fehler", "text"}` then close without depth camera; binary = one image: uint32 LE header length, json header (as a `frames.jsonl` line plus `tiefe_bytes`, `farbe_bytes`), depth png, colour jpeg. The depth camera stays on while a client is connected |
 | `WS /api/mapping/ws`                       | `{"type": "status"}` every 3 s, `{"type": "map"}` on every new map, `{"type": "fahrt"}` on changes of the mapping drive, `{"type": "ortung"}` on changes of the pose (content as `GET /api/mapping/ortung`)                                                                                                                                                                                                                                                 |
+
+**3D scan** (`mapping/coverage_scan.py`, test branch `feat/3d-surfaces`).
+The display packet (`GET /api/mapping/ortung`, `/api/mapping/ws`) has
+`raumscan`: `verfuegbar`, `aktiv`, `text`, `ziel_prozent`, `prozent`,
+`gesehen`/`gesamt` (wall cells), `stellen` (spots looked around at),
+`naechste` ([x, y] while driving there), `besucht`, `dauer_s`, `rest_s`,
+`grund` (why the last scan ended). *Coverage:* the walls of the 2D map that
+border the free area the robot can reach from where it stands (passages
+narrower than `COVERAGE_OPEN_M` cut off, which removes lidar streaks through
+doors); a wall cell is seen when the 3D map has blocks within
+`COVERAGE_SEEN_TOL_M` of it, at least `COVERAGE_MIN_Z_M` above the floor. It
+comes from the stored blocks, so it includes earlier recordings. *Next spot:*
+grid of free spots with `COVERAGE_CLEARANCE_M` room (plus where it stands),
+`COVERAGE_RAYS` rays each through the 2D map; a ray scores if the first wall
+it hits is unseen and between `MAP3D_MIN_M` and `COVERAGE_RANGE_M` away
+(unknown cells block). Score = rays / (1 + distance / `COVERAGE_DISTANCE_SCALE_M`).
+*Drive:* the goal drive (`Homing`) to the spot, then once around in
+`COVERAGE_TURN_STEP_DEG` maneuver turns with `COVERAGE_DWELL_S` standing
+still after each (the 3D map takes no images while turning faster than
+`MAP3D_MAX_OMEGA`, a block needs `MAP3D_MIN_HITS` images). Ends when the
+share is reached, after the time limit, when no spot sees at least
+`COVERAGE_MIN_GAIN` rays of unseen wall, after `COVERAGE_MAX_FAILURES` spots
+in a row not reached, or when the pose stays unsure for
+`COVERAGE_LOST_WAIT_S`. The depth camera is on for the 3D map while it runs.
 
 `GET /api/mapping/map` and the `map` packets deliver the map **the robot is
 currently driving with**: the live map of the mapping run or, if a saved map

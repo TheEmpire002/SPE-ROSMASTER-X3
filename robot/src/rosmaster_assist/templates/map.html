@@ -201,6 +201,14 @@
               <button id="raumZeigen" type="button" disabled>🧊 3D-Ansicht</button>
             </div>
             <div class="help" style="margin-top:7px">Die Tiefenkamera misst beim Fahren den Raum in 3-cm-Blöcken mit, solange er weiß, wo er ist. Langsam fahren und drehen, bis etwa 3 m Abstand.</div>
+            <label class="check" style="margin-top:9px">Selbst scannen bis
+              <input type="number" id="raumScanZiel" min="1" max="100" step="5" value="80" style="width:58px"> % der Wände, höchstens
+              <input type="number" id="raumScanMin" min="1" max="120" step="5" value="20" style="width:58px"> min</label>
+            <div class="button-row" style="margin-top:7px">
+              <button id="raumScanStart" type="button" disabled>🤖 3D-Scan starten</button>
+            </div>
+            <label class="check"><input type="checkbox" id="raumAbdeckung"> erfasste (grün) und fehlende (rot) Wände auf der Karte zeigen</label>
+            <div class="help" id="raumScanText" style="margin-top:6px">Fährt in der geladenen Karte von selbst zu den Stellen, von denen er die meisten noch fehlenden Wände sieht, und dreht sich dort langsam einmal um sich selbst. Braucht eine sichere Lage in der Karte. Jede Eingabe von Hand stoppt ihn.</div>
             <button id="raumRoh" class="secondary" type="button" style="margin-top:9px" disabled>⏺ Rohaufnahme fürs 3D-Modell</button>
             <div id="raumRohListe" class="saved-list" style="margin-top:7px"></div>
             <div class="help" style="margin-top:6px">Speichert Tiefen- und Farbbilder mit Position. Als ZIP herunterladen, dann am PC: <code>python scripts/build_mesh.py rohaufnahme_….zip</code> rechnet daraus ein farbiges 3D-Modell (.ply). Live beim Fahren: <code>python scripts/build_mesh.py --live 10.42.0.62</code></div>
@@ -545,6 +553,15 @@
         if (!localization || !mapPayload) return;
         const o = localization.ortung || {};
         for (const [x, y] of localization.luecken || []) drawDot(x, y, '#f0a020', 4);
+        if ($('raumAbdeckung').checked && scan.coverage) {
+          for (const [x, y] of scan.coverage.gesehen || []) drawDot(x, y, '#3ec46d', 1.6);
+          for (const [x, y] of scan.coverage.fehlt || []) drawDot(x, y, '#ff4d4d', 1.6);
+        }
+        const sc = localization.raumscan;
+        if (sc && sc.aktiv) {
+          for (const [x, y] of sc.besucht || []) drawDot(x, y, '#c58cff', 4);
+          if (sc.naechste) drawDot(sc.naechste[0], sc.naechste[1], '#e0b0ff', 6);
+        }
         drawLine(localization.spur, '#4fa3ff', 2);
         // way-back trail: one line per unbroken piece, strict crumbs solid
         let piece = [];
@@ -842,6 +859,7 @@
             : 'Missionsstart setzen, losfahren -- „Zurück“ fährt auf der gefahrenen Spur dorthin zurück.';
         syncPhotos(d.fotos);
         syncRoom3d(d.raum3d, o);
+        syncScan(d.raumscan, o);
         syncPanorama(d.panorama, o, canDrive);
         draw();
       }
@@ -1286,6 +1304,8 @@
       };
 
       let rawKey = null;
+      // 3d scan: state from the server and the wall points for the overlay
+      const scan = { state: null, coverage: null, loading: false, time: 0 };
 
       async function loadRawList() {
         try {
@@ -1318,6 +1338,41 @@
             return item;
           }));
         } catch (error) { message(`Rohaufnahmen: ${error.message}`, true); }
+      }
+
+      function syncScan(sc, o) {
+        scan.state = sc;
+        const button = $('raumScanStart');
+        const text = $('raumScanText');
+        if (!sc) { button.disabled = true; return; }
+        const running = !!sc.aktiv;
+        button.disabled = running ? false : (!sc.verfuegbar || !o.karte || !o.sicher || driveActive);
+        button.textContent = running ? '■ 3D-Scan stoppen' : '🤖 3D-Scan starten';
+        button.classList.toggle('stop', running);
+        if (running) {
+          const min = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+          text.textContent = `${sc.text || 'läuft'} · Ziel ${Math.round(sc.ziel_prozent)} %`
+            + (sc.prozent != null ? ` · jetzt ${sc.prozent.toFixed(0)} %` : '')
+            + ` · ${sc.stellen} Stellen · ${min(sc.dauer_s || 0)} (noch ${min(sc.rest_s || 0)})`;
+        } else if (!sc.verfuegbar) {
+          text.textContent = '3D-Scan geht nur mit Tiefenkamera und Lidar.';
+        } else if (sc.grund) {
+          text.textContent = `Letzter 3D-Scan: ${sc.grund}` + (sc.prozent != null ? ` · ${sc.prozent.toFixed(0)} % der Wände erfasst` : '');
+        }
+        // the overlay follows the scan; otherwise only now and then
+        const every = running ? 4000 : 15000;
+        if ((running || $('raumAbdeckung').checked) && Date.now() - scan.time > every) loadCoverage();
+      }
+
+      async function loadCoverage() {
+        if (scan.loading) return;
+        scan.loading = true;
+        scan.time = Date.now();
+        try {
+          scan.coverage = await api('/api/mapping/raum3d/abdeckung');
+          draw();
+        } catch (error) { scan.coverage = null; }
+        finally { scan.loading = false; }
       }
 
       function syncRoom3d(r, o) {
@@ -1673,6 +1728,21 @@
           message(on ? 'Rohaufnahme läuft: langsam durch den Raum fahren und drehen, alles einmal aus 1-3 m ansehen.'
             : 'Rohaufnahme gestoppt -- unten als ZIP herunterladen.');
         } catch (error) { message(error.message, true); }
+      });
+      $('raumScanStart').addEventListener('click', async () => {
+        if (scan.state && scan.state.aktiv) {
+          try { setLocalization(await api('/api/mapping/raum3d/scan/stop', { method: 'POST' })); }
+          catch (error) { message(error.message, true); }
+          return;
+        }
+        const request = { ziel_prozent: Number($('raumScanZiel').value), max_minuten: Number($('raumScanMin').value) };
+        try {
+          setLocalization(await api('/api/mapping/raum3d/scan', { method: 'POST', body: JSON.stringify(request) }));
+          message(`3D-Scan startet: er fährt selbst, bis ${request.ziel_prozent} % der Wände erfasst sind. Platz lassen!`);
+        } catch (error) { message(error.message, true); }
+      });
+      $('raumAbdeckung').addEventListener('change', () => {
+        if ($('raumAbdeckung').checked) loadCoverage(); else draw();
       });
       $('raumAufnahme').addEventListener('click', async () => {
         const on = !(room.brief && room.brief.aufnahme);

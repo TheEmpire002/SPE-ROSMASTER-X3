@@ -93,6 +93,8 @@ class MapControl:
         self.panorama = None
         # depth blocks in the map frame (mapping/room3d.py), set by the server
         self.room3d = None
+        # drives by itself until a share of the walls is in 3d (mapping/coverage_scan.py)
+        self.scan = None
 
     # --- 1. Mapping drive (interface as before for mapping/web.py) --------------------
 
@@ -136,8 +138,28 @@ class MapControl:
         self.stop("Panorama gestartet")
         return self.panorama.start(camera, tilt_deg)
 
+    def cancel_scan(self, reason: str) -> None:
+        if self.scan is not None:
+            self.scan.cancel(reason)
+
+    def start_scan(self, goal_pct: float, max_minutes: float | None = None) -> str | None:
+        """Scan the map in 3d by itself until ``goal_pct`` of the walls are seen."""
+        if self.scan is None:
+            return "3D-Scan ist nicht eingerichtet"
+        if self.scan.active:
+            return "3D-Scan läuft schon"
+        if not self._driver.connected:
+            return "Keine Verbindung zum Antrieb"
+        self._cancel_others("3D-Scan gestartet")
+        self.stop("3D-Scan gestartet")
+        error = self.scan.start(goal_pct, max_minutes)
+        if error is None:
+            self._report("info", f"3D-Scan gestartet: bis {goal_pct:.0f} % der Wände")
+        return error
+
     def _cancel_others(self, reason: str) -> None:
         """Only one program steers."""
+        self.cancel_scan(reason)
         self.cancel_panorama(reason)
         self._homing.cancel(reason)
         self._explorer.cancel(reason)
@@ -166,6 +188,7 @@ class MapControl:
     def stop(self, reason: str) -> None:
         self._interrupted = None
         self.cancel_panorama(reason)
+        self.cancel_scan(reason)
         if self.active:
             self._explorer.cancel(reason)
             self._watchdog.stop()
@@ -190,7 +213,8 @@ class MapControl:
         """
         if not self.nobody_watching():
             return
-        if not (self.active or self._homing.active or self._interrupted is not None):
+        scanning = self.scan is not None and self.scan.active
+        if not (self.active or self._homing.active or scanning or self._interrupted is not None):
             return
         if self._watcher_task is not None and not self._watcher_task.done():
             return
@@ -265,6 +289,7 @@ class MapControl:
         return None
 
     def goal_stop(self, reason: str = "vom Nutzer abgebrochen") -> None:
+        self.cancel_scan(reason)
         self._homing.cancel(reason)
         self._watchdog.stop()
 
@@ -527,6 +552,7 @@ class MapControl:
             "fotos": self.photos.brief() if self.photos is not None else None,
             "panorama": self.panorama.state() if self.panorama is not None else None,
             "raum3d": self.room3d.brief() if self.room3d is not None else None,
+            "raumscan": self.scan.state() if self.scan is not None else None,
         }
 
     def state_brief(self) -> dict[str, Any] | None:

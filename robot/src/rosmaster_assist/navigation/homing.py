@@ -82,6 +82,8 @@ class Homing:
         )
         self._task: asyncio.Task[None] | None = None
         self._reason: str | None = None
+        # the last drive was ended by cancel() (a person, another mode), not by itself
+        self.cancelled = False
         # Drive by map: goal (None = home), path, follower.
         self._target: tuple[float, float] | None = None
         self._kind: str | None = None             # "zurueck" or None (heim/ziel)
@@ -158,6 +160,7 @@ class Homing:
             return False
         self._reason = None
         self._arrived = False
+        self.cancelled = False
         self._set_goal(0.0, 0.0, None, "Startpunkt", 0.0)
         self._target = None if target is None else (float(target[0]), float(target[1]))
         self._kind = kind
@@ -195,6 +198,7 @@ class Homing:
             return False
         self._reason = None
         self._arrived = False
+        self.cancelled = False
         self._target = None
         self._kind = None
         self._corridor = None
@@ -233,6 +237,7 @@ class Homing:
         if self._task is not None and not self._task.done():
             self._task.cancel()
             self._reason = reason
+            self.cancelled = True
             log.info("Homing %s", reason)
         self._task = None
 

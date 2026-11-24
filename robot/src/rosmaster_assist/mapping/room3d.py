@@ -766,6 +766,21 @@ class Room3D:
         out["n"] = np.where(nor & _HAS_NORMAL, 127, 0)
         return out.tobytes()
 
+    def columns(self, min_z_m: float):
+        """(map, x, y) of the shown blocks at least ``min_z_m`` above the floor,
+        block centres in the map frame (m); for the coverage of the 3d scan"""
+        import numpy as np
+
+        with self._lock:
+            current = self._map
+            snapshot = dict(self._hits)
+        keys = np.fromiter(snapshot.keys(), dtype=np.int64, count=len(snapshot))
+        hits = np.fromiter(snapshot.values(), dtype=np.int64, count=len(snapshot))
+        ix, iy, iz = unpack(keys[hits >= config.MAP3D_MIN_HITS])
+        size = config.MAP3D_VOXEL_M
+        keep = (iz + 0.5) * size >= min_z_m
+        return current, (ix[keep] + 0.5) * size, (iy[keep] + 0.5) * size
+
     def brief(self) -> dict[str, Any]:
         with self._lock:
             return {

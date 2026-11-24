@@ -44,6 +44,7 @@ from ..interaction.speech import SpeechRecognition
 from ..interaction.voice import Voice
 from ..mapping.live_mapper import LiveMapper
 from ..mapping.live_store import LiveStore
+from ..mapping.coverage_scan import CoverageScan
 from ..mapping.panorama import Panorama
 from ..mapping.photos import MapPhotos
 from ..mapping.room3d import Room3D
@@ -535,6 +536,10 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     map_control.panorama = Panorama(
         map_control.photos, maneuver, localization, cameras, busy=_other_drive,
         tilt=camera_tilt, tilt_camera=config.PERSON_CAMERA,
+    )
+    map_control.scan = CoverageScan(
+        map_control.room3d, localization, homing, maneuver,
+        corridor=lambda: map_control.crumbs.corridor(strict=False), busy=_other_drive,
     )
     app.state.map_control = map_control
     app.include_router(create_mapping_router(mapping_manager, map_control))
@@ -1681,9 +1686,11 @@ async def _handle(
             if cmd.is_stop():
                 return None
             maneuver.cancel("von Hand übersteuert")
-        # between two turns of a panorama no maneuver runs: end it as well
+        # between two turns of a panorama no maneuver runs: end it as well,
+        # the same for the 3d scan while it stands and looks
         if map_control is not None and not cmd.is_stop():
             map_control.cancel_panorama("von Hand übersteuert")
+            map_control.cancel_scan("von Hand übersteuert")
 
         # healthbot too, but a stop must not end a running alarm by accident
         if healthbot is not None and healthbot.active:
@@ -1733,6 +1740,8 @@ async def _handle(
             category, value = str(msg.get("richtung", mv.FORWARD)), msg.get("meter")
         # Only one program steers: homing, explorer and interaction give way.
         homing.cancel("Fahrbefehl gestartet")
+        if map_control is not None:
+            map_control.cancel_scan("Fahrbefehl gestartet")
         if explorer is not None:
             explorer.cancel("Fahrbefehl gestartet")
         if interaction is not None:
