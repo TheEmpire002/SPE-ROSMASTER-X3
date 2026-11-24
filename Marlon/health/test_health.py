@@ -87,6 +87,8 @@ class World:
         # behind the robot once asked (``following``)
         self.extras = [dict(e) for e in (extras or [])]
         self.following = False
+        # the wheels do not turn below this speed (m/s), like the real motors
+        self.motor_min = 0.0
         # where the person on the floor can be seen from, None: everywhere
         self.visible_from = None
         self.x = self.y = self.th = 0.0
@@ -111,15 +113,25 @@ class World:
         dt = now - self.last
         self.last = now
         self.th += self.omega * dt
-        self.x += self.vx * math.cos(self.th) * dt
-        self.y += self.vx * math.sin(self.th) * dt
+        v = self.speed()
+        self.x += v * math.cos(self.th) * dt
+        self.y += v * math.sin(self.th) * dt
         if now - self.last_command > 0.5:  # dead man's switch
             self.vx = self.omega = 0.0
+        for e in self.extras:
+            # "walk": (vx, vy) m/s while "walking"() is true
+            if e.get("walk") and e.get("walking", lambda: True)():
+                e["x"] += e["walk"][0] * dt
+                e["y"] += e["walk"][1] * dt
         if self.following:
             for e in self.extras:
                 if e.get("follows"):
                     e["x"] = self.x - 0.7 * math.cos(self.th)
                     e["y"] = self.y - 0.7 * math.sin(self.th)
+
+    def speed(self) -> float:
+        """Forward speed the wheels really drive."""
+        return self.vx if abs(self.vx) >= self.motor_min else 0.0
 
     def all_circles(self):
         return self.circles + self.extra_circles()
@@ -210,7 +222,7 @@ class Odometry:
 
     def velocity(self):
         self.world.update()
-        return self.world.vx, 0.0, self.world.omega
+        return self.world.speed(), 0.0, self.world.omega
 
 
 class Lidar:
@@ -294,6 +306,11 @@ class Homing:
         self.speeds: list[float | None] = []
         # drive time (s) per goal name, otherwise 0.1 s
         self.durations: dict[str, float] = {}
+        # true: the robot moves along the line to the goal during the drive
+        # instead of jumping there at the end
+        self.glide = False
+        self._from = (0.0, 0.0)
+        self._length = 0.1
         self._goal = None
         self._name = None
         self._end = 0.0
@@ -306,7 +323,9 @@ class Homing:
         self.speeds.append(speed)
         self._goal = (x, y)
         self._name = name
-        self._end = time.monotonic() + self.durations.get(name, 0.1)
+        self._length = self.durations.get(name, 0.1)
+        self._end = time.monotonic() + self._length
+        self._from = (self.world.x, self.world.y)
         self.last_reason = None
         return True
 
@@ -315,6 +334,10 @@ class Homing:
         if self._goal is None:
             return False
         if time.monotonic() < self._end:
+            if self.glide:
+                (x0, y0), (x1, y1) = self._from, self._goal
+                f = 1.0 - (self._end - time.monotonic()) / self._length
+                self.world.place(x0 + f * (x1 - x0), y0 + f * (y1 - y0), math.atan2(y1 - y0, x1 - x0))
             return True
         x, y = self._goal
         w = self.world
@@ -1321,6 +1344,98 @@ async def case_ghost_helper() -> None:
             setattr(config, n, v)
 
 
+async def case_nudge_motor_min() -> None:
+    print("Wheels do not turn below the motor minimum: the nudge still reaches the person")
+    a = Setup("liegend")
+    a.world.motor_min = config.HEALTH_APPROACH_MIN_SPEED
+    a.hb.start(*sim.STANDARD_LOCATION)
+    await a.until_done()
+    s = a.hb.status()
+    check("nudged twice", len(s["stupser"]) == config.HEALTH_NUDGE_COUNT, str(s["stupser"]))
+    check("nudge speed above the motor minimum", config.HEALTH_NUDGE_SPEED >= config.HEALTH_APPROACH_MIN_SPEED)
+    check("no contact without touching", all(st["grund"] != "Kontakt" for st in s["stupser"]), str(s["stupser"]))
+    check("touched the person", a.watchdog.smallest_air <= config.ROBOT_FRONT_M + 0.02,
+          f"{a.watchdog.smallest_air:.3f}")
+    print("Wheels blocked by the person: contact")
+    b = Setup("liegend")
+    # the wheels stop turning once the robot touches the person, the guard lets it push
+    b.world.motor_min = 0.0
+    real_speed = b.world.speed
+    w = b.world
+    w.speed = lambda: (0.0 if min(math.hypot(cx - w.x, cy - w.y) - r for cx, cy, r in w.circles)
+                       <= config.ROBOT_FRONT_M + 0.03 else real_speed())
+    b.hb.start(*sim.STANDARD_LOCATION)
+    await b.until_done()
+    s = b.hb.status()
+    check("contact felt", any(st["grund"] == "Kontakt" for st in s["stupser"]), str(s["stupser"]))
+
+
+def _helper_search(extras, glide_s: float = 6.0) -> "Setup":
+    """Without a map: a short look at the spot, then a slow drive back to
+    where the check started, during which the helper can be seen."""
+    a = Setup("liegend", extras=extras)
+    a.homing.glide = True
+    a.homing.durations = {"Suchpunkt": glide_s}
+    return a
+
+
+def _on_drive(a: "Setup"):
+    return lambda: a.homing._name == "Suchpunkt" and a.homing._goal is not None
+
+
+async def case_helper_on_the_way() -> None:
+    print("Fetches help: someone comes towards the robot while it drives to a search point")
+    old = {n: getattr(config, n) for n in ("HEALTH_HELPER_LOOK_S", "HEALTH_HELPER_SEARCH_S")}
+    config.HEALTH_FETCH_HELP = True
+    config.HEALTH_HELPER_LOOK_S = 0.5
+    config.HEALTH_HELPER_SEARCH_S = 40.0
+    try:
+        # the drive goes from the person back to the start (0, 0); the helper
+        # stands beyond it on the way
+        a = _helper_search([{"x": -1.5, "y": 0.6, "follows": True}])
+        # only visible from the drive, so only the watch on the way can find them;
+        # stays in view once hailed
+        a.world.extras[0]["when"] = lambda: _on_drive(a)() or config.HEALTH_HELPER_HAIL in a.voice.said
+        a.hb.start(*sim.STANDARD_LOCATION)
+        await a.until_done(120.0)
+        s = a.hb.status()
+        check("stopped the drive for the person", "Person unterwegs gesehen" in a.homing.cancelled,
+              str(a.homing.cancelled))
+        check("hailed them at once", config.HEALTH_HELPER_HAIL in a.voice.said, str(a.voice.said))
+        check("then asked them to follow", config.HEALTH_HELPER_CALL in a.voice.said
+              and a.voice.said.index(config.HEALTH_HELPER_HAIL) < a.voice.said.index(config.HEALTH_HELPER_CALL),
+              str(a.voice.said))
+        check("helper followed", a.world.following)
+        check("no stop calls for someone standing", not set(config.HEALTH_HELPER_STOP_CALLS) & set(a.voice.said),
+              str(a.voice.said))
+        check("state hilfe", s["zustand"] == pr.HELP, s["zustand"] + " / " + s["schritt"])
+
+        print("Fetches help: the person walks away, the robot follows and calls")
+        b = _helper_search([{"x": -1.0, "y": 0.4, "follows": True, "walk": (-0.55, 0.22)}])
+        stops = config.HEALTH_HELPER_STOP_CALLS
+        b.world.extras[0]["when"] = lambda: _on_drive(b)() or config.HEALTH_HELPER_HAIL in b.voice.said
+        # walks off once hailed, stops at the first stop call
+        b.world.extras[0]["walking"] = lambda: (config.HEALTH_HELPER_HAIL in b.voice.said
+                                                and not set(stops) & set(b.voice.said))
+        b.hb.start(*sim.STANDARD_LOCATION)
+        await b.until_done(120.0)
+        s = b.hb.status()
+        said = b.voice.said
+        check("called them to stop", stops[0] in said, str(said))
+        check("asked them to follow after the stop call", config.HEALTH_HELPER_CALL in said
+              and stops[0] in said and said.index(stops[0]) < said.index(config.HEALTH_HELPER_CALL), str(said))
+        check("helper followed", b.world.following)
+        check("followed faster than leading",
+              config.HEALTH_HELPER_CHASE_SPEED > config.HEALTH_LEAD_SPEED)
+        r = check_record(b, "alarm")
+        if r:
+            check("record says it went after them", (r["helper"] or {}).get("hinterher") is True, str(r["helper"]))
+    finally:
+        config.HEALTH_FETCH_HELP = False
+        for n, v in old.items():
+            setattr(config, n, v)
+
+
 async def case_lidar_gaps() -> None:
     print("Lidar drops out for moments while closing in: still nudges")
     a = Setup("liegend")
@@ -1359,6 +1474,8 @@ async def run_all() -> None:
     await case_fetch_help()
     await case_ghost_helper()
     await case_lidar_gaps()
+    await case_nudge_motor_min()
+    await case_helper_on_the_way()
 
 
 def main() -> None:

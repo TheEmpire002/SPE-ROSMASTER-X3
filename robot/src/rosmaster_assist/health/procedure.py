@@ -499,9 +499,12 @@ class Healthbot:
             self._watchdog.stop()
             await self._wait_drive()
 
-    async def _homing_drive(self, start) -> bool:
+    async def _homing_drive(self, start, watch=None, watch_reason: str = "") -> bool:
         """Run a homing drive begun by ``start()``; after a drive loss it starts
-        again. False if it does not start (the reason is in last_reason)."""
+        again. False if it does not start (the reason is in last_reason).
+
+        ``watch()`` is asked during the drive; True cancels it (``watch_reason``).
+        """
         while True:
             await self._wait_drive()
             self._lost_during = False
@@ -509,6 +512,11 @@ class Healthbot:
                 return False
             while self._homing.active:
                 await asyncio.sleep(0.2)
+                if watch is not None and self._homing.active and watch():
+                    self._homing.cancel(watch_reason)
+                    while self._homing.active:
+                        await asyncio.sleep(0.05)
+                    return True
             if not self._lost_during:
                 return True
             await self._wait_drive()
@@ -668,6 +676,15 @@ class Healthbot:
             self._note("Satz kam nicht aus dem Lautsprecher")
             await self._wait_for(lambda: getattr(v, "available", False))
         self._spoken.append({"zeit": time.time(), "text": text, "gesagt": bool(said)})
+
+    def _call_out(self, text: str) -> None:
+        """Say it without waiting, for calls while driving: the voice queues
+        it, the drive goes on (a sentence takes seconds, the dead man's
+        switch only half a second)."""
+        v = self._voice
+        ok = v is not None and getattr(v, "available", False) and v.say(text, priority=True) is not False
+        self._spoken.append({"zeit": time.time(), "text": text, "gesagt": bool(ok)})
+        self._note(f"ruft: „{text}“" if ok else f"(kein Lautsprecher) „{text}“")
 
     async def _wait_for(self, ready) -> bool:
         """Wait at most HEALTH_AUDIO_WAIT_S until ``ready()``; the audio devices
@@ -1135,9 +1152,13 @@ class Healthbot:
         start = self._odometry.pose()
         began = self._now()
         still_since: float | None = None
+        # (time, way) samples: contact is little gain over HEALTH_NUDGE_CONTACT_S
+        gains: list[tuple[float, float]] = []
         reason = "Zeitgrenze"
         while self._now() - began < config.HEALTH_NUDGE_MAX_S:
-            if self._travelled(start) >= limit:
+            now = self._now()
+            way = self._travelled(start)
+            if way >= limit:
                 reason = "Weggrenze"
                 break
             driven = self._drive(vx=config.HEALTH_NUDGE_SPEED, margin_m=config.HEALTH_NUDGE_MARGIN_M)
@@ -1145,16 +1166,22 @@ class Healthbot:
             # distance to contact limits the nudge depth as well
             free = getattr(self._watchdog.last_check, "free_m", None)
             if free is not None:
-                limit = min(limit, self._travelled(start) + free + config.HEALTH_NUDGE_DEPTH_M)
-            vx_actual = self._odometry.velocity()[0]
+                limit = min(limit, way + free + config.HEALTH_NUDGE_DEPTH_M)
+            gains.append((now, way))
+            while len(gains) > 1 and now - gains[1][0] >= config.HEALTH_NUDGE_CONTACT_S:
+                gains.pop(0)
+            window_full = now - gains[0][0] >= config.HEALTH_NUDGE_CONTACT_S
+            # a command scaled below the motor minimum does not move the
+            # wheels: that is the guard holding, not the person
+            pushing = driven.vx >= config.HEALTH_APPROACH_MIN_SPEED - 1e-6
             # only watch for standstill after starting off (ramp)
-            still = self._now() - began > 0.6 and (driven.vx <= 0.0 or vx_actual < config.HEALTH_NUDGE_STILL_MS)
-            if still:
-                still_since = still_since or self._now()
-                if self._now() - still_since >= config.HEALTH_NUDGE_CONTACT_S:
-                    if driven.vx > 0.0:
-                        reason = "Kontakt"
-                    elif getattr(self._watchdog.last_check, "reason", None) == drive_guard.NO_LIDAR:
+            if now - began > 0.6 and pushing and window_full and way - gains[0][1] < config.HEALTH_NUDGE_STALL_M:
+                reason = "Kontakt"
+                break
+            if now - began > 0.6 and not pushing:
+                still_since = still_since or now
+                if now - still_since >= config.HEALTH_NUDGE_CONTACT_S:
+                    if getattr(self._watchdog.last_check, "reason", None) == drive_guard.NO_LIDAR:
                         # held because the lidar dropped out, not because of
                         # the person; the log should say so
                         reason = drive_guard.NO_LIDAR
@@ -1244,25 +1271,42 @@ class Healthbot:
         place = self._place_of(person)
         return place is not None and math.dist(place, victim) >= config.HEALTH_HELPER_MIN_FROM_VICTIM_M
 
+    def _confirm_helper(self, victim, locked: dict | None, good: int) -> tuple[dict | None, int]:
+        """One frame of confirming a helper: the person locked on and how many
+        frames in a row they passed as helper."""
+        people = self._pose.people() if self._pose is not None else []
+        p = am.track(people, locked) if locked is not None and people else None
+        if p is None:
+            p = next((q for q in people if self._helper_candidate(q, victim)), None)
+            return p, 0 if p is None else 1
+        if self._helper_candidate(p, victim):
+            return p, good + 1
+        return None, 0
+
+    async def _drive_watching(self, x: float, y: float, victim) -> dict | None:
+        """Drive to a search point and watch for a helper on the way. Someone
+        confirmed over a few frames ends the drive and is returned."""
+        seen: dict = {"p": None, "good": 0}
+
+        def watch() -> bool:
+            seen["p"], seen["good"] = self._confirm_helper(victim, seen["p"], seen["good"])
+            return seen["p"] is not None and seen["good"] >= config.HEALTH_HELPER_CONFIRM_FRAMES
+
+        await self._homing_drive(self._drive_to(x, y, "Suchpunkt"), watch=watch,
+                                 watch_reason="Person unterwegs gesehen")
+        if seen["p"] is not None and seen["good"] >= config.HEALTH_HELPER_CONFIRM_FRAMES:
+            return seen["p"]
+        return None
+
     async def _look_for_helper(self, victim, duration: float) -> dict | None:
         """Turn on the spot until an upright person away from the victim is
         centred and confirmed over a few frames. Returns them, None after
         ``duration``."""
         deadline = self._now() + duration
-        locked: dict | None = None
+        p: dict | None = None
         good = 0
         while self._now() < deadline:
-            people = self._pose.people() if self._pose is not None else []
-            p = am.track(people, locked) if locked is not None and people else None
-            if p is None:
-                p = locked = next((q for q in people if self._helper_candidate(q, victim)), None)
-                good = 0 if p is None else 1
-            elif self._helper_candidate(p, victim):
-                locked = p
-                good += 1
-            else:
-                p = locked = None
-                good = 0
+            p, good = self._confirm_helper(victim, p, good)
             if p is not None:
                 if abs(p["winkel"]) <= config.HEALTH_CENTERED_DEG and good >= config.HEALTH_HELPER_CONFIRM_FRAMES:
                     self._watchdog.stop()
@@ -1278,6 +1322,9 @@ class Healthbot:
     async def _go_to_helper(self, helper: dict, victim) -> bool:
         """Up to HEALTH_HELPER_TALK_M in front of the helper, keeping them centred.
 
+        Walking away (HEALTH_HELPER_AWAY_M further than the nearest so far):
+        it follows faster and calls them to stop every
+        HEALTH_HELPER_STOP_CALL_S until it is close enough to talk.
         False if they are lost, no longer look upright or turn out to be in
         the direction of the person on the floor; then it searches on.
         """
@@ -1285,21 +1332,34 @@ class Healthbot:
         lost_since: float | None = None
         held_since: float | None = None
         bad = 0
+        nearest = math.inf
+        chasing = False
+        next_call = 0.0
+        calls = 0
+        bearing = float(helper["winkel"])
         try:
             while self._now() < deadline:
                 now = self._now()
                 people = self._pose.people() if self._pose is not None else []
                 p = am.track(people, helper) if people else None
+                if p is None and lost_since is not None and chasing:
+                    # walking away they leave the picture and come back elsewhere in it
+                    p = next((q for q in people if self._helper_candidate(q, victim)), None)
                 if p is None:
                     lost_since = lost_since if lost_since is not None else now
-                    if now - lost_since > 2.0:
+                    if now - lost_since > config.HEALTH_HELPER_LOST_S:
                         self._note("Helfer aus dem Blick verloren -- sucht weiter")
                         return False
-                    self._watchdog.stop()
+                    if chasing:
+                        # turn to where they were last seen
+                        self._drive(omega=math.copysign(config.HEALTH_SEARCH_OMEGA, bearing))
+                    else:
+                        self._watchdog.stop()
                     await self._tick()
                     continue
                 lost_since = None
                 helper = p
+                bearing = float(p["winkel"])
                 bad = 0 if self._looks_like_helper(p, victim) else bad + 1
                 if bad >= config.HEALTH_HELPER_CONFIRM_FRAMES:
                     self._note("doch kein Helfer (liegt oder Richtung der Person) -- sucht weiter")
@@ -1307,9 +1367,21 @@ class Healthbot:
                 d = self._distance(p)
                 if d is not None and d <= config.HEALTH_HELPER_TALK_M:
                     return True
+                if d is not None:
+                    nearest = min(nearest, d)
+                    if not chasing and d > nearest + config.HEALTH_HELPER_AWAY_M:
+                        chasing = True
+                        deadline = max(deadline, now + config.HEALTH_HELPER_CHASE_S)
+                        self._helper["hinterher"] = True
+                        self._note("Helfer geht weg -- fährt hinterher und ruft")
+                if chasing and now >= next_call:
+                    texts = config.HEALTH_HELPER_STOP_CALLS
+                    self._call_out(texts[calls % len(texts)])
+                    calls += 1
+                    next_call = now + config.HEALTH_HELPER_STOP_CALL_S
                 limit = config.HEALTH_APPROACH_OMEGA_MAX
-                driven = self._drive(vx=config.HEALTH_LEAD_SPEED,
-                                     omega=max(-limit, min(limit, math.radians(p["winkel"]))))
+                speed = config.HEALTH_HELPER_CHASE_SPEED if chasing else config.HEALTH_LEAD_SPEED
+                driven = self._drive(vx=speed, omega=max(-limit, min(limit, math.radians(p["winkel"]))))
                 if driven.vx <= 0.0:
                     # drive guard holds: the helper or something next to them is just ahead
                     held_since = held_since if held_since is not None else now
@@ -1367,15 +1439,21 @@ class Healthbot:
         for stop in stops:
             if self._now() >= until:
                 break
+            helper = None
             if stop is not None:
                 x, y = stop
                 self._helper["punkt"] = points.index(stop)
                 self._note(f"sucht Helfer: Punkt {points.index(stop) + 1}/{len(points)} ({x:.2f}, {y:.2f})")
-                await self._homing_drive(self._drive_to(x, y, "Suchpunkt"))
-            helper = await self._look_for_helper(victim, max(0.0, min(config.HEALTH_HELPER_LOOK_S, until - self._now())))
+                helper = await self._drive_watching(x, y, victim)
+                if helper is not None:
+                    self._note("Person unterwegs gesehen -- hält an")
+            if helper is None:
+                helper = await self._look_for_helper(victim, max(0.0, min(config.HEALTH_HELPER_LOOK_S,
+                                                                          until - self._now())))
             if helper is None:
                 continue
             self._note(f"Helfer gefunden ({helper['winkel']:+.0f}°), fährt hin")
+            self._call_out(config.HEALTH_HELPER_HAIL)
             if not await self._go_to_helper(helper, victim):
                 continue
             self._helper["gefunden"] = True
@@ -1532,14 +1610,15 @@ def _thresholds() -> dict:
         "HEALTH_FLOOR_MIN_WIDTH_M", "HEALTH_FLOOR_IMAGE_BOTTOM",
         "HEALTH_NUDGE_ACTIVE", "HEALTH_NUDGE_COUNT", "HEALTH_NUDGE_SPEED", "HEALTH_NUDGE_DEPTH_M",
         "HEALTH_NUDGE_MARGIN_M", "HEALTH_NUDGE_START_M", "HEALTH_NUDGE_CONTACT_S",
-        "HEALTH_NUDGE_STILL_MS", "HEALTH_NUDGE_MAX_S", "HEALTH_NUDGE_BACK_M",
+        "HEALTH_NUDGE_STILL_MS", "HEALTH_NUDGE_STALL_M", "HEALTH_NUDGE_MAX_S", "HEALTH_NUDGE_BACK_M",
         "HEALTH_APPROACH_SPEED", "HEALTH_APPROACH_ENOUGH_M", "HEALTH_GOAL_TOLERANCE_M",
         "HEALTH_BLOCKED_ENOUGH_M", "HEALTH_SEARCH_S", "HEALTH_CENTERED_DEG", "POSE_KP_MIN_CONF",
         "HEALTH_APPROACH_SLOWDOWN_M", "HEALTH_APPROACH_MIN_SPEED", "HEALTH_DRIVE_SPEED",
         "HEALTH_AREA_RADIUS_M", "HEALTH_VIEWPOINT_RADIUS_M", "HEALTH_VIEWPOINT_MAX",
         "HEALTH_VIEWPOINT_STEP_DEG", "HEALTH_VIEWPOINT_SEARCH_S", "HEALTH_WORDS_WELL",
         "HEALTH_WORDS_UNWELL", "HEALTH_FETCH_HELP", "HEALTH_HELPER_MIN_FROM_VICTIM_M",
-        "HEALTH_HELPER_SEARCH_S", "HEALTH_LEAD_SPEED", "HEALTH_FOLLOW_MAX_M", "HEALTH_FOLLOW_HALF_DEG",
+        "HEALTH_HELPER_SEARCH_S", "HEALTH_HELPER_POINT_SPACING_M", "HEALTH_HELPER_AWAY_M",
+        "HEALTH_HELPER_CHASE_SPEED", "HEALTH_LEAD_SPEED", "HEALTH_FOLLOW_MAX_M", "HEALTH_FOLLOW_HALF_DEG",
         "HEALTH_FOLLOW_LOST_S", "HEALTH_LEAD_TRIES",
     )
     return {n: getattr(config, n, None) for n in names}

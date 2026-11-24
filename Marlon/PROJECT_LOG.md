@@ -1281,3 +1281,13 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Why:** After the second robot test: „Map muss interaktiver werden“; using the map was clumsy and one could not see what the healthbot was doing.
 - **Result:** Healthbot tests pass, including a new check that the map view places the person seen near the spot. Checked in headless Chrome against the mock server: tap menu, person check from the menu, overlay with the person seen, zoom and „Folgen“, no script errors.
 - **Open:** Try it on a tablet on the robot (pinch zoom only tested by code, not by hand).
+
+### 24.11.2026 – Healthbot after the third robot test: nudge, helper search on the way, chase and call (Marlon, with Claude)
+
+- **What:**
+  - **Nudge:** speed 0.05 → 0.09 m/s. Contact is now detected from the way gained over half a second (less than 1 cm while driving at full nudge speed), not from a single speed reading.
+  - **Helper search:** search points 5 m apart instead of 1.5 m, search time 180 s. The robot watches for people while driving between points; a confirmed upright person stops the drive and is greeted at once („Hallo! Bitte warten Sie, ich brauche Ihre Hilfe!“).
+  - **Chase and call:** if the person walks away, the robot follows faster (0.35 m/s) and calls every 5 s („Bitte bleiben Sie stehen!“ etc.) until it is close enough to ask them to follow; then it leads them as before.
+- **Why:** Third robot test: locating the person worked much better, but the robot nudged without touching and the helper search failed. Record analysis: at 0.05 m/s (below the 0.07 m/s the motors need) the wheels crept and stalled, and the stall was taken for contact after 10–13 cm. With 1.5 m spacing there were 12 search points; after 120 s the robot had only reached point 5 and gave up. The drive guard was not the cause: with margin 0 it does not hold during the nudge.
+- **Result:** New tests: wheels that do not turn below the motor minimum (nudge still reaches the person, no false contact), wheels blocked by the person (contact), a person seen on the way to a search point, a person walking away (stop call, then follows).
+- **Open:** Try it on the robot. The robot still runs the branch feat/3d-surfaces, which does not have these changes; it needs zustandserkennung. The third test had no microphone.

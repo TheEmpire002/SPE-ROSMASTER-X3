@@ -1999,9 +1999,10 @@ HEALTH_ACTIVE = True
 # Nudging with real contact. Off: the step is skipped and the verdict comes
 # from observing and talking alone.
 HEALTH_NUDGE_ACTIVE = True
-# Speed when nudging (m/s). Very slow, so the contact is only a tap and the
-# robot stops at once.
-HEALTH_NUDGE_SPEED = 0.05
+# speed when nudging (m/s): slow, so the contact is only a tap, but above
+# HEALTH_APPROACH_MIN_SPEED -- at 0.05 the wheels crept and stalled and the
+# stall counted as contact although nobody was touched (third robot test)
+HEALTH_NUDGE_SPEED = 0.09
 # At most this far (m) beyond the measured lidar distance. It never drives
 # further, even if it feels no resistance.
 HEALTH_NUDGE_DEPTH_M = 0.10
@@ -2013,9 +2014,12 @@ HEALTH_NUDGE_BACK_M = 0.08
 # otherwise it would stop 4 cm short of the person as intended. Speed,
 # distance and the dead man's switch still limit it (docs/decisions.md).
 HEALTH_NUDGE_MARGIN_M = 0.0
-# Driving this long (s) with a command while odometry measures no movement
-# counts as contact (the person pushes back).
-HEALTH_NUDGE_CONTACT_S = 0.4
+# contact: driving at full nudge speed while odometry gains less than
+# HEALTH_NUDGE_STALL_M (m) within HEALTH_NUDGE_CONTACT_S (s) -- the person
+# pushes back. the gain over a window, not the momentary speed: the encoder
+# speed jitters near standstill
+HEALTH_NUDGE_CONTACT_S = 0.5
+HEALTH_NUDGE_STALL_M = 0.01
 # Below this measured speed (m/s) it stands still (for contact detection).
 HEALTH_NUDGE_STILL_MS = 0.01
 # A nudge lasts at most this long (s), then back.
@@ -2172,15 +2176,28 @@ HEALTH_HELPER_POINT_MIN_FROM_VICTIM_M = 2.5
 HEALTH_HELPER_APPROACH_S = 30.0
 HEALTH_HELPER_HOLD_S = 1.5
 # search for a helper at most this long (s) in total
-HEALTH_HELPER_SEARCH_S = 120.0
-# search points across the map: spacing (m), room to walls (m), how many at most
-HEALTH_HELPER_POINT_SPACING_M = 1.5
+HEALTH_HELPER_SEARCH_S = 180.0
+# search points across the map: spacing (m), room to walls (m), how many at
+# most. far apart: it watches for people while driving between them, and with
+# 1.5 m it spent the whole search time turning at the first few points
+HEALTH_HELPER_POINT_SPACING_M = 5.0
 HEALTH_HELPER_POINT_CLEARANCE_M = 0.35
 HEALTH_HELPER_POINTS_MAX = 12
 # at each search point it turns this long (s), about one round
 HEALTH_HELPER_LOOK_S = 14.0
 # it drives up to this distance (m) to a helper before talking to them
 HEALTH_HELPER_TALK_M = 1.0
+# a helper out of sight this long (s) is given up (it turns towards where
+# they were last seen meanwhile)
+HEALTH_HELPER_LOST_S = 3.0
+# walking away: the helper is this much (m) further than the nearest it has
+# been. then it follows at HEALTH_HELPER_CHASE_SPEED (m/s), calls one of
+# HEALTH_HELPER_STOP_CALLS every HEALTH_HELPER_STOP_CALL_S (s) and gives up
+# after HEALTH_HELPER_CHASE_S (s)
+HEALTH_HELPER_AWAY_M = 0.3
+HEALTH_HELPER_CHASE_SPEED = 0.35
+HEALTH_HELPER_STOP_CALL_S = 5.0
+HEALTH_HELPER_CHASE_S = 60.0
 # leading: speed (m/s); someone counts as following when the lidar sees
 # something within this distance (m) and half angle (degrees) behind the robot
 HEALTH_LEAD_SPEED = 0.25
@@ -2194,6 +2211,14 @@ HEALTH_LEAD_TRIES = 3
 HEALTH_HELPER_CALL = ("Entschuldigung! Dort liegt eine Person und braucht Hilfe. "
                       "Bitte folgen Sie mir.")
 HEALTH_HELPER_WAIT_CALL = "Bitte folgen Sie mir!"
+# called out at once when it spots a helper (also while driving), so they
+# notice the robot before it reaches them
+HEALTH_HELPER_HAIL = "Hallo! Bitte warten Sie, ich brauche Ihre Hilfe!"
+HEALTH_HELPER_STOP_CALLS = (
+    "Bitte bleiben Sie stehen!",
+    "Hallo, warten Sie bitte! Jemand braucht Hilfe!",
+    "Bitte warten Sie, ein Notfall!",
+)
 HEALTH_HELPER_ARRIVED = "Hier liegt die Person. Bitte helfen Sie ihr."
 HEALTH_HELPER_NONE = "Ich finde niemanden. Ich rufe weiter um Hilfe."
 

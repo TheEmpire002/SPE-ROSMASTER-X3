@@ -1677,6 +1677,32 @@ check started.
   from where the check started (someone reported it from there). The
   record has `helper` (`opfer`, `gefunden`, `gefolgt`).
 
+**Third robot test of 24.11.** Follow-up fixes:
+
+- **Nudge reaches the person.** `HEALTH_NUDGE_SPEED` is 0.09 m/s, above the
+  motor minimum `HEALTH_APPROACH_MIN_SPEED`; at 0.05 the wheels crept and
+  stalled, and the stall counted as `Kontakt` after 10–13 cm without touching
+  anyone. Contact now means: driving at full nudge speed while odometry gains
+  less than `HEALTH_NUDGE_STALL_M` within `HEALTH_NUDGE_CONTACT_S`. A command
+  the guard scaled below the motor minimum counts as the guard holding.
+  `HEALTH_NUDGE_MARGIN_M` 0 means the drive guard does not hold for obstacles
+  during the nudge at all; the depth is limited by odometry
+  (`HEALTH_NUDGE_DEPTH_M` past the measured air), time and the dead man's
+  switch.
+- **Helper search over larger distances.** Search points
+  `HEALTH_HELPER_POINT_SPACING_M` (5 m) apart, `HEALTH_HELPER_SEARCH_S` 180 s.
+  While driving to a search point it watches the camera: an upright person
+  confirmed over `HEALTH_HELPER_CONFIRM_FRAMES` frames ends the drive (homing
+  `last_reason` „Person unterwegs gesehen“). On spotting a helper it calls
+  `HEALTH_HELPER_HAIL` at once without stopping.
+- **Chase and call.** If the helper gets `HEALTH_HELPER_AWAY_M` further than
+  the nearest they have been, it follows at `HEALTH_HELPER_CHASE_SPEED` and
+  calls one of `HEALTH_HELPER_STOP_CALLS` every `HEALTH_HELPER_STOP_CALL_S`,
+  for up to `HEALTH_HELPER_CHASE_S`, until it is within `HEALTH_HELPER_TALK_M`;
+  then `HEALTH_HELPER_CALL` and leading as before. Out of sight it turns
+  towards where they were last seen and gives up after
+  `HEALTH_HELPER_LOST_S`. The record's `helper` gets `hinterher: true`.
+
 **Second robot test of 24.11.** Follow-up fixes:
 
 - **Helper is never the victim.** A helper must look upright (`sitzt`,
@@ -1687,7 +1713,8 @@ check started.
   `HEALTH_HELPER_SIGHT_M` around the victim covers). With a map it first
   drives away: search points closer than
   `HEALTH_HELPER_POINT_MIN_FROM_VICTIM_M` to the victim are left out.
-  Someone who stops looking upright while it drives up, or is lost for 2 s,
+  Someone who stops looking upright while it drives up, or is lost for
+  `HEALTH_HELPER_LOST_S`,
   is dropped and the search goes on (it used to stop doing anything).
   Reaching the helper: `HEALTH_HELPER_TALK_M`, or the drive guard holding for
   `HEALTH_HELPER_HOLD_S`, or `HEALTH_HELPER_APPROACH_S` passed.
