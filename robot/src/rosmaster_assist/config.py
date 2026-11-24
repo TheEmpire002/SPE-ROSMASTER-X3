@@ -2045,6 +2045,14 @@ HEALTH_OBSERVE_S = 5.0
 # distance. 0 for the reference switches the scaling off.
 HEALTH_MOTIONLESS_PX = 6.0
 HEALTH_MOTIONLESS_REF_DIAG_PX = 300.0
+# Sitting or standing still is not motionless: with the torso at least this
+# steep (degrees from horizontal) and the head above the shoulders the person
+# counts as upright, and a quiet upright person is no warning sign (someone
+# working at a desk barely moves). Flatter torso or hanging head: slumped.
+HEALTH_UPRIGHT_DEG = 60.0
+# Upright with the thighs flatter than this (degrees from horizontal): sitting,
+# otherwise standing.
+HEALTH_SIT_THIGH_DEG = 45.0
 # Lying: shoulder-hip axis flatter than this many degrees from horizontal.
 HEALTH_LYING_DEG = 35.0
 # ... or the box is this much wider than tall (fallback without keypoints).
@@ -2105,7 +2113,7 @@ HEALTH_AUTO_S = 3.0
 # the pose detection misses a frame now and then.
 HEALTH_AUTO_GAP_S = 1.0
 
-# page /zustand keeps the pose detection on while it asks; without a request
+# the live view on /healthbot keeps the pose detection on while it asks; without a request
 # for this long (s) it goes off again so the Hailo is free
 CONDITION_VIEW_LEASE_S = 5.0
 # vote and motion on the page over the last this many seconds (s); the

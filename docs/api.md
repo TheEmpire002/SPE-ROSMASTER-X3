@@ -1603,6 +1603,20 @@ locked while `karte.sicher` is false. Without a map it works as before in
 the odometry frame. A goal tapped in one frame is dropped when the frame
 changes.
 
+**Healthbot map drawn like `/map` (changed 24.11.).** The map on the
+healthbot page now uses the same drawing as `/map` (`webapp/mapview.js`):
+the whole occupancy grid from `GET /api/mapping/map`, x to the right, y up,
+the pose, start, healthbot area and drive from `GET /api/mapping/ortung`.
+A line above the map names what is shown („Angezeigt: Karte „…“ · Lage
+sicher“ or odometry without map). In the map frame a tap either sets the
+person's place or, with „Hier stehe ich“, the robot's pose
+(`POST /api/mapping/pose`). „Zum Ziel fahren & prüfen“ in the map frame posts
+`POST /api/mapping/person`, so the healthbot page and `/map` share the same
+checks and reasons. A WebSocket `health_check` with `rahmen: "karte"` also
+goes through these checks (`MapControl.check_person`), and drives by map use
+the breadcrumb corridor of goal drives; the way home leads back to where the
+check started.
+
 How "lying" is decided (since 23.11.): the person under check is tracked
 from frame to frame (a second person walking past does not take over). The
 torso angle, the box shape and, for a body lying along the camera's line of
@@ -1613,27 +1627,40 @@ vote (`HEALTH_LYING_SHARE`); the `text` of the `liegend` sign then ends with
 the person in the image (`HEALTH_MOTIONLESS_REF_DIAG_PX`). The watch tolerates
 the person being lost for up to `HEALTH_AUTO_GAP_S`.
 
-### Condition detection (page `/zustand`)
+### Condition detection (live view on `/healthbot`)
 
 Live view of the condition detection, without starting a check (new 23.11.):
 which detector delivers the person boxes, all people with their keypoints,
 "lying" for the tracked person per frame and as a vote over the last
-`CONDITION_VIEW_HISTORY_S`, its movement, the watch, the healthbot state and
-the last pose model comparison. Reached from the start page with the
-„Zustand“ button.
+`CONDITION_VIEW_HISTORY_S`, its posture, its movement, the watch, the
+healthbot state and the last pose model comparison. Since 24.11. it is part
+of the healthbot page (sections „Zustand live“, „Wache“, „Erkennung“,
+„Modellvergleich“, switch „Live-Erkennung“); the old page `/zustand` only
+redirects there.
 
-While the page asks, the pose detection runs (user `zustand-seite`, see
+While the page asks (switch on), the pose detection runs (user `zustand-seite`, see
 `PoseDetection.activate`); without a request for `CONDITION_VIEW_LEASE_S`
 the server switches it off again, so the Hailo is free.
 
 | Endpoint | Returns |
 |---|---|
-| `GET /zustand` | the page |
-| `GET /zustand/status` | `seite_aktiv`; `erkennung` (`personenboxen` = `PersonDetection` status with `verfahren`, `pose` = pose status, `modell` = HEF file name); `skelett` (keypoint pairs); `personen` (each `{box, kp, score, winkel, verfolgt, liegend}`, `liegend` is a sign as in `checks`); `zustand` (`liegend` this frame, `liegend_ueber_zeit` vote, `bewegung`, each a sign; `rumpfwinkel`, `bilder`, `zeitraum_s`, `schwellen`); `wache` (`{an, liegt_seit_s, noetig_s}`); `healthbot` (`aktiv`, `zustand`, `schritt`, `alarm`, `urteil`); `modellvergleich` (see below or `null`) |
+| `GET /zustand` | redirect to `/healthbot` (since 24.11.) |
+| `GET /zustand/status` | `seite_aktiv`; `erkennung` (`personenboxen` = `PersonDetection` status with `verfahren`, `pose` = pose status, `modell` = HEF file name); `skelett` (keypoint pairs); `personen` (each `{box, kp, score, winkel, verfolgt, liegend}`, `liegend` is a sign as in `checks`); `zustand` (`liegend` this frame, `liegend_ueber_zeit` vote, `bewegung`, each a sign; `haltung` (posture over the frames, see below), `rumpfwinkel`, `bilder`, `zeitraum_s`, `schwellen`); `wache` (`{an, liegt_seit_s, noetig_s}`); `healthbot` (`aktiv`, `zustand`, `schritt`, `alarm`, `urteil`); `modellvergleich` (see below or `null`) |
 | `POST /zustand/benchmark` | stores a pose model comparison, sent by `scripts/bench_pose.py`: `{"bild": "...", "modelle": [{"modell": "yolov8s_pose_h10.hef", "hailo_ms": 12.3, ...}]}`, 1 to 8 models, only numbers and texts as values. The server adds `zeit` (Unix time) and keeps it in `CONDITION_BENCHMARK_FILE`. 400 with `fehler` if invalid. |
 
 Keypoints and boxes are fractions of the image (0..1), as in
 `/interaktion/pose`.
+
+**Posture and the motionless sign (new 24.11.).** `haltung` is one of
+`liegt`, `zusammengesackt` (head at or below the shoulders), `sitzt` (torso
+above `HEALTH_UPRIGHT_DEG`, thighs flatter than `HEALTH_SIT_THIGH_DEG`),
+`steht` and `aufrecht` (upright, legs not in the image), taken as the most
+frequent posture over the frames. Sitting or standing still is not a warning
+sign: `bewegung` is then `ok` with the text „ruhig, sitzt aufrecht (kein
+Warnzeichen)“ and carries the key `haltung`. Motionless only counts lying or
+slumped. Someone sitting quietly on an office chair therefore never adds a
+sign, and neither the check nor the watch raise an alarm for it (the watch
+only reacts to lying anyway).
 
 ### Test runs
 
@@ -1719,7 +1746,7 @@ run = json.load(urllib.request.urlopen(base + index["laeufe"][0]["pfad"] + "erge
 | `GET /`                      | the bundled web app                             |
 | `GET /einstellungen`         | the web app's settings page                     |
 | `GET /diagnose`, `GET /logs` | the web app's diagnostics page                  |
-| `GET /tests`, `GET /healthbot`, `GET /zustand` | test runs, healthbot and condition detection pages (see above) |
+| `GET /tests`, `GET /healthbot` | test runs and healthbot pages (see above); `GET /zustand` redirects to `/healthbot` |
 | `GET /static/...`            | its files (`webapp/`)                           |
 | `GET /docs`                  | automatically generated HTTP overview (FastAPI) |
 

@@ -1225,3 +1225,22 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Why:** The user wants to pick from the existing maps directly, and on the healthbot page the check should use the map instead of drifting odometry.
 - **Result:** No server change, only the two pages (they use `GET /api/mapping/maps`, `POST /api/mapping/laden` and `state.karte`). Checked in the mock: a saved test map shows up, loads, and the state carries its name, pose and `sicher`; both pages serve the dropdown; JS syntax checked with node.
 - **Open:** Try it in the browser on the robot (the robot currently runs `feat/object-detection`, the change is on `zustandserkennung`).
+
+### 24.11.2026 – Healthbot page reworked: map like /map, live condition view merged, no alarm for quiet sitting (Marlon, with Claude)
+
+- **What:** Three changes to the healthbot.
+  - **Map:** the healthbot page draws its map with the same code as `/map` (new `webapp/mapview.js`): the whole chosen map, x to the right, y up, pose, start, search area and drive from `/api/mapping/ortung`. A line above the map names what is shown. In the map frame a tap sets either the person's place or „Hier stehe ich“. Starting a check in the map frame uses `POST /api/mapping/person`, the same entry as tapping a person on `/map`.
+  - **Reused modules:** a check started in the map frame (also over the WebSocket) goes through `MapControl.check_person`. Healthbot drives by map use the breadcrumb corridor of the goal drives, and the robot drives back to where the check started. The obstacle guard, homing and person detection stay as they were; nothing is re-implemented in the healthbot.
+  - **One page:** the page „Zustandserkennung“ (`/zustand`) is now part of the healthbot page: sections „Zustand live“, „Wache“, „Erkennung“ and „Modellvergleich“, with a switch „Live-Erkennung“. The camera image shows all people, and during a check the judged person is marked. `/zustand` only redirects, and the start-page button is gone.
+  - **Posture:** the assessment now has a posture: liegt, zusammengesackt, sitzt, steht or aufrecht. Someone sitting or standing still is no longer rated „regungslos“.
+- **Why:**
+  - The healthbot map did not show the chosen map. It was drawn rotated and cut around the robot, so it looked nothing like `/map`.
+  - Two pages for one feature were confusing.
+  - A photo from the robot showed a person sitting quietly at a desk on an office chair (torso about 79°, head above the shoulders), and the „Bewegung“ sign was red. Sitting still must not count as a warning sign.
+- **Result:**
+  - All tests pass (27/28; test_telegram only fails locally because the markdown package is missing).
+  - New posture test in `test_health.py`.
+  - Checked in the mock: `/healthbot` serves, `/zustand` redirects, the map payload and ortung match, and a map goal starts the check and drives there by map.
+  - JS syntax checked with node.
+  - The photo was assessed and deleted. Now: „ruhig, sitzt aufrecht (kein Warnzeichen)“.
+- **Open:** Try it in the browser on the robot (it currently runs `feat/object-detection`, the change is on `zustandserkennung`).

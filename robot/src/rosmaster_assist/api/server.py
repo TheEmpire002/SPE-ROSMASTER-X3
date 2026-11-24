@@ -23,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import (
     HTMLResponse,
     JSONResponse,
+    RedirectResponse,
     Response,
     StreamingResponse,
 )
@@ -513,6 +514,8 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     )
     map_control.also_cancel.append(healthbot.cancel)
     map_control.healthbot = healthbot
+    # healthbot drives by map use the same breadcrumb corridor as goal drives from /map
+    healthbot.corridor = lambda: map_control.crumbs.corridor(strict=False)
     # mapping drives take over the wheels; other test runs keep going
     map_control.also_cancel.append(lambda reason=None: test_runs.drives and test_runs.stop(reason))
 
@@ -607,7 +610,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             "szenen": list(SCENES) if health_sim is not None else [],
         }
 
-    # --- Page /zustand: live view of the condition detection ---
+    # --- live view of the condition detection (shown on the page /healthbot) ---
 
     @app.get("/zustand/status")
     async def condition_status() -> dict[str, Any]:
@@ -1562,8 +1565,9 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             return _page("tests.html")
 
         @app.get("/zustand")
-        async def condition_page() -> HTMLResponse:
-            return _page("zustand.html")
+        async def condition_page() -> RedirectResponse:
+            # the live view now lives on the healthbot page, old bookmarks land there
+            return RedirectResponse("/healthbot")
     else:
         log.warning("webapp/ not found at %s -- only /ws available", WEBAPP_DIR)
 
@@ -1998,6 +2002,10 @@ async def _handle(
         frame = msg.get("rahmen") or "odom"
         if frame not in ("odom", "karte"):
             return alert_message("warning", "Healthbot: rahmen muss \"odom\" oder \"karte\" sein")
+        if frame == "karte" and map_control is not None:
+            # same checks and the same "only one program steers" as the /map page
+            error = map_control.check_person(x, y)
+            return alert_message("warning", error) if error else None
         if not healthbot.active:
             # only one program steers
             homing.cancel("Healthbot gestartet")

@@ -1,4 +1,4 @@
-"""Checks the live view of the condition detection (page /zustand) -- without the robot.
+"""Checks the live view of the condition detection (shown on the page /healthbot) -- without the robot.
 
     python Marlon/health/test_condition_view.py
 

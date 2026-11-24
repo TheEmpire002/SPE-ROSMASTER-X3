@@ -1,4 +1,4 @@
-"""Live view of the condition detection for the page ``/zustand``.
+"""Live view of the condition detection, shown on the page ``/healthbot``.
 
 Shows what the robot sees right now, without starting a check: which
 detector delivers the person boxes (Hailo or HOG), the people with their
@@ -90,6 +90,8 @@ class ConditionView:
                 "liegend": single,
                 "liegend_ueber_zeit": am.lying_over(history, tracked) if history else single,
                 "bewegung": am.motionless(history),
+                # new 24.11.: posture of this frame (liegt, sitzt, steht, aufrecht, zusammengesackt)
+                "haltung": am.posture(tracked),
                 "rumpfwinkel": _rounded(am.torso_angle(tracked)) if tracked else None,
                 "bilder": len(history),
                 "zeitraum_s": config.CONDITION_VIEW_HISTORY_S,
@@ -99,6 +101,8 @@ class ConditionView:
                     "HEALTH_FORESHORTEN_RATIO": config.HEALTH_FORESHORTEN_RATIO,
                     "HEALTH_LYING_SHARE": config.HEALTH_LYING_SHARE,
                     "HEALTH_MOTIONLESS_PX": config.HEALTH_MOTIONLESS_PX,
+                    "HEALTH_UPRIGHT_DEG": config.HEALTH_UPRIGHT_DEG,
+                    "HEALTH_SIT_THIGH_DEG": config.HEALTH_SIT_THIGH_DEG,
                     "POSE_KP_MIN_CONF": config.POSE_KP_MIN_CONF,
                 },
             },

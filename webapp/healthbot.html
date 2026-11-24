@@ -53,46 +53,109 @@
         <input type="checkbox" id="hb-watch"> Wache
       </label>
     </div>
+    <p id="hb-start-error" class="hb-note zs-error" hidden></p>
     <p id="hb-nudge-off" class="hb-note" hidden>
       Anstupsen ist in der Konfiguration ausgeschaltet (HEALTH_NUDGE_ACTIVE).
     </p>
   </section>
 
-  <!-- robot, start point, goal, lidar; tapping sets the goal -->
+  <!-- the map the robot uses, drawn like on /map; tapping sets the goal -->
   <section class="panel">
     <h2>Karte</h2>
     <div class="hb-row">
       <select id="hb-map-choice" aria-label="Karte wählen"
               title="Mit Karte: Ort in der Karte, er fährt nach Karte hin und sucht die Person nur dort"></select>
     </div>
-    <canvas id="hb-map" class="hb-map" width="480" height="480"
-            aria-label="Karte, antippen setzt den Ort der Meldung"></canvas>
+    <p id="hb-map-title" class="hb-map-title">lade …</p>
+    <div id="hb-tap-mode" class="hb-row hb-tap-mode" hidden>
+      <span>Antippen setzt:</span>
+      <label class="hb-toggle"><input type="radio" name="hb-tap" value="ziel" checked> Ort der Person</label>
+      <label class="hb-toggle"
+             title="Wie „Hier stehe ich“ auf der Seite Karte: er sucht seine Lage um diesen Punkt">
+        <input type="radio" name="hb-tap" value="pose"> Hier stehe ich</label>
+    </div>
+    <canvas id="hb-map" class="hb-map" aria-label="Karte, antippen setzt den Ort der Meldung"></canvas>
     <p class="hb-note">
-      Antippen setzt den gemeldeten Ort. <span id="hb-goal-text">Kein Ziel gesetzt.</span><br>
-      <span class="hb-legend"><i class="lg-robot"></i>Roboter <i class="lg-home"></i>Startpunkt
-      <i class="lg-goal"></i>Ziel <i class="lg-lidar"></i>Lidar <i class="lg-map"></i>Karte</span>
+      <span id="hb-goal-text">Kein Ziel gesetzt.</span><br>
+      <span class="hb-legend"><i class="lg-robot"></i>Roboter (orange: Lage unsicher)
+      <i class="lg-home"></i>Startpunkt <i class="lg-goal"></i>Ziel
+      <i class="lg-area"></i>Suchbereich <i class="lg-lidar"></i>Lidar</span>
     </p>
   </section>
 
-  <!-- camera with the skeleton of the person under assessment -->
+  <!-- camera: everybody the pose detection sees, the healthbot's person highlighted -->
   <section class="panel">
     <h2>Blick des Roboters</h2>
     <div class="hb-camera">
       <img id="hb-image" alt="Kamerabild der Personenkamera">
       <canvas id="hb-skeleton"></canvas>
     </div>
-    <p class="hb-note">Grün: Skelett der Person, die der Healthbot gerade beurteilt.</p>
+    <p class="hb-note">
+      <span class="hb-legend"><i class="zs-lg zs-lg-tracked"></i>beurteilte Person
+      <i class="zs-lg zs-lg-other"></i>weitere Personen <i class="zs-lg zs-lg-lying"></i>liegend</span><br>
+      Punkte nach Sicherheit:
+      <span class="hb-legend"><i class="zs-lg zs-kp-high"></i>hoch
+      <i class="zs-lg zs-kp-mid"></i>mittel <i class="zs-lg zs-kp-low"></i>unsicher (zählt nicht)</span>
+    </p>
   </section>
 
-  <!-- the four signs as traffic lights with their reasons -->
+  <!-- live condition detection (formerly the page /zustand) -->
+  <section class="panel">
+    <h2>Zustand live</h2>
+    <label class="hb-toggle" title="Solange an, rechnet die Pose-Erkennung (Hailo) auch ohne Prüfung">
+      <input type="checkbox" id="zs-live" checked> Live-Erkennung
+    </label>
+    <p id="zs-person" class="zs-big">lade …</p>
+    <div id="zs-checks" class="hb-checks zs-checks"></div>
+    <dl class="readout">
+      <dt>Haltung</dt><dd id="zs-posture">–</dd>
+      <dt>Rumpfwinkel</dt><dd id="zs-angle">–</dd>
+      <dt>Bilder im Zeitraum</dt><dd id="zs-frames">–</dd>
+      <dt>Schulter / Hüfte (Sicherheit)</dt><dd id="zs-torso">–</dd>
+    </dl>
+    <p class="hb-note" id="zs-thresholds"></p>
+  </section>
+
+  <!-- the four signs of the check as traffic lights with their reasons -->
   <section class="panel wide-panel">
-    <h2>Zeichen</h2>
+    <h2>Zeichen der Prüfung</h2>
     <div id="hb-checks" class="hb-checks"></div>
     <div id="hb-verdict" class="hb-verdict unbekannt">
       <span class="hb-verdict-level">–</span>
       <span class="hb-verdict-text">noch keine Bewertung</span>
       <span class="hb-points"></span>
     </div>
+  </section>
+
+  <!-- watch: lying long enough starts a check by itself -->
+  <section class="panel">
+    <h2>Wache</h2>
+    <dl class="readout">
+      <dt>Wache</dt><dd id="zs-watch">–</dd>
+      <dt>Liegt seit</dt><dd id="zs-lying-since">–</dd>
+    </dl>
+    <div class="zs-progress" aria-hidden="true"><div id="zs-progress-bar"></div></div>
+    <p class="hb-note" id="zs-watch-note"></p>
+  </section>
+
+  <!-- which detector delivers what -->
+  <section class="panel">
+    <h2>Erkennung</h2>
+    <dl class="readout">
+      <dt>Personenboxen</dt><dd id="zs-boxes">–</dd>
+      <dt>Skelett (Pose)</dt><dd id="zs-pose">–</dd>
+      <dt>Modell</dt><dd id="zs-model">–</dd>
+      <dt>Bilder pro Sekunde</dt><dd id="zs-fps">–</dd>
+      <dt>Alter des Bildes</dt><dd id="zs-age">–</dd>
+      <dt>Letzte Person vor</dt><dd id="zs-last">–</dd>
+      <dt>Kamera</dt><dd id="zs-camera">–</dd>
+    </dl>
+    <p id="zs-error" class="hb-note zs-error" hidden></p>
+    <p class="hb-note">
+      Mit Live-Erkennung rechnet die Pose-Erkennung (Hailo), solange diese Seite offen ist.
+      Wird sie geschlossen oder die Live-Erkennung ausgeschaltet, schaltet der Roboter sie nach
+      wenigen Sekunden wieder ab (außer während einer Prüfung).
+    </p>
   </section>
 
   <section class="panel">
@@ -125,8 +188,34 @@
     <ol id="hb-timeline" class="hb-timeline" reversed></ol>
   </section>
 
+  <!-- yolov8s against yolov8m and others, from scripts/bench_pose.py -->
+  <section class="panel wide-panel">
+    <h2>Modellvergleich</h2>
+    <div id="zs-bench-empty">
+      <p class="diag-leer">Noch kein Vergleich gemessen.</p>
+      <p class="hb-note">Auf dem Roboter, während er steht und der Server läuft:
+        <code>python3 scripts/bench_pose.py</code> – das Ergebnis erscheint dann hier
+        (mit eingeschalteter Live-Erkennung).</p>
+    </div>
+    <div id="zs-bench" hidden>
+      <div class="zs-table-wrap">
+        <table class="zs-table">
+          <thead>
+            <tr>
+              <th>Modell</th><th>Hailo</th><th>gesamt</th><th>max. Bilder/s</th>
+              <th>CPU je Bild</th><th>Personen</th><th>Rumpf-Sicherheit</th>
+            </tr>
+          </thead>
+          <tbody id="zs-bench-rows"></tbody>
+        </table>
+      </div>
+      <p class="hb-note" id="zs-bench-note"></p>
+    </div>
+  </section>
+
 </main>
 
+<script src="/static/mapview.js"></script>
 <script src="/static/healthbot.js"></script>
 </body>
 </html>

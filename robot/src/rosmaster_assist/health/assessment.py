@@ -23,7 +23,7 @@ import re
 import numpy as np
 
 from .. import config
-from ..sensors.pose import KP_HIP_L, KP_HIP_R, KP_SHOULDER_L, KP_SHOULDER_R
+from ..sensors.pose import KP_HIP_L, KP_HIP_R, KP_NOSE, KP_SHOULDER_L, KP_SHOULDER_R
 
 FLAGGED = "auffaellig"
 OK = "ok"
@@ -122,6 +122,17 @@ def _kp_px(person: dict, index: int) -> tuple[float, float] | None:
 # for the nudge
 HEAD_POINTS = (0, 1, 2)
 LEG_POINTS = (13, 14, 15, 16)
+KNEE_POINTS = (13, 14)
+
+#: body postures (``posture``); upright ones make stillness harmless
+POSTURE_TEXT = {
+    "liegt": "liegt",
+    "sitzt": "sitzt aufrecht",
+    "steht": "steht",
+    "aufrecht": "aufrecht",
+    "zusammengesackt": "zusammengesackt",
+}
+UPRIGHT_POSTURES = ("sitzt", "steht", "aufrecht")
 
 
 def part_angle(person: dict | None, indices, fov_deg: float) -> float | None:
@@ -240,6 +251,46 @@ def lying_over(history: list[dict], fallback: dict | None = None) -> dict:
     return result
 
 
+def posture(person: dict | None) -> str | None:
+    """Body posture from the keypoints, None if they say too little.
+
+    "liegt", "zusammengesackt" (torso tilted or head hanging below the
+    shoulders), "sitzt" (upright torso, thighs closer to horizontal),
+    "steht" (upright torso, thighs steep) or "aufrecht" (upright torso, legs
+    not seen, e.g. behind a desk).
+    """
+    if person is None:
+        return None
+    if lying(person)["zustand"] == FLAGGED:
+        return "liegt"
+    angle = torso_angle(person)
+    if angle is None:
+        return None
+    shoulder = _middle(_kp_px(person, KP_SHOULDER_L), _kp_px(person, KP_SHOULDER_R))
+    hip = _middle(_kp_px(person, KP_HIP_L), _kp_px(person, KP_HIP_R))
+    nose = _kp_px(person, KP_NOSE)
+    # image y grows downwards: a nose below the shoulder line means the head hangs
+    if angle < config.HEALTH_UPRIGHT_DEG or (nose is not None and nose[1] > shoulder[1]):
+        return "zusammengesackt"
+    knees = [k for k in (_kp_px(person, i) for i in KNEE_POINTS) if k is not None]
+    if not knees:
+        return "aufrecht"
+    knee = (sum(k[0] for k in knees) / len(knees), sum(k[1] for k in knees) / len(knees))
+    dx, dy = knee[0] - hip[0], knee[1] - hip[1]
+    if math.hypot(dx, dy) < 5.0:
+        return "sitzt"  # thigh points straight at the camera: seen from the front while sitting
+    thigh = math.degrees(math.atan2(abs(dy), abs(dx)))
+    return "sitzt" if thigh < config.HEALTH_SIT_THIGH_DEG else "steht"
+
+
+def posture_over(history: list[dict]) -> str | None:
+    """Most common posture over the frames (None if no frame says anything)."""
+    found = [p for p in (posture(h) for h in history) if p is not None]
+    if not found:
+        return None
+    return max(set(found), key=found.count)
+
+
 def body_diagonal_px(history: list[dict]) -> float | None:
     """Median box diagonal (pixels) of the person over the frames."""
     sizes = [math.hypot((p["box"][2] - p["box"][0]) * config.CAMERA_WIDTH,
@@ -288,13 +339,28 @@ def movement_px(history: list[dict]) -> float | None:
 
 
 def motionless(history: list[dict]) -> dict:
+    """Motion sign; sitting or standing still upright is no warning sign.
+
+    Someone working at a desk barely moves in the image (hands hidden,
+    typing is a few pixels), and that is normal. Only stillness in a lying
+    or slumped posture, or without a known posture, counts as motionless.
+    ``haltung`` carries the posture over the frames.
+    """
     m = movement_px(history)
     limit = round(motionless_limit_px(history), 1)
+    body = posture_over(history)
     if m is None:
-        return sign("regungslos", UNKNOWN, None, "zu wenige Bilder mit Keypoints", limit, "px")
-    if m < limit:
-        return sign("regungslos", FLAGGED, round(m, 1), f"Bewegung {m:.1f} px -- regungslos", limit, "px")
-    return sign("regungslos", OK, round(m, 1), f"Bewegung {m:.1f} px -- bewegt sich", limit, "px")
+        result = sign("regungslos", UNKNOWN, None, "zu wenige Bilder mit Keypoints", limit, "px")
+    elif m >= limit:
+        result = sign("regungslos", OK, round(m, 1), f"Bewegung {m:.1f} px -- bewegt sich", limit, "px")
+    elif body in UPRIGHT_POSTURES:
+        result = sign("regungslos", OK, round(m, 1),
+                      f"Bewegung {m:.1f} px -- ruhig, {POSTURE_TEXT[body]} (kein Warnzeichen)", limit, "px")
+    else:
+        how = f", {POSTURE_TEXT[body]}" if body else ""
+        result = sign("regungslos", FLAGGED, round(m, 1), f"Bewegung {m:.1f} px -- regungslos{how}", limit, "px")
+    result["haltung"] = body
+    return result
 
 
 def answer(heard: list[str] | None) -> dict:

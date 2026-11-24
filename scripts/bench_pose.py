@@ -17,7 +17,7 @@ process per frame, and the detections: number of people and the mean
 confidence of the shoulder/hip keypoints that the healthbot relies on.
 
 The results go to the server (``POST /zustand/benchmark``), which shows them
-on the page ``/zustand``; the server runs as root, so a shared file in the
+on the page ``/healthbot`` (section „Modellvergleich“); the server runs as root, so a shared file in the
 home folder would not work.
 """
 
@@ -57,7 +57,7 @@ def _upload(server: str, image: str, models: list[dict]) -> None:
                                      headers={"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(request, timeout=5):
-            print(f"results shown at {server}/zustand")
+            print(f"results shown at {server}/healthbot")
     except Exception as exc:  # the measurement itself is printed above, an upload error is not fatal
         print(f"upload to the server failed: {exc}")
 

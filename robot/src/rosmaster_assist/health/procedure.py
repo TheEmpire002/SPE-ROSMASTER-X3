@@ -81,6 +81,11 @@ class Healthbot:
         self._mukke = mukke
         self._report = report
         self._on_finished = on_finished
+        # set by the server: breadcrumb corridor of the map control, so drives
+        # by map use the same known-free trail as a goal drive from /map
+        self.corridor = None
+        # where the check started (frame of the target), the way home leads there
+        self._origin: tuple[float, float, float] | None = None
         self._task: asyncio.Task | None = None
         self._watch_task: asyncio.Task | None = None
         self._watch_since: float | None = None
@@ -240,6 +245,7 @@ class Healthbot:
             "x": round(float(x), 2), "y": round(float(y), 2), "quelle": source,
             "rahmen": "karte" if by_map else "odom",
         }
+        self._origin = self._frame_pose()
         self._task = asyncio.create_task(self._procedure())
         # done callback instead of finally: it also fires when the task is
         # cancelled before it ever ran
@@ -416,6 +422,16 @@ class Healthbot:
         d = scan.min_distance(0.0, 15.0) if scan is not None else math.inf
         return d if math.isfinite(d) else None
 
+    def _corridor(self):
+        """Breadcrumb corridor for drives by map, None without map control."""
+        if self.corridor is None:
+            return None
+        try:
+            return self.corridor()
+        except Exception:  # without the corridor it still plans on the map alone
+            log.exception("HEALTHBOT: corridor not available")
+            return None
+
     def _by_map(self) -> bool:
         return self._target is not None and self._target["rahmen"] == "karte"
 
@@ -575,12 +591,18 @@ class Healthbot:
         # the check is over, nobody needs the skeleton on the way back
         self._use_pose(False)
         self._note("fährt zum Startpunkt zurück")
+        origin = self._origin
         if self._by_map() and getattr(self._homing, "map_ready", False):
-            # by map to its start in the map: dead reckoning over a longer
-            # drive through rooms would drift
-            started = self._homing.start()
+            # by map back to where the check started: dead reckoning over a
+            # longer drive through rooms would drift
+            if origin is not None:
+                started = self._homing.start(target=origin[:2], angle=origin[2],
+                                             corridor=self._corridor())
+            else:
+                started = self._homing.start(corridor=self._corridor())
         else:
-            started = self._homing.start_to(0.0, 0.0, name="Startpunkt")
+            x, y = origin[:2] if origin is not None else (0.0, 0.0)
+            started = self._homing.start_to(x, y, name="Startpunkt")
         if not started:
             self._note("Heimfahrt startet nicht (läuft schon eine?)")
             return
@@ -614,6 +636,7 @@ class Healthbot:
             if self._by_map():
                 started = self._homing.start(
                     target=(self._target["x"], self._target["y"]),
+                    corridor=self._corridor(),
                     blocked_enough_m=config.HEALTH_BLOCKED_ENOUGH_M,
                 )
             else:

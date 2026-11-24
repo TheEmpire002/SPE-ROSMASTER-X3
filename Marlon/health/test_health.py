@@ -277,6 +277,7 @@ class MapHoming(Homing):
         self.ready = ready
         self.map_goals: list[tuple[float, float] | None] = []
         self.enough: list[float] = []
+        self.corridors: list = []
 
     @property
     def map_ready(self) -> bool:
@@ -293,6 +294,7 @@ class MapHoming(Homing):
             return False
         self.map_goals.append(None if target is None else tuple(target))
         self.enough.append(blocked_enough_m)
+        self.corridors.append(corridor)
         self._goal = (0.0, 0.0) if target is None else tuple(target)
         self._end = time.monotonic() + 0.1
         self.last_reason = None
@@ -435,6 +437,63 @@ def _body(shoulders, hips, box, conf=0.8):
     kp[pose_module.KP_HIP_L] = [hips[0][0], hips[0][1], conf]
     kp[pose_module.KP_HIP_R] = [hips[1][0], hips[1][1], conf]
     return pose_module._person(box, kp, conf, 4 / 3, 60)
+
+
+def _figure(points: dict[int, tuple[float, float]], box, shift: float = 0.0, conf: float = 0.8) -> dict:
+    """Person with the given keypoints (index -> x, y), all shifted by ``shift`` in x."""
+    kp = [[0.0, 0.0, 0.0] for _ in range(17)]
+    for i, (x, y) in points.items():
+        kp[i] = [x + shift, y, conf]
+    return pose_module._person(list(box), kp, conf, 4 / 3, 60)
+
+
+# side view of someone working on an office chair, like the photo of the false
+# alarm on 24.11.: torso ~79° upright, thighs horizontal, hands at the desk
+SEATED_SIDE = {0: (0.47, 0.30), 5: (0.45, 0.40), 6: (0.46, 0.40), 7: (0.52, 0.52), 9: (0.58, 0.55),
+               11: (0.43, 0.62), 12: (0.44, 0.62), 13: (0.56, 0.64), 14: (0.57, 0.64),
+               15: (0.57, 0.85), 16: (0.58, 0.85)}
+SEATED_BOX = (0.38, 0.25, 0.62, 0.9)
+
+
+def test_posture() -> None:
+    print("Posture and stillness")
+    # typing: tiny jitter of the hand, the body still
+    still = [_figure(SEATED_SIDE, SEATED_BOX, shift=0.001 * (i % 2)) for i in range(5)]
+    check("seated side view is sitting", am.posture(still[0]) == "sitzt", str(am.posture(still[0])))
+    s = am.motionless(still)
+    check("sitting quietly on a chair is no warning sign", s["zustand"] == am.OK and s["haltung"] == "sitzt", str(s))
+    check("the text says why", "sitzt aufrecht" in s["text"] and "kein Warnzeichen" in s["text"], s["text"])
+
+    behind_desk = {i: p for i, p in SEATED_SIDE.items() if i not in (13, 14, 15, 16)}
+    hidden = [_figure(behind_desk, (0.38, 0.25, 0.62, 0.65)) for _ in range(5)]
+    check("legs behind the desk is upright", am.posture(hidden[0]) == "aufrecht", str(am.posture(hidden[0])))
+    check("quiet upright behind a desk is no warning sign", am.motionless(hidden)["zustand"] == am.OK)
+
+    kp, box = pose_module._sim_body(0.5, 0.2, 0.6, 0.03)
+    standing = pose_module._person(box, [[x, y, 0.8] for x, y in kp], 0.8, 4 / 3, 60)
+    check("standing person is standing", am.posture(standing) == "steht", str(am.posture(standing)))
+    check("standing still is no warning sign", am.motionless([standing] * 5)["zustand"] == am.OK)
+
+    # slumped on the chair: head hangs below the shoulders
+    slumped_points = dict(SEATED_SIDE)
+    slumped_points[0] = (0.50, 0.45)
+    slumped = [_figure(slumped_points, SEATED_BOX) for _ in range(5)]
+    check("hanging head is slumped", am.posture(slumped[0]) == "zusammengesackt", str(am.posture(slumped[0])))
+    s = am.motionless(slumped)
+    check("slumped and still stays motionless", s["zustand"] == am.FLAGGED and "zusammengesackt" in s["text"], str(s))
+
+    lying = [pose_module._sim_lying(0.5, 1.0, False, i * 0.1, 60) for i in range(6)]
+    s = am.motionless(lying)
+    check("lying still stays motionless", s["zustand"] == am.FLAGGED and s["haltung"] == "liegt", str(s))
+
+    # the verdict never calls an emergency for someone sitting quietly
+    checks = am.empty()
+    checks["liegend"] = am.lying_over(still)
+    checks["regungslos"] = am.motionless(still)
+    checks["antwort"] = am.answer([])
+    checks["boden"] = am.sign("boden", am.OK, 0.2, "Beine")
+    v = am.overall_verdict(checks)
+    check("sitting quietly without answer is no emergency", v["stufe"] != "notfall", str(v))
 
 
 def test_detection() -> None:
@@ -813,6 +872,7 @@ async def until_done_watching(a: Setup, timeout_s: float = 60.0) -> dict:
 async def case_map_frame() -> None:
     print("Point on the map: drives by map, faces the person, aims at the legs")
     a = Setup("liegend", by_map=True)
+    a.hb.corridor = lambda: "brotkrumen"
     check("starts", a.hb.start(*sim.STANDARD_LOCATION, "karte", frame="karte") is None)
     view = a.hb.map_view()
     check("map view shows the point and area", view["aktiv"] and view["ziel"] == list(sim.STANDARD_LOCATION)
@@ -820,7 +880,10 @@ async def case_map_frame() -> None:
     seen = await until_done_watching(a)
     s = a.hb.status()
     check("state hilfe", s["zustand"] == pr.HELP, s["zustand"] + " / " + s["schritt"])
-    check("by map there and back", a.homing.map_goals == [sim.STANDARD_LOCATION, None], str(a.homing.map_goals))
+    check("by map there and back to where it started", a.homing.map_goals == [sim.STANDARD_LOCATION, (0.0, 0.0)],
+          str(a.homing.map_goals))
+    check("both drives use the breadcrumb corridor", a.homing.corridors == ["brotkrumen"] * 2,
+          str(a.homing.corridors))
     check("no dead-reckoning goals", a.homing.goals == [], str(a.homing.goals))
     check("arrives when blocked close enough", a.homing.enough[0] == config.HEALTH_BLOCKED_ENOUGH_M,
           str(a.homing.enough))
@@ -849,7 +912,7 @@ async def case_map_outside_area() -> None:
     s = a.hb.status()
     check("state keine_person", s["zustand"] == pr.NO_PERSON, s["zustand"] + " / " + s["schritt"])
     check("not nudged", not s["stupser"], str(s["stupser"]))
-    check("home by map", a.homing.map_goals == [point, None], str(a.homing.map_goals))
+    check("home by map", a.homing.map_goals == [point, (0.0, 0.0)], str(a.homing.map_goals))
 
 
 async def case_map_refused() -> None:
@@ -920,6 +983,7 @@ def main() -> None:
     try:
         test_assessment()
         test_detection()
+        test_posture()
         test_camera_tilt_hold()
         asyncio.run(run_all())
     finally:
