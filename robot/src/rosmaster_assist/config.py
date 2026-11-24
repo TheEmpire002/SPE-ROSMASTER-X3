@@ -601,6 +601,11 @@ NAV_GUESS_CLEARANCE_M = 0.20
 NAV_GUESS_REPLAN_S = 2.0
 # map drives that lose the pose stop, relocalize and continue
 NAV_RELOCALIZE_WAIT_S = 20.0
+# a jump in the lidar picture during a map drive (lifted?) first stops it and
+# searches the pose again, at most this many times per drive; a robot really
+# lifted does not find its pose and ends after NAV_RELOCALIZE_WAIT_S (robot
+# test: fast driving and turning ended map drives after a few seconds)
+NAV_LIFT_PAUSES = 3
 NAV_RELOCALIZE_TURN = True
 NAV_RELOCALIZE_TURN_AFTER_S = 5.0
 NAV_RELOCALIZE_OMEGA = 0.3
@@ -1587,6 +1592,10 @@ DIAG_SLOW_S = 5.0
 # 10.5 V the battery gets damaged and the board keeps disconnecting.
 BATTERY_WARN_V = 11.1
 BATTERY_CRITICAL_V = 10.5
+# autonomous drives slow down only when the battery stays below
+# BATTERY_WARN_V this long (s): the voltage dips briefly when the motors
+# start (robot test: one dip at 12.2 V at rest halved the speed)
+BATTERY_LOW_HOLD_S = 6.0
 
 # If the voltage falls this far below the maximum of the last minute, it
 # counts as a voltage dip (typically: motors starting at the same time).
@@ -2034,6 +2043,11 @@ HEALTH_APPROACH_ENOUGH_M = 0.1
 # the wheels stopping at the body end it; 15 s were too short on the robot.
 HEALTH_APPROACH_MAX_S = 40.0
 HEALTH_APPROACH_MAX_M = 4.0
+# a missing or stale scan while closing in: it goes on with the last
+# distance minus the way driven since, for at most this long (s); without
+# any distance it stands and waits that long (robot test: one missing scan
+# ended the approach 0.7 m before the person, nobody was nudged)
+HEALTH_APPROACH_BLIND_S = 3.0
 
 # Approach: within this distance (m) of the goal it counts as arrived.
 # Generous, because the reported spot is only approximate and the person
@@ -2042,6 +2056,10 @@ HEALTH_GOAL_TOLERANCE_M = 0.6
 # If something is in the way and the goal is closer than this (m), that is
 # enough: the obstacle is then usually the person.
 HEALTH_BLOCKED_ENOUGH_M = 1.2
+# map drives of the healthbot: a goal in or behind a wall (reported spot,
+# search point) moves up to this far (m) to the nearest drivable spot, also
+# across the wall; NAV_GOAL_SNAP_M only searches through free space
+HEALTH_GOAL_SNAP_M = 1.5
 
 # Overall picture: observe this long (s) how much the person moves.
 HEALTH_OBSERVE_S = 5.0
@@ -2140,6 +2158,19 @@ HEALTH_DRIVE_RECONNECT_S = 30.0
 HEALTH_FETCH_HELP = True
 # a helper must be at least this far (m) from the person on the floor
 HEALTH_HELPER_MIN_FROM_VICTIM_M = 1.5
+# nobody whose line of sight passes this close (m) to the person on the
+# floor counts as a helper: the lidar measures past someone lying and the
+# camera may take them for upright (robot test: the victim was the helper)
+HEALTH_HELPER_SIGHT_M = 1.0
+# a helper must look upright (sitting, standing) in this many frames in a row
+HEALTH_HELPER_CONFIRM_FRAMES = 3
+# search points at least this far (m) from the person on the floor: it first
+# drives away from them
+HEALTH_HELPER_POINT_MIN_FROM_VICTIM_M = 2.5
+# driving up to a helper: at most this long (s); the drive guard holding for
+# HEALTH_HELPER_HOLD_S counts as there
+HEALTH_HELPER_APPROACH_S = 30.0
+HEALTH_HELPER_HOLD_S = 1.5
 # search for a helper at most this long (s) in total
 HEALTH_HELPER_SEARCH_S = 120.0
 # search points across the map: spacing (m), room to walls (m), how many at most

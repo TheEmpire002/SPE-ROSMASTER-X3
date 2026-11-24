@@ -275,6 +275,13 @@ check("planning: target in the wall is moved to a drivable spot",
        >= config.NAV_SAFETY_M - 0.06,
        "" if path is None else f"target ({path.target[0]:.2f}, {path.target[1]:.2f})")
 
+beyond = (-3.7, 0.0)
+check("planning: target behind the wall -- no path without snap", pp.plan_path(occ_map, (-1.5, -1.5), beyond) is None)
+path = pp.plan_path(occ_map, (-1.5, -1.5), beyond, snap_m=1.5)
+check("planning: target behind the wall -- snap moves it inside",
+       path is not None and math.dist(path.target, beyond) <= 1.5,
+       "" if path is None else f"target ({path.target[0]:.2f}, {path.target[1]:.2f})")
+
 # --- Frontiers -------------------------------------------------------------------------
 
 half = apartment(left_only=True)

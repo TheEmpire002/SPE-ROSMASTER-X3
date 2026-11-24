@@ -160,6 +160,24 @@ class Grid:
             margin = new
         return None
 
+    def nearest_drivable_within(self, x: float, y: float, reach_m: float) -> tuple[int, int] | None:
+        """Nearest drivable cell by straight distance, also across walls; the
+        path search then decides whether it can be reached"""
+        ix, iy = self.cell(x, y)
+        r = int(math.ceil(reach_m / self.resolution))
+        x0, x1 = max(0, ix - r), min(self.width, ix + r + 1)
+        y0, y1 = max(0, iy - r), min(self.height, iy + r + 1)
+        if x0 >= x1 or y0 >= y1:
+            return None
+        ys, xs = np.nonzero(self.drivable[y0:y1, x0:x1])
+        if not len(xs):
+            return None
+        d2 = (xs + x0 - ix) ** 2 + (ys + y0 - iy) ** 2
+        k = int(np.argmin(d2))
+        if d2[k] > r * r:
+            return None
+        return int(xs[k] + x0), int(ys[k] + y0)
+
     def search(self, start: tuple[int, int], target: tuple[int, int] | None = None,
                goals: np.ndarray | None = None) -> list[tuple[int, int]] | None:
         """A* to ``target``, or Dijkstra to the nearest cell with ``goals[iy, ix]``."""
@@ -296,19 +314,26 @@ def _path_from(grid: Grid, start_xy, cells, end=None) -> PlannedPath:
     return PlannedPath(points, length, points[-1])
 
 
-def plan_path(occ_map, start_xy, goal_xy, blocked=(), corridor=None) -> PlannedPath | None:
-    """Path from the robot to the goal: a sure one, else a guessed one; None if neither."""
-    path = _plan(Grid(occ_map, blocked, corridor), start_xy, goal_xy)
+def plan_path(occ_map, start_xy, goal_xy, blocked=(), corridor=None,
+              snap_m: float | None = None) -> PlannedPath | None:
+    """Path from the robot to the goal: a sure one, else a guessed one; None if neither.
+
+    ``snap_m``: a goal in or behind a wall that NAV_GOAL_SNAP_M does not
+    reach through free space moves up to this far to the nearest drivable cell.
+    """
+    path = _plan(Grid(occ_map, blocked, corridor), start_xy, goal_xy, snap_m)
     if path is None and config.NAV_GUESS_PATHS:
-        path = _plan(Grid(occ_map, blocked, corridor, guess=True), start_xy, goal_xy)
+        path = _plan(Grid(occ_map, blocked, corridor, guess=True), start_xy, goal_xy, snap_m)
         if path is not None:
             path = path._replace(guessed=True)
     return path
 
 
-def _plan(grid: Grid, start_xy, goal_xy) -> PlannedPath | None:
+def _plan(grid: Grid, start_xy, goal_xy, snap_m: float | None = None) -> PlannedPath | None:
     start = grid.nearest_drivable(*grid.cell(*start_xy), config.NAV_GOAL_SNAP_M)
     target = grid.nearest_drivable(*grid.cell(*goal_xy), config.NAV_GOAL_SNAP_M)
+    if target is None and snap_m:
+        target = grid.nearest_drivable_within(goal_xy[0], goal_xy[1], snap_m)
     if start is None or target is None:
         return None
     cells = grid.search(start, target=target)
@@ -369,9 +394,10 @@ class BackgroundPlanner:
     def __init__(self) -> None:
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pfadplanung")
 
-    def path(self, occ_map, start_xy, goal_xy, blocked=(), corridor=None) -> Future:
+    def path(self, occ_map, start_xy, goal_xy, blocked=(), corridor=None,
+             snap_m: float | None = None) -> Future:
         return self._pool.submit(_safe_call, plan_path, occ_map, start_xy, goal_xy, tuple(blocked),
-                                 corridor)
+                                 corridor, snap_m)
 
     def gap(self, occ_map, start_xy, handled=(), blocked=()) -> Future:
         return self._pool.submit(

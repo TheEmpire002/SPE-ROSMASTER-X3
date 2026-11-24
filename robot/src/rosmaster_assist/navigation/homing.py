@@ -99,6 +99,7 @@ class Homing:
         # (against oscillating in front of wide obstacles).
         self._memory = avoidance.ShortTermMemory(odometry)
         self._lift = avoidance.LiftDetector()
+        self._goal_snap: float | None = None
         self._page = 0.0
         self._blocked_since: float | None = None
         # straight drive goal in the odometry frame; (0, 0) is home
@@ -154,7 +155,8 @@ class Homing:
 
     def start(self, target: tuple[float, float] | None = None, angle: float | None = None,
               kind: str | None = None, corridor=None, fallback_points=None,
-              blocked_enough_m: float = 0.0, speed: float | None = None) -> bool:
+              blocked_enough_m: float = 0.0, speed: float | None = None,
+              goal_snap_m: float | None = None) -> bool:
         """Begin homing or the drive to ``target`` (map frame, m).
 
         ``angle`` (radians): align like this at the goal. ``kind="zurueck"``:
@@ -164,6 +166,8 @@ class Homing:
         in ``last_reason``). ``blocked_enough_m`` as in ``start_to``: blocked
         this close to the goal counts as arrived (person on the floor).
         ``speed`` (m/s) replaces the normal drive speed for this drive.
+        ``goal_snap_m``: a goal in or behind a wall moves up to this far to
+        the nearest drivable spot (see ``path_planning.plan_path``).
         """
         if self.active:
             return False
@@ -180,6 +184,7 @@ class Homing:
         self._waiting = None
         self._path = []
         self._set_speed(speed)
+        self._goal_snap = goal_snap_m
         self._by_map = self.map_ready
         if self._by_map:
             if target is None:
@@ -371,6 +376,7 @@ class Homing:
         self._memory.clear()
         self._lift.reset()
         replans = 0
+        lift_pauses = 0
         uncertain_since: float | None = None
         resume_left = 0
         last_nr = None
@@ -420,6 +426,11 @@ class Homing:
                     await asyncio.sleep(tick)
                     continue
                 if uncertain_since is not None:
+                    if now - uncertain_since > config.NAV_RELOCALIZE_WAIT_S:
+                        # confident again but the scans never match: lifted or moved
+                        self._shutdown("Lage in der Karte verloren -- auf der Karte mit "
+                                       "„Hier stehe ich“ zeigen, wo er steht", warning=True)
+                        return
                     track = self._localization.last_track
                     if track is not None and track.nr != last_nr:
                         last_nr = track.nr
@@ -466,8 +477,22 @@ class Homing:
                     continue
                 memory_pose = self._memory.pose if self._memory.measuring else None
                 if self._lift.check(scan, memory_pose):
-                    self._shutdown("hochgehoben -- Lage wird neu gesucht", warning=True)
-                    return
+                    lift_pauses += 1
+                    if lift_pauses > config.NAV_LIFT_PAUSES:
+                        self._shutdown("hochgehoben -- Lage wird neu gesucht", warning=True)
+                        return
+                    # often only fast driving or turning: stop, find the pose
+                    # again and plan anew; a robot really lifted finds no pose
+                    log.warning("%s: lidar picture jumped (lifted?) -- stops and searches the pose (%d/%d)",
+                                name, lift_pauses, config.NAV_LIFT_PAUSES)
+                    self._watchdog.submit(DriveCommand(0.0, 0.0, 0.0), source="autonom")
+                    self._lift.reset()
+                    self._localization.relocalize()
+                    uncertain_since = now
+                    resume_left = config.NAV_RESUME_CONFIRM_N
+                    self._waiting = "wartet auf Ortung"
+                    await asyncio.sleep(tick)
+                    continue
 
                 points = self._memory.points(scan)
                 if now - check_time >= config.NAV_SCAN_CHECK_S:
@@ -620,8 +645,9 @@ class Homing:
             return None
         now = time.monotonic()
         self._blocks = [s for s in self._blocks if s[2] > now]
+        extra = {} if self._goal_snap is None else {"snap_m": self._goal_snap}
         return self._planner.path(occ_map, (pose[0], pose[1]), target,
-                                  [(s[0], s[1]) for s in self._blocks], self._corridor)
+                                  [(s[0], s[1]) for s in self._blocks], self._corridor, **extra)
 
     def _route_obstacle(self, pose, scan) -> tuple[float, float] | None:
         """Nearest live lidar point on the route ahead (map frame), or None.

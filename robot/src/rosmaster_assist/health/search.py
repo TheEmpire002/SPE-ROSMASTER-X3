@@ -51,11 +51,13 @@ def viewpoints(target, robot_xy, radius: float, count: int, step_deg: float,
 
 
 def search_points(occ_map, start, spacing: float, clearance: float,
-                  max_count: int) -> list[tuple[float, float]]:
+                  max_count: int, avoid=None, avoid_m: float = 0.0) -> list[tuple[float, float]]:
     """Free points on a grid over the map, nearest first, then nearest neighbour.
 
     The order keeps the drives between the points short. Unreachable points
     are not filtered here: homing gives up on them and the search goes on.
+    Points closer than ``avoid_m`` to ``avoid`` (the person on the floor) are
+    left out.
     """
     if occ_map is None:
         return []
@@ -65,6 +67,8 @@ def search_points(occ_map, start, spacing: float, clearance: float,
     candidates = []
     for x in np.arange(x0 + spacing / 2, x0 + w, spacing):
         for y in np.arange(y0 + spacing / 2, y0 + h, spacing):
+            if avoid is not None and math.dist((float(x), float(y)), avoid) < avoid_m:
+                continue
             if _room(occ_map, float(x), float(y), clearance):
                 candidates.append((float(x), float(y)))
     order = []
@@ -74,6 +78,21 @@ def search_points(occ_map, start, spacing: float, clearance: float,
         here = candidates.pop(i)
         order.append(here)
     return order
+
+
+def sight_near(pose: tuple[float, float, float], bearing_deg: float, point, radius: float) -> bool:
+    """Is ``bearing_deg`` (seen from ``pose``) in the direction of ``point``?
+
+    The direction counts within the angle a circle of ``radius`` around the
+    point covers, at least 60° to each side when the robot is right next to it.
+    """
+    dx, dy = point[0] - pose[0], point[1] - pose[1]
+    d = math.hypot(dx, dy)
+    if d < 1e-6:
+        return True
+    off = math.atan2(dy, dx) - (pose[2] + math.radians(bearing_deg))
+    off = abs(math.atan2(math.sin(off), math.cos(off)))
+    return off <= max(math.atan2(radius, d), math.radians(60.0) if d <= radius else 0.0)
 
 
 def someone_behind(points, max_m: float, half_deg: float, min_points: int = 3) -> bool:

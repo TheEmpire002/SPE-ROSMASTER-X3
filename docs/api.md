@@ -1667,6 +1667,32 @@ check started.
   from where the check started (someone reported it from there). The
   record has `helper` (`opfer`, `gefunden`, `gefolgt`).
 
+**Second robot test of 24.11.** Follow-up fixes:
+
+- **Helper is never the victim.** A helper must look upright (`sitzt`,
+  `steht`, `aufrecht`; an unclear posture does not count) in
+  `HEALTH_HELPER_CONFIRM_FRAMES` frames in a row, be at least
+  `HEALTH_HELPER_MIN_FROM_VICTIM_M` from the victim by lidar, and must not be
+  in the direction of the victim (within the angle a circle of
+  `HEALTH_HELPER_SIGHT_M` around the victim covers). With a map it first
+  drives away: search points closer than
+  `HEALTH_HELPER_POINT_MIN_FROM_VICTIM_M` to the victim are left out.
+  Someone who stops looking upright while it drives up, or is lost for 2 s,
+  is dropped and the search goes on (it used to stop doing anything).
+  Reaching the helper: `HEALTH_HELPER_TALK_M`, or the drive guard holding for
+  `HEALTH_HELPER_HOLD_S`, or `HEALTH_HELPER_APPROACH_S` passed.
+- **Nudging with missing scans.** While closing in, a missing or stale scan
+  no longer ends the approach: it goes on with the last distance minus the
+  way driven, for up to `HEALTH_APPROACH_BLIND_S`.
+- **Map drives.** A jump in the lidar picture (lift check) stops the drive,
+  searches the pose again and plans anew, up to `NAV_LIFT_PAUSES` times per
+  drive; before, fast driving or turning ended map drives. Healthbot goals in
+  or behind a wall move up to `HEALTH_GOAL_SNAP_M` to the nearest drivable
+  spot (`goal_snap_m` of homing, `snap_m` of `plan_path`).
+- **Battery.** Autonomous drives slow down (`AUTONOMOUS_BATTERY_FACTOR`) only
+  when the battery stays below `BATTERY_WARN_V` for `BATTERY_LOW_HOLD_S`; a
+  dip while the motors start no longer halves the speed.
+
 How "lying" is decided (since 23.11.): the person under check is tracked
 from frame to frame (a second person walking past does not take over). The
 torso angle, the box shape and, for a body lying along the camera's line of

@@ -85,6 +85,7 @@ class SafetyWatchdog:
         # slowly, and submit() runs at a 20 Hz tick.
         self._battery_v: float | None = None
         self._battery_at = -1e9
+        self._battery_low_since: float | None = None
         # Collision check via the footprint for autonomous commands
         # (point 5, safety/drive_guard.py). Stays None if no lidar is
         # configured -- then there are no autonomous modes that could
@@ -160,7 +161,13 @@ class SafetyWatchdog:
                 # failure anyway, and a driver error must not prevent the
                 # drive command here.
                 self._battery_v = None
-        if self._battery_v is not None and self._battery_v < config.BATTERY_WARN_V:
+        if self._battery_v is None or self._battery_v >= config.BATTERY_WARN_V:
+            self._battery_low_since = None
+            return 1.0
+        # a dip while the motors start is not an empty battery
+        if self._battery_low_since is None:
+            self._battery_low_since = now
+        if now - self._battery_low_since >= config.BATTERY_LOW_HOLD_S:
             return config.AUTONOMOUS_BATTERY_FACTOR
         return 1.0
 

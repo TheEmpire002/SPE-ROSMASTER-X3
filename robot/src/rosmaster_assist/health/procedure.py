@@ -765,7 +765,8 @@ class Healthbot:
         speed = config.HEALTH_DRIVE_SPEED if speed is None else speed
         if self._by_map():
             return lambda: self._homing.start(target=(x, y), angle=angle, corridor=self._corridor(),
-                                              blocked_enough_m=blocked_enough_m, speed=speed)
+                                              blocked_enough_m=blocked_enough_m, speed=speed,
+                                              goal_snap_m=config.HEALTH_GOAL_SNAP_M)
         return lambda: self._homing.start_to(x, y, tolerance=config.HEALTH_GOAL_TOLERANCE_M, name=name,
                                              blocked_enough_m=blocked_enough_m, speed=speed)
 
@@ -1019,6 +1020,9 @@ class Healthbot:
         start = self._odometry.pose()
         began = self._now()
         still_since: float | None = None
+        # last lidar distance: (distance, travelled then, time)
+        last: tuple[float, float, float] | None = None
+        blind_since: float | None = None
         while self._now() < deadline:
             if self._travelled(start) > config.HEALTH_APPROACH_MAX_M:
                 self._watchdog.stop()
@@ -1029,10 +1033,21 @@ class Healthbot:
                 self._person = p
             legs = self._leg_angle(p)
             d = self._distance(p, legs)
-            if d is None:
+            now = self._now()
+            if d is not None:
+                last = (d, self._travelled(start), now)
+                blind_since = None
+            elif last is not None and now - last[2] <= config.HEALTH_APPROACH_BLIND_S:
+                # one scan missing or stale: the distance shrinks by the way driven
+                d = last[0] - (self._travelled(start) - last[1])
+            else:
+                blind_since = blind_since if blind_since is not None else now
                 self._watchdog.stop()
-                self._note("kein Lidar-Abstand zur Person")
-                return False
+                if now - blind_since > config.HEALTH_APPROACH_BLIND_S:
+                    self._note("kein Lidar-Abstand zur Person")
+                    return False
+                await self._tick()
+                continue
             if d <= config.HEALTH_NUDGE_START_M:
                 self._watchdog.stop()
                 return True
@@ -1188,27 +1203,45 @@ class Healthbot:
             return None
         return search.position(pose, person["winkel"], d)
 
+    def _looks_like_helper(self, person: dict, victim) -> bool:
+        """Upright and not in the direction of the person on the floor.
+
+        an unclear posture does not count: the victim far away often has
+        too few keypoints for "liegt" (robot test: taken as the helper)
+        """
+        if am.posture(person) not in am.UPRIGHT_POSTURES:
+            return False
+        pose = self._frame_pose()
+        return pose is None or not search.sight_near(pose, person["winkel"], victim,
+                                                     config.HEALTH_HELPER_SIGHT_M)
+
+    def _helper_candidate(self, person: dict, victim) -> bool:
+        if not self._looks_like_helper(person, victim):
+            return False
+        place = self._place_of(person)
+        return place is not None and math.dist(place, victim) >= config.HEALTH_HELPER_MIN_FROM_VICTIM_M
+
     async def _look_for_helper(self, victim, duration: float) -> dict | None:
         """Turn on the spot until an upright person away from the victim is
-        centred. Returns them, None after ``duration``."""
+        centred and confirmed over a few frames. Returns them, None after
+        ``duration``."""
         deadline = self._now() + duration
         locked: dict | None = None
+        good = 0
         while self._now() < deadline:
             people = self._pose.people() if self._pose is not None else []
             p = am.track(people, locked) if locked is not None and people else None
             if p is None:
-                locked = None
-                for q in people:
-                    if am.down(q):
-                        continue
-                    place = self._place_of(q)
-                    if place is not None and math.dist(place, victim) >= config.HEALTH_HELPER_MIN_FROM_VICTIM_M:
-                        p = locked = q
-                        break
-            else:
+                p = locked = next((q for q in people if self._helper_candidate(q, victim)), None)
+                good = 0 if p is None else 1
+            elif self._helper_candidate(p, victim):
                 locked = p
+                good += 1
+            else:
+                p = locked = None
+                good = 0
             if p is not None:
-                if abs(p["winkel"]) <= config.HEALTH_CENTERED_DEG:
+                if abs(p["winkel"]) <= config.HEALTH_CENTERED_DEG and good >= config.HEALTH_HELPER_CONFIRM_FRAMES:
                     self._watchdog.stop()
                     return p
                 limit = config.HEALTH_SEARCH_OMEGA
@@ -1219,42 +1252,74 @@ class Healthbot:
         self._watchdog.stop()
         return None
 
-    async def _go_to_helper(self, helper: dict) -> None:
-        """Up to HEALTH_HELPER_TALK_M in front of the helper, keeping them centred."""
-        deadline = self._now() + 30.0
-        lost = 0
-        while self._now() < deadline:
-            people = self._pose.people() if self._pose is not None else []
-            p = am.track(people, helper) if people else None
-            if p is None:
-                lost += 1
-                if lost * _TICK_S > 2.0:
-                    break
-                self._watchdog.stop()
-                await self._tick()
-                continue
-            lost = 0
-            helper = p
-            d = self._distance(p)
-            if d is None or d <= config.HEALTH_HELPER_TALK_M:
-                break
-            limit = config.HEALTH_APPROACH_OMEGA_MAX
-            self._drive(vx=config.HEALTH_LEAD_SPEED, omega=max(-limit, min(limit, math.radians(p["winkel"]))))
-            await self._tick()
-        self._watchdog.stop()
+    async def _go_to_helper(self, helper: dict, victim) -> bool:
+        """Up to HEALTH_HELPER_TALK_M in front of the helper, keeping them centred.
 
-    def _helper_points(self) -> list[tuple[float, float]]:
-        """Where to look for a helper: points across the map, without a map
-        the place where the check started (someone reported it from there)."""
+        False if they are lost, no longer look upright or turn out to be in
+        the direction of the person on the floor; then it searches on.
+        """
+        deadline = self._now() + config.HEALTH_HELPER_APPROACH_S
+        lost_since: float | None = None
+        held_since: float | None = None
+        bad = 0
+        try:
+            while self._now() < deadline:
+                now = self._now()
+                people = self._pose.people() if self._pose is not None else []
+                p = am.track(people, helper) if people else None
+                if p is None:
+                    lost_since = lost_since if lost_since is not None else now
+                    if now - lost_since > 2.0:
+                        self._note("Helfer aus dem Blick verloren -- sucht weiter")
+                        return False
+                    self._watchdog.stop()
+                    await self._tick()
+                    continue
+                lost_since = None
+                helper = p
+                bad = 0 if self._looks_like_helper(p, victim) else bad + 1
+                if bad >= config.HEALTH_HELPER_CONFIRM_FRAMES:
+                    self._note("doch kein Helfer (liegt oder Richtung der Person) -- sucht weiter")
+                    return False
+                d = self._distance(p)
+                if d is not None and d <= config.HEALTH_HELPER_TALK_M:
+                    return True
+                limit = config.HEALTH_APPROACH_OMEGA_MAX
+                driven = self._drive(vx=config.HEALTH_LEAD_SPEED,
+                                     omega=max(-limit, min(limit, math.radians(p["winkel"]))))
+                if driven.vx <= 0.0:
+                    # drive guard holds: the helper or something next to them is just ahead
+                    held_since = held_since if held_since is not None else now
+                    if now - held_since >= config.HEALTH_HELPER_HOLD_S:
+                        return True
+                else:
+                    held_since = None
+                await self._tick()
+            # still seen and upright after the time limit: talk from here
+            return True
+        finally:
+            self._watchdog.stop()
+
+    def _helper_stops(self, victim) -> list[tuple[float, float] | None]:
+        """Where to look for a helper, None meaning right here.
+
+        With a map: search points across it away from the person on the
+        floor, so it first drives away from them. Without a map: here, then
+        the place where the check started (someone reported it from there).
+        """
         pose = self._frame_pose()
         occ = getattr(self._homing, "occ_map", None) if self._by_map() else None
         if occ is not None and pose is not None:
-            return search.search_points(occ, pose[:2], config.HEALTH_HELPER_POINT_SPACING_M,
-                                        config.HEALTH_HELPER_POINT_CLEARANCE_M,
-                                        config.HEALTH_HELPER_POINTS_MAX)
+            points = search.search_points(occ, pose[:2], config.HEALTH_HELPER_POINT_SPACING_M,
+                                          config.HEALTH_HELPER_POINT_CLEARANCE_M,
+                                          config.HEALTH_HELPER_POINTS_MAX, avoid=victim,
+                                          avoid_m=config.HEALTH_HELPER_POINT_MIN_FROM_VICTIM_M)
+            if points:
+                return list(points)
+        stops: list[tuple[float, float] | None] = [None]
         if self._origin is not None and pose is not None and math.dist(self._origin[:2], pose[:2]) > 0.5:
-            return [self._origin[:2]]
-        return []
+            stops.append(self._origin[:2])
+        return stops
 
     async def _fetch_help(self) -> bool | None:
         """Find an upright person, ask them to follow, lead them to the victim.
@@ -1271,25 +1336,29 @@ class Healthbot:
         await self._send("warning", "Healthbot: suche jemanden, der helfen kann")
         self._use_pose(True)
         until = self._now() + config.HEALTH_HELPER_SEARCH_S
-        helper = await self._look_for_helper(victim, min(config.HEALTH_HELPER_LOOK_S, config.HEALTH_HELPER_SEARCH_S))
-        points = [] if helper is not None else self._helper_points()
-        for i, (x, y) in enumerate(points, 1):
+        stops = self._helper_stops(victim)
+        if stops[0] is not None:
+            self._note("fährt erst von der Person weg und sucht dann")
+        points = [s for s in stops if s is not None]
+        for stop in stops:
             if self._now() >= until:
                 break
-            self._note(f"sucht Helfer: Punkt {i}/{len(points)} ({x:.2f}, {y:.2f})")
-            await self._homing_drive(self._drive_to(x, y, "Suchpunkt"))
+            if stop is not None:
+                x, y = stop
+                self._note(f"sucht Helfer: Punkt {points.index(stop) + 1}/{len(points)} ({x:.2f}, {y:.2f})")
+                await self._homing_drive(self._drive_to(x, y, "Suchpunkt"))
             helper = await self._look_for_helper(victim, max(0.0, min(config.HEALTH_HELPER_LOOK_S, until - self._now())))
-            if helper is not None:
-                break
-        if helper is None:
-            self._note("niemanden zum Helfen gefunden")
-            await self._speak(config.HEALTH_HELPER_NONE, priority=True)
-            return None
-        self._helper["gefunden"] = True
-        self._note(f"Helfer gefunden ({helper['winkel']:+.0f}°), fährt hin")
-        await self._go_to_helper(helper)
-        await self._speak(config.HEALTH_HELPER_CALL, priority=True)
-        return await self._lead(victim)
+            if helper is None:
+                continue
+            self._note(f"Helfer gefunden ({helper['winkel']:+.0f}°), fährt hin")
+            if not await self._go_to_helper(helper, victim):
+                continue
+            self._helper["gefunden"] = True
+            await self._speak(config.HEALTH_HELPER_CALL, priority=True)
+            return await self._lead(victim)
+        self._note("niemanden zum Helfen gefunden")
+        await self._speak(config.HEALTH_HELPER_NONE, priority=True)
+        return None
 
     def _followed(self) -> bool:
         return search.someone_behind(self._points(), config.HEALTH_FOLLOW_MAX_M, config.HEALTH_FOLLOW_HALF_DEG)

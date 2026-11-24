@@ -1258,3 +1258,14 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Why:** In the robot test a person behind a table was not found, the robot spoke to someone sitting behind the lying person, nobody was nudged, answers to „Geht es Ihnen gut?“ changed nothing, the robot was slow, and it did not fetch help.
 - **Result:** All healthbot cases pass, including new ones for every point above (lying preferred, hidden person, answers, speaker dropout, drive lost, helper follows / does not follow / nobody there). Full suite 27/28; test_telegram only fails locally (markdown package missing).
 - **Open:** Try it on the robot. The test ran on `feat/3d-surfaces`; the robot needs `zustandserkennung`. Following is detected only by the lidar behind the robot, so a wall or a chair behind it also counts as „follows“.
+
+### 24.11.2026 – Healthbot after the second robot test: helper search, nudging, map drives (Marlon, with Claude)
+
+- **What:**
+  - **Helper search:** the person on the floor can no longer become the helper. A helper must look upright over several frames, stand away from the victim, and must not be in the victim's direction. With a map the robot first drives away from the victim, then looks. If the chosen helper turns out wrong or is lost, it searches on instead of standing still.
+  - **Nudging:** a single missing lidar scan no longer ends the approach; it estimates the distance from the way driven for up to 3 s.
+  - **Map drives:** a jump in the lidar picture no longer ends the drive ("hochgehoben"); it stops, finds its pose again and goes on (up to 3 times). Goals in or behind walls move to the nearest drivable spot (up to 1.5 m).
+  - **Battery:** the speed is halved only when the battery stays low for 6 s.
+- **Why:** In the second robot test the robot took the lying person (the tester) as the helper and then did nothing, did not nudge (the approach ended at the first missing scan, 0.7 m before the person), map drives ended early, and the robot drove at half speed because one voltage dip below 11.1 V at start-up switched on the battery throttle.
+- **Result:** New tests for all points (ghost helper where the victim lies, lidar gaps while nudging, search points away from the victim, goal snap behind a wall, battery dip). Healthbot, map, odometry and detour tests pass; full suite as before except test_telegram (local markdown package missing).
+- **Open:** Try it on the robot. Making the map page more interactive is the next step.

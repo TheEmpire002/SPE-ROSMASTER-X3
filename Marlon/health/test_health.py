@@ -35,7 +35,9 @@ Cases:
 * fetching help: finds an upright person, they follow, it leads them to
   the person; a helper who does not follow is called again, then it goes
   alone; a sentence that did not come out is said again;
-* search.py: viewpoints, search points on a map, someone behind the robot.
+* search.py: viewpoints, search points on a map, someone behind the robot;
+* the lidar drops out for moments while closing in: it still nudges;
+* someone upright-looking where the person lies is never the helper.
 """
 
 import asyncio
@@ -120,7 +122,11 @@ class World:
                     e["y"] = self.y - 0.7 * math.sin(self.th)
 
     def all_circles(self):
-        return self.circles + [(e["x"], e["y"], 0.15) for e in self.extras]
+        return self.circles + self.extra_circles()
+
+    def extra_circles(self):
+        # "lidar": False -- only the camera sees them (a ghost image)
+        return [(e["x"], e["y"], 0.15) for e in self.extras if e.get("lidar", True)]
 
     def place(self, x: float, y: float, th: float) -> None:
         self.update()
@@ -149,8 +155,7 @@ class World:
             tx = np.where(ux > 0, (x1 - self.x) / ux, (x0 - self.x) / ux)
             ty = np.where(uy > 0, (y1 - self.y) / uy, (y0 - self.y) / uy)
         r = np.minimum(np.abs(tx), np.abs(ty))
-        for cx, cy, rad in (self.all_circles() if self.lidar_sees
-                            else [(e["x"], e["y"], 0.15) for e in self.extras]):
+        for cx, cy, rad in (self.all_circles() if self.lidar_sees else self.extra_circles()):
             # ray x + t*u hits circle: t^2 - 2 t (u.d) + |d|^2 - rad^2 = 0
             dx, dy = cx - self.x, cy - self.y
             b = ux * dx + uy * dy
@@ -211,8 +216,12 @@ class Odometry:
 class Lidar:
     def __init__(self, world: World) -> None:
         self.world = world
+        # returns True while no scan comes (dropout)
+        self.gap = None
 
     def latest(self):
+        if self.gap is not None and self.gap():
+            return None
         return self.world.scan()
 
 
@@ -259,6 +268,8 @@ class Pose:
                 found.append(pose_module._person(box, [[x, y, 0.8] for x, y in kp], 0.8,
                                                  config.CAMERA_WIDTH / config.CAMERA_HEIGHT, self.fov_deg))
         for e in w.extras:
+            if e.get("when") is not None and not e["when"]():
+                continue
             ex = self._image_x(e["x"], e["y"])
             if ex is not None:
                 found.append(self._upright(ex, math.hypot(e["x"] - w.x, e["y"] - w.y)))
@@ -334,6 +345,7 @@ class MapHoming(Homing):
         self.map_goals: list[tuple[float, float] | None] = []
         self.enough: list[float] = []
         self.corridors: list = []
+        self.snaps: list = []
 
     @property
     def map_ready(self) -> bool:
@@ -347,11 +359,13 @@ class MapHoming(Homing):
 
     occ_map = None
 
-    def start(self, target=None, angle=None, corridor=None, blocked_enough_m=0.0, speed=None) -> bool:
+    def start(self, target=None, angle=None, corridor=None, blocked_enough_m=0.0, speed=None,
+              goal_snap_m=None) -> bool:
         if self.active:
             return False
         self._name = None
         self.speeds.append(speed)
+        self.snaps.append(goal_snap_m)
         self.map_goals.append(None if target is None else tuple(target))
         self.enough.append(blocked_enough_m)
         self.corridors.append(corridor)
@@ -428,6 +442,7 @@ class Setup:
         self.pose = Pose(self.world)
         self.speech = Speech(answers or {})
         self.voice = Voice(self.speech, self.world)
+        self.lidar = Lidar(self.world)
         self.mukke = Mukke()
         self.messages: list[dict] = []
         self.records: list[dict] = []
@@ -436,7 +451,7 @@ class Setup:
             self.messages.append(message)
 
         self.hb = pr.Healthbot(
-            self.watchdog, Odometry(self.world), self.homing, lidar=Lidar(self.world),
+            self.watchdog, Odometry(self.world), self.homing, lidar=self.lidar,
             pose=self.pose, voice=self.voice, speech=self.speech, mukke=self.mukke,
             report=report, on_finished=on_finished or self.records.append,
         )
@@ -1043,6 +1058,12 @@ def test_search() -> None:
     check("the robot's own back is not someone", not search.someone_behind([(-0.15, 0.0)] * 3, 1.6, 30.0))
     check("too far is not following", not search.someone_behind([(-2.0, 0.0)] * 3, 1.6, 30.0))
     check("no scan, nobody behind", not search.someone_behind([], 1.6, 30.0))
+    pts = search.search_points(FakeMap(), (0.25, 0.25), 1.0, 0.3, 50, avoid=(2.5, 0.5), avoid_m=1.2)
+    check("search points keep away from the person", pts and all(math.dist(p, (2.5, 0.5)) >= 1.2 for p in pts)
+          and len(pts) < 12, str(pts))
+    check("sight through the person", search.sight_near((0.0, 0.0, 0.0), 0.0, (3.0, 0.5), 1.0))
+    check("sight past the person", not search.sight_near((0.0, 0.0, 0.0), 90.0, (3.0, 0.5), 1.0))
+    check("person behind is not in sight", not search.sight_near((0.0, 0.0, 0.0), 0.0, (-3.0, 0.0), 1.0))
 
 
 def test_wellbeing_and_patient() -> None:
@@ -1264,6 +1285,45 @@ async def case_fetch_help() -> None:
             setattr(config, n, v)
 
 
+async def case_ghost_helper() -> None:
+    print("Fetches help: the person on the floor looks upright from afar")
+    old = {n: getattr(config, n) for n in ("HEALTH_HELPER_LOOK_S", "HEALTH_HELPER_SEARCH_S")}
+    config.HEALTH_FETCH_HELP = True
+    config.HEALTH_HELPER_LOOK_S = 2.0 * math.pi / config.HEALTH_SEARCH_OMEGA + 1.0
+    config.HEALTH_HELPER_SEARCH_S = 40.0
+    try:
+        ox, oy = sim.STANDARD_LOCATION
+        # what the camera sees while searching: an upright body where the
+        # person lies, the lidar measures past it
+        a = Setup("liegend", extras=[{"x": ox, "y": oy, "lidar": False}])
+        a.world.extras[0]["when"] = lambda: a.hb._state == pr.SEEK_HELP
+        a.hb.start(ox, oy)
+        await a.until_done(120.0)
+        check("never asked the person on the floor to follow", config.HEALTH_HELPER_CALL not in a.voice.said,
+              str(a.voice.said))
+        check("says it finds nobody", config.HEALTH_HELPER_NONE in a.voice.said, str(a.voice.said))
+        check("home and music", a.homing.goals[-1][:2] == (0.0, 0.0) and len(a.mukke.played) == 1,
+              str(a.homing.goals))
+    finally:
+        config.HEALTH_FETCH_HELP = False
+        for n, v in old.items():
+            setattr(config, n, v)
+
+
+async def case_lidar_gaps() -> None:
+    print("Lidar drops out for moments while closing in: still nudges")
+    a = Setup("liegend")
+    # a quarter second without scans every 0.75 s while nudging
+    a.lidar.gap = lambda: a.hb._state == pr.NUDGE and int(time.monotonic() * 4) % 3 == 0
+    a.hb.start(*sim.STANDARD_LOCATION)
+    await a.until_done()
+    s = a.hb.status()
+    check("nudged twice", len(s["stupser"]) == config.HEALTH_NUDGE_COUNT, str(s["stupser"]))
+    check("never gave up for a missing distance",
+          not any("kein Lidar-Abstand" in e["text"] for e in s["timeline"]),
+          str([e["text"] for e in s["timeline"]]))
+
+
 async def run_all() -> None:
     await case_without_camera()
     await case_motionless()
@@ -1286,6 +1346,8 @@ async def run_all() -> None:
     await case_speaker_dropout()
     await case_drive_lost()
     await case_fetch_help()
+    await case_ghost_helper()
+    await case_lidar_gaps()
 
 
 def main() -> None:

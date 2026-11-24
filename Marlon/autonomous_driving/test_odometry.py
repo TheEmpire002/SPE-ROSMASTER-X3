@@ -119,13 +119,22 @@ check(
     wd._target,
 )
 
-# 5) Low battery: autonomous speed is throttled
+# 5) Low battery: autonomous speed is throttled, a short dip is not enough
 driver = FakeDriver()
 driver.battery = config.BATTERY_WARN_V - 0.5
 wd = SafetyWatchdog(driver)
 wd.submit(DriveCommand(vx=2.0), source="autonom")
+check("battery dip: not throttled yet", abs(wd._target.vx - config.AUTONOMOUS_MAX_SPEED) < 1e-9, wd._target)
+# low for longer than the hold time
+wd._battery_low_since -= config.BATTERY_LOW_HOLD_S
+wd._battery_at = -1e9
+wd.submit(DriveCommand(vx=2.0), source="autonom")
 requested = config.AUTONOMOUS_MAX_SPEED * config.AUTONOMOUS_BATTERY_FACTOR
 check("battery low: speed throttled", abs(wd._target.vx - requested) < 1e-9, wd._target)
+driver.battery = config.BATTERY_WARN_V + 0.5
+wd._battery_at = -1e9
+wd.submit(DriveCommand(vx=2.0), source="autonom")
+check("battery good again: full speed", abs(wd._target.vx - config.AUTONOMOUS_MAX_SPEED) < 1e-9, wd._target)
 
 print("\nall passed" if not error else f"\n{error} failed")
 sys.exit(1 if error else 0)
