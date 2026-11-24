@@ -486,6 +486,7 @@ Since 23.11. the boxes come from the pose detection on the Hailo when it works
 | `hindernisse`                        | the 12 nearest obstacles, nearest first. `art` (kind), `winkel` in degrees as for the lidar, `abstand` (distance, m), `breite` (width, m), `x`/`y` center in robot coordinates (m), `quelle` (source)                                                                      |
 | `personen`                           | person boxes in the person camera image, relative to the image size (0..1)                                                                                                                                                                                                 |
 | `personenerkennung` | whether camera person detection works; `fehler` (error) e.g. „opencv fehlt“; `kamera`: which camera image the boxes refer to (name as in `/cameras`); `verfahren` (method, new 23.11.): `hailo` (pose boxes), `hog` (CPU fallback) or `null` (none available) |
+| `objekterkennung` | camera object detection (new 23.11.), see "Object detection": `verfuegbar`, `aktiv`, `fehler`, `kamera`, `modell`, `rechenzeit_ms`, `letzte_erkennung_vor_s`, `anzahl` |
 
 ### Interaction in detail
 
@@ -711,12 +712,16 @@ disabled (`CAMERA_ENABLED = False`), `stream` and `snapshot` respond with
   "standard": "orientierung",
   "personen": "personen",
   "tiefe": [
-    { "name": "tiefe", "kamera": "Tiefe", "basis": "/tiefe" },
+    { "name": "tiefe", "kamera": "Tiefe", "basis": "/tiefe", "quelle": "orientierung" },
     {
       "name": "tiefe-ueber",
       "kamera": "Tiefe + Farbbild",
-      "basis": "/tiefe/ueberlagert"
+      "basis": "/tiefe/ueberlagert",
+      "quelle": "orientierung"
     }
+  ],
+  "objekte": [
+    { "name": "objekte", "kamera": "Objekte (KI)", "basis": "/objekte", "quelle": "personen" }
   ],
   "kameras": [
     {
@@ -874,6 +879,32 @@ integrated via OpenNI2; for setup see [hardware.md](hardware.md#depth-camera-orb
 **`POST /tiefe/test`**: switches the camera on for 20 s to check floor
 detection and mounting pose while standing still.
 
+**Object detection** (new 23.11., `sensors/objects.py`): YOLOv8m with the
+80 COCO classes runs on the Hailo-10H (`OBJECTS_HEF`), through the forward
+camera `OBJECTS_CAMERA` (Logitech C270), next to the pose detection
+(shared chip, round robin). Not via hailo-apps: their GStreamer pipelines
+open the camera themselves, which already belongs to this server. It only
+computes while someone needs it: an open object view, or the person
+detection running (driving, `OBJECTS_WITH_PEOPLE`).
+
+| Endpoint | Returns |
+|---|---|
+| `GET /objekte/stream` | MJPEG: camera image with a box and German name plus confidence around each detected object; without Hailo the plain image with the reason |
+| `GET /objekte/snapshot` | a single frame of it (JPEG) |
+| `GET /objekte/status` | `verfuegbar`, `aktiv`, `fehler`, `kamera`, `modell`, `rechenzeit_ms`, `letzte_erkennung_vor_s`, `anzahl`, and `objekte`: `[{klasse, score, box: [x1, y1, x2, y2] 0..1, winkel: [from, to] degrees, left +}]` |
+
+`GET /cameras` lists the view under `objekte` (`[{name, kamera, basis, quelle}]`,
+like `tiefe`); the app offers it as the mode „Objekte (KI)“. The view shows
+the live camera image (`OBJECTS_STREAM_FPS`) with the boxes of the latest
+detection (`OBJECTS_HZ`, at most `OBJECTS_MAX_AGE_S` old), so it stays fluid
+although the Hailo computes fewer images per second. The boxes may trail a
+moving object by up to one detection (about 0.1 s).
+Objects standing on the floor (person, chair, table, sofa, bed, plant, …)
+name the lidar obstacles in their direction: `state.autonomie.hindernisse[]`
+then has e.g. `art: "Stuhl"`, `quelle: "Kamera+Lidar"` instead of the shape
+guess; the narrowest box wins. `state.autonomie.objekterkennung` carries the
+status (as `/objekte/status` without the list).
+
 **Viewing the depth image** (new 04.11., needs OpenCV on the Pi):
 
 | Endpoint                          | Returns                                                                           |
@@ -890,8 +921,14 @@ counts as an obstacle. In addition there is the distance at the image center
 watching switches the camera on; after closing, it turns off again. The
 overlay only roughly lines up, because the cameras have different fields of
 view and sit 2–3 cm apart. It can be adjusted with `DEPTH_OVERLAY_SHIFT_PX`
-and `DEPTH_OVERLAY_ZOOM`. In the app both views can be selected in the
-camera switcher, but not under „Alle“ (all).
+and `DEPTH_OVERLAY_ZOOM`.
+
+**Camera panel of the app** (new 23.11.): all cameras are always shown side
+by side. The mode buttons „Farbe“, „Tiefe“, „Tiefe + Farbbild“, „Objekte
+(KI)“ only change the tile of the camera named in the view's `quelle`
+(new field in `/cameras`, the camera the view belongs to); the other
+cameras keep their colour image. Without `quelle` the default camera takes
+the view.
 
 ### Autonomous driving
 
@@ -1122,7 +1159,10 @@ Setup on the Pi:
 1. Create a bot with BotFather and start a private chat with it (or add it
    to the desired group). Obtain that chat's ID using Telegram's Bot API.
 2. Install the project dependencies, including `telegramify-markdown`, with
-   `robot/.venv/bin/pip install -e robot`.
+  `robot/.venv/bin/pip install -e robot`. A newly created virtual environment
+  installs these automatically on the next `python main.py` start. Existing
+  environments are not reinstalled automatically; use the command above
+  when adding Telegram to an older environment.
 3. Copy `robot/telegram-secrets.example.json` to
    `robot/telegram-secrets.json` **on the Pi** and fill in `bot_token` and
    `chat_id`. Restrict access with `chmod 600 robot/telegram-secrets.json`.

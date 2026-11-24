@@ -1201,6 +1201,42 @@ PERSON_MIN_SCORE = 0.5
 # from CAMERA_ROLES, detection uses the default camera.
 PERSON_CAMERA = "personen"
 
+# --- Object detection (sensors/objects.py) -----------------------------------------
+# yolo with 80 coco classes on the hailo, through the logitech c270 (it
+# sits on the tilt servo, so it can look down at things on the floor);
+# names lidar obstacles in their direction (chair, table, sofa, ...) and
+# draws boxes into the object view of the app (/objekte/stream)
+OBJECTS_ENABLED = True
+OBJECTS_HEF = "/usr/share/hailo-models/yolov8m_h10.hef"
+OBJECTS_CAMERA = "personen"
+# detections per second while someone needs it, the pose detection shares the chip
+# (one detection takes about 27 ms on the hailo-10h)
+OBJECTS_HZ = 10.0
+# frames per second of the object view; it shows the live image with the
+# latest boxes, so it does not wait for the detection
+OBJECTS_STREAM_FPS = 15.0
+# boxes below this confidence are dropped (0..1); low values bring ghosts,
+# high ones miss chairs seen from the side
+OBJECTS_MIN_SCORE = 0.4
+# images older than this (s) are not computed, the box would be off
+OBJECTS_MAX_FRAME_AGE_S = 0.5
+# results older than this (s) no longer count, the object may be gone
+OBJECTS_MAX_AGE_S = 1.0
+# pause before a failed hailo is reopened (s)
+OBJECTS_REOPEN_S = 2.0
+# how often the idle thread checks whether someone needs it (s)
+OBJECTS_IDLE_POLL_S = 0.5
+# boxes narrower or lower than this share of the image are dropped
+OBJECTS_MIN_BOX = 0.01
+# snapshot view (safari): detection stays on this long after the last one (s)
+OBJECTS_SNAPSHOT_HOLD_S = 10.0
+# keep the model open on the chip between uses (faster start, a bit of power)
+OBJECTS_KEEP_WARM = False
+# also run while the person detection runs (driving), to name obstacles
+OBJECTS_WITH_PEOPLE = True
+# a lidar obstacle takes the name of a box up to this far (deg) outside it
+OBJECTS_ANGLE_MARGIN_DEG = 3.0
+
 # Where the person boxes come from (sensors/people.py):
 # "auto" -- from the pose detection on the Hailo AI chip while it works,
 #           otherwise from HOG. Relieves the CPU, and YOLO also finds people

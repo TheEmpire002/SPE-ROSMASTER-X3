@@ -23,6 +23,7 @@ logs/
 **/maps/*.pgm
 **/maps/*.yaml
 **/maps/*.json
+**/maps/*.npz
 
 # Lokale Konfiguration (Geheimnisse, WLAN, Broker-Adressen)
 robot/.env

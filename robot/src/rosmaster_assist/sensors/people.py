@@ -136,6 +136,11 @@ class PersonDetection:
             # the pose thread decides itself whether it runs; it also follows a hailo that comes back
             self._pose.activate(wanted, _POSE_USER)
 
+    @property
+    def active(self) -> bool:
+        """Someone needs person detection right now (e.g. a drive)."""
+        return self._active.is_set()
+
     def boxes(self) -> list[dict]:
         """Current hits: x1,y1,x2,y2 relative to the image size (0..1), score."""
         if not config.PERSON_DETECTION_ENABLED or not self._active.is_set():
