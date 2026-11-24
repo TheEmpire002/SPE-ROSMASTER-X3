@@ -1272,3 +1272,9 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Problem:** Tapping „🧊 3D-Ansicht“ on `/map` showed nothing. The browser refused the shaders: the uniform `uSurfaces` (switch for the discs, added with the surfaces) had high precision in the vertex shader and medium in the fragment shader; strict WebGL implementations do not link that.
 - **Fix:** `uSurfaces` declared `mediump` in both shaders.
 - **Check:** In headless Chrome (SwiftShader) the old shaders fail with exactly the message the robot's page showed, the new ones link.
+
+### 24.11.2026 – Depth camera mounting measured and set (with Claude)
+- **What:** `DEPTH_CAMERA_HEIGHT_M` 0.22 → 0.14 m (measured with a ruler), tilt stays 0°: the camera was set level by hand; before it pointed about 10° down while the config said 0°.
+- **Why:** Without a detected floor every height comes from these values. 10° of wrong tilt lifts a point 2 m away by about 35 cm, 8 cm of wrong height shifts everything; obstacle detection and the 3D map both suffer.
+- **Found on the way:** The depth image has no values on the lab floor at all (lower half of the image black, also with the camera level): the dark floor swallows the Astra's infrared pattern. So the floor detection cannot correct the mounting here; an early "floor found, 18.5 cm" was a fit on a few stray points.
+- **Result:** Pending: 3D maps recorded before this change have wrong heights and should be deleted and scanned again.
