@@ -1411,7 +1411,8 @@
         attribute vec4 aCol;
         attribute vec4 aNor;
         uniform mat4 uMvp; uniform mat4 uView; uniform float uVoxel; uniform float uScale; uniform float uMaxZ;
-        uniform float uSurfaces;
+        // same precision as in the fragment shader, else strict browsers refuse to link
+        uniform mediump float uSurfaces;
         varying float vH; varying float vCut; varying vec4 vCol; varying vec3 vNv; varying float vHasN;
         void main() {
           vec3 p = (aPos + 0.5) * uVoxel;
