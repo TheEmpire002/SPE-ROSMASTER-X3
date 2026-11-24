@@ -107,7 +107,25 @@ def fetch_map2d(host: str) -> dict:
         return map2d_from_payload(json.load(r))
 
 
-def floor_mesh(o3d, np, cv2, map2d: dict, cell: float, seeds=None, colour=(0.55, 0.55, 0.56)):
+def fill_holes(np, cv2, mask, max_cells: int):
+    """Close gaps in the floor up to ``max_cells`` that are enclosed by floor:
+    furniture legs and corners the lidar never saw leave holes, but the floor
+    goes on under them"""
+    if max_cells <= 0:
+        return mask
+    n, labels, stats, _ = cv2.connectedComponentsWithStats((mask == 0).astype(np.uint8), connectivity=4)
+    h, w = mask.shape
+    out = mask.copy()
+    for k in range(1, n):
+        x, y, bw, bh, area = stats[k]
+        touches_edge = x == 0 or y == 0 or x + bw >= w or y + bh >= h
+        if not touches_edge and area <= max_cells:
+            out[labels == k] = 1
+    return out
+
+
+def floor_mesh(o3d, np, cv2, map2d: dict, cell: float, seeds=None, colour=(0.55, 0.55, 0.56),
+               hole_m2: float = 0.0):
     """Grey floor at height 0 under the free cells of the 2d map, merged to
     ``cell`` size; the depth camera often does not see shiny or dark floors.
     ``seeds`` (robot positions x, y): only the free areas the robot was in"""
@@ -133,6 +151,7 @@ def floor_mesh(o3d, np, cv2, map2d: dict, cell: float, seeds=None, colour=(0.55,
         keep = np.unique(labels[sy[inside], sx[inside]])
         keep = keep[keep > 0]
         mask = np.isin(labels, keep).astype(np.uint8)
+    mask = fill_holes(np, cv2, mask, max_cells=int(hole_m2 / (size * size)))
     iy, ix = np.nonzero(mask)
     mesh = o3d.geometry.TriangleMesh()
     if not len(ix):
@@ -166,7 +185,7 @@ def with_floor(o3d, np, cv2, mesh, meta: dict, args, seeds=None):
     if map2d is None:
         print("no 2d map in the recording -- no floor (--karte-von ROBOTER fetches it)")
         return mesh
-    floor = floor_mesh(o3d, np, cv2, map2d, args.floor_cell, seeds)
+    floor = floor_mesh(o3d, np, cv2, map2d, args.floor_cell, seeds, hole_m2=args.floor_holes)
     print(f"floor: {len(floor.triangles) // 2} cells of {args.floor_cell} m")
     return mesh + floor
 
@@ -339,7 +358,8 @@ def live(o3d, np, cv2, args) -> int:
             return
         geometries = [fusion.mesh(clean=False)]
         if not args.no_floor and fusion.meta.get("karte2d"):
-            floor = floor_mesh(o3d, np, cv2, fusion.meta["karte2d"], args.floor_cell, fusion.poses)
+            floor = floor_mesh(o3d, np, cv2, fusion.meta["karte2d"], args.floor_cell, fusion.poses,
+                               hole_m2=args.floor_holes)
         if floor is not None:
             geometries.append(floor)
         if last_pose is not None:
@@ -440,6 +460,8 @@ def main() -> int:
                         help="skip images with fewer measured pixels within range")
     parser.add_argument("--no-floor", action="store_true", help="no floor from the 2d map")
     parser.add_argument("--floor-cell", type=float, default=0.05, help="size of the floor tiles (m)")
+    parser.add_argument("--floor-holes", type=float, default=4.0,
+                        help="fill gaps in the floor up to this size (m^2) that floor surrounds; 0 = off")
     parser.add_argument("--karte-von", metavar="HOST",
                         help="fetch the 2d map from the robot (recordings without it in meta.json)")
     parser.add_argument("--refresh", type=float, default=3.0, help="live: rebuild the shown surface every n s")
