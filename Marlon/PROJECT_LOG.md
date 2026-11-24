@@ -1296,3 +1296,8 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Problem:** The floor had holes wherever the lidar map has furniture legs or cells it never saw, so the room looked moth-eaten.
 - **Fix:** `build_mesh.py` fills gaps up to `--floor-holes` (default 4 m²) that are enclosed by floor. Gaps open to the outside stay (they may be a doorway or unmapped space).
 - **Still visible:** Walls end at about 1.35 m; some wall pieces in the right-hand room are torn into separate sheets, the same area where the localization slipped ("hochgehoben" stops).
+
+### 24.11.2026 – Walking through the 3D model (with Claude)
+- **What:** `scripts/walk_mesh.py` opens a model from `build_mesh.py` in first person: eye height 1 m, W/A/S/D to walk, arrow keys to look around, R/F for the eye height, +/- for the speed. Walls are solid (a ray in the walking direction stops you 25 cm before anything in the model), C switches that off. Starts where the robot took its first image.
+- **Why:** Requested: move through the scanned room as if walking, not only orbit around it. Good for the presentation.
+- **Decisions:** Open3D's visualizer with key callbacks; the camera is set directly every key press, so no extra library is needed (Open3D is installed for `build_mesh.py` anyway). Collision through Open3D's raycasting on the model itself, at knee and eye height.
