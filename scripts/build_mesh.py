@@ -19,7 +19,7 @@ Writes ``.ply`` (vertices with colour and normals), opens in MeshLab,
 Blender, Windows 3D Viewer or PowerPoint (3D models).
 
 How: every depth image is fused into a truncated signed distance volume
-(open3d's ScalableTSDFVolume, the method behind KinectFusion) at the pose the
+(open3d's tensor VoxelBlockGrid, the method behind KinectFusion) at the pose the
 robot had in its map when the image was taken; the colour image is cut and
 scaled onto the depth image with the same box as the robot's overlay view.
 From the volume marching cubes extracts the surface. The pose is only 2D
@@ -88,47 +88,80 @@ def color_on_depth(cv2, np, image, box, w: int, h: int):
 
 
 class Fusion:
-    """The tsdf volume plus what is needed to add one image to it"""
+    """The tsdf volume plus what is needed to add one image to it.
+
+    open3d's tensor VoxelBlockGrid: the older ScalableTSDFVolume stays empty
+    with open3d 0.20 and numpy 2 (checked on windows), the grid works and
+    grows by itself"""
 
     def __init__(self, o3d, np, cv2, meta: dict, args) -> None:
-        self.o3d, self.np, self.cv2 = o3d, np, cv2
+        import open3d.core as o3c
+
+        self.o3d, self.np, self.cv2, self.o3c = o3d, np, cv2, o3c
         self.meta = meta
         self.args = args
         self.w, self.h = meta["tiefe_breite"], meta["tiefe_hoehe"]
         fx = (self.w / 2.0) / math.tan(meta["hfov"] / 2.0)
         fy = (self.h / 2.0) / math.tan(meta["vfov"] / 2.0)
-        self.intrinsic = o3d.camera.PinholeCameraIntrinsic(self.w, self.h, fx, fy, self.w / 2.0, self.h / 2.0)
+        self.intrinsic = o3c.Tensor([[fx, 0.0, self.w / 2.0], [0.0, fy, self.h / 2.0], [0.0, 0.0, 1.0]],
+                                    o3c.float64)
         self.max_range = args.max_range or meta.get("max_m", 3.0)
         self.min_mm = int(meta.get("min_m", 0.5) * 1000)
-        self.volume = o3d.pipelines.integration.ScalableTSDFVolume(
-            voxel_length=args.voxel, sdf_trunc=args.trunc,
-            color_type=o3d.pipelines.integration.TSDFVolumeColorType.RGB8)
+        # truncation in cells, as open3d wants it
+        self.trunc_cells = max(1.0, args.trunc / args.voxel)
+        # initial size only, the hash map grows when the room is larger
+        self.grid = o3d.t.geometry.VoxelBlockGrid(
+            attr_names=("tsdf", "weight", "color"),
+            attr_dtypes=(o3c.float32, o3c.float32, o3c.float32),
+            attr_channels=((1), (1), (3)),
+            voxel_size=args.voxel, block_resolution=16, block_count=10000,
+            device=o3c.Device("CPU:0"))
         self.grey = np.full((self.h, self.w, 3), 128, dtype=np.uint8)
         self.count = 0
+        self.skipped = 0
 
-    def add(self, line: dict, depth, color_bgr) -> None:
-        """One image: depth (uint16 mm), colour (bgr or None), its frames.jsonl line"""
-        np, o3d = self.np, self.o3d
+    def add(self, line: dict, depth, color_bgr) -> bool:
+        """One image: depth (uint16 mm), colour (bgr or None), its frames.jsonl
+        line; False if it had nothing in range (open3d aborts on those)"""
+        np, o3d, o3c = self.np, self.o3d, self.o3c
         depth = depth.astype(np.uint16)
         depth[depth < self.min_mm] = 0  # the astra measures nothing useful that close
+        if int(((depth > 0) & (depth < self.max_range * 1000)).sum()) < self.args.min_pixels:
+            self.skipped += 1  # e.g. looking down a long hallway
+            return False
         color = self.grey
         if color_bgr is not None and line.get("farbe"):
             color = color_on_depth(self.cv2, np, color_bgr, line["farbe"]["box"], self.w, self.h)
-        rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
-            o3d.geometry.Image(np.ascontiguousarray(color)), o3d.geometry.Image(np.ascontiguousarray(depth)),
-            depth_scale=1000.0, depth_trunc=self.max_range, convert_rgb_to_intensity=False)
-        extrinsic = np.linalg.inv(camera_to_world(self.meta, line["pose"], line.get("boden")))
-        self.volume.integrate(rgbd, self.intrinsic, extrinsic)
+        extrinsic = o3c.Tensor(np.linalg.inv(camera_to_world(self.meta, line["pose"], line.get("boden"))),
+                               o3c.float64)
+        # depth uint16 with colour uint8 is one of the two combinations open3d takes
+        depth_t = o3d.t.geometry.Image(o3c.Tensor(np.ascontiguousarray(depth)))
+        color_t = o3d.t.geometry.Image(o3c.Tensor(np.ascontiguousarray(color)))
+        try:
+            blocks = self.grid.compute_unique_block_coordinates(
+                depth_t, self.intrinsic, extrinsic, 1000.0, self.max_range, self.trunc_cells)
+            self.grid.integrate(blocks, depth_t, color_t, self.intrinsic, self.intrinsic, extrinsic,
+                                1000.0, self.max_range, self.trunc_cells)
+        except RuntimeError:
+            self.skipped += 1
+            return False
         self.count += 1
+        return True
 
     def mesh(self, clean: bool = True):
         np = self.np
-        mesh = self.volume.extract_triangle_mesh()
+        if not self.count:
+            return self.o3d.geometry.TriangleMesh()
+        mesh = self.grid.extract_triangle_mesh().to_legacy()
         if clean and self.args.min_cluster > 0 and len(mesh.triangles):
             clusters, sizes, _ = mesh.cluster_connected_triangles()
             clusters, sizes = np.asarray(clusters), np.asarray(sizes)
             mesh.remove_triangles_by_mask(sizes[clusters] < self.args.min_cluster)
             mesh.remove_unreferenced_vertices()
+        # colours come as 0..1 with a few slightly above (interpolation): clip
+        colors = np.asarray(mesh.vertex_colors)
+        if len(colors):
+            mesh.vertex_colors = self.o3d.utility.Vector3dVector(np.clip(colors, 0.0, 1.0))
         mesh.compute_vertex_normals()
         return mesh
 
@@ -164,6 +197,7 @@ def offline(o3d, np, cv2, args) -> int:
         fusion.add(fr, depth, color)
         if (k + 1) % 50 == 0:
             print(f"  {k + 1}/{len(frames)}")
+    print(f"fused {fusion.count}, skipped {fusion.skipped} (nothing within {fusion.max_range} m)")
     print("extracting the surface ...")
     mesh = fusion.mesh()
     out = Path(args.out) if args.out else source.with_suffix(".ply")
@@ -311,6 +345,8 @@ def main() -> int:
     parser.add_argument("--max-range", type=float, help="ignore depth beyond this (m), default from the robot")
     parser.add_argument("--min-cluster", type=int, default=500,
                         help="drop loose pieces with fewer triangles (noise); 0 = keep all")
+    parser.add_argument("--min-pixels", type=int, default=500,
+                        help="skip images with fewer measured pixels within range")
     parser.add_argument("--refresh", type=float, default=3.0, help="live: rebuild the shown surface every n s")
     parser.add_argument("--show", action="store_true", help="open a viewer at the end")
     args = parser.parse_args()
