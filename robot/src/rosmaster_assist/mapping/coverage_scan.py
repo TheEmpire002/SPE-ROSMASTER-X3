@@ -307,6 +307,7 @@ class CoverageScan:
         # every localization tick an image: shorter pauses at each turning step
         self._room.rate_hz = float(config.COVERAGE_MAP3D_HZ)
         self._maneuver.quiet = True
+        self._maneuver.max_corrections = config.COVERAGE_TURN_CORRECTIONS
         own_raw = False
         if self.raw and not self._room.brief()["roh"]["aktiv"]:
             error = self._room.start_raw()
@@ -370,6 +371,7 @@ class CoverageScan:
             self.reason = "Fehler beim 3D-Scan"
         finally:
             self._maneuver.quiet = False
+            self._maneuver.max_corrections = None
             self._room.rate_hz = float(config.MAP3D_HZ)
             if own_raw:
                 self._room.stop_raw()
@@ -416,8 +418,10 @@ class CoverageScan:
                 await asyncio.sleep(config.COVERAGE_POLL_S)
             if self._maneuver.cancelled:
                 return f"abgebrochen: {self._maneuver.last_reason or 'Drehung beendet'}"
-            if not self._maneuver.succeeded:
+            turned = abs(self._maneuver.state()["gedreht_grad"])
+            if turned < step * 0.5:
                 # no room to turn here: on to the next spot
                 log.info("3D scan: turn failed (%s)", self._maneuver.last_reason)
                 break
+            # a few degrees off or out of time near the end: the view still moved on
         return None

@@ -117,6 +117,9 @@ class Maneuver:
         self.finished = 0  # counts every self-ended command (for the server's message)
         # set by a sequence of turns (panorama) that reports by itself
         self.quiet = False
+        # correction rounds at the goal; None = MANEUVER_MAX_CORRECTIONS. the 3d
+        # scan needs no precise angle (its heading comes from the localization)
+        self.max_corrections: int | None = None
 
         # Lidar localization during the command, relative to the pose at the start.
         self._pose = (0.0, 0.0, 0.0)
@@ -232,6 +235,7 @@ class Maneuver:
             self._matches = self._failures = 0
             detected = time.monotonic()
             corrections = 0
+            allowed = config.MANEUVER_MAX_CORRECTIONS if self.max_corrections is None else self.max_corrections
             blocked_since: float | None = None
             log.info("Drive command %s started", description)
 
@@ -255,12 +259,12 @@ class Maneuver:
                     # Otherwise correct; only once the corrections are used
                     # up does the normal tolerance suffice.
                     precise = self._reached(category, ex, ey, eth, config.MANEUVER_GOAL_SHARE)
-                    exhausted = corrections >= config.MANEUVER_MAX_CORRECTIONS
+                    exhausted = corrections >= allowed
                     if precise or (exhausted and self._reached(category, ex, ey, eth)):
                         self.succeeded = True
                         return self._end(f"{description} erledigt ({self._remainder(category, ex, ey, eth)})")
                     corrections += 1
-                    if corrections > config.MANEUVER_MAX_CORRECTIONS:
+                    if corrections > allowed:
                         return self._end(f"{description} fast erledigt ({self._remainder(category, ex, ey, eth)})",
                                           self._off_target(category, ex, ey, eth))
                     log.info("Drive command: measured at standstill, %s left -- correcting",

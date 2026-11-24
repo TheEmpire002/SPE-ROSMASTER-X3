@@ -1303,7 +1303,10 @@ it hits is unseen and between `MAP3D_MIN_M` and `COVERAGE_RANGE_M` away
 `COVERAGE_TURN_STEP_DEG` maneuver turns with `COVERAGE_DWELL_S` standing
 still after each (the 3D map takes no images while turning faster than
 `MAP3D_MAX_OMEGA`, a block needs `MAP3D_MIN_HITS` images); while the scan runs
-the 3D map takes `COVERAGE_MAP3D_HZ` images per second instead of `MAP3D_HZ`.
+the 3D map takes `COVERAGE_MAP3D_HZ` images per second instead of `MAP3D_HZ`. The turning steps
+skip the maneuver's correction rounds (`COVERAGE_TURN_CORRECTIONS`); a step
+that turned at least half way counts, so a few degrees off do not end the
+look-around.
 With `PC` live stream (`scripts/build_mesh.py --live`) the mesh grows during
 the scan. Ends when the
 share is reached, after the time limit, when no spot sees at least
