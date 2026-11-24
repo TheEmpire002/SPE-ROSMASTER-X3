@@ -313,7 +313,7 @@ then verify with `POST /tiefe/test` followed by `GET /tiefe/status`.
   `DEPTH_RETRY_S`. Meanwhile the drive continues with the lidar alone.
 - The depth points deliberately do **not** go into the map (SLAM). The map
   stays a lidar map; the points are only used for avoidance.
-- Viewing: in the app via the camera switcher "Tiefe" or "Tiefe + Farbbild"
+- Viewing: in the app via the camera mode "Tiefe" or "Tiefe + Farbbild"
   (depth, or depth over the color image; or `/tiefe/stream` in the
   browser), colors see `docs/api.md`.
 - Check while standing: `curl -X POST <IP>:8000/tiefe/test`, then

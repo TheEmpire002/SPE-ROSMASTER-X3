@@ -536,50 +536,6 @@
       </section>
 
       <section class="panel">
-        <h2>Autonomes Fahren</h2>
-
-        <dl class="readout">
-          <dt>Zustand</dt>
-          <dd id="val-auto-zustand">—</dd>
-          <dt>Frei vorn</dt>
-          <dd id="val-auto-frei">—</dd>
-          <dt>Fahrzeit</dt>
-          <dd id="val-auto-dauer">—</dd>
-          <dt>Menschen</dt>
-          <dd id="val-auto-menschen">—</dd>
-          <dt>Kamera-KI</dt>
-          <dd id="val-auto-kamera">—</dd>
-        </dl>
-
-        <div class="home-buttons">
-          <button type="button" id="btn-explore" class="btn btn-primary">
-            Autonom fahren
-          </button>
-          <button
-            type="button"
-            id="btn-record"
-            class="btn"
-            title="Die letzte Minute (Lidar, Befehle, Zustände) auf dem Roboter speichern"
-          >
-            Fahrt speichern
-          </button>
-        </div>
-
-        <p class="hint" id="auto-text">—</p>
-
-        <h2>Hindernisse</h2>
-        <ul id="hindernisse" class="hindernisse"></ul>
-
-        <p class="hint">
-          Test 1: Der Roboter fährt zufällig herum und weicht allem aus, was der
-          Lidar sieht. Vor Menschen wartet er kurz. Jede Fahreingabe, der
-          Not-Stopp oder dieser Knopf beenden die Fahrt. Lief etwas falsch,
-          gleich „Fahrt speichern“ drücken: Die letzte Minute lässt sich dann am
-          Rechner mit <code>scripts/replay.py</code> nachspielen.
-        </p>
-      </section>
-
-      <section class="panel">
         <h2>Interaktion</h2>
 
         <dl class="readout">
@@ -711,12 +667,6 @@
       </section>
 
       <section class="panel">
-        <h2>Lidar</h2>
-        <canvas id="lidar" class="lidar" width="320" height="320"></canvas>
-        <p class="hint" id="lidar-info">—</p>
-      </section>
-
-      <section class="panel">
         <h2>Startpunkt</h2>
 
         <dl class="readout">
@@ -743,29 +693,6 @@
           <strong>keinen Hindernissen aus</strong>. Jede Eingabe bricht die
           Heimfahrt ab.
         </p>
-      </section>
-
-      <section class="panel">
-        <h2>Zustand</h2>
-        <dl class="readout">
-          <dt>vorwärts</dt>
-          <dd id="val-vx">0.00 m/s</dd>
-          <dt>seitwärts</dt>
-          <dd id="val-vy">0.00 m/s</dd>
-          <dt>drehen</dt>
-          <dd id="val-omega">0.00 rad/s</dd>
-          <dt>Antrieb</dt>
-          <dd id="val-driver">—</dd>
-        </dl>
-
-        <h2>Person</h2>
-        <dl class="readout">
-          <dt>Puls</dt>
-          <dd id="val-bpm">—</dd>
-          <dt>Bewegung</dt>
-          <dd id="val-motion">—</dd>
-        </dl>
-        <p class="hint">Prototyp, kein Medizinprodukt.</p>
       </section>
 
       <section class="panel wide-panel">

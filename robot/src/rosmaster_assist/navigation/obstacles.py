@@ -180,14 +180,19 @@ def classify(
     angle: list[float],
     ranges: list[float],
     people_angles: list[tuple[float, float]] | None = None,
+    labels: list[tuple[float, float, str]] | None = None,
 ) -> list[Obstacle]:
     """Obstacles of a scan, nearest first.
 
     ``people_angles``: angle ranges (from, to) in degrees in which the camera
     currently sees a person. Whatever the lidar finds there is then called
     "Mensch", whatever its shape.
+    ``labels``: (from, to, name) of objects the camera detection sees
+    (``sensors/objects.py``); they name the obstacles in their direction
+    instead of the shape rule.
     """
     people_angles = people_angles or []
+    labels = labels or []
     pieces: list[Obstacle] = []
     for cluster in _clusters(_points(angle, ranges)):
         # Single points are mostly noise -- except very close, where a table
@@ -232,6 +237,16 @@ def classify(
         if h.category != WALL and _in_field_of_view(h.angle, people_angles):
             h.category = HUMAN
             h.source = "Kamera+Lidar"
+            continue
+        if h.category == WALL:
+            continue
+        # the narrowest box containing the direction: in front of a table
+        # the chair box is narrower than the table box
+        hits = [(hi - lo, name) for lo, hi, name in labels
+                if lo - config.OBJECTS_ANGLE_MARGIN_DEG <= h.angle <= hi + config.OBJECTS_ANGLE_MARGIN_DEG]
+        if hits:
+            h.category = min(hits)[1]
+            h.source = "Kamera+Lidar"
 
     result.sort(key=lambda h: h.distance)
     return result
@@ -248,18 +263,30 @@ class ObstacleDetection:
         self._lock = threading.Lock()
         self._scan_time: float | None = None
         self._people: list[tuple[float, float]] = []
+        self._labels: list[tuple[float, float, str]] = []
         self._result: list[Obstacle] = []
+        # callable returning (from, to, name) of camera objects, set by the
+        # server; every caller (display, explorer, behavior) gets the same names
+        self.labels_source = None
 
-    def current(self, scan, people_angles: list[tuple[float, float]] | None = None) -> list[Obstacle]:
+    def current(self, scan, people_angles: list[tuple[float, float]] | None = None,
+                labels: list[tuple[float, float, str]] | None = None) -> list[Obstacle]:
         people_angles = people_angles or []
+        if labels is None and self.labels_source is not None:
+            try:
+                labels = self.labels_source()
+            except Exception:
+                labels = []
+        labels = labels or []
         with self._lock:
             if scan is None:
                 return []
-            if scan.timestamp == self._scan_time and people_angles == self._people:
+            if scan.timestamp == self._scan_time and people_angles == self._people and labels == self._labels:
                 return self._result
-        result = classify(scan.angle, scan.ranges, people_angles)
+        result = classify(scan.angle, scan.ranges, people_angles, labels)
         with self._lock:
             self._scan_time = scan.timestamp
             self._people = people_angles
+            self._labels = labels
             self._result = result
         return result

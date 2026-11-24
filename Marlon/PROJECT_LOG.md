@@ -1205,3 +1205,28 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 
 - **What:** Upper tilt limit of the C270 raised from 30° to 60° (`CAMERA_TILT_MAX_DEG`, servo 150°) at the user's request; the sliders in the web app and on `/map` take the limits from the server.
 - **Open:** Check on the robot that the servo and the cable reach 60° without straining.
+
+### 23.11.2026 – Object detection on the Hailo with its own view (with Claude)
+- **What:** New branch `feat/object-detection`. The camera now recognises objects (80 COCO classes: person, chair, table, sofa, bottle, …) with YOLOv8m on the Hailo-10H. New window „Objekte (KI)“ in the app's camera switcher: the Orbbec colour image with a box and German name around each object. The lidar obstacles take the camera's name in their direction („Stuhl“, „Tisch“, „Sofa“, quelle „Kamera+Lidar“) instead of the shape rule of thumb.
+- **Why:** The previous "object detection" was only a rule of thumb on the lidar plane (leg widths and spacing) and often wrong; the camera sees what it is.
+- **Decision:** HailoRT directly (like the pose detection, shared chip with round robin), not hailo-apps: their GStreamer pipelines open the camera themselves, but the camera already belongs to the server (stream, people, map photos). The model with NMS on the chip (`yolov8m_h10.hef`) delivers finished boxes per class, so the CPU only scales the image. It only computes while the view is open or the person detection runs (driving).
+- **Changes:** `sensors/objects.py`, `pose._Hailo` takes the model as parameter, `PersonDetection.active`, `obstacles.classify(labels=...)` with `ObstacleDetection.labels_source`, endpoints `/objekte/stream|snapshot|status`, `objekte` in `/cameras`, `state.autonomie.objekterkennung`, `OBJECTS_*` in `config.py`, camera switcher in `app.js`.
+- **Result:** On the Pi (next to the running server and its pose model on the shared chip): the model returns a list of 80 per-class arrays, 26-27 ms per frame on the Hailo-10H. Sample images: person 92 %, four cars 73-89 % with correctly placed boxes; the empty room in front of the robot gives no ghost boxes at score 0.4.
+- **Problem:** with objects close together the labels covered each other. Labels are now drawn after all boxes, best score first, and each moves (above, inside, below the box) until it overlaps no earlier label; smaller font.
+- **Open:** live test of the „Objekte (KI)“ view in the app on the robot.
+
+### 23.11.2026 – Camera panel with modes, fluid object view, fewer panels (with Claude)
+- **What:** The app's camera panel always shows both cameras side by side. The buttons „Farbe“, „Tiefe“, „Tiefe + Farbbild“, „Objekte (KI)“ are now modes: they only change the tile of the camera the view belongs to (the Orbbec), the C270 keeps its colour image. `/cameras` names that camera in the new field `quelle`. The panels „Lidar“, „Autonomes Fahren“ (with the obstacle list) and „Zustand“ (speeds, pulse) are removed from the main page; the code behind them in `app.js` is gone too, only the autonomy state for the person boxes and the window-leave rule stays. With the panel the buttons „Autonom fahren“ and „Fahrt speichern“ left the main page: driving autonomously starts by voice („Robi, erkunde“), a drive recording via the `record_save` command.
+- **Why:** On the robot the detection itself worked well, but the object view was very slow: it only showed a new image when a detection had finished. The removed panels were rarely used and made the page long.
+- **Change:** The object view now draws the latest boxes onto the live camera image (`OBJECTS_STREAM_FPS` = 15) instead of the detection frame; the detection runs at 10 Hz instead of 5 (27 ms per frame on the Hailo), boxes count for 1 s.
+- **Result:** Pending the test on the robot.
+
+### 23.11.2026 – Object detection through the Logitech C270 (with Claude)
+- **What:** `OBJECTS_CAMERA` from the Orbbec colour image (`orientierung`) to the Logitech C270 (`personen`). The mode „Objekte (KI)“ now switches the C270 tile, the Orbbec keeps its colour image.
+- **Why:** Requested after the test on the robot: the detection should use the Logitech.
+- **Note:** The C270 has a narrower field of view (45° instead of 66°), so fewer lidar obstacles get a camera name; the angles use the camera's own `fov_deg`. When the tilt servo looks up or down, the left/right angles stay correct.
+
+### 23.11.2026 – Fix: status messages broke with the object detection (with Claude)
+- **Problem:** On main the app seemed to crash (noticed when entering a spoken sentence). The server kept running, but every status message failed with `NameError: name 'objects' is not defined`: `_status_loop` is a separate function and did not receive the object detection, so the app got no more state while connected.
+- **Fix:** `objects` is passed into `_status_loop` like the other services. Checked with an AST scan that no other top-level function in `server.py` uses it without receiving it.
+- **Also seen:** at the same moment the USB microphone (usb 1-1.1) dropped out and did not re-enumerate (error -71); that is the known USB dropout, not this bug.

@@ -72,6 +72,7 @@ from ..safety import CollisionGuard, DriveGuard, SafetyWatchdog
 from ..sensors.camera import CameraService, create_cameras
 from ..sensors.camera_tilt import CameraTilt
 from ..sensors.lidar import LidarService, create_lidar
+from ..sensors.objects import ObjectDetection
 from ..sensors.people import PersonDetection
 from ..sensors.pose import SKELETON, PoseDetection
 from ..sensors.depth import create_depth
@@ -267,6 +268,10 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     pose = PoseDetection(person_camera, mock=use_mock_camera)
     # person boxes come from the pose detection on the hailo when it works, hog is the fallback
     people = PersonDetection(person_camera, pose=pose)
+    # objects (chair, table, ...) on the hailo through the c270
+    # (OBJECTS_CAMERA); they name the lidar obstacles and fill the object view
+    objects = ObjectDetection(cameras.get(config.OBJECTS_CAMERA, camera), follow=people)
+    detection.labels_source = objects.angle_labels
     explorer = Explorer(
         watchdog, lidar, detection, people, odometry=odometry,
         mapping_drive=MappingDrive(scan_odometry, localization=localization, planner=planner),
@@ -360,6 +365,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             camera.start()
         people.start()
         pose.start()  # only computes once the interaction runs
+        objects.start()  # only computes while the view is open or people are looked for
         if depth is not None:
             depth.start()  # camera stays off until a drive needs it
         voice.start()
@@ -394,6 +400,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
                 hub, watchdog, driver, odometry, homing, localizer, guard,
                 explorer, detection, lidar, people, interaction, voice, speech, maneuver,
                 map_control=map_control, healthbot=healthbot, camera_tilt=camera_tilt,
+                objects=objects,
             )
         )
         speech_task = asyncio.create_task(_speech_loop())
@@ -461,6 +468,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             scan_odometry.stop("immer")
             people.stop()
             pose.stop()
+            objects.stop()
             camera_tilt.stop()
             mukke.stop()
             speech.stop()
@@ -813,9 +821,17 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
             # Views of the depth camera -- a separate list because they are not
             # cameras with role and settings (the settings page lists "kameras").
             "tiefe": [
-                {"name": "tiefe", "kamera": "Tiefe", "basis": "/tiefe"},
-                {"name": "tiefe-ueber", "kamera": "Tiefe + Farbbild", "basis": "/tiefe/ueberlagert"},
+                # quelle (new 23.11.): the camera whose tile shows this view
+                {"name": "tiefe", "kamera": "Tiefe", "basis": "/tiefe",
+                 "quelle": config.DEPTH_OVERLAY_CAMERA},
+                {"name": "tiefe-ueber", "kamera": "Tiefe + Farbbild", "basis": "/tiefe/ueberlagert",
+                 "quelle": config.DEPTH_OVERLAY_CAMERA},
             ] if depth is not None else [],
+            # camera image with boxes and names of the detected objects (new 23.11.)
+            "objekte": [
+                {"name": "objekte", "kamera": "Objekte (KI)", "basis": "/objekte",
+                 "quelle": objects.camera_name},
+            ] if objects.available or objects.camera_name is not None else [],
             "kameras": [
                 {
                     **k.status(),
@@ -956,6 +972,63 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
         data = await asyncio.to_thread(_depth_jpeg, b, overlay)
         return Response(data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
+    # --- object view: camera image with boxes and names -----------------------
+
+    def _objects_stream():
+        if objects.camera_name is None:
+            return Response("Keine Kamera für die Objekterkennung", status_code=503)
+        # every watcher subscribes on its own: closing one view does not
+        # stop the detection for another
+        who = f"ansicht-{next(watcher_ids)}"
+
+        async def images():
+            objects.activate(True, who)
+            last = None
+            try:
+                while True:
+                    result = await asyncio.to_thread(objects.annotated_jpeg)
+                    if result is not None and result[1] != last:
+                        data, last = result
+                        yield (
+                            f"--{BOUNDARY}\r\nContent-Type: image/jpeg\r\n"
+                            f"Content-Length: {len(data)}\r\n\r\n".encode() + data + b"\r\n"
+                        )
+                    await asyncio.sleep(1.0 / max(1.0, config.OBJECTS_STREAM_FPS))
+            finally:
+                objects.activate(False, who)
+
+        return StreamingResponse(
+            images(),
+            media_type=f"multipart/x-mixed-replace; boundary={BOUNDARY}",
+            headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+        )
+
+    objects_off_timers: list = []
+
+    @app.get("/objekte/stream")
+    async def objects_stream():
+        """Camera image with boxes and names of the detected objects (MJPEG)."""
+        return _objects_stream()
+
+    @app.get("/objekte/snapshot")
+    async def objects_snapshot():
+        # snapshots (safari) come in quick succession: keep the detection on
+        # until none has been fetched for a while
+        objects.activate(True, "ansicht-einzelbild")
+        for old in objects_off_timers:
+            old.cancel()
+        objects_off_timers[:] = [asyncio.get_running_loop().call_later(
+            config.OBJECTS_SNAPSHOT_HOLD_S, objects.activate, False, "ansicht-einzelbild")]
+        result = await asyncio.to_thread(objects.annotated_jpeg)
+        if result is None:
+            return Response("Noch kein Bild", status_code=503)
+        return Response(result[0], media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+    @app.get("/objekte/status")
+    async def objects_status():
+        """Whether the object detection runs, and what it sees right now."""
+        return {**objects.status(), "objekte": objects.objects()}
+
     @app.get("/tiefe/stream")
     async def depth_stream():
         """Depth image as MJPEG: red near, blue far, magenta obstacle."""
@@ -1003,7 +1076,7 @@ def create_app(driver: DriveBase, use_mock_camera: bool = False) -> FastAPI:
     @app.get("/autonomie/status")
     async def autonomy_status():
         """Explorer, detected obstacles and person detection at a glance."""
-        return _autonomy(explorer, detection, lidar, people)
+        return _autonomy(explorer, detection, lidar, people, objects)
 
     # --- Settings ---
     #
@@ -2172,6 +2245,7 @@ async def _status_loop(
     map_control: MapControl | None = None,
     healthbot: Healthbot | None = None,
     camera_tilt: CameraTilt | None = None,
+    objects: ObjectDetection | None = None,
 ) -> None:
     """Regularly sends the state to all clients."""
     last_active = False
@@ -2226,7 +2300,7 @@ async def _status_loop(
 
             if hub.count:
                 autonomy = (
-                    _autonomy(explorer, detection, lidar, people)
+                    _autonomy(explorer, detection, lidar, people, objects)
                     if explorer is not None and detection is not None
                     else None
                 )
@@ -2285,6 +2359,7 @@ def _autonomy(
     detection: ObstacleDetection,
     lidar: LidarService | None,
     people: PersonDetection | None,
+    objects: ObjectDetection | None = None,
 ) -> dict[str, Any]:
     """State for state.autonomie and /autonomie/status.
 
@@ -2303,4 +2378,6 @@ def _autonomy(
         "hindernisse": [h.as_dict() for h in obstacles[:12]],
         "personen": people.boxes() if people is not None else [],
         "personenerkennung": people.status() if people is not None else None,
+        # camera objects (new 23.11.): which image, how many, whether it runs
+        "objekterkennung": objects.status() if objects is not None else None,
     }
