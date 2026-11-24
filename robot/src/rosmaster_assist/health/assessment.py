@@ -96,6 +96,48 @@ def pick(people: list[dict], last: dict | None) -> dict | None:
     return people[0]
 
 
+# postures of someone who may need help, the healthbot looks at them first
+DOWN_POSTURES = ("liegt", "zusammengesackt")
+
+
+def track(people: list[dict], last: dict) -> dict | None:
+    """The person in ``people`` that is ``last`` again, None if it is gone."""
+    box = last["box"]
+    best = max(people, key=lambda p: box_iou(p["box"], box))
+    if box_iou(best["box"], box) >= _TRACK_IOU:
+        return best
+    cx, cy = _center(box)
+    near = min(people, key=lambda p: math.dist(_center(p["box"]), (cx, cy)))
+    if math.dist(_center(near["box"]), (cx, cy)) <= _TRACK_CENTER:
+        return near
+    return None
+
+
+def down(person: dict | None) -> bool:
+    """Lying or slumped in this frame."""
+    return person is not None and posture(person) in DOWN_POSTURES
+
+
+def pick_patient(people: list[dict], last: dict | None) -> dict | None:
+    """Like ``pick``, but someone lying or slumped beats an upright person.
+
+    With several people in the room the largest box is often someone sitting
+    in front, while the person on the floor lies behind. Once it looks at
+    someone lying it stays with them, even if one frame calls them sitting.
+    """
+    if not people:
+        return None
+    downs = [p for p in people if down(p)]
+    if last is not None:
+        tracked = track(people, last)
+        if tracked is not None and (down(tracked) or down(last) or not downs):
+            return tracked
+    if downs:
+        lying_ = [p for p in downs if posture(p) == "liegt"]
+        return (lying_ or downs)[0]  # sorted by box height, the largest first
+    return people[0]
+
+
 def sign(name: str, state: str, value, text: str, threshold=None, unit: str | None = None) -> dict:
     return {"name": name, "titel": TITLES[name], "zustand": state, "wert": value, "text": text,
             "grenze": threshold, "einheit": unit}
@@ -399,6 +441,37 @@ def interpret_answer(texts: list[str]) -> str | None:
     if any(_find(words, w) >= 0 for w in config.HEALTH_WORDS_NO) or "keine" in words:
         return "nein"
     return None
+
+
+def _negated(words: list[str], i: int) -> bool:
+    return i > 0 and words[i - 1] in ("keine", "kein", "nicht", "keinen")
+
+
+def interpret_wellbeing(texts: list[str]) -> str | None:
+    """Answer to "geht es ihnen gut?": "hilfe", "gut" or None (unclear).
+
+    Unwell words win ("ja, aber hilfe"), "keine schmerzen" is not one, and
+    "nicht (so) gut" is unwell. A plain "nein" is unwell, but "nein nein,
+    alles gut" is unclear and gets the follow-up question.
+    """
+    words = re.findall(r"\w+", " ".join(texts).lower())
+    no = False
+    for w in config.HEALTH_WORDS_UNWELL:
+        i = _find(words, w)
+        if i < 0 or _negated(words, i):
+            continue
+        if w == "nein":
+            no = True
+        else:
+            return "hilfe"
+    for i, w in enumerate(words):
+        if w == "gut" and "nicht" in words[max(0, i - 2) : i]:
+            return "hilfe"
+    well = any(_find(words, w) >= 0 for w in config.HEALTH_WORDS_WELL) or any(
+        _negated(words, i) for i, w in enumerate(words) if w in ("schmerzen", "hilfe", "weh"))
+    if no:
+        return None if well else "hilfe"
+    return "gut" if well else None
 
 
 def lidar_piece(points, angle_deg: float, half_width_deg: float):

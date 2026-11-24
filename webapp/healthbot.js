@@ -76,6 +76,8 @@ const STATE_TEXT = {
   gesamtbild: "Gesamtbild",
   ansprechen: "Ansprechen",
   anstupsen: "Anstupsen",
+  hilfe_suchen: "sucht Helfer",
+  hinfuehren: "führt Helfer hin",
   nachfrage: "Nachfrage",
   hilfe: "Hilfe gerufen",
   ansprechbar: "ansprechbar",
@@ -84,7 +86,7 @@ const STATE_TEXT = {
   abgebrochen: "abgebrochen",
 };
 // order of the step display; every final state counts as "end"
-const SEQUENCE = ["anfahrt", "gesamtbild", "ansprechen", "anstupsen"];
+const SEQUENCE = ["anfahrt", "gesamtbild", "ansprechen", "anstupsen", "hilfe_suchen", "hinfuehren"];
 const FINAL = ["nachfrage", "hilfe", "ansprechbar", "unauffaellig", "keine_person", "abgebrochen"];
 
 const SCENE_TEXT = {

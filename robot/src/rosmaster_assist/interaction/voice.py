@@ -133,6 +133,11 @@ class Voice:
         return config.VOICE_ENABLED and self._output != TEXT
 
     @property
+    def said_count(self) -> int:
+        """How many sentences really came out so far (dropouts do not count)."""
+        return self._said
+
+    @property
     def speaking(self) -> bool:
         return self._speaking or time.monotonic() < self._speaking_until
 

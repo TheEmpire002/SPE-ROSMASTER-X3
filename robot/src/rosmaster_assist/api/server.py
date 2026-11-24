@@ -2145,7 +2145,8 @@ async def _hardware_loop(
                 if maneuver is not None:
                     maneuver.cancel("Verbindung zum Antrieb verloren")
                 if healthbot is not None:
-                    healthbot.cancel("Verbindung zum Antrieb verloren")
+                    # pauses and goes on after the reconnect (usb resets are short)
+                    healthbot.drive_lost("Verbindung zum Antrieb verloren")
                 if interaction is not None:
                     # Do not end it, only stop: gesture control stays on and
                     # is ready again right after reconnecting. It used to be
@@ -2164,6 +2165,8 @@ async def _hardware_loop(
                 await hub.broadcast(alert_message("info", "Antrieb wieder verbunden"))
                 if map_control is not None:
                     map_control.drive_back()
+                if healthbot is not None:
+                    healthbot.drive_back()
         except Exception:
             # This used to be the end: no more reconnecting until a restart.
             _loop_error("Verbindungsüberwachung")

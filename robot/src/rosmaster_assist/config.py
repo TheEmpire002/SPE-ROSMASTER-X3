@@ -2015,7 +2015,14 @@ HEALTH_NUDGE_MAX_S = 6.0
 HEALTH_NUDGE_START_M = 0.30
 # Speed (m/s) when closing in to nudging distance and when backing off:
 # slow, so the drive guard can stop safely in front of the person.
-HEALTH_APPROACH_SPEED = 0.12
+HEALTH_APPROACH_SPEED = 0.18
+# closing in it slows down within this distance (m) of the nudge start, but
+# never below the minimum (m/s): the motors do not start at very small values
+HEALTH_APPROACH_SLOWDOWN_M = 0.6
+HEALTH_APPROACH_MIN_SPEED = 0.07
+# speed (m/s) of the healthbot's own drives (to the spot, viewpoints, home,
+# helper search); the autonomous limit AUTONOMOUS_MAX_SPEED still applies
+HEALTH_DRIVE_SPEED = 0.35
 # Highest turn rate (rad/s) for turning towards the person while closing in.
 # Small, so the robot does not sweep sideways past them.
 HEALTH_APPROACH_OMEGA_MAX = 0.3
@@ -2072,7 +2079,7 @@ HEALTH_FLOOR_MIN_WIDTH_M = 0.35
 # image height, they probably lie on the floor (the camera looks slightly down).
 HEALTH_FLOOR_IMAGE_BOTTOM = 0.75
 # Searching: turn this fast (rad/s) until it sees a person ...
-HEALTH_SEARCH_OMEGA = 0.4
+HEALTH_SEARCH_OMEGA = 0.5
 # ... at most this long (s), about one turn.
 HEALTH_SEARCH_S = 18.0
 # A person counts as centred when less than this many degrees off.
@@ -2081,6 +2088,16 @@ HEALTH_CENTERED_DEG = 8.0
 # lidar position lies within this radius (m) of the point counts, so
 # someone standing elsewhere in the room is not checked by mistake
 HEALTH_AREA_RADIUS_M = 1.5
+# area search: if nobody lying is seen from where it arrived (person behind
+# a table, a chair, a sofa), it drives to points on a circle around the spot
+# and looks again from there; radius (m), number of points at most, how far
+# apart on the circle (degrees) and how long it looks at each point (s)
+HEALTH_VIEWPOINT_RADIUS_M = 1.2
+HEALTH_VIEWPOINT_MAX = 4
+HEALTH_VIEWPOINT_STEP_DEG = 70.0
+HEALTH_VIEWPOINT_SEARCH_S = 8.0
+# a viewpoint needs this much room (m) to the nearest wall on the map
+HEALTH_VIEWPOINT_CLEARANCE_M = 0.3
 # before speaking it turns until the face is centred, so the camera (tilt
 # servo for the height) looks the person in the eye; at most this long (s)
 HEALTH_FACE_S = 4.0
@@ -2092,7 +2109,7 @@ HEALTH_NUDGE_AT_LEGS = True
 HEALTH_LEG_HALF_DEG = 6.0
 
 # Wait this long (s) for an answer after asking.
-HEALTH_ANSWER_S = 6.0
+HEALTH_ANSWER_S = 7.0
 # Questions and announcements (voice; spoken German).
 HEALTH_QUESTION = "Hallo, hören Sie mich? Geht es Ihnen gut?"
 HEALTH_QUESTION_HELP = "Brauchst du Hilfe?"
@@ -2104,6 +2121,50 @@ HEALTH_NUDGE_CALL = "Hallo! Hören Sie mich?"
 # Words that count as an answer (German speech). "ja"/"hilfe" means: get help.
 HEALTH_WORDS_HELP = ("ja", "hilfe", "hilf mir")
 HEALTH_WORDS_NO = ("nein", "alles gut", "geht schon")
+# answers to the first question "geht es ihnen gut?": here "ja" means well
+# and "nein" means unwell; unwell words win, "nicht gut" counts as unwell
+HEALTH_WORDS_WELL = ("ja", "gut", "alles gut", "mir geht es gut", "geht schon", "okay", "passt",
+                     "alles okay")
+HEALTH_WORDS_UNWELL = ("nein", "hilfe", "hilf mir", "schlecht", "schmerzen", "weh", "nicht gut",
+                       "tut weh")
+# speaker or microphone just dropped out (usb reset): wait at most this long
+# (s) for it to come back before the question goes unheard
+HEALTH_AUDIO_WAIT_S = 6.0
+# drive connection lost during a check: the check pauses and goes on when the
+# drive is back within this time (s), otherwise it is cancelled
+HEALTH_DRIVE_RECONNECT_S = 30.0
+
+# fetching help: after the alarm it looks for an upright person (not the one
+# lying there) in the mapped area, asks them to follow and leads them to the
+# person on the floor. off: drive home and play music, as before
+HEALTH_FETCH_HELP = True
+# a helper must be at least this far (m) from the person on the floor
+HEALTH_HELPER_MIN_FROM_VICTIM_M = 1.5
+# search for a helper at most this long (s) in total
+HEALTH_HELPER_SEARCH_S = 120.0
+# search points across the map: spacing (m), room to walls (m), how many at most
+HEALTH_HELPER_POINT_SPACING_M = 1.5
+HEALTH_HELPER_POINT_CLEARANCE_M = 0.35
+HEALTH_HELPER_POINTS_MAX = 12
+# at each search point it turns this long (s), about one round
+HEALTH_HELPER_LOOK_S = 14.0
+# it drives up to this distance (m) to a helper before talking to them
+HEALTH_HELPER_TALK_M = 1.0
+# leading: speed (m/s); someone counts as following when the lidar sees
+# something within this distance (m) and half angle (degrees) behind the robot
+HEALTH_LEAD_SPEED = 0.25
+HEALTH_FOLLOW_MAX_M = 1.6
+HEALTH_FOLLOW_HALF_DEG = 30.0
+# nobody behind for this long (s): stop, call and wait at most HEALTH_LEAD_WAIT_S,
+# at most HEALTH_LEAD_TRIES times, then it goes on alone
+HEALTH_FOLLOW_LOST_S = 3.0
+HEALTH_LEAD_WAIT_S = 10.0
+HEALTH_LEAD_TRIES = 3
+HEALTH_HELPER_CALL = ("Entschuldigung! Dort liegt eine Person und braucht Hilfe. "
+                      "Bitte folgen Sie mir.")
+HEALTH_HELPER_WAIT_CALL = "Bitte folgen Sie mir!"
+HEALTH_HELPER_ARRIVED = "Hier liegt die Person. Bitte helfen Sie ihr."
+HEALTH_HELPER_NONE = "Ich finde niemanden. Ich rufe weiter um Hilfe."
 
 # Detect on its own: if pose detection sees a lying person continuously
 # for this long (s), it starts the check by itself.

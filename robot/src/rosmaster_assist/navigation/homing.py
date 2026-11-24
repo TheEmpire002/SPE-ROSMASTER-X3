@@ -91,6 +91,8 @@ class Homing:
         self._guessed = False                     # path through unknown, looked at on site
         self._by_map = False
         self._follower = pf.PathFollower()
+        # speed of the running drive, None: the configured default
+        self._speed: float | None = None
         self._path: list[tuple[float, float]] = []
         self._blocks: list[tuple[float, float, float]] = []  # x, y, valid until
         # Avoidance (F3): short-term memory, lift detection, last chosen side
@@ -141,13 +143,18 @@ class Homing:
         """Pose in a map known -- then it drives by map."""
         return self._localization is not None and self._planner is not None and self._localization.confident
 
+    @property
+    def occ_map(self):
+        """The map it localises in while the pose is known, otherwise None."""
+        return getattr(self._localization, "occ_map", None) if self.map_ready else None
+
     def map_pose(self) -> tuple[float, float, float] | None:
         """Pose in the map (x, y, radians) while it is known, otherwise None."""
         return self._localization.pose() if self.map_ready else None
 
     def start(self, target: tuple[float, float] | None = None, angle: float | None = None,
               kind: str | None = None, corridor=None, fallback_points=None,
-              blocked_enough_m: float = 0.0) -> bool:
+              blocked_enough_m: float = 0.0, speed: float | None = None) -> bool:
         """Begin homing or the drive to ``target`` (map frame, m).
 
         ``angle`` (radians): align like this at the goal. ``kind="zurueck"``:
@@ -156,6 +163,7 @@ class Homing:
         is requested without a confident pose in the map (the reason is then
         in ``last_reason``). ``blocked_enough_m`` as in ``start_to``: blocked
         this close to the goal counts as arrived (person on the floor).
+        ``speed`` (m/s) replaces the normal drive speed for this drive.
         """
         if self.active:
             return False
@@ -171,6 +179,7 @@ class Homing:
         self._fallback = list(fallback_points or [])
         self._waiting = None
         self._path = []
+        self._set_speed(speed)
         self._by_map = self.map_ready
         if self._by_map:
             if target is None:
@@ -188,6 +197,7 @@ class Homing:
         tolerance: float | None = None,
         name: str = "Startpunkt",
         blocked_enough_m: float = 0.0,
+        speed: float | None = None,
     ) -> bool:
         """Drive straight to a point in the odometry frame. False if a drive is running.
 
@@ -195,7 +205,8 @@ class Homing:
         ``tolerance`` replaces ``HOME_TOLERANCE_M``. If ``blocked_enough_m``
         is greater than zero, the drive counts as arrived when something is
         in the way within that distance of the goal -- meant for goals that
-        are an obstacle themselves (a person on the floor).
+        are an obstacle themselves (a person on the floor). ``speed`` (m/s)
+        replaces ``HOME_SPEED`` for this drive.
         """
         if self.active:
             return False
@@ -207,10 +218,15 @@ class Homing:
         self._fallback = []
         self._waiting = None
         self._path = []
+        self._set_speed(speed)
         self._by_map = False
         self._set_goal(x, y, tolerance, name, blocked_enough_m)
         self._task = asyncio.create_task(self._drive())
         return True
+
+    def _set_speed(self, speed: float | None) -> None:
+        self._speed = None if speed is None else float(speed)
+        self._follower.speed = config.NAV_DRIVE_SPEED if speed is None else float(speed)
 
     def _set_goal(self, x: float, y: float, tolerance: float | None, name: str,
                   blocked_enough_m: float) -> None:
@@ -750,7 +766,7 @@ class Homing:
 
         # Normalise to length 1 and multiply by the speed. Slow down shortly
         # before the goal, otherwise it overshoots and oscillates.
-        speed = config.HOME_SPEED
+        speed = config.HOME_SPEED if self._speed is None else self._speed
         if distance < config.HOME_SLOWDOWN_M:
             share = distance / config.HOME_SLOWDOWN_M
             # Do not get arbitrarily slow -- otherwise it stops short of the

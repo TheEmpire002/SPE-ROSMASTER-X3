@@ -26,7 +26,16 @@ Cases:
 * person lies below the lidar plane, only the drive guard (depth, memory)
   sees them -> still approaches and nudges (test log);
 * on_finished: called once per outcome with a complete JSON record; a
-  failing on_finished does not break the healthbot.
+  failing on_finished does not break the healthbot;
+* someone upright next to the person on the floor: the lying one is
+  checked and nudged;
+* hidden from the arrival point: found from a viewpoint around the spot;
+* answers to "geht es ihnen gut?": well -> responsive, unwell -> alarm;
+* drive lost for a moment: pauses and goes on; for too long: cancelled;
+* fetching help: finds an upright person, they follow, it leads them to
+  the person; a helper who does not follow is called again, then it goes
+  alone; a sentence that did not come out is said again;
+* search.py: viewpoints, search points on a map, someone behind the robot.
 """
 
 import asyncio
@@ -44,6 +53,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "robot" / "
 from rosmaster_assist import config  # noqa: E402
 from rosmaster_assist.health import assessment as am  # noqa: E402
 from rosmaster_assist.health import procedure as pr  # noqa: E402
+from rosmaster_assist.health import search  # noqa: E402
 from rosmaster_assist.health import simulation as sim  # noqa: E402
 from rosmaster_assist.protocol import DriveCommand  # noqa: E402
 from rosmaster_assist.safety.drive_guard import Check  # noqa: E402
@@ -69,7 +79,14 @@ class World:
 
     ROOM = (-3.0, 5.0, -3.0, 3.0)
 
-    def __init__(self, person: str | None = "liegend", moving: bool = False, lidar_sees: bool = True) -> None:
+    def __init__(self, person: str | None = "liegend", moving: bool = False, lidar_sees: bool = True,
+                 extras=None) -> None:
+        # other people, upright: {"x", "y", "follows"}; a follower walks
+        # behind the robot once asked (``following``)
+        self.extras = [dict(e) for e in (extras or [])]
+        self.following = False
+        # where the person on the floor can be seen from, None: everywhere
+        self.visible_from = None
         self.x = self.y = self.th = 0.0
         self.vx = self.omega = 0.0
         self.last_command = time.monotonic()
@@ -96,6 +113,14 @@ class World:
         self.y += self.vx * math.sin(self.th) * dt
         if now - self.last_command > 0.5:  # dead man's switch
             self.vx = self.omega = 0.0
+        if self.following:
+            for e in self.extras:
+                if e.get("follows"):
+                    e["x"] = self.x - 0.7 * math.cos(self.th)
+                    e["y"] = self.y - 0.7 * math.sin(self.th)
+
+    def all_circles(self):
+        return self.circles + [(e["x"], e["y"], 0.15) for e in self.extras]
 
     def place(self, x: float, y: float, th: float) -> None:
         self.update()
@@ -106,7 +131,7 @@ class World:
         """Smallest distance lidar -> body edge in front of the robot (±35°)."""
         self.update()
         smallest = math.inf
-        for cx, cy, r in self.circles:
+        for cx, cy, r in self.all_circles():
             dx, dy = cx - self.x, cy - self.y
             w = math.degrees(math.atan2(dy, dx) - self.th)
             w = (w + 180.0) % 360.0 - 180.0
@@ -124,7 +149,8 @@ class World:
             tx = np.where(ux > 0, (x1 - self.x) / ux, (x0 - self.x) / ux)
             ty = np.where(uy > 0, (y1 - self.y) / uy, (y0 - self.y) / uy)
         r = np.minimum(np.abs(tx), np.abs(ty))
-        for cx, cy, rad in (self.circles if self.lidar_sees else []):
+        for cx, cy, rad in (self.all_circles() if self.lidar_sees
+                            else [(e["x"], e["y"], 0.15) for e in self.extras]):
             # ray x + t*u hits circle: t^2 - 2 t (u.d) + |d|^2 - rad^2 = 0
             dx, dy = cx - self.x, cy - self.y
             b = ux * dx + uy * dy
@@ -201,23 +227,43 @@ class Pose:
     def activate(self, on: bool, who: str) -> None:
         self.activated.append((on, who))
 
+    def _image_x(self, x: float, y: float) -> float | None:
+        w = self.world
+        angle = math.degrees(math.atan2(y - w.y, x - w.x) - w.th)
+        angle = (angle + 180.0) % 360.0 - 180.0
+        if abs(angle) > self.fov_deg / 2:
+            return None
+        return 0.5 - angle / self.fov_deg
+
+    def _upright(self, mx: float, distance: float) -> dict:
+        # nearer people are larger in the image
+        height = max(0.2, min(0.85, 1.2 / max(distance, 0.5)))
+        kp, box = pose_module._sim_body(mx, max(0.02, 0.5 - height / 2), height, 0.03)
+        return pose_module._person(box, [[x, y, 0.8] for x, y in kp], 0.8,
+                                   config.CAMERA_WIDTH / config.CAMERA_HEIGHT, self.fov_deg)
+
     def people(self) -> list[dict]:
         w = self.world
         w.update()
-        if w.person is None:
-            return []
+        found = []
         ox, oy = sim.STANDARD_LOCATION
-        angle = math.degrees(math.atan2(oy - w.y, ox - w.x) - w.th)
-        angle = (angle + 180.0) % 360.0 - 180.0
-        if abs(angle) > self.fov_deg / 2:
-            return []
-        mx = 0.5 - angle / self.fov_deg
-        if w.person == "liegend":
-            distance = max(0.05, min(math.hypot(cx - w.x, cy - w.y) - r for cx, cy, r in w.circles))
-            return [pose_module._sim_lying(mx, distance, w.moving, time.monotonic(), self.fov_deg)]
-        kp, box = pose_module._sim_body(mx, 0.2, 0.6, 0.03)
-        return [pose_module._person(box, [[x, y, 0.8] for x, y in kp], 0.8,
-                                    config.CAMERA_WIDTH / config.CAMERA_HEIGHT, self.fov_deg)]
+        mx = self._image_x(ox, oy) if w.person is not None else None
+        if w.visible_from is not None and not w.visible_from(w.x, w.y):
+            mx = None
+        if mx is not None:
+            if w.person == "liegend":
+                distance = max(0.05, min(math.hypot(cx - w.x, cy - w.y) - r for cx, cy, r in w.circles))
+                found.append(pose_module._sim_lying(mx, distance, w.moving, time.monotonic(), self.fov_deg))
+            else:
+                kp, box = pose_module._sim_body(mx, 0.2, 0.6, 0.03)
+                found.append(pose_module._person(box, [[x, y, 0.8] for x, y in kp], 0.8,
+                                                 config.CAMERA_WIDTH / config.CAMERA_HEIGHT, self.fov_deg))
+        for e in w.extras:
+            ex = self._image_x(e["x"], e["y"])
+            if ex is not None:
+                found.append(self._upright(ex, math.hypot(e["x"] - w.x, e["y"] - w.y)))
+        found.sort(key=lambda p: p["box"][3] - p["box"][1], reverse=True)
+        return found
 
 
 class Homing:
@@ -227,20 +273,29 @@ class Homing:
     0.9 m short of it, facing the spot.
     """
 
+    # viewpoints and search points are reached exactly, not short of them
+    EXACT = ("Blickpunkt", "Suchpunkt")
+
     def __init__(self, world: World) -> None:
         self.world = world
         self.goals: list[tuple[float, float, str]] = []
         self.cancelled: list[str] = []
+        self.speeds: list[float | None] = []
+        # drive time (s) per goal name, otherwise 0.1 s
+        self.durations: dict[str, float] = {}
         self._goal = None
+        self._name = None
         self._end = 0.0
         self.last_reason = None
 
-    def start_to(self, x, y, tolerance=None, name="Startpunkt", blocked_enough_m=0.0) -> bool:
+    def start_to(self, x, y, tolerance=None, name="Startpunkt", blocked_enough_m=0.0, speed=None) -> bool:
         if self.active:
             return False
         self.goals.append((x, y, name))
+        self.speeds.append(speed)
         self._goal = (x, y)
-        self._end = time.monotonic() + 0.1
+        self._name = name
+        self._end = time.monotonic() + self.durations.get(name, 0.1)
         self.last_reason = None
         return True
 
@@ -256,9 +311,10 @@ class Homing:
             w.place(0.0, 0.0, 0.0)
         else:
             w.update()
-            d = math.hypot(x - w.x, y - w.y)
+            d = max(1e-6, math.hypot(x - w.x, y - w.y))
             ux, uy = (x - w.x) / d, (y - w.y) / d
-            w.place(x - 0.9 * ux, y - 0.9 * uy, math.atan2(uy, ux))
+            short = 0.0 if self._name in self.EXACT else 0.9
+            w.place(x - short * ux, y - short * uy, math.atan2(uy, ux))
         self._goal = None
         self.last_reason = "angekommen"
         return False
@@ -289,9 +345,13 @@ class MapHoming(Homing):
         self.world.update()
         return self.world.x, self.world.y, self.world.th
 
-    def start(self, target=None, angle=None, corridor=None, blocked_enough_m=0.0) -> bool:
+    occ_map = None
+
+    def start(self, target=None, angle=None, corridor=None, blocked_enough_m=0.0, speed=None) -> bool:
         if self.active:
             return False
+        self._name = None
+        self.speeds.append(speed)
         self.map_goals.append(None if target is None else tuple(target))
         self.enough.append(blocked_enough_m)
         self.corridors.append(corridor)
@@ -320,15 +380,26 @@ class Voice:
     available = True
     speaking = False
 
-    def __init__(self, speech: Speech) -> None:
+    def __init__(self, speech: Speech, world: World | None = None) -> None:
         self.speech = speech
+        self.world = world
         self.said: list[str] = []
+        # how many of the next sentences get lost (speaker dropout)
+        self.drop = 0
+        self.said_count = 0
 
-    def say(self, text: str, priority: bool = False) -> None:
+    def say(self, text: str, priority: bool = False) -> bool:
+        if self.drop > 0:
+            self.drop -= 1
+            return True  # queued, but never comes out
         self.said.append(text)
+        self.said_count += 1
+        if text == config.HEALTH_HELPER_CALL and self.world is not None:
+            self.world.following = True
         # the answer comes shortly after the question -- after listening began
         for t in self.speech.answers.get(text, []):
             self.speech.entries.append((time.time() + 0.45, t))
+        return True
 
 
 class Mukke:
@@ -348,14 +419,15 @@ class Mukke:
 
 class Setup:
     def __init__(self, person: str | None = "liegend", moving: bool = False, answers=None,
-                 lidar_sees: bool = True, on_finished=None, by_map: bool | None = None) -> None:
-        self.world = World(person, moving, lidar_sees)
+                 lidar_sees: bool = True, on_finished=None, by_map: bool | None = None,
+                 extras=None) -> None:
+        self.world = World(person, moving, lidar_sees, extras)
         self.watchdog = Watchdog(self.world)
         # by_map: True map ready, False map homing without a pose, None odometry only
         self.homing = Homing(self.world) if by_map is None else MapHoming(self.world, by_map)
         self.pose = Pose(self.world)
         self.speech = Speech(answers or {})
-        self.voice = Voice(self.speech)
+        self.voice = Voice(self.speech, self.world)
         self.mukke = Mukke()
         self.messages: list[dict] = []
         self.records: list[dict] = []
@@ -387,6 +459,7 @@ _RECORD_KEYS = (
     "kind", "started_at", "ended_at", "duration_s", "source", "target", "outcome", "state", "verdict",
     "reason", "alarm", "timeline", "checks", "assessment", "thresholds", "answers_heard",
     "follow_up_interpretation", "nudges", "nudge_active", "spoken", "music", "person_last",
+    "wellbeing_interpretation", "posture", "viewpoints", "helper",
 )
 
 
@@ -912,7 +985,10 @@ async def case_map_outside_area() -> None:
     s = a.hb.status()
     check("state keine_person", s["zustand"] == pr.NO_PERSON, s["zustand"] + " / " + s["schritt"])
     check("not nudged", not s["stupser"], str(s["stupser"]))
-    check("home by map", a.homing.map_goals == [point, (0.0, 0.0)], str(a.homing.map_goals))
+    goals = a.homing.map_goals
+    check("searched the area by map, then home",
+          goals[0] == point and goals[-1] == (0.0, 0.0) and len(goals) == 2 + config.HEALTH_VIEWPOINT_MAX,
+          str(goals))
 
 
 async def case_map_refused() -> None:
@@ -928,6 +1004,68 @@ async def case_map_refused() -> None:
     reason = c.hb.start(1.0, 1.0, "karte", frame="karte")
     check("refused with odometry-only homing", reason is not None, str(reason))
     check("map view without point", c.hb.map_view()["ziel"] is None)
+
+
+class FakeMap:
+    """4 x 4 m, cells of 0.1 m, everything left of x = 1.5 m is a wall."""
+
+    origin = (0.0, 0.0)
+    width = height = 40
+    resolution = 0.1
+
+    def is_free(self, x: float, y: float) -> bool:
+        return 1.5 <= x < 4.0 and 0.0 <= y < 4.0
+
+    def distance_at(self, x: float, y: float) -> float:
+        return 1.0
+
+
+def test_search() -> None:
+    print("Search points")
+    x, y = search.position((1.0, 0.0, math.pi / 2), 90.0, 2.0)
+    check("position: 90° left of facing +y is -x", abs(x + 1.0) < 1e-9 and abs(y) < 1e-9, f"{x}, {y}")
+    pts = search.viewpoints((0.0, 0.0), (1.0, 0.0), 1.0, 3, 90.0)
+    want = [(0.0, 1.0), (-1.0, 0.0), (0.0, -1.0)]
+    check("viewpoints go around from the robot's side",
+          all(math.dist(p, q) < 1e-9 for p, q in zip(pts, want)) and len(pts) == 3, str(pts))
+    pts = search.viewpoints((2.0, 2.0), (3.0, 2.0), 1.0, 3, 90.0, FakeMap())
+    want = [(2.0, 3.0), (2.0, 1.0)]
+    check("viewpoints in walls dropped, at most one round",
+          len(pts) == 2 and all(math.dist(p, q) < 1e-9 for p, q in zip(pts, want)), str(pts))
+    pts = search.search_points(FakeMap(), (0.25, 0.25), 1.0, 0.3, 50)
+    check("search points only where free", len(pts) == 12 and all(p[0] >= 1.5 for p in pts), str(pts))
+    check("search points nearest first", pts and math.dist(pts[0], (1.5, 0.5)) < 1e-9, str(pts[:1]))
+    check("search points limited", len(search.search_points(FakeMap(), (0.0, 0.0), 1.0, 0.3, 3)) == 3)
+    check("no map, no search points", search.search_points(None, (0.0, 0.0), 1.0, 0.3, 5) == [])
+    behind = [(-0.7, 0.0), (-0.7, 0.05), (-0.7, -0.05)]
+    check("someone behind", search.someone_behind(behind, 1.6, 30.0))
+    check("in front is not behind", not search.someone_behind([(0.7, 0.0)] * 3, 1.6, 30.0))
+    check("the robot's own back is not someone", not search.someone_behind([(-0.15, 0.0)] * 3, 1.6, 30.0))
+    check("too far is not following", not search.someone_behind([(-2.0, 0.0)] * 3, 1.6, 30.0))
+    check("no scan, nobody behind", not search.someone_behind([], 1.6, 30.0))
+
+
+def test_wellbeing_and_patient() -> None:
+    print("Answers to „geht es ihnen gut?“, who is the patient")
+    cases = [
+        (["mir geht es gut"], "gut"), (["ja"], "gut"), (["alles okay"], "gut"),
+        (["nein"], "hilfe"), (["mir geht es nicht gut"], "hilfe"), (["schlecht"], "hilfe"),
+        (["ja aber hilfe"], "hilfe"), (["keine schmerzen alles gut"], "gut"),
+        (["nein nein alles gut"], None), (["äh"], None), ([], None),
+    ]
+    for texts, want in cases:
+        got = am.interpret_wellbeing(texts)
+        check(f"„{' '.join(texts)}“ -> {want}", got == want, str(got))
+    fov = config.CAMERA_FOV_DEG
+    lying = pose_module._sim_lying(0.3, 2.0, False, time.time(), fov)
+    kp, box = pose_module._sim_body(0.6, 0.05, 0.85, 0.03)
+    upright = pose_module._person(box, [[x, y, 0.8] for x, y in kp], 0.8,
+                                  config.CAMERA_WIDTH / config.CAMERA_HEIGHT, fov)
+    check("sim lying counts as down, standing does not", am.down(lying) and not am.down(upright))
+    check("lying beats a larger upright person", am.pick_patient([upright, lying], None) is lying)
+    check("only upright: that one", am.pick_patient([upright], None) is upright)
+    check("nobody: None", am.pick_patient([], None) is None)
+    check("stays with the lying one", am.pick_patient([upright, lying], lying) is lying)
 
 
 def test_camera_tilt_hold() -> None:
@@ -953,6 +1091,179 @@ def test_camera_tilt_hold() -> None:
     check("released: tracks the head again", tilt._target != before, f"{tilt._target}")
 
 
+async def case_lying_preferred() -> None:
+    print("Someone upright next to the person on the floor: checks the lying one")
+    ox, oy = sim.STANDARD_LOCATION
+    # upright in the area and in view on arrival, larger in the image
+    a = Setup("liegend", extras=[{"x": ox + 1.0, "y": oy + 0.5}])
+    a.hb.start(ox, oy)
+    await a.until_done(90.0)
+    s = a.hb.status()
+    check("state hilfe", s["zustand"] == pr.HELP, s["zustand"] + " / " + s["schritt"])
+    check("lying flagged", sign_state(a.hb, "liegend") == am.FLAGGED)
+    check("nudged the lying one", len(s["stupser"]) == config.HEALTH_NUDGE_COUNT, str(s["stupser"]))
+    check("drove at the healthbot speed", a.homing.speeds and a.homing.speeds[0] == config.HEALTH_DRIVE_SPEED,
+          str(a.homing.speeds))
+    check_record(a, "alarm")
+
+
+async def case_hidden() -> None:
+    print("Hidden from the arrival point: found from a viewpoint")
+    ox, oy = sim.STANDARD_LOCATION
+    a = Setup("liegend")
+    # behind a table: not visible from where it arrives (north-west of the person)
+    a.world.visible_from = lambda x, y: not (x < 2.0 and y > -1.2)
+    a.hb.start(ox, oy)
+    await a.until_done(90.0)
+    s = a.hb.status()
+    names = [g[2] for g in a.homing.goals]
+    check("drove to a viewpoint", "Blickpunkt" in names, str(names))
+    check("state hilfe", s["zustand"] == pr.HELP, s["zustand"] + " / " + s["schritt"])
+    check("nudged", len(s["stupser"]) == config.HEALTH_NUDGE_COUNT, str(s["stupser"]))
+    r = check_record(a, "alarm")
+    if r:
+        check("record viewpoints", len(r["viewpoints"]) >= 1 and r["viewpoints"][0]["erreicht"], str(r["viewpoints"]))
+
+
+async def case_wellbeing() -> None:
+    print("Answers to „geht es ihnen gut?“ are acted on")
+    a = Setup("stehend", answers={config.HEALTH_QUESTION: ["mir geht es gut"]})
+    a.hb.start(*sim.STANDARD_LOCATION)
+    await a.until_done(90.0)
+    s = a.hb.status()
+    check("well: state ansprechbar", s["zustand"] == pr.RESPONSIVE, s["zustand"] + " / " + s["schritt"])
+    check("well: no follow-up question", config.HEALTH_QUESTION_HELP not in a.voice.said, str(a.voice.said))
+    check("well: no alarm", not s["alarm"] and not a.mukke.played)
+    r = check_record(a, "ok")
+    if r:
+        check("record interpretation gut", r["wellbeing_interpretation"] == "gut", str(r["wellbeing_interpretation"]))
+
+    b = Setup("liegend", moving=True, answers={config.HEALTH_QUESTION: ["nein mir geht es schlecht"]})
+    b.hb.start(*sim.STANDARD_LOCATION)
+    await b.until_done(90.0)
+    s = b.hb.status()
+    check("unwell: state hilfe", s["zustand"] == pr.HELP, s["zustand"] + " / " + s["schritt"])
+    check("unwell: not nudged", not s["stupser"], str(s["stupser"]))
+    check("unwell: no follow-up question", config.HEALTH_QUESTION_HELP not in b.voice.said)
+    check("unwell: reason", (s["urteil"] or {}).get("text") == "sagt, dass es ihr nicht gut geht", str(s["urteil"]))
+    r = check_record(b, "alarm")
+    if r:
+        check("record interpretation hilfe", r["wellbeing_interpretation"] == "hilfe")
+
+
+async def case_speaker_dropout() -> None:
+    print("A sentence that did not come out is said again")
+    a = Setup("liegend", moving=True, answers={config.HEALTH_QUESTION: ["mir geht es schlecht"]})
+    a.voice.drop = 1  # the question gets lost once
+    a.hb.start(*sim.STANDARD_LOCATION)
+    await a.until_done(90.0)
+    s = a.hb.status()
+    texts = [e["text"] for e in s["timeline"]]
+    check("said again", any(t.startswith("sagt nochmal") for t in texts), str(texts))
+    check("question came out", config.HEALTH_QUESTION in a.voice.said)
+    check("answer heard after the repeat", s["zustand"] == pr.HELP, s["zustand"])
+
+
+async def case_drive_lost() -> None:
+    print("Drive lost for a moment: pauses and goes on")
+    a = Setup("liegend")
+    a.homing.durations = {"gemeldete Stelle": 1.0}
+    a.hb.start(*sim.STANDARD_LOCATION)
+    await asyncio.sleep(0.4)
+    a.hb.drive_lost()
+    await asyncio.sleep(0.6)
+    s = a.hb.status()
+    check("still active while lost", s["aktiv"], s["zustand"])
+    check("drive to the spot cancelled", len(a.homing.cancelled) == 1, str(a.homing.cancelled))
+    check("stands still while lost", a.world.vx == 0.0 and a.world.omega == 0.0)
+    a.hb.drive_back()
+    await a.until_done(90.0)
+    s = a.hb.status()
+    names = [g[2] for g in a.homing.goals]
+    check("drove on to the spot", names.count("gemeldete Stelle") == 2, str(names))
+    check("check finished", s["zustand"] == pr.HELP, s["zustand"] + " / " + s["schritt"])
+    check_record(a, "alarm")
+
+    print("Drive lost for too long: cancelled")
+    old = config.HEALTH_DRIVE_RECONNECT_S
+    config.HEALTH_DRIVE_RECONNECT_S = 0.5
+    try:
+        b = Setup("liegend")
+        b.homing.durations = {"gemeldete Stelle": 1.0}
+        b.hb.start(*sim.STANDARD_LOCATION)
+        await asyncio.sleep(0.4)
+        b.hb.drive_lost()
+        await asyncio.sleep(1.2)
+        s = b.hb.status()
+        check("cancelled", not s["aktiv"] and s["zustand"] == pr.CANCELLED, s["zustand"])
+        check("stands still", b.world.vx == 0.0 and b.world.omega == 0.0)
+        check_record(b, "cancelled")
+    finally:
+        config.HEALTH_DRIVE_RECONNECT_S = old
+
+
+# far enough from the person that they are not behind the robot after it
+# drove up to the helper (the fake homing does not turn the robot)
+_HELPER = {"x": -0.5, "y": 1.5}
+
+
+async def case_fetch_help() -> None:
+    print("Fetches help: the helper follows to the person")
+    old = {n: getattr(config, n) for n in ("HEALTH_HELPER_LOOK_S", "HEALTH_HELPER_SEARCH_S")}
+    config.HEALTH_FETCH_HELP = True
+    # one full round while looking for a helper
+    config.HEALTH_HELPER_LOOK_S = 2.0 * math.pi / config.HEALTH_SEARCH_OMEGA + 1.0
+    config.HEALTH_HELPER_SEARCH_S = 40.0
+    try:
+        a = Setup("liegend", extras=[dict(_HELPER, follows=True)])
+        a.hb.start(*sim.STANDARD_LOCATION)
+        await a.until_done(120.0)
+        s = a.hb.status()
+        check("state hilfe", s["zustand"] == pr.HELP, s["zustand"] + " / " + s["schritt"])
+        check("asked the helper to follow", config.HEALTH_HELPER_CALL in a.voice.said, str(a.voice.said))
+        check("helper followed", a.world.following)
+        check("told the helper on arrival", config.HEALTH_HELPER_ARRIVED in a.voice.said, str(a.voice.said))
+        check("no music, a helper is there", not a.mukke.played)
+        check("not driven home", (0.0, 0.0) not in [g[:2] for g in a.homing.goals], str(a.homing.goals))
+        states = [e["zustand"] for e in s["timeline"]]
+        check("searched and led", pr.SEEK_HELP in states and pr.LEAD in states, str(states))
+        ox, oy = sim.STANDARD_LOCATION
+        check("ends at the person", math.hypot(a.world.x - ox, a.world.y - oy) < 1.2,
+              f"{a.world.x:.2f}, {a.world.y:.2f}")
+        r = check_record(a, "alarm")
+        if r:
+            check("record helper found and followed", (r["helper"] or {}).get("gefunden") is True
+                  and r["helper"].get("gefolgt") is True, str(r["helper"]))
+
+        print("Fetches help: the helper does not follow")
+        b = Setup("liegend", extras=[dict(_HELPER, follows=False)])
+        b.homing.durations = {"Person": 2.5}
+        b.hb.start(*sim.STANDARD_LOCATION)
+        await b.until_done(120.0)
+        s = b.hb.status()
+        calls = b.voice.said.count(config.HEALTH_HELPER_WAIT_CALL)
+        check("called again each time", calls == config.HEALTH_LEAD_TRIES, str(calls))
+        check("went alone, music", len(b.mukke.played) == 1, str(b.mukke.played))
+        check("state hilfe", s["zustand"] == pr.HELP, s["zustand"])
+        r = check_record(b, "alarm")
+        if r:
+            check("record helper not followed", (r["helper"] or {}).get("gefolgt") is False, str(r["helper"]))
+
+        print("Fetches help: nobody there")
+        for n, v in old.items():
+            setattr(config, n, v)
+        c = Setup("liegend")
+        c.hb.start(*sim.STANDARD_LOCATION)
+        await c.until_done(120.0)
+        check("says it finds nobody", config.HEALTH_HELPER_NONE in c.voice.said, str(c.voice.said))
+        check("home and music", c.homing.goals[-1][:2] == (0.0, 0.0) and len(c.mukke.played) == 1,
+              str(c.homing.goals))
+    finally:
+        config.HEALTH_FETCH_HELP = False
+        for n, v in old.items():
+            setattr(config, n, v)
+
+
 async def run_all() -> None:
     await case_without_camera()
     await case_motionless()
@@ -969,22 +1280,36 @@ async def run_all() -> None:
     await case_map_refused()
     await case_map_frame()
     await case_map_outside_area()
+    await case_lying_preferred()
+    await case_hidden()
+    await case_wellbeing()
+    await case_speaker_dropout()
+    await case_drive_lost()
+    await case_fetch_help()
 
 
 def main() -> None:
     # shorter waits keep the test fast; the logic stays the same
-    old = {n: getattr(config, n) for n in ("HEALTH_OBSERVE_S", "HEALTH_ANSWER_S", "HEALTH_SEARCH_S", "HEALTH_AUTO_S")}
+    short = {
+        "HEALTH_OBSERVE_S": 1.0, "HEALTH_ANSWER_S": 0.6, "HEALTH_SEARCH_S": 3.0, "HEALTH_AUTO_S": 0.5,
+        # fetching help has its own cases; the others end with home and music
+        "HEALTH_FETCH_HELP": False,
+        "HEALTH_HELPER_LOOK_S": 2.0, "HEALTH_HELPER_SEARCH_S": 6.0, "HEALTH_VIEWPOINT_SEARCH_S": 1.5,
+        "HEALTH_VIEWPOINT_MAX": 2, "HEALTH_AUDIO_WAIT_S": 0.5, "HEALTH_FOLLOW_LOST_S": 0.3,
+        "HEALTH_LEAD_WAIT_S": 0.5,
+    }
+    old = {n: getattr(config, n) for n in short}
     old_reaction = pr._REACTION_S
-    config.HEALTH_OBSERVE_S = 1.0
-    config.HEALTH_ANSWER_S = 0.6
-    config.HEALTH_SEARCH_S = 3.0
-    config.HEALTH_AUTO_S = 0.5
+    for n, v in short.items():
+        setattr(config, n, v)
     pr._REACTION_S = 0.8
     try:
         test_assessment()
         test_detection()
         test_posture()
         test_camera_tilt_hold()
+        test_search()
+        test_wellbeing_and_patient()
         asyncio.run(run_all())
     finally:
         for n, v in old.items():

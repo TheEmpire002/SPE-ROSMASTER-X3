@@ -1044,7 +1044,8 @@ class SpeechRecognition:
         log.info("Speech recognition: %d precise drive commands in the grammar", len(drive_commands))
         phrases += drive_commands
         # health check answers are no commands: they only land in the events (heard_since())
-        answers = [w for w in dict.fromkeys([*config.HEALTH_WORDS_HELP, *config.HEALTH_WORDS_NO])
+        answers = [w for w in dict.fromkeys([*config.HEALTH_WORDS_HELP, *config.HEALTH_WORDS_NO,
+                                                    *config.HEALTH_WORDS_WELL, *config.HEALTH_WORDS_UNWELL])
                    if possible(w)]
         sentences = wake + phrases + answers
         # Name before and after the command as whole sentences: that way Vosk

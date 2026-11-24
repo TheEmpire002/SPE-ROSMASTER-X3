@@ -284,7 +284,7 @@ it only turns.
 | `interaktion`          | interaction mode (hand signals, following), see "Interaction in detail". Missing on older servers.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `stimme`               | voice output: `verfuegbar` (sound comes out), `spricht` (speaking a sentence right now), `text` (last sentence spoken, or `null`). See "Voice in detail". Missing on older servers.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `sprache`              | speech commands: `verfuegbar` (microphone and model ready), `geweckt` (awake: „Robi“ was just said on its own, the next sentence needs no name), `gehoert` (last sentence understood, or `null`), `befehl` (recognized command, for a few seconds, otherwise `null`), `pause` (why the microphone is deliberately closed right now, e.g. „Mapping läuft“; then `verfuegbar` is `false`, otherwise `null`). See "Speech commands in detail". Missing on older servers.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `healthbot` | Healthbot short form (new 05.11.): `aktiv`, `zustand` (state: `bereit`, `anfahrt`, `gesamtbild`, `ansprechen`, `anstupsen`, `nachfrage`, `hilfe`, `ansprechbar`, `unauffaellig`, `keine_person`, `abgebrochen`), `schritt` (current step as text), `alarm`, `wache` (watch on). Everything else in `GET /healthbot/status`. Missing on older servers. |
+| `healthbot` | Healthbot short form (new 05.11.): `aktiv`, `zustand` (state: `bereit`, `anfahrt`, `gesamtbild`, `ansprechen`, `anstupsen`, `nachfrage`, `hilfe`, `hilfe_suchen`, `hinfuehren`, `ansprechbar`, `unauffaellig`, `keine_person`, `abgebrochen`), `schritt` (current step as text), `alarm`, `wache` (watch on). Everything else in `GET /healthbot/status`. Missing on older servers. |
 | `kamera_neigung`       | Tilt servo of the person camera (new 18.11.), only present when `CAMERA_TILT_ENABLED`: `verfuegbar`, `winkel` (current tilt, degrees, + = up), `ziel` (where it is moving to), `auto`, `min`/`max` (range), `verfolgt` (auto is keeping a person in the frame right now).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `karte`                | Only present when a map exists (new 04.11.): `name` (saved map, `null` for the live map during mapping), `live`, `pose` (pose **in the map frame**, not to be confused with `pose` above in the odometry frame; `null` while unknown), `sicher` (confident; `goto` only works then), `text`, `fahrt` (running or last map-based drive: `art` (kind) `"heim"` (home) / `"ziel"` (goal) / `"zurueck"` (way back, new 05.11.), `ziel` (goal), `rest_m` (remaining distance), `grund` (reason), `wartet` (new 05.11.: „wartet auf Ortung“ while it stands and searches for its pose, otherwise `null`), `vermutet` (new 05.11.: `true` while it follows a guessed path through the unknown, see "Guessed paths")). New 05.11.: `kartieren` (always-on mapping: `aktiv`, `zustand` `"integriert"` (writing) / `"bestaetigt"` (confirming the pose) / `"eingefroren"` (frozen, the map does not change) / `"pausiert"` (paused) / `"start"` (no map yet, founding one at standstill) / `"aus"` (off), `grund` (German reason); `null` when switched off), `mission` (anchor `[x, y, radians]` or `null`), `spur_m` (trail length in m since the mission start, else in total). See "Using the map" under Mapping. |
 
@@ -1616,6 +1616,56 @@ checks and reasons. A WebSocket `health_check` with `rahmen: "karte"` also
 goes through these checks (`MapControl.check_person`), and drives by map use
 the breadcrumb corridor of goal drives; the way home leads back to where the
 check started.
+
+**After the robot test of 24.11.** Changes from the first test with people:
+
+- **Area search.** If nobody lying is seen from where the robot arrived
+  (person behind a table or sofa), it drives to up to
+  `HEALTH_VIEWPOINT_MAX` viewpoints on a circle of `HEALTH_VIEWPOINT_RADIUS_M`
+  around the spot (`HEALTH_VIEWPOINT_STEP_DEG` apart, each looked at for
+  `HEALTH_VIEWPOINT_SEARCH_S`). With a map, points too close to walls
+  (`HEALTH_VIEWPOINT_CLEARANCE_M`) are skipped. Only then does it look for
+  anyone at all, facing the spot again. The record lists them in `viewpoints`.
+- **Several people.** Of all people in the image the one on the floor is
+  chosen (`pick_patient`: lying before slumped before sitting before
+  standing, then the nearer one in the area), no longer the largest box.
+- **Nudging.** Whoever lies, is on the floor or sits slumped and does not
+  answer gets nudged. Closing in starts at `HEALTH_APPROACH_SPEED` (0.18 m/s)
+  and slows down within `HEALTH_APPROACH_SLOWDOWN_M`, never below
+  `HEALTH_APPROACH_MIN_SPEED` (the motors do not start at smaller values).
+- **Answers count.** The answer to „Geht es Ihnen gut?“ is interpreted:
+  words from `HEALTH_WORDS_WELL` („ja“, „mir geht es gut“, …) mean
+  responsive, words from `HEALTH_WORDS_UNWELL` („nein“, „schlecht“,
+  „Schmerzen“, „nicht gut“, …) raise the alarm without nudging
+  (`grund` „sagt, dass es ihr nicht gut geht“). Unwell words win. Someone on
+  the floor who says they are well is asked once more. The record has
+  `wellbeing_interpretation`, `posture`.
+- **Speaker dropouts.** A sentence that did not come out (USB reset) is said
+  once more; before a question it waits up to `HEALTH_AUDIO_WAIT_S` for the
+  speaker or microphone to come back.
+- **Drive lost.** When the drive connection drops during a check, the check
+  pauses and goes on when the drive is back within `HEALTH_DRIVE_RECONNECT_S`;
+  otherwise it is cancelled.
+- **Faster.** The healthbot's own drives (to the spot, viewpoints, home,
+  helper search) use `HEALTH_DRIVE_SPEED` (0.35 m/s, still capped by
+  `AUTONOMOUS_MAX_SPEED`); turning while searching uses `HEALTH_SEARCH_OMEGA`
+  0.5 rad/s.
+- **Fetching help** (`HEALTH_FETCH_HELP`, on). After the alarm the state is
+  `hilfe_suchen`: the robot looks for an upright person at least
+  `HEALTH_HELPER_MIN_FROM_VICTIM_M` from the victim. It first turns on the
+  spot, then drives to search points across the mapped area
+  (`HEALTH_HELPER_POINT_SPACING_M`, `HEALTH_HELPER_POINTS_MAX`, each turned for
+  `HEALTH_HELPER_LOOK_S`), for at most `HEALTH_HELPER_SEARCH_S`. It drives up
+  to `HEALTH_HELPER_TALK_M` to the helper and says `HEALTH_HELPER_CALL`. Then
+  `hinfuehren`: it drives to the victim at `HEALTH_LEAD_SPEED` and checks
+  with the lidar behind it (`HEALTH_FOLLOW_MAX_M`, ±`HEALTH_FOLLOW_HALF_DEG`)
+  whether someone follows. Nobody behind for `HEALTH_FOLLOW_LOST_S`: it
+  stops, says `HEALTH_HELPER_WAIT_CALL` and waits up to `HEALTH_LEAD_WAIT_S`,
+  at most `HEALTH_LEAD_TRIES` times, then goes on alone. At the victim it
+  says `HEALTH_HELPER_ARRIVED`. Nobody found: `HEALTH_HELPER_NONE`, home and
+  alarm music as before. Without a map it turns on the spot and then looks
+  from where the check started (someone reported it from there). The
+  record has `helper` (`opfer`, `gefunden`, `gefolgt`).
 
 How "lying" is decided (since 23.11.): the person under check is tracked
 from frame to frame (a second person walking past does not take over). The

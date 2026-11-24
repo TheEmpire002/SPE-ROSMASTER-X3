@@ -1244,3 +1244,17 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
   - JS syntax checked with node.
   - The photo was assessed and deleted. Now: „ruhig, sitzt aufrecht (kein Warnzeichen)“.
 - **Open:** Try it in the browser on the robot (it currently runs `feat/object-detection`, the change is on `zustandserkennung`).
+
+### 24.11.2026 – Healthbot after the robot test: area search, several people, answers, fetching help (Marlon, with Claude)
+
+- **What:**
+  - **Area search:** if nobody lying is seen from where it arrived, the robot drives to viewpoints on a circle around the spot (new `health/search.py`) and looks again, e.g. around a table.
+  - **Several people:** the person on the floor is chosen over someone sitting or standing (`pick_patient`), instead of the largest box.
+  - **Nudging:** slumped people get nudged too; closing in is faster and never slower than the motors can start.
+  - **Answers:** „ja / mir geht es gut“ to „Geht es Ihnen gut?“ means responsive, „nein / schlecht / Schmerzen“ means alarm without nudging.
+  - **Fetching help:** after the alarm it searches the mapped area for an upright person, asks them to follow („Bitte folgen Sie mir“), checks with the rear lidar that they follow and leads them to the victim. If nobody follows or nobody is found, it falls back to home and alarm music.
+  - **Faster:** healthbot drives at 0.35 m/s (was the slow homing speed), search turns 0.5 rad/s.
+  - **Robustness:** a sentence lost to a speaker dropout is said again; a short drive dropout pauses the check instead of ending it.
+- **Why:** In the robot test a person behind a table was not found, the robot spoke to someone sitting behind the lying person, nobody was nudged, answers to „Geht es Ihnen gut?“ changed nothing, the robot was slow, and it did not fetch help.
+- **Result:** All healthbot cases pass, including new ones for every point above (lying preferred, hidden person, answers, speaker dropout, drive lost, helper follows / does not follow / nobody there). Full suite 27/28; test_telegram only fails locally (markdown package missing).
+- **Open:** Try it on the robot. The test ran on `feat/3d-surfaces`; the robot needs `zustandserkennung`. Following is detected only by the lidar behind the robot, so a wall or a chair behind it also counts as „follows“.
