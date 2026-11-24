@@ -1431,11 +1431,17 @@ the blocks in `<name>_roh/<stamp>/`: `NNNNN_tiefe.png` (16-bit, mm),
 heading rad] in the map frame at capture time, `boden` [a, b, c] floor
 plane, `farbe` {`box` [x0, y0, w, h] of the depth image in the colour
 image, `groesse`}) and `meta.json` (depth size, fields of view, camera
-mounting, range). At most `MAP3D_RAW_MAX_FRAMES` images. Download as ZIP
+mounting, range, and `karte2d`: the 2D occupancy grid with `aufloesung`,
+`ursprung` [x, y], `breite`, `hoehe`, `frei_max`, `belegt_min`, `data_b64`
+int8 per cell, row 0 = lowest y; also in the live `meta` message). At most `MAP3D_RAW_MAX_FRAMES` images. Download as ZIP
 on `/map`; `python scripts/build_mesh.py <zip>` on a pc (needs `pip install
 open3d opencv-python numpy`) fuses them into a coloured mesh (`.ply`, TSDF
 fusion with marching cubes; options `--voxel`, `--trunc`, `--every`,
-`--show`). Live: `python scripts/build_mesh.py --live 10.42.0.62` (also
+`--show`). The script adds a grey floor at height 0 from the free cells of
+`karte2d` (the Astra often measures no shiny floor): thin lidar streaks are
+removed, only free regions the robot drove in are kept (`--floor-cell`
+tile size, `--no-floor`; `--karte-von HOST` fetches the map from
+`/api/mapping/map` for recordings without `karte2d`). Live: `python scripts/build_mesh.py --live 10.42.0.62` (also
 `pip install websockets`) connects to `WS /api/mapping/raum3d/live`, fuses
 every image as it arrives and shows the growing model in a window (surface
 refreshed every `--refresh` s, robot as a small coordinate cross); the

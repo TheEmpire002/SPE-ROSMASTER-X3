@@ -532,7 +532,9 @@ class Room3D:
         raw["frames"] = index + 1
 
     def _meta(self, frame, current) -> dict[str, Any]:
-        """What a pc needs to place the images: sizes, fields of view, mounting"""
+        """What a pc needs to place the images: sizes, fields of view, mounting,
+        and the 2d map (the pc fills the floor from its free cells; the depth
+        camera often does not see a shiny floor)"""
         h, w = frame.raw.shape
         return {
             "karte": current[0], "frame_id": current[1],
@@ -542,6 +544,24 @@ class Room3D:
             "kamera_vorn_m": config.DEPTH_CAMERA_FORWARD_M,
             "kamera_neigung_grad": config.DEPTH_CAMERA_TILT_DEG,
             "min_m": config.MAP3D_MIN_M, "max_m": config.MAP3D_MAX_M,
+            "karte2d": self._map2d(),
+        }
+
+    def _map2d(self) -> dict[str, Any] | None:
+        """The 2d occupancy grid as in /api/mapping/map: int8 per cell (-1
+        unknown, 0..100), row 0 = lowest y"""
+        import base64
+
+        from .occ_map import FREE_MAX, OCCUPIED_MIN
+
+        occ = self._localization.occ_map
+        if occ is None:
+            return None
+        return {
+            "aufloesung": occ.resolution, "ursprung": list(occ.origin),
+            "breite": occ.width, "hoehe": occ.height,
+            "frei_max": FREE_MAX, "belegt_min": OCCUPIED_MIN,
+            "data_b64": base64.b64encode(occ.occupancy.tobytes()).decode("ascii"),
         }
 
     # --- live stream to a pc ---

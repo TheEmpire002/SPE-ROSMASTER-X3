@@ -33,6 +33,7 @@ Not part of the robot software: needs open3d, which does not run on the pi
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import math
 import sys
@@ -87,6 +88,89 @@ def color_on_depth(cv2, np, image, box, w: int, h: int):
     return cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
 
 
+def map2d_from_payload(payload: dict) -> dict:
+    """/api/mapping/map payload -> the karte2d dict the robot puts in meta.json"""
+    info = payload["info"]
+    pos = info["origin"]["position"]
+    return {"aufloesung": info["resolution"], "ursprung": [pos["x"], pos["y"]],
+            "breite": info["width"], "hoehe": info["height"], "frei_max": 19, "belegt_min": 65,
+            "data_b64": payload["data_b64"]}
+
+
+def fetch_map2d(host: str) -> dict:
+    """The robot's current 2d map over http (for recordings made before the
+    robot put it into meta.json)"""
+    import urllib.request
+
+    host = host if ":" in host else f"{host}:8000"
+    with urllib.request.urlopen(f"http://{host}/api/mapping/map", timeout=10) as r:
+        return map2d_from_payload(json.load(r))
+
+
+def floor_mesh(o3d, np, cv2, map2d: dict, cell: float, seeds=None, colour=(0.55, 0.55, 0.56)):
+    """Grey floor at height 0 under the free cells of the 2d map, merged to
+    ``cell`` size; the depth camera often does not see shiny or dark floors.
+    ``seeds`` (robot positions x, y): only the free areas the robot was in"""
+    res = float(map2d["aufloesung"])
+    grid = np.frombuffer(base64.b64decode(map2d["data_b64"]), dtype=np.int8).reshape(
+        int(map2d["hoehe"]), int(map2d["breite"]))
+    free = (grid >= 0) & (grid <= int(map2d["frei_max"]))
+    # coarser cells: a cell is floor if most of the map cells in it are free
+    k = max(1, int(round(cell / res)))
+    h, w = (free.shape[0] // k) * k, (free.shape[1] // k) * k
+    coarse = free[:h, :w].reshape(h // k, k, w // k, k).mean(axis=(1, 3)) >= 0.5
+    size = res * k
+    ox, oy = map2d["ursprung"][0], map2d["ursprung"][1]
+    # lidar rays through doors and windows leave thin free streaks outside the room:
+    # an opening removes them, then only regions the robot drove in stay
+    mask = cv2.morphologyEx(coarse.astype(np.uint8), cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
+    if seeds is not None and len(seeds):
+        _, labels = cv2.connectedComponents(mask, connectivity=4)
+        seeds = np.asarray(seeds, dtype=float)[:, :2]
+        sx = ((seeds[:, 0] - ox) / size).astype(int)
+        sy = ((seeds[:, 1] - oy) / size).astype(int)
+        inside = (sx >= 0) & (sy >= 0) & (sx < mask.shape[1]) & (sy < mask.shape[0])
+        keep = np.unique(labels[sy[inside], sx[inside]])
+        keep = keep[keep > 0]
+        mask = np.isin(labels, keep).astype(np.uint8)
+    iy, ix = np.nonzero(mask)
+    mesh = o3d.geometry.TriangleMesh()
+    if not len(ix):
+        return mesh
+    x0 = ox + ix * size
+    y0 = oy + iy * size
+    corners = np.stack([np.column_stack((x0 + dx, y0 + dy, np.zeros_like(x0)))
+                        for dx, dy in ((0, 0), (size, 0), (size, size), (0, size))], axis=1).reshape(-1, 3)
+    base = np.arange(len(ix)) * 4
+    tris = np.concatenate([np.column_stack((base, base + 1, base + 2)),
+                           np.column_stack((base, base + 2, base + 3))])
+    mesh.vertices = o3d.utility.Vector3dVector(corners)
+    mesh.triangles = o3d.utility.Vector3iVector(tris)
+    mesh.vertex_colors = o3d.utility.Vector3dVector(np.tile(colour, (len(corners), 1)))
+    mesh.merge_close_vertices(1e-6)
+    mesh.compute_vertex_normals()
+    return mesh
+
+
+def with_floor(o3d, np, cv2, mesh, meta: dict, args, seeds=None):
+    """The fused mesh plus the floor from the 2d map, if wanted and known"""
+    if args.no_floor:
+        return mesh
+    map2d = meta.get("karte2d")
+    if map2d is None and args.karte_von:
+        try:
+            map2d = fetch_map2d(args.karte_von)
+            print(f"2d map fetched from {args.karte_von}")
+        except Exception as exc:
+            print(f"2d map not fetched ({exc}) -- no floor", file=sys.stderr)
+    if map2d is None:
+        print("no 2d map in the recording -- no floor (--karte-von ROBOTER fetches it)")
+        return mesh
+    floor = floor_mesh(o3d, np, cv2, map2d, args.floor_cell, seeds)
+    print(f"floor: {len(floor.triangles) // 2} cells of {args.floor_cell} m")
+    return mesh + floor
+
+
 class Fusion:
     """The tsdf volume plus what is needed to add one image to it.
 
@@ -119,11 +203,13 @@ class Fusion:
         self.grey = np.full((self.h, self.w, 3), 128, dtype=np.uint8)
         self.count = 0
         self.skipped = 0
+        self.poses: list = []   # where the robot was: the floor is kept around these
 
     def add(self, line: dict, depth, color_bgr) -> bool:
         """One image: depth (uint16 mm), colour (bgr or None), its frames.jsonl
         line; False if it had nothing in range (open3d aborts on those)"""
         np, o3d, o3c = self.np, self.o3d, self.o3c
+        self.poses.append(line["pose"][:2])
         depth = depth.astype(np.uint16)
         depth[depth < self.min_mm] = 0  # the astra measures nothing useful that close
         if int(((depth > 0) & (depth < self.max_range * 1000)).sum()) < self.args.min_pixels:
@@ -199,7 +285,7 @@ def offline(o3d, np, cv2, args) -> int:
             print(f"  {k + 1}/{len(frames)}")
     print(f"fused {fusion.count}, skipped {fusion.skipped} (nothing within {fusion.max_range} m)")
     print("extracting the surface ...")
-    mesh = fusion.mesh()
+    mesh = with_floor(o3d, np, cv2, fusion.mesh(), meta, args, fusion.poses)
     out = Path(args.out) if args.out else source.with_suffix(".ply")
     o3d.io.write_triangle_mesh(str(out), mesh)
     print(f"{len(mesh.vertices)} vertices, {len(mesh.triangles)} triangles -> {out}")
@@ -240,6 +326,7 @@ def live(o3d, np, cv2, args) -> int:
     vis.get_render_option().mesh_show_back_face = True
     shown: list = []
     fusion: Fusion | None = None
+    floor = None
     last_mesh = 0.0
     last_pose = None
     first_view = True
@@ -247,10 +334,14 @@ def live(o3d, np, cv2, args) -> int:
     received = 0
 
     def refresh() -> None:
-        nonlocal shown, first_view
+        nonlocal shown, first_view, floor
         if fusion is None or not fusion.count:
             return
         geometries = [fusion.mesh(clean=False)]
+        if not args.no_floor and fusion.meta.get("karte2d"):
+            floor = floor_mesh(o3d, np, cv2, fusion.meta["karte2d"], args.floor_cell, fusion.poses)
+        if floor is not None:
+            geometries.append(floor)
         if last_pose is not None:
             geometries.append(robot_marker(o3d, last_pose))
         for g in shown:
@@ -326,7 +417,7 @@ def live(o3d, np, cv2, args) -> int:
         print("no images received -- is the robot localized in a map and the depth camera available?")
         return 1
     print("extracting the surface ...")
-    mesh = fusion.mesh()
+    mesh = with_floor(o3d, np, cv2, fusion.mesh(), fusion.meta, args, fusion.poses)
     o3d.io.write_triangle_mesh(str(out), mesh)
     print(f"{fusion.count} images, {len(mesh.vertices)} vertices, {len(mesh.triangles)} triangles -> {out}")
     if args.show:
@@ -347,6 +438,10 @@ def main() -> int:
                         help="drop loose pieces with fewer triangles (noise); 0 = keep all")
     parser.add_argument("--min-pixels", type=int, default=500,
                         help="skip images with fewer measured pixels within range")
+    parser.add_argument("--no-floor", action="store_true", help="no floor from the 2d map")
+    parser.add_argument("--floor-cell", type=float, default=0.05, help="size of the floor tiles (m)")
+    parser.add_argument("--karte-von", metavar="HOST",
+                        help="fetch the 2d map from the robot (recordings without it in meta.json)")
     parser.add_argument("--refresh", type=float, default=3.0, help="live: rebuild the shown surface every n s")
     parser.add_argument("--show", action="store_true", help="open a viewer at the end")
     args = parser.parse_args()

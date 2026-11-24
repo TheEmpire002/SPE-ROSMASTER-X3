@@ -1254,3 +1254,9 @@ the raw data in `robot-protokolle/2026-10-28_sensorcheck/`.
 - **Fix:** `build_mesh.py` now uses the tensor `VoxelBlockGrid` (grows by itself). Images with fewer than 500 measured pixels within range are skipped, Open3D aborts on those (looking down a long hallway). Colours clipped to 0..1.
 - **Result:** From the 513 live images: 503 fused, 189,000 triangles in 7 s. Walls straight, corners right-angled, upright, colours on walls and furniture: the robot's pose was consistent during the drive. With `--max-range 4` the walls reach 1.65 m instead of 1.25 m, but get more frayed.
 - **Limits seen:** No floor: the depth camera did not detect the floor in any image (`boden` null), probably a shiny or dark floor the Astra cannot measure. Walls only up to ~1.3 m: the camera looks straight ahead from 22 cm with ±22.5° vertical field of view, at 3 m it cannot see higher.
+
+### 24.11.2026 – Floor for the 3D model from the 2D map (test, with Claude)
+- **What:** `build_mesh.py` adds a grey floor at height 0 under the free cells of the 2D lidar map. The robot now puts the 2D map into `meta.json` and the live `meta` message (`karte2d`); for older recordings `--karte-von 10.42.0.62` fetches it from the robot. In the live window the floor grows with the robot's path.
+- **Why:** The depth camera measured no floor in the first live run (shiny floor), so the model floated in the air. The lidar map already knows where the floor is.
+- **Decisions:** Tiles of 5 cm (`--floor-cell`), a tile is floor if most of its map cells are free. Lidar rays through doors leave thin free streaks outside the room ("star" in the first try): a morphological opening removes them, then only connected free regions containing a robot position are kept.
+- **Result:** The first live run (513 images) rebuilt with the floor: about 54,000 floor tiles under the walls and furniture, no streaks outside.
