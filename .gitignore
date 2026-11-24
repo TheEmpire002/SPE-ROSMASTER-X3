@@ -47,3 +47,9 @@ sdkconfig.*.old
 # Auf der Einstellungsseite geänderte Werte (je Roboter verschieden)
 robot/settings.json
 robot/settings.tmp
+
+# 3d models built on the pc (scripts/build_mesh.py)
+live_*/
+live_*.ply
+rohaufnahme_*.zip
+rohaufnahme_*.ply
